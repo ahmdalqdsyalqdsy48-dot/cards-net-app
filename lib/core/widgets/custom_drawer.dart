@@ -5,7 +5,8 @@ import '../../features/super_admin/screens/financial_center_screen.dart';
 import '../../features/super_admin/screens/subscriptions_screen.dart';
 import '../../features/super_admin/screens/staff_support_screen.dart';
 import '../../features/super_admin/screens/bank_accounts_screen.dart';
-import '../../features/super_admin/screens/reports_screen.dart'; // السطر الجديد
+import '../../features/super_admin/screens/reports_screen.dart';
+import '../../features/super_admin/screens/settings_screen.dart'; // السطر الأخير
 
 class CustomDrawer extends StatelessWidget {
   final String userName;
@@ -54,11 +55,11 @@ class CustomDrawer extends StatelessWidget {
                   _buildMenuItem(context, icon: Icons.account_balance_wallet, title: 'المركز المالي', targetScreen: const FinancialCenterScreen()),
                   _buildMenuItem(context, icon: Icons.support_agent, title: 'المدراء والدعم الفني', targetScreen: const StaffSupportScreen()),
                   _buildMenuItem(context, icon: Icons.account_balance, title: 'الحسابات البنكية', targetScreen: const BankAccountsScreen()),
-                  
-                  // 👇 زر التقارير الشاملة 👇
                   _buildMenuItem(context, icon: Icons.bar_chart, title: 'التقارير الشاملة', targetScreen: const ReportsScreen()),
                   
-                  _buildMenuItem(context, icon: Icons.settings, title: 'الإعدادات العامة'),
+                  // 👇 ربط الإعدادات العامة 👇
+                  _buildMenuItem(context, icon: Icons.settings, title: 'الإعدادات العامة', targetScreen: const GlobalSettingsScreen()),
+                  
                   const Divider(),
                   _buildMenuItem(context, icon: Icons.logout, title: 'تسجيل الخروج', textColor: Colors.red, iconColor: Colors.red, isLogout: true),
                 ],
