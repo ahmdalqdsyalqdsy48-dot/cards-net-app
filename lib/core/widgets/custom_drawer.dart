@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../features/super_admin/screens/super_admin_dashboard.dart';
 import '../../features/super_admin/screens/agent_management_screen.dart';
 import '../../features/super_admin/screens/financial_center_screen.dart';
+import '../../features/super_admin/screens/subscriptions_screen.dart'; // السطر الجديد الخاص بالاشتراكات
 
 class CustomDrawer extends StatelessWidget {
   final String userName;
@@ -77,7 +78,10 @@ class CustomDrawer extends StatelessWidget {
                   _buildMenuItem(context, icon: Icons.home, title: 'الرئيسية', targetScreen: const SuperAdminDashboard()),
                   _buildMenuItem(context, icon: Icons.group, title: 'إدارة الوكلاء', targetScreen: const AgentManagementScreen()),
                   
-                  // 👇 هنا تم دمج الكود الجديد للمركز المالي بنجاح 👇
+                  // 👇 هنا تم دمج زر إدارة الاشتراكات 👇
+                  _buildMenuItem(context, icon: Icons.calendar_month, title: 'إدارة الاشتراكات', targetScreen: const SubscriptionsScreen()),
+                  
+                  // زر المركز المالي
                   _buildMenuItem(context, icon: Icons.account_balance_wallet, title: 'المركز المالي', targetScreen: const FinancialCenterScreen()),
                   
                   // الأقسام التي لم نبرمجها بعد نترك targetScreen الخاص بها فارغاً
