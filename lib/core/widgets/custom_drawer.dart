@@ -4,7 +4,8 @@ import '../../features/super_admin/screens/super_admin_dashboard.dart';
 import '../../features/super_admin/screens/agent_management_screen.dart';
 import '../../features/super_admin/screens/financial_center_screen.dart';
 import '../../features/super_admin/screens/subscriptions_screen.dart';
-import '../../features/super_admin/screens/staff_support_screen.dart'; // السطر الجديد الخاص بالدعم الفني
+import '../../features/super_admin/screens/staff_support_screen.dart';
+import '../../features/super_admin/screens/bank_accounts_screen.dart'; // السطر الجديد الخاص بالحسابات البنكية
 
 class CustomDrawer extends StatelessWidget {
   final String userName;
@@ -75,16 +76,16 @@ class CustomDrawer extends StatelessWidget {
               child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
-                  // هنا قمنا بتمرير الشاشات التي سينتقل إليها الزر
                   _buildMenuItem(context, icon: Icons.home, title: 'الرئيسية', targetScreen: const SuperAdminDashboard()),
                   _buildMenuItem(context, icon: Icons.group, title: 'إدارة الوكلاء', targetScreen: const AgentManagementScreen()),
                   _buildMenuItem(context, icon: Icons.calendar_month, title: 'إدارة الاشتراكات', targetScreen: const SubscriptionsScreen()),
                   _buildMenuItem(context, icon: Icons.account_balance_wallet, title: 'المركز المالي', targetScreen: const FinancialCenterScreen()),
-                  
-                  // 👇 هنا تم دمج زر إدارة المدراء والدعم الفني 👇
                   _buildMenuItem(context, icon: Icons.support_agent, title: 'المدراء والدعم الفني', targetScreen: const StaffSupportScreen()),
                   
-                  // الأقسام التي لم نبرمجها بعد نترك targetScreen الخاص بها فارغاً
+                  // 👇 هنا تم دمج زر الحسابات البنكية 👇
+                  _buildMenuItem(context, icon: Icons.account_balance, title: 'الحسابات البنكية', targetScreen: const BankAccountsScreen()),
+                  
+                  // الأقسام التي لم نبرمجها بعد
                   _buildMenuItem(context, icon: Icons.settings, title: 'الإعدادات العامة'),
                   
                   const Divider(),
@@ -107,7 +108,7 @@ class CustomDrawer extends StatelessWidget {
     );
   }
 
-  // === دالة مساعدة معدلة لدعم الانتقال بين الشاشات ===
+  // === دالة مساعدة لدعم الانتقال بين الشاشات ===
   Widget _buildMenuItem(BuildContext context, {
     required IconData icon, 
     required String title,
@@ -131,7 +132,7 @@ class CustomDrawer extends StatelessWidget {
         
         // التحقق من الإجراء المطلوب
         if (isLogout) {
-          // العودة للشاشة الأولى (تسجيل الدخول) ومسح كل الشاشات السابقة
+          // العودة للشاشة الأولى
           Navigator.of(context).popUntil((route) => route.isFirst);
         } else if (targetScreen != null) {
           // الانتقال للشاشة المطلوبة
@@ -140,7 +141,7 @@ class CustomDrawer extends StatelessWidget {
             MaterialPageRoute(builder: (context) => targetScreen),
           );
         } else {
-          // إذا كانت الشاشة غير مبرمجة بعد، نظهر تنبيهاً صغيراً
+          // إذا كانت الشاشة غير مبرمجة بعد
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('قسم "$title" قيد التطوير...', textDirection: TextDirection.rtl)),
           );
