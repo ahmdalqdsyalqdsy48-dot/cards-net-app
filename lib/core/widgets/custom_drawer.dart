@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+// استدعاء الشاشات التي سننتقل إليها
+import '../../features/super_admin/screens/super_admin_dashboard.dart';
+import '../../features/super_admin/screens/agent_management_screen.dart';
 
 class CustomDrawer extends StatelessWidget {
-  // هذه المتغيرات تسمح لنا بتغيير بيانات القائمة الجانبية بناءً على الشخص الذي سجل دخوله
   final String userName;
   final String phoneNumber;
   final String role;
@@ -20,88 +22,92 @@ class CustomDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // === 1. بطاقة الملف الشخصي (في أعلى القائمة الجانبية) ===
-          DrawerHeader(
-            decoration: BoxDecoration(
-              // لون خلفية خفيف يتناسب مع الوضع الليلي والنهاري
-              color: Theme.of(context).primaryColor.withOpacity(0.1),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // الصورة الشخصية أو الأيقونة الافتراضية
-                CircleAvatar(
-                  radius: 30,
-                  backgroundColor: Theme.of(context).primaryColor,
-                  backgroundImage: profileImageUrl != null ? NetworkImage(profileImageUrl!) : null,
-                  child: profileImageUrl == null 
-                      ? const Icon(Icons.person, size: 35, color: Colors.white) 
-                      : null,
-                ),
-                const SizedBox(height: 10),
-                // الاسم الرباعي
-                Text(
-                  userName,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  overflow: TextOverflow.ellipsis, // لقص النص الطويل
-                ),
-                const SizedBox(height: 4),
-                // رقم الهاتف والدور
-                Text(
-                  '$phoneNumber  |  $role',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                const SizedBox(height: 4),
-                // الرصيد / النقاط (بلون بارز)
-                Text(
-                  balanceOrPoints,
-                  style: TextStyle(
-                    fontSize: 14, 
-                    fontWeight: FontWeight.bold, 
-                    color: Theme.of(context).colorScheme.secondary,
+      child: Directionality(
+        textDirection: TextDirection.rtl, // لضمان اتجاه القائمة من اليمين لليسار
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // === 1. بطاقة الملف الشخصي ===
+            DrawerHeader(
+              decoration: BoxDecoration(
+                color: Theme.of(context).primaryColor.withOpacity(0.1),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircleAvatar(
+                    radius: 30,
+                    backgroundColor: Theme.of(context).primaryColor,
+                    backgroundImage: profileImageUrl != null ? NetworkImage(profileImageUrl!) : null,
+                    child: profileImageUrl == null 
+                        ? const Icon(Icons.person, size: 35, color: Colors.white) 
+                        : null,
                   ),
-                ),
-              ],
+                  const SizedBox(height: 10),
+                  Text(
+                    userName,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$phoneNumber  |  $role',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    balanceOrPoints,
+                    style: TextStyle(
+                      fontSize: 14, 
+                      fontWeight: FontWeight.bold, 
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
 
-          // === 2. عناصر القائمة (سيتم برمجتها لاحقاً لتتغير حسب الدور) ===
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                _buildMenuItem(context, icon: Icons.home, title: 'الرئيسية'),
-                _buildMenuItem(context, icon: Icons.group, title: 'إدارة الوكلاء'),
-                _buildMenuItem(context, icon: Icons.account_balance_wallet, title: 'المركز المالي'),
-                _buildMenuItem(context, icon: Icons.settings, title: 'الإعدادات العامة'),
-                
-                const Divider(), // خط فاصل أنيق
-                
-                // زر تسجيل الخروج (بلون أحمر للتمييز)
-                _buildMenuItem(
-                  context, 
-                  icon: Icons.logout, 
-                  title: 'تسجيل الخروج',
-                  textColor: Colors.red,
-                  iconColor: Colors.red,
-                ),
-              ],
+            // === 2. عناصر القائمة مع الربط الفعلي (Navigation) ===
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  // هنا قمنا بتمرير الشاشة التي سينتقل إليها الزر
+                  _buildMenuItem(context, icon: Icons.home, title: 'الرئيسية', targetScreen: const SuperAdminDashboard()),
+                  _buildMenuItem(context, icon: Icons.group, title: 'إدارة الوكلاء', targetScreen: const AgentManagementScreen()),
+                  
+                  // الأقسام التي لم نبرمجها بعد نترك targetScreen الخاص بها فارغاً
+                  _buildMenuItem(context, icon: Icons.account_balance_wallet, title: 'المركز المالي'),
+                  _buildMenuItem(context, icon: Icons.settings, title: 'الإعدادات العامة'),
+                  
+                  const Divider(),
+                  
+                  // زر تسجيل الخروج (يعيدك لصفحة الدخول الموحد)
+                  _buildMenuItem(
+                    context, 
+                    icon: Icons.logout, 
+                    title: 'تسجيل الخروج',
+                    textColor: Colors.red,
+                    iconColor: Colors.red,
+                    isLogout: true, // تفعيل أمر الخروج
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  // دالة مساعدة لإنشاء أزرار القائمة بشكل مرتب وربطها بوظيفة الإغلاق التلقائي
+  // === دالة مساعدة معدلة لدعم الانتقال بين الشاشات ===
   Widget _buildMenuItem(BuildContext context, {
     required IconData icon, 
     required String title,
     Color? textColor,
     Color? iconColor,
+    Widget? targetScreen, // الشاشة الهدف
+    bool isLogout = false,
   }) {
     return ListTile(
       leading: Icon(icon, color: iconColor ?? Theme.of(context).iconTheme.color),
@@ -113,12 +119,26 @@ class CustomDrawer extends StatelessWidget {
         ),
       ),
       onTap: () {
-        // إغلاق القائمة الجانبية تلقائياً عند النقر على أي عنصر (Drawer)
+        // إغلاق القائمة الجانبية أولاً
         Navigator.pop(context);
         
-        // ملاحظة للمبرمج: هنا سيتم إضافة كود الانتقال للقسم المختار لاحقاً
+        // التحقق من الإجراء المطلوب
+        if (isLogout) {
+          // العودة للشاشة الأولى (تسجيل الدخول) ومسح كل الشاشات السابقة
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        } else if (targetScreen != null) {
+          // الانتقال للشاشة المطلوبة
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => targetScreen),
+          );
+        } else {
+          // إذا كانت الشاشة غير مبرمجة بعد، نظهر تنبيهاً صغيراً
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('قسم "$title" قيد التطوير...', textDirection: TextDirection.rtl)),
+          );
+        }
       },
     );
   }
 }
-
