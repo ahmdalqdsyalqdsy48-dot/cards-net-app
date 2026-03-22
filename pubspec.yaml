@@ -4,8 +4,8 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  # قمنا بتغيير الرقم هنا ليتوافق مع الموقع
-  sdk: '>=2.12.0 <4.0.0'
+  # قمنا بتحديد النسخة بدقة لتفعيل المميزات الحديثة
+  sdk: '>=2.17.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -19,4 +19,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  
