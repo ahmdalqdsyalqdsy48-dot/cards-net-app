@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+// استدعاء لوحة المالك لكي نتمكن من الانتقال إليها
+import '../../super_admin/screens/super_admin_dashboard.dart';
 
 class SSOLoginScreen extends StatefulWidget {
   const SSOLoginScreen({super.key});
@@ -8,7 +10,11 @@ class SSOLoginScreen extends StatefulWidget {
 }
 
 class _SSOLoginScreenState extends State<SSOLoginScreen> {
-  bool isLoginTab = true; // للتبديل بين تسجيل الدخول والتسجيل الجديد
+  bool isLoginTab = true; 
+  
+  // === جديد: أجهزة استشعار لقراءة النص المكتوب في الحقول ===
+  final TextEditingController phoneController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
@@ -17,7 +23,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
         child: SingleChildScrollView(
           child: Column(
             children: [
-              // 1. الثلث الأول: الإعلانات الصورية المتغيرة
               SizedBox(
                 height: MediaQuery.of(context).size.height * 0.3,
                 width: double.infinity,
@@ -29,7 +34,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                 ),
               ),
 
-              // 2. الشريط الترحيبي (Marquee Placeholder)
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 8),
@@ -44,19 +48,13 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
               
               const SizedBox(height: 20),
 
-              // 3. اسم التطبيق (كما حدده مالك النظام)
               const Text(
                 'كروت نت',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.blueAccent,
-                ),
+                style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.blueAccent),
               ),
 
               const SizedBox(height: 30),
 
-              // 4. أزرار التبويب (تسجيل دخول / تسجيل جديد)
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -74,7 +72,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
 
               const SizedBox(height: 20),
 
-              // 5. حقول الإدخال بناءً على التبويب
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: Directionality(
@@ -89,11 +86,11 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     );
   }
 
-  // قسم: تسجيل الدخول للمسجلين مسبقاً
   Widget _buildLoginForm() {
     return Column(
       children: [
         TextField(
+          controller: phoneController, // ربط الحقل بالمستشعر
           keyboardType: TextInputType.phone,
           decoration: InputDecoration(
             labelText: 'رقم الهاتف',
@@ -103,6 +100,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
         ),
         const SizedBox(height: 15),
         TextField(
+          controller: passwordController, // ربط الحقل بالمستشعر
           obscureText: true,
           decoration: InputDecoration(
             labelText: 'كلمة المرور',
@@ -121,7 +119,25 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
             onPressed: () {
-              // زر الدخول
+              // === جديد: المنطق البرمجي للتحقق من بيانات الدخول ===
+              String phone = phoneController.text.trim();
+              String password = passwordController.text.trim();
+
+              if (phone == '774578241' && password == '75486958aaa') {
+                // إذا كانت البيانات صحيحة، انتقل فوراً للوحة المالك
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const SuperAdminDashboard()),
+                );
+              } else {
+                // إذا كانت البيانات خاطئة، أظهر رسالة تنبيه حمراء أسفل الشاشة
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('رقم الهاتف أو كلمة المرور غير صحيحة!', textDirection: TextDirection.rtl),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             },
             child: const Text('دخول', style: TextStyle(fontSize: 18, color: Colors.white)),
           ),
@@ -130,44 +146,20 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     );
   }
 
-  // قسم: تسجيل حساب جديد
   Widget _buildRegisterForm() {
     return Column(
       children: [
-        TextField(
-          decoration: InputDecoration(
-            labelText: 'الاسم الرباعي',
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-            prefixIcon: const Icon(Icons.person),
-          ),
-        ),
+        TextField(decoration: InputDecoration(labelText: 'الاسم الرباعي', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.person))),
         const SizedBox(height: 15),
-        TextField(
-          keyboardType: TextInputType.phone,
-          decoration: InputDecoration(
-            labelText: 'رقم الهاتف',
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-            prefixIcon: const Icon(Icons.phone),
-          ),
-        ),
+        TextField(keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: 'رقم الهاتف', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.phone))),
         const SizedBox(height: 15),
-        TextField(
-          obscureText: true,
-          decoration: InputDecoration(
-            labelText: 'كلمة المرور',
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-            prefixIcon: const Icon(Icons.lock),
-          ),
-        ),
+        TextField(obscureText: true, decoration: InputDecoration(labelText: 'كلمة المرور', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.lock))),
         const SizedBox(height: 25),
         SizedBox(
           width: double.infinity,
           height: 50,
           child: ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
             onPressed: () {},
             child: const Text('تسجيل حساب', style: TextStyle(fontSize: 18, color: Colors.white)),
           ),
