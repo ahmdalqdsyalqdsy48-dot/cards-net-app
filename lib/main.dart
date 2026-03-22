@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+// هذا السطر مهم جداً: وهو يخبر النظام بمكان صفحة تسجيل الدخول التي أنشأناها
+import 'features/auth/screens/sso_login_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -15,17 +17,9 @@ class MyApp extends StatelessWidget {
       themeMode: ThemeMode.system, // لدعم الوضع المظلم والنهاري
       theme: ThemeData.light(),
       darkTheme: ThemeData.dark(),
-      // واجهة مؤقتة حتى نقوم بربط صفحة تسجيل الدخول الموحد
-      home: const Scaffold(
-        body: Center(
-          child: Text(
-            'جاري بناء النظام الموحد... أهلاً بك!',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            textDirection: TextDirection.rtl,
-          ),
-        ),
-      ),
+      
+      // هنا قمنا بتغيير الواجهة المؤقتة لفتح شاشة تسجيل الدخول الموحد مباشرة
+      home: const SSOLoginScreen(),
     );
   }
 }
-
