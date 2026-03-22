@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 // استدعاء الشاشات التي سننتقل إليها
 import '../../features/super_admin/screens/super_admin_dashboard.dart';
 import '../../features/super_admin/screens/agent_management_screen.dart';
+import '../../features/super_admin/screens/financial_center_screen.dart';
 
 class CustomDrawer extends StatelessWidget {
   final String userName;
@@ -76,8 +77,10 @@ class CustomDrawer extends StatelessWidget {
                   _buildMenuItem(context, icon: Icons.home, title: 'الرئيسية', targetScreen: const SuperAdminDashboard()),
                   _buildMenuItem(context, icon: Icons.group, title: 'إدارة الوكلاء', targetScreen: const AgentManagementScreen()),
                   
+                  // 👇 هنا تم دمج الكود الجديد للمركز المالي بنجاح 👇
+                  _buildMenuItem(context, icon: Icons.account_balance_wallet, title: 'المركز المالي', targetScreen: const FinancialCenterScreen()),
+                  
                   // الأقسام التي لم نبرمجها بعد نترك targetScreen الخاص بها فارغاً
-                  _buildMenuItem(context, icon: Icons.account_balance_wallet, title: 'المركز المالي'),
                   _buildMenuItem(context, icon: Icons.settings, title: 'الإعدادات العامة'),
                   
                   const Divider(),
