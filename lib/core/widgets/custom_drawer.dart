@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import '../../features/super_admin/screens/super_admin_dashboard.dart';
 import '../../features/super_admin/screens/agent_management_screen.dart';
 import '../../features/super_admin/screens/financial_center_screen.dart';
-import '../../features/super_admin/screens/subscriptions_screen.dart'; // السطر الجديد الخاص بالاشتراكات
+import '../../features/super_admin/screens/subscriptions_screen.dart';
+import '../../features/super_admin/screens/staff_support_screen.dart'; // السطر الجديد الخاص بالدعم الفني
 
 class CustomDrawer extends StatelessWidget {
   final String userName;
@@ -74,29 +75,28 @@ class CustomDrawer extends StatelessWidget {
               child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
-                  // هنا قمنا بتمرير الشاشة التي سينتقل إليها الزر
+                  // هنا قمنا بتمرير الشاشات التي سينتقل إليها الزر
                   _buildMenuItem(context, icon: Icons.home, title: 'الرئيسية', targetScreen: const SuperAdminDashboard()),
                   _buildMenuItem(context, icon: Icons.group, title: 'إدارة الوكلاء', targetScreen: const AgentManagementScreen()),
-                  
-                  // 👇 هنا تم دمج زر إدارة الاشتراكات 👇
                   _buildMenuItem(context, icon: Icons.calendar_month, title: 'إدارة الاشتراكات', targetScreen: const SubscriptionsScreen()),
-                  
-                  // زر المركز المالي
                   _buildMenuItem(context, icon: Icons.account_balance_wallet, title: 'المركز المالي', targetScreen: const FinancialCenterScreen()),
+                  
+                  // 👇 هنا تم دمج زر إدارة المدراء والدعم الفني 👇
+                  _buildMenuItem(context, icon: Icons.support_agent, title: 'المدراء والدعم الفني', targetScreen: const StaffSupportScreen()),
                   
                   // الأقسام التي لم نبرمجها بعد نترك targetScreen الخاص بها فارغاً
                   _buildMenuItem(context, icon: Icons.settings, title: 'الإعدادات العامة'),
                   
                   const Divider(),
                   
-                  // زر تسجيل الخروج (يعيدك لصفحة الدخول الموحد)
+                  // زر تسجيل الخروج
                   _buildMenuItem(
                     context, 
                     icon: Icons.logout, 
                     title: 'تسجيل الخروج',
                     textColor: Colors.red,
                     iconColor: Colors.red,
-                    isLogout: true, // تفعيل أمر الخروج
+                    isLogout: true, 
                   ),
                 ],
               ),
