@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/custom_drawer.dart';
+import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الهيدر الجديد
 
 class FinancialCenterScreen extends StatefulWidget {
   const FinancialCenterScreen({super.key});
@@ -216,26 +217,9 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('المركز المالي والمحافظ', style: TextStyle(fontWeight: FontWeight.bold)),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.blueAccent),
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: Colors.blueAccent,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: Colors.blueAccent,
-          indicatorWeight: 3,
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-          tabs: const [
-            Tab(icon: Icon(Icons.download), text: 'طلبات الشحن'),
-            Tab(icon: Icon(Icons.account_balance_wallet), text: 'أرصدة المحافظ'),
-            Tab(icon: Icon(Icons.receipt_long), text: 'السجل الشامل'),
-          ],
-        ),
-      ),
+      // 👈 تم تركيب الهيدر الشامل هنا بنجاح!
+      appBar: const CustomHeader(title: 'المركز المالي والمحافظ'),
+      
       drawer: const CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
@@ -244,12 +228,37 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: TabBarView(
-          controller: _tabController,
+        child: Column( // غلّفنا الـ TabBar والـ TabBarView في عمود ليظهروا تحت الهيدر الجديد بشكل صحيح
           children: [
-            _buildRechargeRequestsTab(),
-            _buildWalletsTab(),
-            _buildLedgerTab(),
+            // شريط التبويبات (Tabs)
+            Container(
+              color: Colors.white,
+              child: TabBar(
+                controller: _tabController,
+                labelColor: Colors.blueAccent,
+                unselectedLabelColor: Colors.grey,
+                indicatorColor: Colors.blueAccent,
+                indicatorWeight: 3,
+                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                tabs: const [
+                  Tab(icon: Icon(Icons.download), text: 'طلبات الشحن'),
+                  Tab(icon: Icon(Icons.account_balance_wallet), text: 'أرصدة المحافظ'),
+                  Tab(icon: Icon(Icons.receipt_long), text: 'السجل الشامل'),
+                ],
+              ),
+            ),
+            
+            // محتوى التبويبات (يجب أن يكون بداخل Expanded ليأخذ باقي الشاشة)
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildRechargeRequestsTab(),
+                  _buildWalletsTab(),
+                  _buildLedgerTab(),
+                ],
+              ),
+            ),
           ],
         ),
       ),
