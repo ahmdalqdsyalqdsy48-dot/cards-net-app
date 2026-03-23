@@ -98,7 +98,10 @@ class _CustomDrawerState extends State<CustomDrawer> {
                   color: Colors.grey.shade100,
                   border: Border.all(color: Colors.blue.shade100, width: 3),
                   boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)],
-                  backgroundImage: hasImage ? NetworkImage(_currentLocalImageUrl!) : null,
+                  // تم حل الخطأ هنا (استخدام image بدلاً من backgroundImage)
+                  image: hasImage 
+                      ? DecorationImage(image: NetworkImage(_currentLocalImageUrl!), fit: BoxFit.cover) 
+                      : null,
                 ),
                 child: !hasImage ? const Icon(Icons.person, size: 100, color: Colors.blueGrey) : null,
               ),
@@ -178,7 +181,10 @@ class _CustomDrawerState extends State<CustomDrawer> {
                                 color: Colors.blue.withOpacity(0.1),
                                 border: Border.all(color: Theme.of(context).primaryColor.withOpacity(0.3), width: 2),
                                 boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))],
-                                backgroundImage: hasImage ? NetworkImage(_currentLocalImageUrl!) : null,
+                                // تم حل الخطأ هنا أيضاً
+                                image: hasImage 
+                                    ? DecorationImage(image: NetworkImage(_currentLocalImageUrl!), fit: BoxFit.cover) 
+                                    : null,
                               ),
                               child: !hasImage ? Icon(Icons.person, size: 60, color: Theme.of(context).primaryColor.withOpacity(0.7)) : null,
                             ),
@@ -278,16 +284,16 @@ class _CustomDrawerState extends State<CustomDrawer> {
   // أداة مساعدة لبناء البطاقات المتدرجة الأنيقة الفخمة (Premium Gradient Cards)
   Widget _buildGradientCard({required String text, required IconData icon, required List<Color> colors, IconData? trailingIcon}) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8), // مسافة بين البطاقات
+      margin: const EdgeInsets.only(bottom: 8), 
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: colors,
-          begin: Alignment.topRight, // تدرج من الأعلى لليمين يعطي عمقاً
+          begin: Alignment.topRight, 
           end: Alignment.bottomLeft,
         ),
-        borderRadius: BorderRadius.circular(10), // حواف ناعمة فخمة
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))], // ظل مجسم
+        borderRadius: BorderRadius.circular(10), 
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))], 
       ),
       child: Row(
         children: [
