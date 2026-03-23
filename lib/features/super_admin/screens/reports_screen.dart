@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/custom_drawer.dart';
+import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الهيدر الجديد
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -85,20 +86,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('التقارير الشاملة', style: TextStyle(fontWeight: FontWeight.bold)),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.blueAccent),
-      ),
+      // 👈 تم تركيب الهيدر الشامل هنا بنجاح!
+      appBar: const CustomHeader(title: 'التقارير الشاملة'),
+      
       drawer: const CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
         role: 'مالك النظام (Super Admin)',
         balanceOrPoints: 'أرباح النظام: 5,430,000 ريال',
       ),
-      // الشريط السفلي الثابت (تم إصلاح الخطأ هنا 👇 بإزالة const من الـ Directionality)
+      // الشريط السفلي الثابت
       bottomNavigationBar: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
