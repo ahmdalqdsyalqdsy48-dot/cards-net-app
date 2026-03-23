@@ -22,6 +22,10 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
+      # هذا هو السطر السحري الذي قمنا بإضافته لحل المشكلة نهائياً
+      - name: Enable Web Support
+        run: flutter create . --platforms web
+
       - name: Build Web
         run: flutter build web --base-href "/cards-net-app/"
 
