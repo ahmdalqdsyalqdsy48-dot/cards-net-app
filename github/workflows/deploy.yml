@@ -1,0 +1,34 @@
+name: Deploy Flutter Web to GitHub Pages
+
+# الروبوت سيعمل تلقائياً عند أي تعديل في الكود
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: جلب الكود من المستودع
+        uses: actions/checkout@v3
+
+      - name: تجهيز بيئة فلاتر
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: تحميل المكاتب والإضافات
+        run: flutter pub get
+
+      - name: بناء نسخة الويب
+        # هذا السطر مهم جداً لكي يتعرف التطبيق على مساره الصحيح
+        run: flutter build web --base-href "/cards-net-app/"
+
+      - name: النشر على رابط جيت هاب
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build/web
