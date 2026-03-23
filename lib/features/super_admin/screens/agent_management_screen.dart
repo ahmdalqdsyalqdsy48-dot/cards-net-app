@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/custom_drawer.dart';
+import '../../../core/widgets/custom_header.dart'; // 👈 تمت إضافة استدعاء الهيدر الجديد هنا
 
 class AgentManagementScreen extends StatefulWidget {
   const AgentManagementScreen({super.key});
@@ -140,13 +141,9 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('إدارة الوكلاء', style: TextStyle(fontWeight: FontWeight.bold)),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 2,
-        iconTheme: const IconThemeData(color: Colors.blueAccent),
-      ),
+      // 👈 تم تركيب الهيدر الشامل هنا بنجاح!
+      appBar: const CustomHeader(title: 'إدارة الوكلاء'),
+      
       drawer: const CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
