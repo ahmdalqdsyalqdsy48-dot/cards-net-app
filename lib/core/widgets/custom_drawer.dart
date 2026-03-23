@@ -14,12 +14,13 @@ import '../../features/super_admin/screens/banners_screen.dart';
 import '../../features/super_admin/screens/sms_gateway_screen.dart';
 import '../../features/super_admin/screens/backup_screen.dart';
 
-class CustomDrawer extends StatelessWidget {
+// تم تحويل الكلاس إلى StatefulWidget لدعم ميزة (إخفاء/إظهار) الرصيد عند النقر
+class CustomDrawer extends StatefulWidget {
   final String userName;
   final String phoneNumber;
   final String role;
   final String balanceOrPoints;
-  final String? profileImageUrl; // تم الإبقاء عليه لضمان عدم حدوث أخطاء
+  final String? profileImageUrl;
 
   const CustomDrawer({
     super.key,
@@ -29,6 +30,14 @@ class CustomDrawer extends StatelessWidget {
     required this.balanceOrPoints,
     this.profileImageUrl,
   });
+
+  @override
+  State<CustomDrawer> createState() => _CustomDrawerState();
+}
+
+class _CustomDrawerState extends State<CustomDrawer> {
+  // متغير للتحكم في حالة الرصيد (مخفي أم ظاهر)
+  bool _isBalanceHidden = false;
 
   void _navigateTo(BuildContext context, Widget screen) {
     Navigator.pop(context); // إغلاق الدرج الجانبي
@@ -46,30 +55,69 @@ class CustomDrawer extends StatelessWidget {
         child: Column(
           children: [
             // ==========================================
-            // 1. الهيدر العلوي (بيانات المالك)
+            // 1. الهيدر العلوي الجديد (Modern UI Profile)
             // ==========================================
-            UserAccountsDrawerHeader(
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.only(top: 50, right: 16, left: 16, bottom: 20),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Colors.blue.shade900, Colors.blue.shade500],
-                  begin: Alignment.topRight,
-                  end: Alignment.bottomLeft,
-                ),
+                color: Colors.grey.shade50, // خلفية هادئة لتبرز البطاقات الملونة
+                border: Border(bottom: BorderSide(color: Colors.grey.shade200, width: 2)),
               ),
-              currentAccountPicture: const CircleAvatar(
-                backgroundColor: Colors.white,
-                child: Icon(Icons.person, size: 40, color: Colors.blueAccent),
-              ),
-              accountName: Text(userName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              accountEmail: Column(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('$role | $phoneNumber', style: const TextStyle(fontSize: 12, color: Colors.white70)),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(color: Colors.green.shade700, borderRadius: BorderRadius.circular(10)),
-                    child: Text(balanceOrPoints, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  // الصورة الشخصية (جاهزة لاحقاً لإضافة وظيفة النقر للتعديل)
+                  const CircleAvatar(
+                    radius: 35,
+                    backgroundColor: Colors.blueAccent,
+                    child: Icon(Icons.person, size: 40, color: Colors.white),
+                  ),
+                  const SizedBox(height: 15),
+
+                  // البطاقة 1: الاسم الرباعي
+                  _buildGradientCard(
+                    text: widget.userName,
+                    icon: Icons.badge,
+                    colors: [Colors.blue.shade700, Colors.blue.shade400],
+                  ),
+
+                  // البطاقتان 2 و 3: رقم الهاتف والدور (بجوار بعضهما لتوفير المساحة)
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: _buildGradientCard(
+                          text: widget.phoneNumber,
+                          icon: Icons.phone,
+                          colors: [Colors.teal.shade700, Colors.teal.shade400],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: _buildGradientCard(
+                          text: widget.role,
+                          icon: Icons.admin_panel_settings,
+                          colors: [Colors.orange.shade700, Colors.orange.shade400],
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // البطاقة 4: الرصيد (مع ميزة النقر للإخفاء/الإظهار)
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _isBalanceHidden = !_isBalanceHidden;
+                      });
+                    },
+                    child: _buildGradientCard(
+                      text: _isBalanceHidden ? '******' : widget.balanceOrPoints,
+                      icon: Icons.account_balance_wallet,
+                      colors: [Colors.purple.shade700, Colors.purple.shade400],
+                      trailingIcon: _isBalanceHidden ? Icons.visibility_off : Icons.visibility,
+                    ),
                   ),
                 ],
               ),
@@ -128,7 +176,38 @@ class CustomDrawer extends StatelessWidget {
     );
   }
 
-  // أداة مساعدة لبناء الأزرار
+  // أداة مساعدة لبناء البطاقات المتدرجة الأنيقة (Gradient Cards)
+  Widget _buildGradientCard({required String text, required IconData icon, required List<Color> colors, IconData? trailingIcon}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: colors,
+          begin: Alignment.centerRight,
+          end: Alignment.centerLeft,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.white, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (trailingIcon != null) Icon(trailingIcon, color: Colors.white70, size: 18),
+        ],
+      ),
+    );
+  }
+
+  // أداة مساعدة لبناء أزرار القائمة السفلية
   Widget _buildDrawerItem(BuildContext context, String title, IconData icon, Color iconColor, Widget targetScreen) {
     return ListTile(
       leading: Icon(icon, color: iconColor),
