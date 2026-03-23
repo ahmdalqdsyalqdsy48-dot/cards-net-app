@@ -55,34 +55,39 @@ class _CustomDrawerState extends State<CustomDrawer> {
         child: Column(
           children: [
             // ==========================================
-            // 1. الهيدر العلوي الجديد (Modern UI Profile)
+            // 1. الهيدر العلوي الجديد (Modern & Compact Profile)
+            // تم تغيير الخلفية للون غامق متدرج لإبراز البطاقات وتصغير الهوامش
             // ==========================================
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.only(top: 50, right: 16, left: 16, bottom: 20),
+              padding: const EdgeInsets.only(top: 40, right: 12, left: 12, bottom: 15),
               decoration: BoxDecoration(
-                color: Colors.grey.shade50, // خلفية هادئة لتبرز البطاقات الملونة
-                border: Border(bottom: BorderSide(color: Colors.grey.shade200, width: 2)),
+                gradient: LinearGradient(
+                  colors: [Colors.blue.shade900, Colors.blue.shade600],
+                  begin: Alignment.topRight,
+                  end: Alignment.bottomLeft,
+                ),
+                border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.2), width: 1)),
               ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center, // مركزة العناصر
                 children: [
-                  // الصورة الشخصية (جاهزة لاحقاً لإضافة وظيفة النقر للتعديل)
-                  const CircleAvatar(
-                    radius: 35,
-                    backgroundColor: Colors.blueAccent,
-                    child: Icon(Icons.person, size: 40, color: Colors.white),
+                  // الصورة الشخصية أصغر قليلاً (Compact)
+                  CircleAvatar(
+                    radius: 30,
+                    backgroundColor: Colors.white.withOpacity(0.2),
+                    child: const Icon(Icons.person, size: 35, color: Colors.white),
                   ),
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 12), // تقليل المسافة
 
-                  // البطاقة 1: الاسم الرباعي
+                  // البطاقة 1: الاسم الرباعي (تصميم أصغر - Slim Card)
                   _buildGradientCard(
                     text: widget.userName,
                     icon: Icons.badge,
-                    colors: [Colors.blue.shade700, Colors.blue.shade400],
+                    colors: [Colors.black.withOpacity(0.3), Colors.black.withOpacity(0.1)],
                   ),
 
-                  // البطاقتان 2 و 3: رقم الهاتف والدور (بجوار بعضهما لتوفير المساحة)
+                  // البطاقتان 2 و 3: رقم الهاتف والدور (بجوار بعضهما - Slim Cards)
                   Row(
                     children: [
                       Expanded(
@@ -90,22 +95,22 @@ class _CustomDrawerState extends State<CustomDrawer> {
                         child: _buildGradientCard(
                           text: widget.phoneNumber,
                           icon: Icons.phone,
-                          colors: [Colors.teal.shade700, Colors.teal.shade400],
+                          colors: [Colors.black.withOpacity(0.3), Colors.black.withOpacity(0.1)],
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 5), // مسافة ضيقة
                       Expanded(
                         flex: 2,
                         child: _buildGradientCard(
                           text: widget.role,
                           icon: Icons.admin_panel_settings,
-                          colors: [Colors.orange.shade700, Colors.orange.shade400],
+                          colors: [Colors.orange.shade800, Colors.orange.shade500],
                         ),
                       ),
                     ],
                   ),
 
-                  // البطاقة 4: الرصيد (مع ميزة النقر للإخفاء/الإظهار)
+                  // البطاقة 4: الرصيد (زاهية وSlim - مع ميزة النقر)
                   GestureDetector(
                     onTap: () {
                       setState(() {
@@ -115,7 +120,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
                     child: _buildGradientCard(
                       text: _isBalanceHidden ? '******' : widget.balanceOrPoints,
                       icon: Icons.account_balance_wallet,
-                      colors: [Colors.purple.shade700, Colors.purple.shade400],
+                      colors: [Colors.purple.shade800, Colors.purple.shade500],
                       trailingIcon: _isBalanceHidden ? Icons.visibility_off : Icons.visibility,
                     ),
                   ),
@@ -135,21 +140,21 @@ class _CustomDrawerState extends State<CustomDrawer> {
                   _buildDrawerItem(context, 'إدارة الاشتراكات', Icons.event_available, Colors.teal, const SubscriptionsScreen()),
                   
                   const Divider(),
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Text('المالية والمحاسبة', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
+                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('المالية والمحاسبة', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
                   
                   _buildDrawerItem(context, 'المركز المالي والمحافظ', Icons.account_balance_wallet, Colors.green, const FinancialCenterScreen()),
                   _buildDrawerItem(context, 'الحسابات البنكية', Icons.account_balance, Colors.indigo, const BankAccountsScreen()),
                   _buildDrawerItem(context, 'التقارير الشاملة', Icons.analytics, Colors.orange, const ReportsScreen()),
                   
                   const Divider(),
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Text('الإدارة والتسويق', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
+                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الإدارة والتسويق', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
                   
                   _buildDrawerItem(context, 'إدارة الموظفين والدعم', Icons.support_agent, Colors.brown, const StaffSupportScreen()),
                   _buildDrawerItem(context, 'الإعلانات والبنرات', Icons.campaign, Colors.deepOrange, const BannersScreen()),
                   _buildDrawerItem(context, 'بوابة رسائل SMS', Icons.sms, Colors.blueAccent, const SmsGatewayScreen()),
                   
                   const Divider(),
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Text('الأمان والنظام', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
+                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الأمان والنظام', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
                   
                   _buildDrawerItem(context, 'السجل الأسود للنشاط', Icons.security, Colors.red, const AuditLogScreen()),
                   _buildDrawerItem(context, 'الإعدادات العامة', Icons.settings, Colors.blueGrey, const GlobalSettingsScreen()),
@@ -163,56 +168,58 @@ class _CustomDrawerState extends State<CustomDrawer> {
             // ==========================================
             const Divider(height: 1),
             ListTile(
-              leading: const Icon(Icons.logout, color: Colors.red),
+              dense: true, // تصغير المساحة
+              leading: const Icon(Icons.logout, color: Colors.red, size: 20),
               title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
               onTap: () {
                  Navigator.of(context).popUntil((route) => route.isFirst);
               },
             ),
-            const SizedBox(height: 10),
           ],
         ),
       ),
     );
   }
 
-  // أداة مساعدة لبناء البطاقات المتدرجة الأنيقة (Gradient Cards)
+  // أداة مساعدة لبناء البطاقات المتدرجة الأنيقة والمضغوطة (Slim Gradient Cards)
   Widget _buildGradientCard({required String text, required IconData icon, required List<Color> colors, IconData? trailingIcon}) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      margin: const EdgeInsets.only(bottom: 5), // تقليل الهامش السفلي
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7), // تقليل الهوامش الداخلية (Slim)
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: colors,
           begin: Alignment.centerRight,
           end: Alignment.centerLeft,
         ),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+        borderRadius: BorderRadius.circular(8), // حواف حادة قليلاً للأناقة
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(0, 1))],
       ),
       child: Row(
         children: [
-          Icon(icon, color: Colors.white, size: 18),
-          const SizedBox(width: 8),
+          Icon(icon, color: Colors.white, size: 16),
+          const SizedBox(width: 6),
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (trailingIcon != null) Icon(trailingIcon, color: Colors.white70, size: 18),
+          if (trailingIcon != null) Icon(trailingIcon, color: Colors.white70, size: 16),
         ],
       ),
     );
   }
 
-  // أداة مساعدة لبناء أزرار القائمة السفلية
+  // أداة مساعدة لبناء أزرار القائمة السفلية (Compact Drawer Item)
   Widget _buildDrawerItem(BuildContext context, String title, IconData icon, Color iconColor, Widget targetScreen) {
     return ListTile(
-      leading: Icon(icon, color: iconColor),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey),
+      dense: true, // تصغير مساحة العنصر عمودياً
+      visualDensity: VisualDensity.compact, // ضغط المساحة
+      leading: Icon(icon, color: iconColor, size: 20),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+      trailing: const Icon(Icons.arrow_forward_ios, size: 11, color: Colors.grey),
       onTap: () => _navigateTo(context, targetScreen),
     );
   }
