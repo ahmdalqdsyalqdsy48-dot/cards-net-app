@@ -1,16 +1,215 @@
 import 'package:flutter/material.dart';
-import '../../../core/widgets/custom_header.dart';
 import '../../../core/widgets/custom_drawer.dart';
 
-class SubscriptionsScreen extends StatelessWidget {
+class SubscriptionsScreen extends StatefulWidget {
   const SubscriptionsScreen({super.key});
+
+  @override
+  State<SubscriptionsScreen> createState() => _SubscriptionsScreenState();
+}
+
+class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
+  // قاعدة بيانات وهمية لاشتراكات الوكلاء مع حالاتهم المختلفة
+  final List<Map<String, dynamic>> _subscriptions = [
+    {'name': 'أحمد القدسي', 'plan': 'باقة 5% (مفتوح)', 'expiry': '2026-04-10', 'status': 'نشط', 'color': Colors.blue},
+    {'name': 'محمد علي', 'plan': 'فترة مجانية (14 يوم)', 'expiry': '2026-03-28', 'status': 'فترة مجانية', 'color': Colors.green},
+    {'name': 'شبكة العالمية', 'plan': 'باقة 7% (3 نقاط)', 'expiry': '2026-03-25', 'status': 'إنذار', 'color': Colors.orange},
+    {'name': 'وكالة النور', 'plan': 'باقة 5% (مفتوح)', 'expiry': '2026-03-01', 'status': 'مجمد', 'color': Colors.red},
+  ];
+
+  // ==========================================
+  // 1. نافذة إنشاء خطة / اشتراك جديد ➕
+  // ==========================================
+  void _showCreatePlanDialog() {
+    int targetingFilter = 1; // 1: الكل, 2: محدد, 3: وكيل واحد
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.add_box, color: Colors.blue),
+                SizedBox(width: 8),
+                Text('إنشاء خطة / اشتراك جديد', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildTextField('نسبة ربح النظام (مثلاً 5% أو 7%)', Icons.percent),
+                  _buildTextField('مدة الخطة (بالأشهر)', Icons.calendar_today),
+                  _buildTextField('الحد الأقصى لنقاط البيع (أو اترك فارغ للمفتوح)', Icons.storefront),
+                  
+                  const Divider(),
+                  const Text('فلاتر الاستهداف (التخصيص المتقدم):', style: TextStyle(fontWeight: FontWeight.bold)),
+                  RadioListTile(
+                    title: const Text('تطبيق على جميع الوكلاء'),
+                    value: 1,
+                    groupValue: targetingFilter,
+                    onChanged: (val) => setStateDialog(() => targetingFilter = val as int),
+                  ),
+                  RadioListTile(
+                    title: const Text('تطبيق على وكلاء محددين'),
+                    value: 2,
+                    groupValue: targetingFilter,
+                    onChanged: (val) => setStateDialog(() => targetingFilter = val as int),
+                  ),
+                  RadioListTile(
+                    title: const Text('تخصيص لوكيل واحد فقط'),
+                    value: 3,
+                    groupValue: targetingFilter,
+                    onChanged: (val) => setStateDialog(() => targetingFilter = val as int),
+                  ),
+                  if (targetingFilter == 3)
+                    _buildTextField('ابحث عن اسم الوكيل...', Icons.search),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء', style: TextStyle(color: Colors.red))),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال الخطة للروبوت الآلي لتطبيقها.'), backgroundColor: Colors.blue));
+                },
+                child: const Text('حفظ واعتماد الخطة'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // 2. نافذة إنشاء كوبون ترويجي 🎟️
+  // ==========================================
+  void _showCreateCouponDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('توليد كوبون ترويجي', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildTextField('كود الكوبون (مثال: YEMEN2026)', Icons.local_offer),
+              _buildTextField('نسبة الخصم أو المدة المجانية', Icons.discount),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            ElevatedButton(onPressed: () => Navigator.pop(context), style: ElevatedButton.styleFrom(backgroundColor: Colors.green), child: const Text('توليد الكوبون', style: TextStyle(color: Colors.white))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // 3. نافذة تعديل الفترة المجانية / خطة الوكيل ⏳
+  // ==========================================
+  void _showEditPlanDialog(String agentName) {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: Text('تعديل فترة: $agentName', style: const TextStyle(fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('بمجرد الحفظ، سيصل إشعار فوري للوكيل وسيتبرمج الرادار للعد التنازلي.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 10),
+              _buildTextField('تاريخ البداية (YYYY-MM-DD)', Icons.play_circle_outline),
+              _buildTextField('تاريخ النهاية بدقة (YYYY-MM-DD)', Icons.stop_circle_outlined),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('تحديث العداد')),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // 4. نافذة سجل الخطط التاريخي 📜
+  // ==========================================
+  void _showHistoryLog(String agentName) {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: Text('السجل التاريخي لخطط: $agentName', style: const TextStyle(fontWeight: FontWeight.bold)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView(
+              shrinkWrap: true,
+              children: const [
+                ListTile(
+                  leading: Icon(Icons.history, color: Colors.grey),
+                  title: Text('باقة 5% (مفتوح)'),
+                  subtitle: Text('من: 01-01-2026 | إلى: الآن\nبواسطة: مالك النظام'),
+                ),
+                Divider(),
+                ListTile(
+                  leading: Icon(Icons.history, color: Colors.grey),
+                  title: Text('فترة مجانية تجريبية'),
+                  subtitle: Text('من: 15-12-2025 | إلى: 31-12-2025\nبواسطة: كوبون YEMEN2026'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // إيقاف واستئناف الخطة ⏸️ ▶️
+  // ==========================================
+  void _togglePausePlan(int index) {
+    setState(() {
+      if (_subscriptions[index]['status'] == 'موقوف مؤقتاً') {
+        _subscriptions[index]['status'] = 'نشط';
+        _subscriptions[index]['color'] = Colors.blue;
+      } else {
+        _subscriptions[index]['status'] = 'موقوف مؤقتاً';
+        _subscriptions[index]['color'] = Colors.grey;
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const CustomHeader(
-        title: 'إدارة الاشتراكات',
-        isOnline: true,
+      appBar: AppBar(
+        title: const Text('إدارة الاشتراكات', style: TextStyle(fontWeight: FontWeight.bold)),
+        centerTitle: true,
+        backgroundColor: Colors.white,
+        elevation: 2,
+        iconTheme: const IconThemeData(color: Colors.blueAccent),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_suggest, color: Colors.blueAccent),
+            tooltip: 'إعدادات الرادار الآلي وفترة السماح',
+            onPressed: () {
+               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('إعدادات فترة السماح (Grace Period) للروبوت.')));
+            },
+          ),
+        ],
       ),
       drawer: const CustomDrawer(
         userName: 'مالك النظام',
@@ -22,88 +221,87 @@ class SubscriptionsScreen extends StatelessWidget {
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // === 1. أدوات إنشاء الخطط والتسويق (أعلى الشاشة) ===
-            Container(
+            // === أدوات التخصيص العلوية ===
+            Padding(
               padding: const EdgeInsets.all(16.0),
-              decoration: BoxDecoration(
-                color: Theme.of(context).primaryColor.withOpacity(0.05),
-                border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
-              ),
               child: Row(
                 children: [
                   Expanded(
+                    flex: 2,
                     child: ElevatedButton.icon(
-                      onPressed: () {
-                        // نافذة إنشاء خطة جديدة
-                      },
-                      icon: const Icon(Icons.add_task, color: Colors.white),
-                      label: const Text('إنشاء خطة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+                      onPressed: _showCreatePlanDialog,
+                      icon: const Icon(Icons.add, color: Colors.white),
+                      label: const Text('إنشاء خطة / اشتراك', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, padding: const EdgeInsets.symmetric(vertical: 12)),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        // نافذة إنشاء كوبون
-                      },
-                      icon: const Icon(Icons.local_offer, color: Colors.purple),
-                      label: const Text('كوبون ترويجي', style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
-                      style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.purple)),
+                    flex: 1,
+                    child: ElevatedButton.icon(
+                      onPressed: _showCreateCouponDialog,
+                      icon: const Icon(Icons.local_offer, color: Colors.white),
+                      label: const Text('كوبون', style: TextStyle(color: Colors.white)),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, padding: const EdgeInsets.symmetric(vertical: 12)),
                     ),
                   ),
                 ],
               ),
             ),
 
-            // === 2. جدول المراقبة الرئيسي (حالة الاشتراكات) ===
+            // === جدول المراقبة الرئيسي ===
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(16.0),
-                children: [
-                  const Text('حالة اشتراكات الوكلاء', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 15),
-                  
-                  // وكيل في فترة مجانية (أخضر)
-                  _buildSubscriptionCard(
-                    context,
-                    agentName: 'شبكة الصقر',
-                    planName: 'فترة تجريبية (عمولة 5%)',
-                    expiryDate: 'ينتهي بعد 14 يوم',
-                    statusColor: Colors.green,
-                    statusText: 'فترة مجانية 🟢',
-                  ),
-                  
-                  // وكيل في باقة مدفوعة نشطة (أزرق)
-                  _buildSubscriptionCard(
-                    context,
-                    agentName: 'شبكة القمة',
-                    planName: 'الخطة السنوية المفتوحة',
-                    expiryDate: 'ينتهي بعد 6 أشهر',
-                    statusColor: Colors.blue,
-                    statusText: 'نشط 🔵',
-                  ),
+              child: ListView.builder(
+                itemCount: _subscriptions.length,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemBuilder: (context, index) {
+                  final sub = _subscriptions[index];
+                  final isPaused = sub['status'] == 'موقوف مؤقتاً';
 
-                  // وكيل في فترة إنذار (برتقالي)
-                  _buildSubscriptionCard(
-                    context,
-                    agentName: 'وكالة النور',
-                    planName: 'خطة 6 أشهر (عمولة 7%)',
-                    expiryDate: 'ينتهي بعد 3 أيام',
-                    statusColor: Colors.orange,
-                    statusText: 'إنذار شحن 🟠',
-                  ),
-
-                  // وكيل مجمد لعدم السداد (أحمر)
-                  _buildSubscriptionCard(
-                    context,
-                    agentName: 'شبكة الوادي',
-                    planName: 'خطة شهرية',
-                    expiryDate: 'انتهى منذ يومين',
-                    statusColor: Colors.red,
-                    statusText: 'مجمد آلياً 🔴',
-                  ),
-                ],
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 15),
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: sub['color'].withOpacity(0.5))),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(sub['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(color: sub['color'], borderRadius: BorderRadius.circular(20)),
+                                child: Text(sub['status'], style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 5),
+                          Text('الخطة الحالية: ${sub['plan']}', style: const TextStyle(color: Colors.grey, fontSize: 14)),
+                          Text('تاريخ الانتهاء: ${sub['expiry']}', style: TextStyle(color: sub['color'] == Colors.orange ? Colors.orange : Colors.grey, fontWeight: FontWeight.bold, fontSize: 14)),
+                          
+                          const Divider(),
+                          // === أزرار التحكم الفردية ===
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _buildActionButton(Icons.hourglass_bottom, 'تعديل المدة', Colors.blue, () => _showEditPlanDialog(sub['name'])),
+                              _buildActionButton(
+                                isPaused ? Icons.play_arrow : Icons.pause_circle_outline,
+                                isPaused ? 'استئناف' : 'إيقاف مؤقت',
+                                isPaused ? Colors.green : Colors.deepOrange,
+                                () => _togglePausePlan(index),
+                              ),
+                              _buildActionButton(Icons.history_edu, 'السجل التاريخي', Colors.blueGrey, () => _showHistoryLog(sub['name'])),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
           ],
@@ -112,78 +310,25 @@ class SubscriptionsScreen extends StatelessWidget {
     );
   }
 
-  // === دالة مساعدة لتصميم بطاقة الاشتراك وأزرار التحكم ===
-  Widget _buildSubscriptionCard(BuildContext context, {
-    required String agentName,
-    required String planName,
-    required String expiryDate,
-    required Color statusColor,
-    required String statusText,
-  }) {
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: statusColor.withOpacity(0.5), width: 1),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(agentName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                  child: Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.assignment, size: 16, color: Colors.grey),
-                const SizedBox(width: 5),
-                Text(planName, style: TextStyle(color: Colors.grey.shade700)),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                const Icon(Icons.timer, size: 16, color: Colors.grey),
-                const SizedBox(width: 5),
-                Text(expiryDate, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold)),
-              ],
-            ),
-            const Divider(height: 20),
-            // أزرار التحكم
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildActionBtn(icon: Icons.edit_calendar, title: 'تعديل الخطة', color: Colors.blue),
-                _buildActionBtn(icon: Icons.pause_circle_outline, title: 'إيقاف مؤقت', color: Colors.orange),
-                _buildActionBtn(icon: Icons.history, title: 'السجل', color: Colors.grey),
-              ],
-            ),
-          ],
+  Widget _buildTextField(String label, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: TextField(
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon, color: Colors.blueAccent),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          contentPadding: const EdgeInsets.symmetric(vertical: 10),
         ),
       ),
     );
   }
 
-  Widget _buildActionBtn({required IconData icon, required String title, required Color color}) {
-    return InkWell(
-      onTap: () {},
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(width: 4),
-          Text(title, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
-        ],
-      ),
+  Widget _buildActionButton(IconData icon, String tooltip, Color color, VoidCallback onTap) {
+    return IconButton(
+      icon: Icon(icon, color: color),
+      tooltip: tooltip,
+      onPressed: onTap,
     );
   }
 }
