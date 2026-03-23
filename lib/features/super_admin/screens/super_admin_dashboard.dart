@@ -30,10 +30,8 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
       _showPopup = true;
     });
 
-    // إلغاء أي مؤقت سابق لضمان عدم التداخل
     _popupTimer?.cancel();
 
-    // إخفاء النافذة تلقائياً بعد 5 ثوانٍ برمجياً
     _popupTimer = Timer(const Duration(seconds: 5), () {
       if (mounted && _showPopup) {
         setState(() {
@@ -60,22 +58,22 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
 
   @override
   void dispose() {
-    _popupTimer?.cancel(); // تنظيف الذاكرة عند الخروج من الشاشة
+    _popupTimer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // بنينا الهيدر هنا لضمان ربطه المباشر بالنافذة والسجل الجانبي
       appBar: AppBar(
         elevation: 2,
         backgroundColor: Colors.white,
         iconTheme: const IconThemeData(color: Colors.blueAccent),
         centerTitle: true,
-        title: const Row(
+        // قمنا بإزالة كلمة const من هنا لحل المشكلة
+        title: Row(
           mainAxisSize: MainAxisSize.min,
-          children: [
+          children: const [
             Padding(
               padding: EdgeInsets.only(left: 8.0),
               child: CircleAvatar(radius: 4, backgroundColor: Colors.green),
@@ -84,19 +82,14 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
           ],
         ),
         actions: [
-          // أيقونة الجرس التفاعلية
           Builder(
             builder: (context) => Stack(
               alignment: Alignment.center,
               children: [
                 IconButton(
                   icon: const Icon(Icons.notifications_active, color: Colors.blueAccent),
-                  onPressed: () {
-                    // عند النقر يظهر النافذة المنبثقة
-                    _triggerNotificationPopup();
-                  },
+                  onPressed: _triggerNotificationPopup,
                 ),
-                // النقطة الحمراء (تظهر إذا كان هناك تنبيهات)
                 if (_notifications.isNotEmpty)
                   Positioned(
                     top: 10,
@@ -110,20 +103,18 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
               ],
             ),
           ),
-          // زر لفتح "سجل التنبيهات" الجانبي
           Builder(
             builder: (context) => IconButton(
               icon: const Icon(Icons.history, color: Colors.grey),
               tooltip: 'سجل التنبيهات الجانبي',
               onPressed: () {
-                Scaffold.of(context).openEndDrawer(); // يفتح القائمة الجانبية اليسرى
+                Scaffold.of(context).openEndDrawer();
               },
             ),
           ),
         ],
       ),
       
-      // القائمة الجانبية الرئيسية (اليمين)
       drawer: const CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
@@ -131,7 +122,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
         balanceOrPoints: 'أرباح النظام: 5,430,000 ريال',
       ),
 
-      // سجل التنبيهات الجانبي (اليسار)
       endDrawer: Drawer(
         child: Directionality(
           textDirection: TextDirection.rtl,
@@ -175,7 +165,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
         ),
       ),
 
-      // جسم الصفحة الرئيسي مع ميزة تراكب النافذة (Stack)
       body: Stack(
         children: [
           SafeArea(
@@ -185,22 +174,17 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    // === أولاً: أدوات التحكم العلوية ===
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         ElevatedButton.icon(
-                          onPressed: () {
-                            // منطق فلترة التاريخ
-                          },
+                          onPressed: () {},
                           icon: const Icon(Icons.date_range, size: 18),
                           label: const Text('فلترة التاريخ 📅'),
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.withOpacity(0.1), foregroundColor: Colors.blue, elevation: 0),
                         ),
                         ElevatedButton.icon(
-                          onPressed: () {
-                            // منطق تصدير PDF
-                          },
+                          onPressed: () {},
                           icon: const Icon(Icons.print, size: 18),
                           label: const Text('تصدير الملخص 🖨️'),
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.green.withOpacity(0.1), foregroundColor: Colors.green, elevation: 0),
@@ -209,7 +193,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     ),
                     const SizedBox(height: 25),
 
-                    // === ثانياً: البطاقات الإحصائية التفاعلية ===
                     GridView.count(
                       crossAxisCount: 2,
                       crossAxisSpacing: 15,
@@ -243,9 +226,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                           value: 'إدارة الهوية',
                           icon: Icons.settings,
                           color: Colors.blueGrey,
-                          onTap: () {
-                            // تم استخدام هذه البطاقة للوصول السريع للإعدادات (يمكن تغييرها لاحقاً)
-                          },
+                          onTap: () {},
                         ),
                       ],
                     ),
@@ -255,7 +236,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
             ),
           ),
 
-          // === ثالثاً: النافذة المنبثقة الذكية (تظهر وتختفي برمجياً) ===
           if (_showPopup)
             Positioned(
               top: 15,
@@ -277,8 +257,9 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(
-                          children: [
+                        // قمنا بإزالة كلمة const من هنا أيضاً
+                        Row(
+                          children: const [
                             Icon(Icons.notifications_active, color: Colors.red),
                             SizedBox(width: 8),
                             Text('تنبيهات النظام العاجلة', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 16)),
@@ -299,7 +280,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                             ),
                           ],
                         ),
-                        // شريط تحميل وهمي يوضح أن النافذة ستختفي
                         LinearProgressIndicator(backgroundColor: Colors.grey.shade200, color: Colors.red, value: null),
                       ],
                     ),
@@ -312,7 +292,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     );
   }
 
-  // دالة مساعدة لتصميم البطاقات
   Widget _buildStatCard({required String title, required String value, required IconData icon, required Color color, required VoidCallback onTap}) {
     return InkWell(
       onTap: onTap,
