@@ -98,24 +98,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
         role: 'مالك النظام (Super Admin)',
         balanceOrPoints: 'أرباح النظام: 5,430,000 ريال',
       ),
-      // الشريط السفلي الثابت (الإجماليات الآلية)
+      // الشريط السفلي الثابت (تم إصلاح الخطأ هنا 👇 بإزالة const من الـ Directionality)
       bottomNavigationBar: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.blue.shade900,
           boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, -3))],
         ),
-        child: const Directionality(
+        child: Directionality(
           textDirection: TextDirection.rtl,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              Column(
+              const Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [Text('إجمالي الكروت', style: TextStyle(color: Colors.white70, fontSize: 12)), Text('870 كرت', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))],
               ),
               Container(height: 30, width: 1, color: Colors.white24),
-              Column(
+              const Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [Text('صافي أرباحك', style: TextStyle(color: Colors.white70, fontSize: 12)), Text('4,350 ريال', style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 16))],
               ),
@@ -245,7 +245,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  // أداة بناء الرسم البياني (تصميم مبسط وجميل بدون مكاتب خارجية لضمان عمل التطبيق)
+  // أداة بناء الرسم البياني
   Widget _buildChartView() {
     return Padding(
       padding: const EdgeInsets.all(16.0),
