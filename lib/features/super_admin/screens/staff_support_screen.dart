@@ -1,145 +1,368 @@
 import 'package:flutter/material.dart';
-import '../../../core/widgets/custom_header.dart';
 import '../../../core/widgets/custom_drawer.dart';
 
-class StaffSupportScreen extends StatelessWidget {
+class StaffSupportScreen extends StatefulWidget {
   const StaffSupportScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // نستخدم DefaultTabController لإنشاء التبويبات بسهولة
-    return DefaultTabController(
-      length: 2, // عدد التبويبات
-      child: Scaffold(
-        appBar: const CustomHeader(
-          title: 'إدارة المدراء والدعم الفني',
-          isOnline: true,
-        ),
-        drawer: const CustomDrawer(
-          userName: 'مالك النظام',
-          phoneNumber: '774578241',
-          role: 'مالك النظام (Super Admin)',
-          balanceOrPoints: 'أرباح النظام: 5,430,000 ريال',
-        ),
-        body: Directionality(
-          textDirection: TextDirection.rtl,
-          child: Column(
-            children: [
-              // === شريط التبويبات ===
-              Container(
-                color: Theme.of(context).primaryColor.withOpacity(0.05),
-                child: const TabBar(
-                  labelColor: Colors.blueAccent,
-                  unselectedLabelColor: Colors.grey,
-                  indicatorColor: Colors.blueAccent,
-                  indicatorWeight: 3,
-                  labelStyle: TextStyle(fontWeight: FontWeight.bold),
-                  tabs: [
-                    Tab(icon: Icon(Icons.admin_panel_settings), text: 'الموظفين والصلاحيات'),
-                    Tab(icon: Icon(Icons.support_agent), text: 'تذاكر الدعم الفني'),
-                  ],
-                ),
-              ),
+  State<StaffSupportScreen> createState() => _StaffSupportScreenState();
+}
 
-              // === محتوى التبويبات ===
-              Expanded(
-                child: TabBarView(
-                  children: [
-                    _buildStaffTab(),   // محتوى التبويب الأول
-                    _buildTicketsTab(), // محتوى التبويب الثاني
-                  ],
-                ),
+class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  // 1. قاعدة بيانات وهمية للموظفين
+  final List<Map<String, dynamic>> _staff = [
+    {'name': 'محمود المالي', 'phone': '771122334', 'role': 'محاسب', 'salary': '80,000 ريال', 'status': 'نشط'},
+    {'name': 'سالم الدعم', 'phone': '712345678', 'role': 'خدمة عملاء', 'salary': '60,000 ريال', 'status': 'إجازة (موقوف)'},
+  ];
+
+  // 2. قاعدة بيانات وهمية لتذاكر الدعم الفني
+  final List<Map<String, dynamic>> _tickets = [
+    {'id': '#1024', 'agent': 'شبكة الصقر', 'subject': 'تأخر وصول الحوالة للمحفظة', 'priority': 'عالية 🔴', 'status': 'مفتوحة'},
+    {'id': '#1025', 'agent': 'وكالة النور', 'subject': 'استفسار عن نسبة الباقة', 'priority': 'عادية 🟢', 'status': 'قيد المعالجة'},
+    {'id': '#1026', 'agent': 'العالمية', 'subject': 'نسيت كلمة المرور الخاصة بي', 'priority': 'متوسطة 🟡', 'status': 'مغلقة'},
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  // ==========================================
+  // دوال التبويب الأول (الموظفين والصلاحيات) 👥
+  // ==========================================
+  void _showAddStaffDialog() {
+    // متغيرات وهمية لحالة الصلاحيات داخل النافذة
+    bool canAccessFinance = false;
+    bool canAccessAgents = false;
+    bool canAccessReports = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.person_add_alt_1, color: Colors.blue),
+                SizedBox(width: 10),
+                Text('إضافة موظف جديد', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildTextField('الاسم الرباعي', Icons.person),
+                  _buildTextField('رقم الهاتف', Icons.phone),
+                  _buildTextField('كلمة المرور الافتراضية', Icons.lock),
+                  _buildTextField('الراتب الشهري (اختياري)', Icons.monetization_on),
+                  const Divider(),
+                  const Text('الصلاحيات الممنوحة (Checkboxes):', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                  CheckboxListTile(
+                    title: const Text('المركز المالي والمحافظ'),
+                    value: canAccessFinance,
+                    onChanged: (val) => setStateDialog(() => canAccessFinance = val!),
+                  ),
+                  CheckboxListTile(
+                    title: const Text('إدارة الوكلاء والاشتراكات'),
+                    value: canAccessAgents,
+                    onChanged: (val) => setStateDialog(() => canAccessAgents = val!),
+                  ),
+                  CheckboxListTile(
+                    title: const Text('التقارير الشاملة'),
+                    value: canAccessReports,
+                    onChanged: (val) => setStateDialog(() => canAccessReports = val!),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الموظف بنجاح!')));
+                },
+                child: const Text('حفظ الموظف'),
               ),
             ],
           ),
         ),
-        // زر عائم يظهر فقط لتسهيل إضافة موظف أو تذكرة
-        floatingActionButton: FloatingActionButton(
-          onPressed: () {},
-          backgroundColor: Colors.blueAccent,
-          child: const Icon(Icons.add, color: Colors.white),
+      ),
+    );
+  }
+
+  void _paySalary(String staffName) {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('تسليم الراتب 💸', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+          content: Text('هل تقر بتسليم الراتب للموظف "$staffName"؟\n\n(سيقوم النظام آلياً بتسجيل المبلغ كـ "مصروفات تشغيلية" لخصمه من صافي أرباحك في التقارير الختامية).'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              onPressed: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تسجيل الراتب كمصروفات تشغيلية بنجاح.'), backgroundColor: Colors.green));
+              },
+              child: const Text('نعم، أقر بالتسليم', style: TextStyle(color: Colors.white)),
+            ),
+          ],
         ),
       ),
     );
   }
 
   // ==========================================
-  // 1. التبويب الأول: إدارة الموظفين والصلاحيات
+  // دوال التبويب الثاني (تذاكر الدعم الفني) 🎧
   // ==========================================
-  Widget _buildStaffTab() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: 2, // عدد الموظفين الوهميين
-      itemBuilder: (context, index) {
-        bool isAccountant = index == 0; // لتمييز الأدوار
-        return Card(
-          elevation: 2,
-          margin: const EdgeInsets.only(bottom: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          child: Padding(
-            padding: const EdgeInsets.all(12.0),
+  void _showTicketChat(Map<String, dynamic> ticket) {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: Text('تذكرة ${ticket['id']} - ${ticket['agent']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          content: SizedBox(
+            width: double.maxFinite,
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  children: [
-                    CircleAvatar(
-                      backgroundColor: isAccountant ? Colors.purple.withOpacity(0.1) : Colors.green.withOpacity(0.1),
-                      child: Icon(Icons.person, color: isAccountant ? Colors.purple : Colors.green),
+                // رسالة الوكيل
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(10)),
+                    child: Text('الوكيل: ${ticket['subject']} \n(منذ ساعتين)'),
+                  ),
+                ),
+                // ملاحظة داخلية سرية (تظهر للمدراء فقط)
+                Align(
+                  alignment: Alignment.center,
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.amber)),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.lock, size: 14, color: Colors.orange),
+                        SizedBox(width: 5),
+                        Text('ملاحظة داخلية (محمود المحاسب):\nتم مراجعة كشف البنك، الحوالة لم تصل بعد.', style: TextStyle(fontSize: 12, color: Colors.brown)),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(isAccountant ? 'محمود المحاسب' : 'سالم (خدمة عملاء)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                          Text(isAccountant ? 'الصلاحيات: المركز المالي فقط' : 'الصلاحيات: الدعم الفني', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
-                        ],
-                      ),
-                    ),
-                    // زر إيقاف الموظف
-                    IconButton(
-                      icon: const Icon(Icons.pause_circle_filled, color: Colors.orange),
-                      tooltip: 'إيقاف مؤقت',
-                      onPressed: () {},
-                    ),
-                  ],
+                  ),
                 ),
                 const Divider(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('الراتب: 150,000 ريال', style: TextStyle(fontWeight: FontWeight.bold)),
-                    // زر تسليم الراتب
-                    TextButton.icon(
-                      onPressed: () {},
-                      icon: const Icon(Icons.monetization_on, color: Colors.green, size: 18),
-                      label: const Text('تسليم الراتب', style: TextStyle(color: Colors.green)),
-                    ),
-                  ],
+                // حقل الرد
+                TextField(
+                  decoration: InputDecoration(
+                    hintText: 'اكتب ردك للوكيل هنا...',
+                    suffixIcon: IconButton(icon: const Icon(Icons.send, color: Colors.blue), onPressed: () {}),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                  ),
                 ),
               ],
             ),
           ),
-        );
-      },
+          actions: [
+            TextButton(
+              onPressed: () {
+                 Navigator.pop(context);
+                 _showInternalNoteDialog();
+              }, 
+              child: const Text('➕ إضافة ملاحظة سرية', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق الدردشة')),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showInternalNoteDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          backgroundColor: Colors.amber.shade50,
+          title: const Text('ملاحظة داخلية سرية 🔒', style: TextStyle(color: Colors.brown, fontWeight: FontWeight.bold)),
+          content: const TextField(
+            maxLines: 3,
+            decoration: InputDecoration(hintText: 'اكتب الملاحظة التي لن يراها الوكيل أبداً...'),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.orange), onPressed: () => Navigator.pop(context), child: const Text('حفظ الملاحظة', style: TextStyle(color: Colors.white))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAssignTicketDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('إحالة التذكرة ↪️', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('اختر الموظف الذي تريد تحويل التذكرة إليه:'),
+              const SizedBox(height: 10),
+              ListTile(title: const Text('محمود المالي (محاسب)'), leading: const Icon(Icons.person), onTap: () => Navigator.pop(context)),
+              ListTile(title: const Text('سالم الدعم (خدمة عملاء)'), leading: const Icon(Icons.person), onTap: () => Navigator.pop(context)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('إدارة الموظفين والدعم الفني', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        centerTitle: true,
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.blueAccent),
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: Colors.blueAccent,
+          unselectedLabelColor: Colors.grey,
+          indicatorColor: Colors.blueAccent,
+          indicatorWeight: 3,
+          tabs: const [
+            Tab(icon: Icon(Icons.people_alt), text: 'الموظفين والصلاحيات'),
+            Tab(icon: Icon(Icons.support_agent), text: 'تذاكر الدعم الفني'),
+          ],
+        ),
+      ),
+      drawer: const CustomDrawer(
+        userName: 'مالك النظام',
+        phoneNumber: '774578241',
+        role: 'مالك النظام (Super Admin)',
+        balanceOrPoints: 'أرباح النظام: 5,430,000 ريال',
+      ),
+      body: Directionality(
+        textDirection: TextDirection.rtl,
+        child: TabBarView(
+          controller: _tabController,
+          children: [
+            _buildStaffTab(),
+            _buildTicketsTab(),
+          ],
+        ),
+      ),
     );
   }
 
   // ==========================================
-  // 2. التبويب الثاني: صندوق تذاكر الدعم الفني
+  // واجهة التبويب الأول: الموظفين 👥
+  // ==========================================
+  Widget _buildStaffTab() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: SizedBox(
+            width: double.infinity,
+            height: 45,
+            child: ElevatedButton.icon(
+              onPressed: _showAddStaffDialog,
+              icon: const Icon(Icons.person_add, color: Colors.white),
+              label: const Text('إضافة موظف جديد', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+            ),
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: _staff.length,
+            itemBuilder: (context, index) {
+              final emp = _staff[index];
+              return Card(
+                elevation: 2,
+                margin: const EdgeInsets.only(bottom: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('${emp['name']} (${emp['role']})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          Chip(label: Text(emp['status'], style: const TextStyle(fontSize: 10, color: Colors.white)), backgroundColor: emp['status'] == 'نشط' ? Colors.green : Colors.grey),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('هاتف: ${emp['phone']}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                          Text('الراتب: ${emp['salary']}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                        ],
+                      ),
+                      const Divider(),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _buildIconButton(Icons.settings, 'تعديل', Colors.blue, () {}),
+                          _buildIconButton(Icons.pause_circle, 'إيقاف', Colors.orange, () {}),
+                          _buildIconButton(Icons.delete, 'حذف', Colors.red, () {}),
+                          _buildIconButton(Icons.monetization_on, 'تسليم الراتب', Colors.green, () => _paySalary(emp['name'])),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ==========================================
+  // واجهة التبويب الثاني: تذاكر الدعم 🎧
   // ==========================================
   Widget _buildTicketsTab() {
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: 3,
+      itemCount: _tickets.length,
       itemBuilder: (context, index) {
-        // تحديد أهمية التذكرة لونياً
-        Color priorityColor = index == 0 ? Colors.red : (index == 1 ? Colors.orange : Colors.green);
-        String priorityText = index == 0 ? 'عاجل جداً' : (index == 1 ? 'متوسط' : 'عادي');
+        final ticket = _tickets[index];
+        final isClosed = ticket['status'] == 'مغلقة';
 
         return Card(
-          margin: const EdgeInsets.only(bottom: 16),
-          shape: Border(right: BorderSide(color: priorityColor, width: 5)), // شريط جانبي يوضح الأهمية
+          elevation: isClosed ? 0 : 3,
+          color: isClosed ? Colors.grey.shade100 : Colors.white,
+          margin: const EdgeInsets.only(bottom: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: isClosed ? Colors.grey.shade300 : Colors.transparent)),
           child: Padding(
             padding: const EdgeInsets.all(12.0),
             child: Column(
@@ -148,38 +371,20 @@ class StaffSupportScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('تذكرة #${1000 + index}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                    Text(priorityText, style: TextStyle(color: priorityColor, fontSize: 12, fontWeight: FontWeight.bold)),
+                    Text('${ticket['id']} | ${ticket['agent']}', style: TextStyle(fontWeight: FontWeight.bold, color: isClosed ? Colors.grey : Colors.black)),
+                    Text(ticket['priority'], style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                   ],
                 ),
-                const SizedBox(height: 8),
-                const Text('مشكلة في تأكيد حوالة بنكية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const Text('من: شبكة الصقر | قبل ساعتين', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                const SizedBox(height: 12),
+                const SizedBox(height: 5),
+                Text(ticket['subject'], style: TextStyle(fontSize: 14, color: isClosed ? Colors.grey : Colors.blueGrey)),
+                const Divider(),
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () {},
-                        icon: const Icon(Icons.chat),
-                        label: const Text('فتح ورد'),
-                        style: ElevatedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          backgroundColor: Colors.blueAccent,
-                          elevation: 0,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // زر الملاحظة الداخلية السرية
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {},
-                        icon: const Icon(Icons.lock, color: Colors.amber),
-                        label: const Text('ملاحظة سرية', style: TextStyle(color: Colors.amber)),
-                        style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.amber)),
-                      ),
-                    ),
+                    _buildIconButton(Icons.chat, 'فتح التذكرة', Colors.blue, () => _showTicketChat(ticket)),
+                    _buildIconButton(Icons.lock, 'ملاحظة سرية', Colors.orange, _showInternalNoteDialog),
+                    _buildIconButton(Icons.shortcut, 'إحالة إلى..', Colors.purple, _showAssignTicketDialog),
+                    _buildIconButton(Icons.check_circle, 'إغلاق', Colors.green, () {}),
                   ],
                 ),
               ],
@@ -189,5 +394,33 @@ class StaffSupportScreen extends StatelessWidget {
       },
     );
   }
-}
 
+  // دوال مساعدة للتصميم
+  Widget _buildTextField(String label, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: TextField(
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon, color: Colors.blueAccent),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIconButton(IconData icon, String label, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 22),
+          const SizedBox(height: 4),
+          Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+}
