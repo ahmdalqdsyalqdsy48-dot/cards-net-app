@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/custom_drawer.dart';
-import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الهيدر الجديد
+import '../../../core/widgets/custom_header.dart';
 
 class GlobalSettingsScreen extends StatefulWidget {
   const GlobalSettingsScreen({super.key});
@@ -12,12 +12,15 @@ class GlobalSettingsScreen extends StatefulWidget {
 class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  // متغيرات التحكم في الحالة (Switches)
+  // متغيرات التحكم في الحالة
   bool _isMaintenanceMode = false;
   bool _isForcedUpdate = true;
   bool _isFingerprintEnabled = true;
   bool _isCurrencyAutoRounding = true;
   bool _showNewsBar = true;
+
+  // متغيرات الملف الشخصي
+  String _ownerName = 'أحمد القدسي';
 
   @override
   void initState() {
@@ -26,13 +29,125 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
   }
 
   @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  // ==========================================
+  // النوافذ التفاعلية لتعديل الملف الشخصي 👤
+  // ==========================================
+
+  // 1. تغيير الاسم
+  void _showEditNameDialog() {
+    TextEditingController nameController = TextEditingController(text: _ownerName);
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('تغيير الاسم الرباعي', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: TextField(
+            controller: nameController,
+            decoration: InputDecoration(
+              labelText: 'الاسم الجديد',
+              prefixIcon: const Icon(Icons.person, color: Colors.blueAccent),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+              onPressed: () {
+                setState(() => _ownerName = nameController.text);
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث الاسم بنجاح! ✅'), backgroundColor: Colors.green));
+              },
+              child: const Text('حفظ', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 2. تغيير كلمة المرور
+  void _showEditPasswordDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('تغيير كلمة المرور 🔐', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildDialogTextField('كلمة المرور القديمة', isPassword: true),
+              const SizedBox(height: 10),
+              _buildDialogTextField('كلمة المرور الجديدة', isPassword: true),
+              const SizedBox(height: 10),
+              _buildDialogTextField('تأكيد كلمة المرور الجديدة', isPassword: true),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+              onPressed: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تغيير كلمة المرور بنجاح! يرجى تسجيل الدخول مجدداً.'), backgroundColor: Colors.green));
+              },
+              child: const Text('تأكيد التغيير', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 3. تغيير رمز PIN السريع
+  void _showEditPinDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('تغيير رمز PIN السريع 🔢', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('يُستخدم هذا الرمز للعمليات الحساسة (مثل الاستعادة والحذف).', style: TextStyle(fontSize: 12, color: Colors.blueGrey)),
+              const SizedBox(height: 15),
+              _buildDialogTextField('رمز PIN القديم (6 أرقام)', isPassword: true, isNumber: true, maxLength: 6),
+              const SizedBox(height: 10),
+              _buildDialogTextField('رمز PIN الجديد', isPassword: true, isNumber: true, maxLength: 6),
+              const SizedBox(height: 10),
+              _buildDialogTextField('تأكيد PIN الجديد', isPassword: true, isNumber: true, maxLength: 6),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+              onPressed: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث رمز PIN السريع بنجاح! ✅'), backgroundColor: Colors.green));
+              },
+              child: const Text('تحديث الرمز', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // 👈 تم تركيب الهيدر الشامل هنا بنجاح!
       appBar: const CustomHeader(title: 'إعدادات النظام الشخصية'),
-      
-      drawer: const CustomDrawer(
-        userName: 'مالك النظام',
+      drawer: CustomDrawer(
+        userName: _ownerName, // 👈 الاسم هنا أصبح يتغير ديناميكياً
         phoneNumber: '774578241',
         role: 'مالك النظام (Super Admin)',
         balanceOrPoints: 'أرباح النظام: 5,430,000 ريال',
@@ -41,9 +156,8 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // 👈 نقلنا شريط التبويبات القابل للتمرير إلى هنا
             Container(
-              color: Colors.transparent, // دعم الوضع الليلي
+              color: Colors.transparent,
               child: TabBar(
                 controller: _tabController,
                 isScrollable: true,
@@ -52,14 +166,12 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
                 indicatorColor: Colors.blueAccent,
                 tabs: const [
                   Tab(icon: Icon(Icons.palette), text: 'المظهر الشخصي'),
-                  Tab(icon: Icon(Icons.security), text: 'الأمان والأصوات'),
+                  Tab(icon: Icon(Icons.security), text: 'الملف والأمان'), // 👈 تم تغيير اسم التبويب
                   Tab(icon: Icon(Icons.settings_input_component), text: 'حالة النظام'),
                   Tab(icon: Icon(Icons.gavel), text: 'السياسات والحدود'),
                 ],
               ),
             ),
-            
-            // محتوى التبويبات
             Expanded(
               child: TabBarView(
                 controller: _tabController,
@@ -133,27 +245,44 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
   }
 
   // ==========================================
-  // 2. تبويب الأمان والأصوات 🔐
+  // 2. تبويب الأمان والبيانات الشخصية 🔐 (تمت الترقية هنا!)
   // ==========================================
   Widget _buildSecurityTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildActionCard(Icons.lock_reset, 'تغيير كلمة المرور', 'تحديث باسورد المالك'),
-          _buildActionCard(Icons.pin, 'إعداد رمز PIN السريع', 'رمز مكون من 6 أرقام للعمليات الحساسة'),
-          const Divider(),
-          SwitchListTile(
-            secondary: const Icon(Icons.fingerprint, color: Colors.green),
-            title: const Text('الدخول بالبصمة (Biometrics)'),
-            value: _isFingerprintEnabled,
-            onChanged: (val) => setState(() => _isFingerprintEnabled = val),
-          ),
-          SwitchListTile(
-            secondary: const Icon(Icons.volume_up, color: Colors.orange),
-            title: const Text('أصوات النظام (إشعارات، كاشير)'),
-            value: true,
-            onChanged: (val) {},
+          _buildSectionTitle('الملف الشخصي للمالك'),
+          const SizedBox(height: 10),
+          _buildInteractiveCard(Icons.person, 'الاسم الرباعي', _ownerName, _showEditNameDialog),
+          
+          const Divider(height: 30),
+          _buildSectionTitle('إعدادات الأمان والحماية'),
+          const SizedBox(height: 10),
+          _buildInteractiveCard(Icons.lock_reset, 'كلمة المرور', '********', _showEditPasswordDialog, color: Colors.redAccent),
+          _buildInteractiveCard(Icons.pin, 'رمز PIN السريع', '******', _showEditPinDialog, color: Colors.orange),
+          
+          const SizedBox(height: 10),
+          Card(
+            elevation: 1,
+            child: Column(
+              children: [
+                SwitchListTile(
+                  secondary: const Icon(Icons.fingerprint, color: Colors.green),
+                  title: const Text('الدخول بالبصمة (Biometrics)'),
+                  value: _isFingerprintEnabled,
+                  onChanged: (val) => setState(() => _isFingerprintEnabled = val),
+                ),
+                const Divider(height: 0),
+                SwitchListTile(
+                  secondary: const Icon(Icons.volume_up, color: Colors.blue),
+                  title: const Text('أصوات النظام (إشعارات، كاشير)'),
+                  value: true,
+                  onChanged: (val) {},
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -247,6 +376,37 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
         subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
         trailing: const Icon(Icons.arrow_forward_ios, size: 14),
         onTap: () {},
+      ),
+    );
+  }
+
+  // بطاقة تفاعلية جديدة مخصصة للملف الشخصي
+  Widget _buildInteractiveCard(IconData icon, String title, String value, VoidCallback onTap, {Color color = Colors.blueAccent}) {
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: color.withOpacity(0.3))),
+      child: ListTile(
+        leading: CircleAvatar(backgroundColor: color.withOpacity(0.1), child: Icon(icon, color: color)),
+        title: Text(title, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+        subtitle: Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
+        trailing: IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: onTap),
+        onTap: onTap,
+      ),
+    );
+  }
+
+  // أداة لبناء حقول الإدخال في النوافذ المنبثقة
+  Widget _buildDialogTextField(String hint, {bool isPassword = false, bool isNumber = false, int? maxLength}) {
+    return TextField(
+      obscureText: isPassword,
+      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      maxLength: maxLength,
+      textAlign: isNumber ? TextAlign.center : TextAlign.start,
+      decoration: InputDecoration(
+        labelText: hint,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
       ),
     );
   }
