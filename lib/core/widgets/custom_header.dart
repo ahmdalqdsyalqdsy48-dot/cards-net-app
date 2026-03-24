@@ -4,14 +4,12 @@ class CustomHeader extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final bool isOnline;
   final int notificationCount;
-  final bool isDarkMode;
 
   const CustomHeader({
     super.key,
-    required this.title, // هنا نطلب العنوان ليتغير في كل شاشة
+    required this.title,
     this.isOnline = true,
     this.notificationCount = 3,
-    this.isDarkMode = false,
   });
 
   // تحديد ارتفاع الهيدر بدقة (شريط علوي + شريط إخباري + بحث)
@@ -20,10 +18,14 @@ class CustomHeader extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 💡 السطر السحري: قراءة وضع هاتف المستخدم (نهاري أم ليلي) تلقائياً 🌙☀️
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     return AppBar(
       elevation: 2,
-      backgroundColor: isDarkMode ? Colors.grey.shade900 : Colors.white,
-      iconTheme: IconThemeData(color: isDarkMode ? Colors.white : Colors.blueAccent),
+      // توحيد لون الخلفية مع لون النظام تماماً
+      backgroundColor: isDark ? const Color(0xFF121212) : Colors.white,
+      iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.blueAccent),
       
       // ==========================================
       // السطر الأول: العنوان ومؤشر الاتصال
@@ -35,8 +37,8 @@ class CustomHeader extends StatelessWidget implements PreferredSizeWidget {
             title,
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              color: isDarkMode ? Colors.white : Colors.blue.shade900,
-              fontSize: 16, // تصغير الخط قليلاً للأناقة
+              color: isDark ? Colors.white : Colors.blue.shade900,
+              fontSize: 16,
             ),
           ),
           const SizedBox(width: 8),
@@ -64,13 +66,13 @@ class CustomHeader extends StatelessWidget implements PreferredSizeWidget {
       // السطر الأول (يسار): أدوات التحكم (الجرس والوضع الليلي)
       // ==========================================
       actions: [
-        // زر الوضع الليلي
+        // زر الوضع الليلي (يتغير شكله حسب وضع الهاتف حالياً)
         IconButton(
-          icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),
+          icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode),
           tooltip: 'تبديل السمة',
           onPressed: () {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('سيتم تفعيل الوضع الليلي قريباً.')),
+              const SnackBar(content: Text('سيتم ربط هذا الزر بمحرك الثيمات لتغيير الوضع يدوياً من داخل التطبيق! 🎨')),
             );
           },
         ),
@@ -81,7 +83,7 @@ class CustomHeader extends StatelessWidget implements PreferredSizeWidget {
             alignment: Alignment.center,
             children: [
               IconButton(
-                icon: const Icon(Icons.notifications_active),
+                icon: Icon(Icons.notifications_active, color: isDark ? Colors.grey.shade300 : Colors.blueAccent),
                 tooltip: 'الإشعارات',
                 onPressed: () {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -117,43 +119,44 @@ class CustomHeader extends StatelessWidget implements PreferredSizeWidget {
         preferredSize: const Size.fromHeight(70),
         child: Column(
           children: [
-            // السطر الثاني: الشريط الإخباري (Marquee)
+            // السطر الثاني: الشريط الإخباري (يتأقلم لونه مع الظلام)
             Container(
               width: double.infinity,
-              color: Colors.amber.shade50,
+              color: isDark ? Colors.orange.withOpacity(0.15) : Colors.amber.shade50,
               padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
-                  children: const [
-                    Icon(Icons.campaign, size: 16, color: Colors.orange),
-                    SizedBox(width: 8),
+                  children: [
+                    const Icon(Icons.campaign, size: 16, color: Colors.orange),
+                    const SizedBox(width: 8),
                     Text(
                       'مرحباً بك في كروت نت! 🌟 | تحديث جديد: تم إضافة باقات يمن موبايل. | انتبه لوجود صيانة في نظام الكريمي الليلة.',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.brown),
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isDark ? Colors.orange.shade200 : Colors.brown),
                     ),
                   ],
                 ),
               ),
             ),
             
-            // السطر الثالث: حقل البحث السريع
+            // السطر الثالث: حقل البحث السريع (يتأقلم لونه مع الظلام)
             Container(
               height: 38,
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               decoration: BoxDecoration(
-                color: isDarkMode ? Colors.grey.shade800 : Colors.grey.shade100,
+                color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
+                border: Border.all(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300),
               ),
-              child: const TextField(
+              child: TextField(
                 textAlignVertical: TextAlignVertical.center,
+                style: TextStyle(color: isDark ? Colors.white : Colors.black), // لون النص المكتوب
                 decoration: InputDecoration(
                   hintText: 'ابحث في هذا القسم...',
-                  hintStyle: TextStyle(fontSize: 13, color: Colors.grey),
-                  prefixIcon: Icon(Icons.search, size: 18, color: Colors.blueAccent),
+                  hintStyle: TextStyle(fontSize: 13, color: isDark ? Colors.grey.shade400 : Colors.grey),
+                  prefixIcon: Icon(Icons.search, size: 18, color: isDark ? Colors.blue.shade300 : Colors.blueAccent),
                   border: InputBorder.none,
-                  contentPadding: EdgeInsets.only(bottom: 12),
+                  contentPadding: const EdgeInsets.only(bottom: 12),
                 ),
               ),
             ),
