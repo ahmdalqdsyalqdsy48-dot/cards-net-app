@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/custom_drawer.dart';
+import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الهيدر الجديد
 
 class BannersScreen extends StatefulWidget {
   const BannersScreen({super.key});
@@ -186,13 +187,9 @@ class _BannersScreenState extends State<BannersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('الإعلانات التسويقية', style: TextStyle(fontWeight: FontWeight.bold)),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 2,
-        iconTheme: const IconThemeData(color: Colors.blueAccent),
-      ),
+      // 👈 تم تركيب الهيدر الشامل هنا بنجاح!
+      appBar: const CustomHeader(title: 'الإعلانات والبنرات'),
+      
       drawer: const CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
@@ -254,14 +251,14 @@ class _BannersScreenState extends State<BannersScreen> {
                             ],
                           ),
                           const SizedBox(height: 5),
-                          Text(banner['title'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isExpired ? Colors.grey : Colors.black)),
+                          Text(banner['title'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isExpired ? Colors.grey : null)), // تم تعديل اللون ليتوافق مع الوضع الليلي
                           Text('الاستهداف: ${banner['target']}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
                           
                           const Divider(),
                           // الإحصائيات التفصيلية (المشاهدات والنقرات)
                           Container(
                             padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(10)),
+                            decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), // تعديل الخلفية لتلائم الوضعين
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceAround,
                               children: [
