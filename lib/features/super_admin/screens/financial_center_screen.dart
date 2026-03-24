@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/custom_drawer.dart';
-import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الهيدر الجديد
+import '../../../core/widgets/custom_header.dart'; // استدعاء الهيدر الجديد
 
 class FinancialCenterScreen extends StatefulWidget {
   const FinancialCenterScreen({super.key});
@@ -217,7 +217,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // 👈 تم تركيب الهيدر الشامل هنا بنجاح!
+      // تركيب الهيدر الشامل
       appBar: const CustomHeader(title: 'المركز المالي والمحافظ'),
       
       drawer: const CustomDrawer(
@@ -228,11 +228,12 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: Column( // غلّفنا الـ TabBar والـ TabBarView في عمود ليظهروا تحت الهيدر الجديد بشكل صحيح
+        child: Column(
           children: [
             // شريط التبويبات (Tabs)
             Container(
-              color: Colors.white,
+              // 👈 التعديل هنا: أصبحت الخلفية شفافة لدعم الوضع الليلي بدلاً من الأبيض الثابت
+              color: Colors.transparent, 
               child: TabBar(
                 controller: _tabController,
                 labelColor: Colors.blueAccent,
@@ -248,7 +249,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
               ),
             ),
             
-            // محتوى التبويبات (يجب أن يكون بداخل Expanded ليأخذ باقي الشاشة)
+            // محتوى التبويبات
             Expanded(
               child: TabBarView(
                 controller: _tabController,
@@ -418,7 +419,8 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 4),
-                Text(log['type'], style: const TextStyle(color: Colors.black87)),
+                // تم إزالة اللون الثابت هنا ليدعم الوضع الليلي
+                Text(log['type'], style: const TextStyle()), 
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -435,13 +437,13 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
   }
 
   // دوال مساعدة للتصميم
-  Widget _buildInfoRow(String title, String value, {bool isBold = false, Color color = Colors.black87}) {
+  Widget _buildInfoRow(String title, String value, {bool isBold = false, Color? color}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title, style: const TextStyle(color: Colors.blueGrey)),
+          const Text(title, style: TextStyle(color: Colors.blueGrey)),
           Text(value, style: TextStyle(fontWeight: isBold ? FontWeight.bold : FontWeight.normal, color: color)),
         ],
       ),
