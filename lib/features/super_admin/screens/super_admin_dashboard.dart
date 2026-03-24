@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart';
-// 👈 استدعاء شاشة الإعدادات لكي يعمل زر النقل بنجاح!
-import 'settings_screen.dart'; 
+
+// 👈 استدعاء جميع الشاشات التي قمنا ببرمجتها لربطها بالبطاقات
+import 'financial_center_screen.dart';
+import 'staff_support_screen.dart';
+import 'reports_screen.dart';
+import 'agent_management_screen.dart';
+import 'sms_gateway_screen.dart';
+import 'settings_screen.dart';
 
 class SuperAdminDashboard extends StatefulWidget {
   const SuperAdminDashboard({super.key});
@@ -22,13 +28,12 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     final DateTimeRange? picked = await showDateRangePicker(
       context: context,
       initialDateRange: _selectedDateRange ?? DateTimeRange(start: DateTime.now(), end: DateTime.now()),
-      firstDate: DateTime(2023), // أقدم تاريخ ممكن
-      lastDate: DateTime(2030),  // أقصى تاريخ ممكن
+      firstDate: DateTime(2023), 
+      lastDate: DateTime(2030),  
       helpText: 'حدد فترة الفلترة (من - إلى)',
       cancelText: 'إلغاء',
       confirmText: 'تأكيد الفلترة',
       builder: (context, child) {
-        // دعم الواجهة العربية والوضع الليلي للتقويم
         return Directionality(
           textDirection: TextDirection.rtl,
           child: child!,
@@ -52,7 +57,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
   }
 
   // ==========================================
-  // دالة الانتقال بين الشاشات 🚀
+  // دالة الانتقال بين الشاشات الفعلية 🚀
   // ==========================================
   void _navigateTo(Widget screen) {
     Navigator.push(
@@ -123,88 +128,87 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
             const SizedBox(height: 10),
 
             // ==========================================
-            // شبكة البطاقات الـ 8 (The 8 Dashboards)
+            // شبكة البطاقات الـ 8 (الآن كلها تعمل!)
             // ==========================================
             Expanded(
               child: GridView.count(
-                crossAxisCount: 2, // عمودين
+                crossAxisCount: 2, 
                 padding: const EdgeInsets.all(16),
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
-                childAspectRatio: 1.1, // للتحكم بنسبة العرض إلى الارتفاع للبطاقات
+                childAspectRatio: 1.1, 
                 children: [
-                  // 1. السيولة والأرباح
+                  // 1. السيولة والأرباح -> تنقل للمركز المالي
                   _buildDashboardCard(
                     title: 'مبيعات اليوم',
                     value: '1,250,000',
                     subValue: '+ أرباح: 45,000',
                     icon: Icons.monetization_on,
                     color: Colors.green,
-                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ينقلك لقسم: المركز المالي'))),
+                    onTap: () => _navigateTo(const FinancialCenterScreen()),
                   ),
-                  // 2. طلبات الشحن (تنبيه خطير)
+                  // 2. طلبات الشحن -> تنقل للمركز المالي (تبويب الطلبات)
                   _buildDashboardCard(
                     title: 'طلبات شحن معلقة',
                     value: '3 طلبات',
                     subValue: 'بإجمالي: 85,000 ريال',
                     icon: Icons.download,
                     color: Colors.redAccent,
-                    isAlert: true, // 👈 جعلناها حمراء للتنبيه
-                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ينقلك لقسم: طلبات الشحن'))),
+                    isAlert: true,
+                    onTap: () => _navigateTo(const FinancialCenterScreen()),
                   ),
-                  // 3. رادار الخطر
+                  // 3. رادار الخطر -> تنقل للمركز المالي (تبويب المحافظ)
                   _buildDashboardCard(
                     title: 'رادار الخطر',
                     value: '2 وكلاء',
                     subValue: 'محافظهم توشك على النفاذ',
                     icon: Icons.warning_amber_rounded,
                     color: Colors.orange,
-                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ينقلك لقسم: أرصدة المحافظ'))),
+                    onTap: () => _navigateTo(const FinancialCenterScreen()),
                   ),
-                  // 4. تذاكر الدعم الفني
+                  // 4. تذاكر الدعم الفني -> تنقل لإدارة الموظفين والدعم
                   _buildDashboardCard(
                     title: 'تذاكر الدعم',
                     value: '5 مفتوحة',
                     subValue: '2 منها أولوية قصوى',
                     icon: Icons.support_agent,
                     color: Colors.blue,
-                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ينقلك لقسم: إدارة الموظفين والدعم'))),
+                    onTap: () => _navigateTo(const StaffSupportScreen()),
                   ),
-                  // 5. المخزون العام
+                  // 5. المخزون العام -> تنقل للتقارير الشاملة
                   _buildDashboardCard(
                     title: 'إجمالي المخزون',
                     value: '8.5 مليون',
                     subValue: 'إجمالي قيمة الكروت',
                     icon: Icons.inventory_2,
                     color: Colors.teal,
-                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ينقلك لقسم: التقارير الشاملة'))),
+                    onTap: () => _navigateTo(const ReportsScreen()),
                   ),
-                  // 6. الوكيل الأنشط
+                  // 6. الوكيل الأنشط -> تنقل لإدارة الوكلاء
                   _buildDashboardCard(
                     title: 'الوكيل الأنشط',
                     value: 'شبكة الصقر',
                     subValue: 'مبيعات: 450 كرت اليوم',
                     icon: Icons.star,
                     color: Colors.amber.shade600,
-                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ينقلك لقسم: إدارة الوكلاء'))),
+                    onTap: () => _navigateTo(const AgentManagementScreen()),
                   ),
-                  // 7. رصيد SMS
+                  // 7. رصيد SMS -> تنقل لبوابة الرسائل
                   _buildDashboardCard(
                     title: 'رصيد الـ SMS',
                     value: '4,500',
                     subValue: 'رسالة متبقية',
                     icon: Icons.sms,
                     color: Colors.purple,
-                    onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ينقلك لقسم: بوابة رسائل SMS'))),
+                    onTap: () => _navigateTo(const SmsGatewayScreen()),
                   ),
-                  // 8. الإعدادات العامة (الزر المطلوب إصلاحه!)
+                  // 8. الإعدادات العامة -> تنقل للإعدادات
                   _buildDashboardCard(
                     title: 'إعدادات النظام',
                     value: 'تحكم كامل',
                     subValue: 'هوية، حماية، سياسات',
                     icon: Icons.settings,
                     color: Colors.blueGrey,
-                    // 👈 الآن ينقلك فعلياً لشاشة الإعدادات العامة!
                     onTap: () => _navigateTo(const GlobalSettingsScreen()), 
                   ),
                 ],
@@ -226,7 +230,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
-    bool isAlert = false, // خاصية لتحويل البطاقة للون أحمر خفيف في حالات الخطر
+    bool isAlert = false, 
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
@@ -258,13 +262,13 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                   child: Icon(icon, color: color, size: 20),
                 ),
                 if (isAlert) 
-                  const Icon(Icons.circle, color: Colors.red, size: 12), // نقطة حمراء تنبيهية
+                  const Icon(Icons.circle, color: Colors.red, size: 12), 
               ],
             ),
             const Spacer(),
             Text(title, style: const TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
-            Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isAlert ? Colors.red : null)), // اللون يتجاوب مع الوضع الليلي
+            Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isAlert ? Colors.red : null)), 
             const SizedBox(height: 4),
             Text(subValue, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold)),
           ],
