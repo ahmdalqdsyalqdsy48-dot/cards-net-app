@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/custom_drawer.dart';
+import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الهيدر الجديد
 
 class AuditLogScreen extends StatefulWidget {
   const AuditLogScreen({super.key});
@@ -64,25 +65,9 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('السجل الأسود للنشاط', style: TextStyle(fontWeight: FontWeight.bold)),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 2,
-        iconTheme: const IconThemeData(color: Colors.blueAccent),
-        actions: [
-          // زر الطباعة الرسمي
-          IconButton(
-            icon: const Icon(Icons.print, color: Colors.blueGrey),
-            tooltip: 'طباعة السجل المنظم',
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('جاري تجهيز السجل للطباعة الرسمية والتوثيق...'), backgroundColor: Colors.blueGrey)
-              );
-            },
-          ),
-        ],
-      ),
+      // 👈 تم تركيب الهيدر الشامل هنا بنجاح!
+      appBar: const CustomHeader(title: 'السجل الأسود للنشاط'),
+      
       drawer: const CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
@@ -96,21 +81,44 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
             // === 1. أدوات الفلترة والبحث السريع ===
             Container(
               padding: const EdgeInsets.all(16.0),
-              color: Colors.grey.shade50,
+              color: Colors.transparent, // 👈 تعديل لدعم الوضع الليلي
               child: Column(
                 children: [
-                  TextField(
-                    decoration: InputDecoration(
-                      hintText: 'ابحث برقم الهاتف، أو اسم الموظف / الوكيل...',
-                      prefixIcon: const Icon(Icons.search, color: Colors.blueAccent),
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          decoration: InputDecoration(
+                            hintText: 'ابحث برقم الهاتف، أو اسم الموظف / الوكيل...',
+                            prefixIcon: const Icon(Icons.search, color: Colors.blueAccent),
+                            filled: true,
+                            fillColor: Theme.of(context).cardColor, // 👈 يتغير لونه حسب الوضع
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide(color: Colors.grey.withOpacity(0.3)),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                          ),
+                        ),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                    ),
+                      const SizedBox(width: 8),
+                      // 👈 زر الطباعة تم نقله إلى هنا بشكل أنيق!
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.blueGrey.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.print, color: Colors.blueGrey),
+                          tooltip: 'طباعة السجل المنظم',
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('جاري تجهيز السجل للطباعة الرسمية والتوثيق...'), backgroundColor: Colors.blueGrey)
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 10),
                   Row(
@@ -140,7 +148,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-              color: Colors.red.shade50,
+              color: Colors.red.withOpacity(0.1), // 👈 تعديل لدعم الوضع الليلي
               child: const Row(
                 children: [
                   Icon(Icons.security, color: Colors.red, size: 18),
@@ -208,8 +216,11 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                                   Container(
                                     padding: const EdgeInsets.all(8),
                                     width: double.infinity,
-                                    decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(5)),
-                                    child: Text(log['details'], style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87)),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.withOpacity(0.1), // 👈 يتناغم مع الوضعين
+                                      borderRadius: BorderRadius.circular(5)
+                                    ),
+                                    child: Text(log['details'], style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                                   ),
                                   const SizedBox(height: 10),
                                   // بيانات المستخدم والـ IP
@@ -225,7 +236,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                                       ),
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(4)),
+                                        decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
                                         child: Text('IP: ${log['ip']}', style: const TextStyle(fontSize: 11, color: Colors.blueGrey, letterSpacing: 1)),
                                       ),
                                     ],
