@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/custom_drawer.dart';
-import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الهيدر الجديد
+import '../../../core/widgets/custom_header.dart'; 
 
 class StaffSupportScreen extends StatefulWidget {
   const StaffSupportScreen({super.key});
@@ -38,13 +38,26 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
   }
 
   // ==========================================
-  // دوال التبويب الأول (الموظفين والصلاحيات) 👥
+  // 1. نافذة إضافة موظف جديد (تمت ترقيتها للصلاحيات الـ 12) 👥
   // ==========================================
   void _showAddStaffDialog() {
-    // متغيرات وهمية لحالة الصلاحيات داخل النافذة
-    bool canAccessFinance = false;
-    bool canAccessAgents = false;
-    bool canAccessReports = false;
+    // خريطة الصلاحيات الـ 12 الشاملة
+    Map<String, bool> permissions = {
+      'الرئيسية (غرفة العمليات)': false,
+      'إدارة الوكلاء الشاملة': false,
+      'المركز المالي والمحافظ': false,
+      'التقارير الشاملة': false,
+      'إدارة الاشتراكات والباقات': false,
+      'الحسابات البنكية': false,
+      'إدارة الموظفين والدعم': false,
+      'الإعلانات التسويقية': false,
+      'بوابة رسائل الـ SMS': false,
+      'السجل الأسود للنشاط (للقراءة)': false,
+      'الإعدادات العامة': false,
+      'النسخ الاحتياطي': false,
+    };
+    
+    bool selectAll = false; // زر التحديد الشامل
 
     showDialog(
       context: context,
@@ -68,22 +81,53 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
                   _buildTextField('رقم الهاتف', Icons.phone),
                   _buildTextField('كلمة المرور الافتراضية', Icons.lock),
                   _buildTextField('الراتب الشهري (اختياري)', Icons.monetization_on),
+                  
                   const Divider(),
-                  const Text('الصلاحيات الممنوحة (Checkboxes):', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                  const Text('الصلاحيات الممنوحة للموظف:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                  
+                  // زر تحديد الكل السحري
                   CheckboxListTile(
-                    title: const Text('المركز المالي والمحافظ'),
-                    value: canAccessFinance,
-                    onChanged: (val) => setStateDialog(() => canAccessFinance = val!),
+                    title: const Text('تحديد كافة الصلاحيات ✅', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                    value: selectAll,
+                    activeColor: Colors.blueAccent,
+                    onChanged: (val) {
+                      setStateDialog(() {
+                        selectAll = val!;
+                        // تحديث جميع القيم في الخريطة لتطابق زر "تحديد الكل"
+                        permissions.updateAll((key, value) => selectAll);
+                      });
+                    },
                   ),
-                  CheckboxListTile(
-                    title: const Text('إدارة الوكلاء والاشتراكات'),
-                    value: canAccessAgents,
-                    onChanged: (val) => setStateDialog(() => canAccessAgents = val!),
-                  ),
-                  CheckboxListTile(
-                    title: const Text('التقارير الشاملة'),
-                    value: canAccessReports,
-                    onChanged: (val) => setStateDialog(() => canAccessReports = val!),
+                  
+                  // صندوق القائمة القابلة للتمرير (لكي لا تخرج النافذة عن الشاشة)
+                  Container(
+                    height: 200, 
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                      borderRadius: BorderRadius.circular(10),
+                      color: Theme.of(context).brightness == Brightness.dark ? Colors.black12 : Colors.grey.shade50,
+                    ),
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: permissions.keys.map((String key) {
+                        return CheckboxListTile(
+                          title: Text(key, style: const TextStyle(fontSize: 13)),
+                          value: permissions[key],
+                          activeColor: Colors.green,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+                          dense: true,
+                          onChanged: (val) {
+                            setStateDialog(() {
+                              permissions[key] = val!;
+                              // إذا ألغى تحديد واحدة، نلغي علامة "تحديد الكل"
+                              if (!val) selectAll = false;
+                              // إذا حددها كلها يدوياً، نضع علامة "تحديد الكل"
+                              if (permissions.values.every((element) => element == true)) selectAll = true;
+                            });
+                          },
+                        );
+                      }).toList(),
+                    ),
                   ),
                 ],
               ),
@@ -93,7 +137,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
               ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الموظف بنجاح!')));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الموظف وصلاحياته بنجاح! ✅'), backgroundColor: Colors.green));
                 },
                 child: const Text('حفظ الموظف'),
               ),
@@ -129,7 +173,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
   }
 
   // ==========================================
-  // دوال التبويب الثاني (تذاكر الدعم الفني) 🎧
+  // 2. دوال التبويب الثاني (تذاكر الدعم الفني) 🎧
   // ==========================================
   void _showTicketChat(Map<String, dynamic> ticket) {
     showDialog(
@@ -143,17 +187,15 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // رسالة الوكيل
                 Align(
                   alignment: Alignment.centerRight,
                   child: Container(
                     padding: const EdgeInsets.all(10),
                     margin: const EdgeInsets.only(bottom: 10),
                     decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(10)),
-                    child: Text('الوكيل: ${ticket['subject']} \n(منذ ساعتين)'),
+                    child: Text('الوكيل: ${ticket['subject']} \n(منذ ساعتين)', style: const TextStyle(color: Colors.black87)),
                   ),
                 ),
-                // ملاحظة داخلية سرية (تظهر للمدراء فقط)
                 Align(
                   alignment: Alignment.center,
                   child: Container(
@@ -171,7 +213,6 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
                   ),
                 ),
                 const Divider(),
-                // حقل الرد
                 TextField(
                   decoration: InputDecoration(
                     hintText: 'اكتب ردك للوكيل هنا...',
@@ -203,8 +244,8 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          backgroundColor: Colors.amber.shade50,
-          title: const Text('ملاحظة داخلية سرية 🔒', style: TextStyle(color: Colors.brown, fontWeight: FontWeight.bold)),
+          backgroundColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.amber.shade50,
+          title: const Text('ملاحظة داخلية سرية 🔒', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
           content: const TextField(
             maxLines: 3,
             decoration: InputDecoration(hintText: 'اكتب الملاحظة التي لن يراها الوكيل أبداً...'),
@@ -242,9 +283,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // 👈 تم تركيب التاج (الهيدر الشامل) هنا بنجاح!
       appBar: const CustomHeader(title: 'إدارة الموظفين والدعم'),
-      
       drawer: const CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
@@ -255,9 +294,8 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // 👈 نقلنا شريط التبويبات إلى هنا ليتناغم مع الوضع الليلي
             Container(
-              color: Colors.transparent, // شفافة لدعم الوضع الليلي
+              color: Colors.transparent,
               child: TabBar(
                 controller: _tabController,
                 labelColor: Colors.blueAccent,
@@ -271,8 +309,6 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
                 ],
               ),
             ),
-            
-            // محتوى التبويبات
             Expanded(
               child: TabBarView(
                 controller: _tabController,
@@ -381,7 +417,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('${ticket['id']} | ${ticket['agent']}', style: TextStyle(fontWeight: FontWeight.bold, color: isClosed ? Colors.grey : null)), // يتناغم مع الوضع الليلي
+                    Text('${ticket['id']} | ${ticket['agent']}', style: TextStyle(fontWeight: FontWeight.bold, color: isClosed ? Colors.grey : null)),
                     Text(ticket['priority'], style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                   ],
                 ),
