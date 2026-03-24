@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/custom_drawer.dart';
+import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الهيدر الجديد
 
 class StaffSupportScreen extends StatefulWidget {
   const StaffSupportScreen({super.key});
@@ -241,24 +242,9 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('إدارة الموظفين والدعم الفني', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.blueAccent),
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: Colors.blueAccent,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: Colors.blueAccent,
-          indicatorWeight: 3,
-          tabs: const [
-            Tab(icon: Icon(Icons.people_alt), text: 'الموظفين والصلاحيات'),
-            Tab(icon: Icon(Icons.support_agent), text: 'تذاكر الدعم الفني'),
-          ],
-        ),
-      ),
+      // 👈 تم تركيب التاج (الهيدر الشامل) هنا بنجاح!
+      appBar: const CustomHeader(title: 'إدارة الموظفين والدعم'),
+      
       drawer: const CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
@@ -267,11 +253,35 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: TabBarView(
-          controller: _tabController,
+        child: Column(
           children: [
-            _buildStaffTab(),
-            _buildTicketsTab(),
+            // 👈 نقلنا شريط التبويبات إلى هنا ليتناغم مع الوضع الليلي
+            Container(
+              color: Colors.transparent, // شفافة لدعم الوضع الليلي
+              child: TabBar(
+                controller: _tabController,
+                labelColor: Colors.blueAccent,
+                unselectedLabelColor: Colors.grey,
+                indicatorColor: Colors.blueAccent,
+                indicatorWeight: 3,
+                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                tabs: const [
+                  Tab(icon: Icon(Icons.people_alt), text: 'الموظفين والصلاحيات'),
+                  Tab(icon: Icon(Icons.support_agent), text: 'تذاكر الدعم الفني'),
+                ],
+              ),
+            ),
+            
+            // محتوى التبويبات
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildStaffTab(),
+                  _buildTicketsTab(),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -360,7 +370,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
 
         return Card(
           elevation: isClosed ? 0 : 3,
-          color: isClosed ? Colors.grey.shade100 : Colors.white,
+          color: isClosed ? Theme.of(context).cardColor.withOpacity(0.5) : Theme.of(context).cardColor,
           margin: const EdgeInsets.only(bottom: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: isClosed ? Colors.grey.shade300 : Colors.transparent)),
           child: Padding(
@@ -371,7 +381,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('${ticket['id']} | ${ticket['agent']}', style: TextStyle(fontWeight: FontWeight.bold, color: isClosed ? Colors.grey : Colors.black)),
+                    Text('${ticket['id']} | ${ticket['agent']}', style: TextStyle(fontWeight: FontWeight.bold, color: isClosed ? Colors.grey : null)), // يتناغم مع الوضع الليلي
                     Text(ticket['priority'], style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                   ],
                 ),
