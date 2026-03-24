@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/custom_drawer.dart';
-import '../../../core/widgets/custom_header.dart'; // 👈 تمت إضافة استدعاء الهيدر الجديد هنا
+import '../../../core/widgets/custom_header.dart'; 
+import 'agent_profile_screen.dart'; // 👈 هذا هو السطر الذي يربط الشاشة الجديدة!
 
 class AgentManagementScreen extends StatefulWidget {
   const AgentManagementScreen({super.key});
@@ -10,14 +11,14 @@ class AgentManagementScreen extends StatefulWidget {
 }
 
 class _AgentManagementScreenState extends State<AgentManagementScreen> {
-  // قاعدة بيانات وهمية للوكلاء (لإظهار المنطق البرمجي)
+  // قاعدة بيانات وهمية للوكلاء
   final List<Map<String, dynamic>> _agents = [
     {'id': 1, 'name': 'أحمد القدسي', 'phone': '774578241', 'network': 'شبكة الصقر', 'location': 'تعز - المسبح', 'balance': '150,000', 'status': 'نشط', 'profit': '5%', 'pos': 3},
     {'id': 2, 'name': 'محمد علي', 'phone': '711223344', 'network': 'شبكة النور', 'location': 'صنعاء - حده', 'balance': '20,000', 'status': 'مجمد', 'profit': '7%', 'pos': 1},
   ];
 
   // ==========================================
-  // 1. نافذة إضافة وكيل جديد (مطابقة لمتطلباتك)
+  // 1. نافذة إضافة وكيل جديد
   // ==========================================
   void _showAddAgentDialog() {
     showDialog(
@@ -51,7 +52,6 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء', style: TextStyle(color: Colors.red))),
             ElevatedButton(
               onPressed: () {
-                // منطق الحفظ سيتم ربطه بقاعدة البيانات لاحقاً
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الوكيل بنجاح!'), backgroundColor: Colors.green));
               },
@@ -64,37 +64,14 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
   }
 
   // ==========================================
-  // 2. نافذة تفاصيل الوكيل 👁️
+  // 2. دالة فتح الملف الشامل للوكيل 👁️ (تم التعديل هنا جذرياً)
   // ==========================================
   void _showAgentDetails(Map<String, dynamic> agent) {
-    showDialog(
-      context: context,
-      builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: Text('ملف الوكيل: ${agent['name']}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // زر فلترة التاريخ الخاص بالوكيل
-              ElevatedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.date_range, size: 16),
-                label: const Text('فلترة المبيعات (من - إلى)'),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade50),
-              ),
-              const Divider(),
-              _buildDetailRow('المبيعات الدقيقة:', '450 كرت (هذا الشهر)'),
-              _buildDetailRow('مخزون الكروت الحالي:', '1,200 كرت'),
-              _buildDetailRow('نقاط البيع (البقالات):', '${agent['pos']} نقاط نشطة'),
-              _buildDetailRow('نسبة عمولتك:', agent['profit']),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
-          ],
-        ),
+    // 👈 بدلاً من النافذة القديمة، هذا الكود ينقلك لشاشة AgentProfileScreen الفخمة
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AgentProfileScreen(agentData: agent),
       ),
     );
   }
@@ -141,7 +118,6 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // 👈 تم تركيب الهيدر الشامل هنا بنجاح!
       appBar: const CustomHeader(title: 'إدارة الوكلاء'),
       
       drawer: const CustomDrawer(
@@ -248,19 +224,6 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
           contentPadding: const EdgeInsets.symmetric(vertical: 10),
         ),
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(String title, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(title, style: const TextStyle(color: Colors.blueGrey, fontWeight: FontWeight.bold)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
-        ],
       ),
     );
   }
