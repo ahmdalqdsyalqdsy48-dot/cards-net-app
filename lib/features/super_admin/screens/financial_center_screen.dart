@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/custom_drawer.dart';
-import '../../../core/widgets/custom_header.dart'; // استدعاء الهيدر الجديد
+import '../../../core/widgets/custom_header.dart';
 
 class FinancialCenterScreen extends StatefulWidget {
   const FinancialCenterScreen({super.key});
@@ -28,7 +28,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
   final List<Map<String, dynamic>> _ledger = [
     {'date': '2026-03-23 10:30', 'agent': 'شبكة الصقر', 'type': 'إيداع حوالة', 'amount': '+50,000', 'remaining': '150,000', 'color': Colors.green},
     {'date': '2026-03-22 14:15', 'agent': 'شبكة الصقر', 'type': 'خصم آلي (عمولة)', 'amount': '-2,500', 'remaining': '100,000', 'color': Colors.red},
-    {'date': '2026-03-21 09:00', 'agent': 'وكالة النور', 'type': 'تسوية يدوية (مكافأة)', 'amount': '+5,000', 'remaining': '5,000', 'color': Colors.blue},
+    {'date': '2026-03-21 09:00', 'agent': 'وكالة النور', 'type': 'تسوية يدوية (م مكافأة)', 'amount': '+5,000', 'remaining': '5,000', 'color': Colors.blue},
   ];
 
   @override
@@ -217,7 +217,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // تركيب الهيدر الشامل
       appBar: const CustomHeader(title: 'المركز المالي والمحافظ'),
       
       drawer: const CustomDrawer(
@@ -230,9 +229,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // شريط التبويبات (Tabs)
             Container(
-              // 👈 التعديل هنا: أصبحت الخلفية شفافة لدعم الوضع الليلي بدلاً من الأبيض الثابت
               color: Colors.transparent, 
               child: TabBar(
                 controller: _tabController,
@@ -249,7 +246,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
               ),
             ),
             
-            // محتوى التبويبات
             Expanded(
               child: TabBarView(
                 controller: _tabController,
@@ -301,7 +297,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                 _buildInfoRow('المستفيد (أنت):', req['beneficiary']),
                 const SizedBox(height: 10),
                 
-                // زر عرض صورة الحوالة
                 OutlinedButton.icon(
                   onPressed: () {},
                   icon: const Icon(Icons.image, size: 18),
@@ -310,7 +305,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                 ),
                 const SizedBox(height: 10),
 
-                // أزرار القبول والرفض
                 Row(
                   children: [
                     Expanded(
@@ -419,7 +413,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 4),
-                // تم إزالة اللون الثابت هنا ليدعم الوضع الليلي
                 Text(log['type'], style: const TextStyle()), 
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -443,7 +436,8 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Text(title, style: TextStyle(color: Colors.blueGrey)),
+          // 👈 التعديل هنا: إزالة const من الـ Text
+          Text(title, style: const TextStyle(color: Colors.blueGrey)),
           Text(value, style: TextStyle(fontWeight: isBold ? FontWeight.bold : FontWeight.normal, color: color)),
         ],
       ),
