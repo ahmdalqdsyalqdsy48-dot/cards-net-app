@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/custom_drawer.dart';
+import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الهيدر الجديد
 
 class GlobalSettingsScreen extends StatefulWidget {
   const GlobalSettingsScreen({super.key});
@@ -27,26 +28,9 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('إعدادات النظام الشخصية', style: TextStyle(fontWeight: FontWeight.bold)),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.blueAccent),
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          labelColor: Colors.blueAccent,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: Colors.blueAccent,
-          tabs: const [
-            Tab(icon: Icon(Icons.palette), text: 'المظهر الشخصي'),
-            Tab(icon: Icon(Icons.security), text: 'الأمان والأصوات'),
-            Tab(icon: Icon(Icons.settings_input_component), text: 'حالة النظام'),
-            Tab(icon: Icon(Icons.gavel), text: 'السياسات والحدود'),
-          ],
-        ),
-      ),
+      // 👈 تم تركيب الهيدر الشامل هنا بنجاح!
+      appBar: const CustomHeader(title: 'إعدادات النظام الشخصية'),
+      
       drawer: const CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
@@ -55,13 +39,38 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: TabBarView(
-          controller: _tabController,
+        child: Column(
           children: [
-            _buildAppearanceTab(),
-            _buildSecurityTab(),
-            _buildSystemStatusTab(),
-            _buildPolicyTab(),
+            // 👈 نقلنا شريط التبويبات القابل للتمرير إلى هنا
+            Container(
+              color: Colors.transparent, // دعم الوضع الليلي
+              child: TabBar(
+                controller: _tabController,
+                isScrollable: true,
+                labelColor: Colors.blueAccent,
+                unselectedLabelColor: Colors.grey,
+                indicatorColor: Colors.blueAccent,
+                tabs: const [
+                  Tab(icon: Icon(Icons.palette), text: 'المظهر الشخصي'),
+                  Tab(icon: Icon(Icons.security), text: 'الأمان والأصوات'),
+                  Tab(icon: Icon(Icons.settings_input_component), text: 'حالة النظام'),
+                  Tab(icon: Icon(Icons.gavel), text: 'السياسات والحدود'),
+                ],
+              ),
+            ),
+            
+            // محتوى التبويبات
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildAppearanceTab(),
+                  _buildSecurityTab(),
+                  _buildSystemStatusTab(),
+                  _buildPolicyTab(),
+                ],
+              ),
+            ),
           ],
         ),
       ),
