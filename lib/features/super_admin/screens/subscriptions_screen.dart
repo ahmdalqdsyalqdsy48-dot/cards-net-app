@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/custom_drawer.dart';
+import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الهيدر الجديد
 
 class SubscriptionsScreen extends StatefulWidget {
   const SubscriptionsScreen({super.key});
@@ -195,22 +196,9 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('إدارة الاشتراكات', style: TextStyle(fontWeight: FontWeight.bold)),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 2,
-        iconTheme: const IconThemeData(color: Colors.blueAccent),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_suggest, color: Colors.blueAccent),
-            tooltip: 'إعدادات الرادار الآلي وفترة السماح',
-            onPressed: () {
-               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('إعدادات فترة السماح (Grace Period) للروبوت.')));
-            },
-          ),
-        ],
-      ),
+      // 👈 تم تركيب الهيدر الشامل هنا بنجاح!
+      appBar: const CustomHeader(title: 'إدارة الاشتراكات'),
+      
       drawer: const CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
@@ -231,18 +219,33 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                     child: ElevatedButton.icon(
                       onPressed: _showCreatePlanDialog,
                       icon: const Icon(Icons.add, color: Colors.white),
-                      label: const Text('إنشاء خطة / اشتراك', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      label: const Text('إنشاء خطة / اشتراك', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, padding: const EdgeInsets.symmetric(vertical: 12)),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   Expanded(
                     flex: 1,
                     child: ElevatedButton.icon(
                       onPressed: _showCreateCouponDialog,
                       icon: const Icon(Icons.local_offer, color: Colors.white),
-                      label: const Text('كوبون', style: TextStyle(color: Colors.white)),
+                      label: const Text('كوبون', style: TextStyle(color: Colors.white, fontSize: 13)),
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, padding: const EdgeInsets.symmetric(vertical: 12)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // 👈 زر إعدادات الرادار الذي كان في الهيدر نقلناه هنا ليكون دائماً في متناول يدك!
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.settings_suggest, color: Colors.blueAccent),
+                      tooltip: 'إعدادات الرادار الآلي وفترة السماح',
+                      onPressed: () {
+                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('إعدادات فترة السماح (Grace Period) للروبوت.')));
+                      },
                     ),
                   ),
                 ],
