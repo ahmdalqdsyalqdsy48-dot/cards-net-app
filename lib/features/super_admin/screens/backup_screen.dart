@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/custom_drawer.dart';
+import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء التاج (الهيدر الجديد)
 
 class BackupScreen extends StatefulWidget {
   const BackupScreen({super.key});
@@ -148,24 +149,9 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('النسخ الاحتياطي', style: TextStyle(fontWeight: FontWeight.bold)),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.blueAccent),
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: Colors.blueAccent,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: Colors.blueAccent,
-          tabs: const [
-            Tab(icon: Icon(Icons.autorenew), text: 'النسخ الآلي'),
-            Tab(icon: Icon(Icons.cloud_sync), text: 'الربط السحابي'),
-            Tab(icon: Icon(Icons.manage_history), text: 'إدارة واستعادة'),
-          ],
-        ),
-      ),
+      // 👈 تم تركيب الهيدر الشامل هنا بنجاح!
+      appBar: const CustomHeader(title: 'النسخ الاحتياطي السحابي'),
+      
       drawer: const CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
@@ -174,12 +160,34 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: TabBarView(
-          controller: _tabController,
+        child: Column(
           children: [
-            _buildAutoBackupTab(),
-            _buildCloudSyncTab(),
-            _buildManageRestoreTab(),
+            // 👈 نقلنا شريط التبويبات إلى هنا
+            Container(
+              color: Colors.transparent, // دعم الوضع الليلي
+              child: TabBar(
+                controller: _tabController,
+                labelColor: Colors.blueAccent,
+                unselectedLabelColor: Colors.grey,
+                indicatorColor: Colors.blueAccent,
+                tabs: const [
+                  Tab(icon: Icon(Icons.autorenew), text: 'النسخ الآلي'),
+                  Tab(icon: Icon(Icons.cloud_sync), text: 'الربط السحابي'),
+                  Tab(icon: Icon(Icons.manage_history), text: 'إدارة واستعادة'),
+                ],
+              ),
+            ),
+            
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildAutoBackupTab(),
+                  _buildCloudSyncTab(),
+                  _buildManageRestoreTab(),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -245,11 +253,11 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
             elevation: 2,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: _isDriveLinked ? Colors.green : Colors.transparent)),
             child: ListTile(
-              leading: Image.network('https://upload.wikimedia.org/wikipedia/commons/d/da/Google_Drive_logo.png', width: 30),
+              leading: Image.network('https://upload.wikimedia.org/wikipedia/commons/d/da/Google_Drive_logo.png', width: 30, errorBuilder: (context, error, stackTrace) => const Icon(Icons.cloud, color: Colors.green)), // 👈 حماية في حال عدم تحميل الصورة
               title: const Text('Google Drive', style: TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text(_isDriveLinked ? 'متصل (admin@gmail.com)' : 'غير متصل'),
               trailing: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: _isDriveLinked ? Colors.red.shade50 : Colors.blue.shade50, elevation: 0),
+                style: ElevatedButton.styleFrom(backgroundColor: _isDriveLinked ? Colors.red.withOpacity(0.1) : Colors.blue.withOpacity(0.1), elevation: 0),
                 onPressed: () => setState(() => _isDriveLinked = !_isDriveLinked),
                 child: Text(_isDriveLinked ? 'إلغاء الربط' : 'ربط الحساب', style: TextStyle(color: _isDriveLinked ? Colors.red : Colors.blue)),
               ),
@@ -265,7 +273,7 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
               title: const Text('Dropbox', style: TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text(_isDropboxLinked ? 'متصل' : 'غير متصل'),
               trailing: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: _isDropboxLinked ? Colors.red.shade50 : Colors.blue.shade50, elevation: 0),
+                style: ElevatedButton.styleFrom(backgroundColor: _isDropboxLinked ? Colors.red.withOpacity(0.1) : Colors.blue.withOpacity(0.1), elevation: 0),
                 onPressed: () => setState(() => _isDropboxLinked = !_isDropboxLinked),
                 child: Text(_isDropboxLinked ? 'إلغاء الربط' : 'ربط الحساب', style: TextStyle(color: _isDropboxLinked ? Colors.red : Colors.blue)),
               ),
