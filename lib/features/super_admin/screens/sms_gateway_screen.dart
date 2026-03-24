@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/custom_drawer.dart';
+import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الهيدر الجديد
 
 class SmsGatewayScreen extends StatefulWidget {
   const SmsGatewayScreen({super.key});
@@ -111,24 +112,9 @@ class _SmsGatewayScreenState extends State<SmsGatewayScreen> with SingleTickerPr
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('بوابة رسائل الـ SMS', style: TextStyle(fontWeight: FontWeight.bold)),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.blueAccent),
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: Colors.blueAccent,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: Colors.blueAccent,
-          tabs: const [
-            Tab(icon: Icon(Icons.electrical_services), text: 'إعدادات الربط API'),
-            Tab(icon: Icon(Icons.sms), text: 'القوالب الآلية'),
-            Tab(icon: Icon(Icons.history), text: 'السجل والرصيد'),
-          ],
-        ),
-      ),
+      // 👈 تم تركيب الهيدر الشامل هنا بنجاح!
+      appBar: const CustomHeader(title: 'بوابة رسائل الـ SMS'),
+      
       drawer: const CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
@@ -137,12 +123,34 @@ class _SmsGatewayScreenState extends State<SmsGatewayScreen> with SingleTickerPr
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: TabBarView(
-          controller: _tabController,
+        child: Column(
           children: [
-            _buildApiSetupTab(),
-            _buildTemplatesTab(),
-            _buildLogsTab(),
+            // 👈 نقلنا شريط التبويبات إلى هنا
+            Container(
+              color: Colors.transparent, // دعم الوضع الليلي
+              child: TabBar(
+                controller: _tabController,
+                labelColor: Colors.blueAccent,
+                unselectedLabelColor: Colors.grey,
+                indicatorColor: Colors.blueAccent,
+                tabs: const [
+                  Tab(icon: Icon(Icons.electrical_services), text: 'إعدادات الربط API'),
+                  Tab(icon: Icon(Icons.sms), text: 'القوالب الآلية'),
+                  Tab(icon: Icon(Icons.history), text: 'السجل والرصيد'),
+                ],
+              ),
+            ),
+            
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildApiSetupTab(),
+                  _buildTemplatesTab(),
+                  _buildLogsTab(),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -211,8 +219,8 @@ class _SmsGatewayScreenState extends State<SmsGatewayScreen> with SingleTickerPr
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(8)),
-                  child: Text(_templates[index]['body'], style: const TextStyle(fontSize: 14, color: Colors.black87)),
+                  decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(8)),
+                  child: Text(_templates[index]['body'], style: const TextStyle(fontSize: 14)),
                 ),
               ],
             ),
@@ -278,7 +286,7 @@ class _SmsGatewayScreenState extends State<SmsGatewayScreen> with SingleTickerPr
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 4),
-                      Text(log['text'], style: const TextStyle(fontSize: 13, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      Text(log['text'], style: const TextStyle(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
                       Text(log['time'], style: const TextStyle(fontSize: 11, color: Colors.grey)),
                     ],
                   ),
