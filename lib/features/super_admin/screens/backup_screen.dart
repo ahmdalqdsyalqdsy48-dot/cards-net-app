@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/custom_drawer.dart';
-import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء التاج (الهيدر الجديد)
+import '../../../core/widgets/custom_header.dart';
 
 class BackupScreen extends StatefulWidget {
   const BackupScreen({super.key});
@@ -16,6 +16,9 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
   bool _isAutoBackupEnabled = true;
   String _backupFrequency = 'يومياً';
   String _backupTime = '04:00 فجراً';
+  
+  // 👈 المتغير الجديد: البريد الإلكتروني المخصص للطوارئ
+  String _emergencyEmail = 'admin@cardsnet.com'; 
 
   // متغيرات الربط السحابي
   bool _isDriveLinked = true;
@@ -124,7 +127,7 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                 onPressed: () {
-                  if (pinController.text == '123456') { // محاكاة الرمز الصحيح
+                  if (pinController.text == '123456') { 
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم التحقق. جاري استعادة النظام...'), backgroundColor: Colors.orange));
                   } else {
@@ -149,9 +152,7 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // 👈 تم تركيب الهيدر الشامل هنا بنجاح!
       appBar: const CustomHeader(title: 'النسخ الاحتياطي السحابي'),
-      
       drawer: const CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
@@ -162,9 +163,8 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // 👈 نقلنا شريط التبويبات إلى هنا
             Container(
-              color: Colors.transparent, // دعم الوضع الليلي
+              color: Colors.transparent, 
               child: TabBar(
                 controller: _tabController,
                 labelColor: Colors.blueAccent,
@@ -177,7 +177,6 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
                 ],
               ),
             ),
-            
             Expanded(
               child: TabBarView(
                 controller: _tabController,
@@ -229,8 +228,23 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
               items: ['02:00 فجراً', '03:00 فجراً', '04:00 فجراً', '12:00 منتصف الليل'].map((val) => DropdownMenuItem(value: val, child: Text(val))).toList(),
               onChanged: (val) => setState(() => _backupTime = val!),
             ),
+            
+            // 👈 التعديل الجديد: إضافة حقل بريد الطوارئ
             const SizedBox(height: 20),
-            const Text('💡 سيقوم النظام بضغط البيانات ليلاً حتى لا يؤثر على سرعة التطبيق لدى الزبائن.', style: TextStyle(color: Colors.orange, fontSize: 12)),
+            const Text('بريد الطوارئ (لاستقبال نسخة مضغوطة):', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: TextEditingController(text: _emergencyEmail),
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(
+                hintText: 'مثال: my.email@gmail.com',
+                prefixIcon: const Icon(Icons.mark_email_read, color: Colors.orange),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onChanged: (val) => _emergencyEmail = val,
+            ),
+            const SizedBox(height: 15),
+            const Text('💡 سيقوم النظام بضغط البيانات ليلاً وتشفيرها ثم إرسالها إلى هذا الإيميل كخط دفاع أخير لضمان عدم ضياع أي فاتورة.', style: TextStyle(color: Colors.blueGrey, fontSize: 12)),
           ],
         ],
       ),
@@ -248,14 +262,13 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
           const Text('حفظ النسخة في السيرفر فقط خطر جداً. اربط نظامك بحساباتك السحابية ليتم رفع النسخة المشفرة إليها آلياً.', style: TextStyle(color: Colors.blueGrey, fontSize: 13)),
           const SizedBox(height: 20),
           
-          // Google Drive Card
           Card(
             elevation: 2,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: _isDriveLinked ? Colors.green : Colors.transparent)),
             child: ListTile(
-              leading: Image.network('https://upload.wikimedia.org/wikipedia/commons/d/da/Google_Drive_logo.png', width: 30, errorBuilder: (context, error, stackTrace) => const Icon(Icons.cloud, color: Colors.green)), // 👈 حماية في حال عدم تحميل الصورة
+              leading: Image.network('https://upload.wikimedia.org/wikipedia/commons/d/da/Google_Drive_logo.png', width: 30, errorBuilder: (context, error, stackTrace) => const Icon(Icons.cloud, color: Colors.green)),
               title: const Text('Google Drive', style: TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text(_isDriveLinked ? 'متصل (admin@gmail.com)' : 'غير متصل'),
+              subtitle: Text(_isDriveLinked ? 'متصل ($_emergencyEmail)' : 'غير متصل'),
               trailing: ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: _isDriveLinked ? Colors.red.withOpacity(0.1) : Colors.blue.withOpacity(0.1), elevation: 0),
                 onPressed: () => setState(() => _isDriveLinked = !_isDriveLinked),
@@ -265,7 +278,6 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
           ),
           const SizedBox(height: 10),
           
-          // Dropbox Card
           Card(
             elevation: 2,
             child: ListTile(
@@ -290,7 +302,6 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
   Widget _buildManageRestoreTab() {
     return Column(
       children: [
-        // زر الطوارئ لأخذ نسخة يدوية
         Container(
           padding: const EdgeInsets.all(16),
           child: ElevatedButton.icon(
@@ -305,8 +316,6 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
             ),
           ),
         ),
-        
-        // جدول النسخ السابقة
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 16.0),
           child: Align(alignment: Alignment.centerRight, child: Text('النسخ المتوفرة للاستعادة:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey))),
@@ -346,7 +355,6 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
                         children: [
                           _buildActionButton(Icons.download, 'تحميل للجهاز', Colors.blue, () {}),
                           _buildActionButton(Icons.delete, 'حذف', Colors.red.shade300, () => _deleteBackup(index)),
-                          // زر الاستعادة الأحمر
                           ElevatedButton.icon(
                             onPressed: () => _showRestoreDialog(backup),
                             icon: const Icon(Icons.restore, color: Colors.white, size: 18),
@@ -366,7 +374,6 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
     );
   }
 
-  // أداة مساعدة لبناء الأزرار الصغيرة
   Widget _buildActionButton(IconData icon, String tooltip, Color color, VoidCallback onTap) {
     return IconButton(icon: Icon(icon, color: color), tooltip: tooltip, onPressed: onTap);
   }
