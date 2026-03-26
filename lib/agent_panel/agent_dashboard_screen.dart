@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../core/widgets/custom_header.dart'; 
-// 👇 استدعاء القائمة الجانبية الجديدة الفخمة
 import 'widgets/custom_agent_drawer.dart'; 
+// 👇 هذا هو السطر الجديد الذي يستدعي شاشة الميكروتك
+import 'screens/mikrotik_categories_screen.dart';
 
 class AgentDashboardScreen extends StatefulWidget {
   const AgentDashboardScreen({super.key});
@@ -44,8 +45,16 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
     return '${date.year}/${date.month}/${date.day}';
   }
 
+  // 👇 قمنا بتحديث هذه الدالة لتنقلنا فعلياً إلى الشاشة بدلاً من إظهار رسالة فقط
   void _navigateTo(String screenName) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('جاري الانتقال إلى: $screenName')));
+    if (screenName == 'إدارة الميكروتك والفئات') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const MikrotikCategoriesScreen()),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('جاري الانتقال إلى: $screenName')));
+    }
   }
 
   @override
@@ -54,7 +63,6 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
 
     return Scaffold(
       appBar: const CustomHeader(title: 'لوحة تحكم الوكيل'),
-      // 👇 استخدام القائمة الجانبية المخصصة الجديدة
       drawer: const CustomAgentDrawer(
         agentName: 'شبكة الصقر للواي فاي',
         phoneNumber: '777777777',
@@ -65,9 +73,6 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // ==========================================
-            // 1. شريط الفلترة العلوية بالتقويم
-            // ==========================================
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
@@ -110,14 +115,10 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
             
             const SizedBox(height: 10),
 
-            // ==========================================
-            // 2. المنطقة القابلة للتمرير (البطاقات + الإجراءات السريعة)
-            // ==========================================
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  // --- شبكة البطاقات (كما هي) ---
                   GridView.count(
                     crossAxisCount: 2, 
                     shrinkWrap: true, 
@@ -181,7 +182,6 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                   
                   const SizedBox(height: 30),
                   
-                  // --- قسم الإجراءات السريعة (كما هو) ---
                   const Text("إجراءات سريعة", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.blueGrey)),
                   const SizedBox(height: 15),
                   _buildQuickActionsGrid(),
@@ -194,9 +194,6 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
     );
   }
 
-  // ==========================================
-  // تصميم البطاقة 
-  // ==========================================
   Widget _buildDashboardCard({
     required String title,
     required String value,
@@ -251,9 +248,6 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
     );
   }
 
-  // ==========================================
-  // الإجراءات السريعة 
-  // ==========================================
   Widget _buildQuickActionsGrid() {
     return GridView.count(
       crossAxisCount: 3,
