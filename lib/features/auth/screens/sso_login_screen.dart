@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-// استدعاء لوحة المالك لكي نتمكن من الانتقال إليها
+// استدعاء لوحة المالك 
 import '../../super_admin/screens/super_admin_dashboard.dart';
+// 👇 جديد: استدعاء لوحة الوكيل لكي نتمكن من الانتقال إليها
+import '../../../agent_panel/agent_dashboard_screen.dart';
 
 class SSOLoginScreen extends StatefulWidget {
   const SSOLoginScreen({super.key});
@@ -12,7 +14,6 @@ class SSOLoginScreen extends StatefulWidget {
 class _SSOLoginScreenState extends State<SSOLoginScreen> {
   bool isLoginTab = true; 
   
-  // === جديد: أجهزة استشعار لقراءة النص المكتوب في الحقول ===
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
 
@@ -90,7 +91,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     return Column(
       children: [
         TextField(
-          controller: phoneController, // ربط الحقل بالمستشعر
+          controller: phoneController,
           keyboardType: TextInputType.phone,
           decoration: InputDecoration(
             labelText: 'رقم الهاتف',
@@ -100,7 +101,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
         ),
         const SizedBox(height: 15),
         TextField(
-          controller: passwordController, // ربط الحقل بالمستشعر
+          controller: passwordController,
           obscureText: true,
           decoration: InputDecoration(
             labelText: 'كلمة المرور',
@@ -119,18 +120,27 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
             onPressed: () {
-              // === جديد: المنطق البرمجي للتحقق من بيانات الدخول ===
               String phone = phoneController.text.trim();
               String password = passwordController.text.trim();
 
+              // === الشجرة البرمجية الجديدة لتوجيه المستخدمين ===
+              
+              // 1. حساب مالك النظام (Super Admin)
               if (phone == '774578241' && password == '75486958aaa') {
-                // إذا كانت البيانات صحيحة، انتقل فوراً للوحة المالك
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(builder: (context) => const SuperAdminDashboard()),
                 );
-              } else {
-                // إذا كانت البيانات خاطئة، أظهر رسالة تنبيه حمراء أسفل الشاشة
+              } 
+              // 2. حساب الوكيل التجريبي (Agent) - جديد 👇
+              else if (phone == '777777777' && password == 'agent123') {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const AgentDashboardScreen()),
+                );
+              } 
+              // 3. في حال إدخال بيانات خاطئة
+              else {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('رقم الهاتف أو كلمة المرور غير صحيحة!', textDirection: TextDirection.rtl),
