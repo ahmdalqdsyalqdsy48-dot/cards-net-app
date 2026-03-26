@@ -64,7 +64,7 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
         child: Column(
           children: [
             // ==========================================
-            // شريط الفلترة العلوية بالتقويم (مثل المالك تماماً)
+            // 1. شريط الفلترة العلوية بالتقويم (مثل المالك تماماً)
             // ==========================================
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -109,66 +109,80 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
             const SizedBox(height: 10),
 
             // ==========================================
-            // شبكة البطاقات (بنفس كود تصميم المالك ولكن ببيانات الوكيل)
+            // 2. المنطقة القابلة للتمرير (البطاقات + الإجراءات السريعة)
             // ==========================================
             Expanded(
-              child: GridView.count(
-                crossAxisCount: 2, 
+              child: ListView(
                 padding: const EdgeInsets.all(16),
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 1.1, 
                 children: [
-                  _buildDashboardCard(
-                    title: 'الرصيد المتاح',
-                    value: '125,000 ريال',
-                    subValue: '+ أرباح اليوم: 4,500',
-                    icon: Icons.account_balance_wallet,
-                    color: Colors.green,
-                    onTap: () => _navigateTo('المركز المالي للوكيل'),
+                  // --- شبكة البطاقات ---
+                  GridView.count(
+                    crossAxisCount: 2, 
+                    shrinkWrap: true, // ضروري جداً لكي يعمل بداخل ListView
+                    physics: const NeverScrollableScrollPhysics(), // منع التمرير الداخلي للشبكة
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 1.1, 
+                    children: [
+                      _buildDashboardCard(
+                        title: 'الرصيد المتاح',
+                        value: '125,000 ريال',
+                        subValue: '+ أرباح اليوم: 4,500',
+                        icon: Icons.account_balance_wallet,
+                        color: Colors.green,
+                        onTap: () => _navigateTo('المركز المالي للوكيل'),
+                      ),
+                      _buildDashboardCard(
+                        title: 'نواقص المخزون',
+                        value: 'فئة 1000',
+                        subValue: 'المتبقي 3 كروت فقط!',
+                        icon: Icons.warning_amber_rounded,
+                        color: Colors.redAccent,
+                        isAlert: true,
+                        onTap: () => _navigateTo('إدارة الميكروتك والفئات'),
+                      ),
+                      _buildDashboardCard(
+                        title: 'مبيعات الشبكة',
+                        value: '145 كرت',
+                        subValue: 'مباشر + نقاط البيع',
+                        icon: Icons.storefront,
+                        color: Colors.blue,
+                        onTap: () => _navigateTo('تقارير المبيعات'),
+                      ),
+                      _buildDashboardCard(
+                        title: 'طلبات شحن واردة',
+                        value: '2 طلبات',
+                        subValue: 'من بقالة الأمانة والسعادة',
+                        icon: Icons.notifications_active,
+                        color: Colors.orange,
+                        isAlert: true,
+                        onTap: () => _navigateTo('طلبات نقاط البيع'),
+                      ),
+                      _buildDashboardCard(
+                        title: 'المتجر السريع',
+                        value: 'كاشير',
+                        subValue: 'بيع مباشر للزبائن',
+                        icon: Icons.point_of_sale,
+                        color: Colors.teal,
+                        onTap: () => _navigateTo('شاشة الكاشير'),
+                      ),
+                      _buildDashboardCard(
+                        title: 'البقالات النشطة',
+                        value: '12 بقالة',
+                        subValue: 'إجمالي الرصيد لديهم: 85 ألف',
+                        icon: Icons.people_alt,
+                        color: Colors.purple,
+                        onTap: () => _navigateTo('إدارة نقاط البيع'),
+                      ),
+                    ],
                   ),
-                  _buildDashboardCard(
-                    title: 'نواقص المخزون',
-                    value: 'فئة 1000',
-                    subValue: 'المتبقي 3 كروت فقط!',
-                    icon: Icons.warning_amber_rounded,
-                    color: Colors.redAccent,
-                    isAlert: true,
-                    onTap: () => _navigateTo('إدارة الميكروتك والفئات'),
-                  ),
-                  _buildDashboardCard(
-                    title: 'مبيعات الشبكة',
-                    value: '145 كرت',
-                    subValue: 'مباشر + نقاط البيع',
-                    icon: Icons.storefront,
-                    color: Colors.blue,
-                    onTap: () => _navigateTo('تقارير المبيعات'),
-                  ),
-                  _buildDashboardCard(
-                    title: 'طلبات شحن واردة',
-                    value: '2 طلبات',
-                    subValue: 'من بقالة الأمانة والسعادة',
-                    icon: Icons.notifications_active,
-                    color: Colors.orange,
-                    isAlert: true,
-                    onTap: () => _navigateTo('طلبات نقاط البيع'),
-                  ),
-                  _buildDashboardCard(
-                    title: 'المتجر السريع',
-                    value: 'كاشير',
-                    subValue: 'بيع مباشر للزبائن',
-                    icon: Icons.point_of_sale,
-                    color: Colors.teal,
-                    onTap: () => _navigateTo('شاشة الكاشير'),
-                  ),
-                  _buildDashboardCard(
-                    title: 'البقالات النشطة',
-                    value: '12 بقالة',
-                    subValue: 'إجمالي الرصيد لديهم: 85 ألف',
-                    icon: Icons.people_alt,
-                    color: Colors.purple,
-                    onTap: () => _navigateTo('إدارة نقاط البيع'),
-                  ),
+                  
+                  const SizedBox(height: 30),
+                  
+                  // --- قسم الإجراءات السريعة ---
+                  const Text("إجراءات سريعة", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.blueGrey)),
+                  const SizedBox(height: 15),
+                  _buildQuickActionsGrid(),
                 ],
               ),
             ),
@@ -229,6 +243,45 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
             Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isAlert ? Colors.red : null)), 
             const SizedBox(height: 4),
             Text(subValue, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // الإجراءات السريعة (Quick Actions)
+  // ==========================================
+  Widget _buildQuickActionsGrid() {
+    return GridView.count(
+      crossAxisCount: 3,
+      shrinkWrap: true, // ضروري هنا أيضاً
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 15,
+      crossAxisSpacing: 15,
+      children: [
+        _buildActionItem("بيع سريع", Icons.point_of_sale, Colors.blue, () => _navigateTo('شاشة الكاشير')),
+        _buildActionItem("توليد كروت", Icons.autorenew, Colors.green, () => _navigateTo('إدارة الميكروتك والفئات')),
+        _buildActionItem("تغذية بقالة", Icons.account_balance_wallet, Colors.purple, () => _navigateTo('إدارة نقاط البيع')),
+        _buildActionItem("إضافة فئة", Icons.add_circle_outline, Colors.orange, () => _navigateTo('إدارة الميكروتك والفئات')),
+        _buildActionItem("كشف حساب", Icons.receipt_long, Colors.teal, () => _navigateTo('المركز المالي للوكيل')),
+        _buildActionItem("تذكرة دعم", Icons.support_agent, Colors.redAccent, () {}),
+      ],
+    );
+  }
+
+  Widget _buildActionItem(String title, IconData icon, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircleAvatar(backgroundColor: color.withOpacity(0.1), radius: 20, child: Icon(icon, color: color)),
+            const SizedBox(height: 8),
+            Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
           ],
         ),
       ),
