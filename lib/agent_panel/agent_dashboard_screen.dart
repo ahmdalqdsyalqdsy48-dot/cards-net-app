@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../core/widgets/custom_header.dart'; // استدعاء الهيدر الموحد
+import '../../core/widgets/custom_header.dart'; 
+// 👇 استدعاء القائمة الجانبية الجديدة الفخمة
+import 'widgets/custom_agent_drawer.dart'; 
 
 class AgentDashboardScreen extends StatefulWidget {
   const AgentDashboardScreen({super.key});
@@ -9,12 +11,8 @@ class AgentDashboardScreen extends StatefulWidget {
 }
 
 class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
-  // متغير لحفظ النطاق الزمني المختار من التقويم
   DateTimeRange? _selectedDateRange;
 
-  // ==========================================
-  // دالة فتح التقويم (مطابقة للوحة المالك) 📅
-  // ==========================================
   Future<void> _selectDateRange() async {
     final DateTimeRange? picked = await showDateRangePicker(
       context: context,
@@ -46,10 +44,8 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
     return '${date.year}/${date.month}/${date.day}';
   }
 
-  // دالة الانتقال بين شاشات الوكيل
   void _navigateTo(String screenName) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('جاري الانتقال إلى: $screenName')));
-    // سيتم استبدالها لاحقاً بـ Navigator.push
   }
 
   @override
@@ -58,18 +54,24 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
 
     return Scaffold(
       appBar: const CustomHeader(title: 'لوحة تحكم الوكيل'),
-      drawer: _buildAgentDrawer(), // القائمة الجانبية المتطابقة بالشكل
+      // 👇 استخدام القائمة الجانبية المخصصة الجديدة
+      drawer: const CustomAgentDrawer(
+        agentName: 'شبكة الصقر للواي فاي',
+        phoneNumber: '777777777',
+        role: 'وكيل معتمد (Agent)',
+        currentBalance: 125000.0,
+      ), 
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
             // ==========================================
-            // 1. شريط الفلترة العلوية بالتقويم (مثل المالك تماماً)
+            // 1. شريط الفلترة العلوية بالتقويم
             // ==========================================
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: isDark ? Colors.grey.shade900 : Colors.blue.shade800, // لون أزرق مميز للوكيل
+                color: isDark ? Colors.grey.shade900 : Colors.blue.shade800, 
                 borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
               ),
               child: Row(
@@ -115,11 +117,11 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  // --- شبكة البطاقات ---
+                  // --- شبكة البطاقات (كما هي) ---
                   GridView.count(
                     crossAxisCount: 2, 
-                    shrinkWrap: true, // ضروري جداً لكي يعمل بداخل ListView
-                    physics: const NeverScrollableScrollPhysics(), // منع التمرير الداخلي للشبكة
+                    shrinkWrap: true, 
+                    physics: const NeverScrollableScrollPhysics(), 
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,
                     childAspectRatio: 1.1, 
@@ -179,7 +181,7 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                   
                   const SizedBox(height: 30),
                   
-                  // --- قسم الإجراءات السريعة ---
+                  // --- قسم الإجراءات السريعة (كما هو) ---
                   const Text("إجراءات سريعة", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.blueGrey)),
                   const SizedBox(height: 15),
                   _buildQuickActionsGrid(),
@@ -193,7 +195,7 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
   }
 
   // ==========================================
-  // تصميم البطاقة المنسوخ 100% من كود المالك
+  // تصميم البطاقة 
   // ==========================================
   Widget _buildDashboardCard({
     required String title,
@@ -250,12 +252,12 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
   }
 
   // ==========================================
-  // الإجراءات السريعة (Quick Actions)
+  // الإجراءات السريعة 
   // ==========================================
   Widget _buildQuickActionsGrid() {
     return GridView.count(
       crossAxisCount: 3,
-      shrinkWrap: true, // ضروري هنا أيضاً
+      shrinkWrap: true, 
       physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 15,
       crossAxisSpacing: 15,
@@ -282,46 +284,6 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
             CircleAvatar(backgroundColor: color.withOpacity(0.1), radius: 20, child: Icon(icon, color: color)),
             const SizedBox(height: 8),
             Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ==========================================
-  // القائمة الجانبية (مخصصة للوكيل بنفس شكل المالك)
-  // ==========================================
-  Widget _buildAgentDrawer() {
-    return Drawer(
-      child: Directionality(
-        textDirection: TextDirection.rtl,
-        child: Column(
-          children: [
-            UserAccountsDrawerHeader(
-              decoration: BoxDecoration(color: Colors.blue.shade800),
-              accountName: const Text('شبكة الصقر للواي فاي', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              accountEmail: const Text('وكيل معتمد | الرصيد: 125,000 ريال'),
-              currentAccountPicture: const CircleAvatar(
-                backgroundColor: Colors.white,
-                child: Icon(Icons.router, size: 40, color: Colors.blue),
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  ListTile(leading: const Icon(Icons.dashboard, color: Colors.blue), title: const Text('الرئيسية'), onTap: () {}),
-                  ListTile(leading: const Icon(Icons.point_of_sale, color: Colors.green), title: const Text('المتجر السريع (الكاشير)'), onTap: () {}),
-                  ListTile(leading: const Icon(Icons.category, color: Colors.orange), title: const Text('إدارة الفئات والميكروتك'), onTap: () {}),
-                  ListTile(leading: const Icon(Icons.storefront, color: Colors.purple), title: const Text('نقاط البيع (البقالات)'), onTap: () {}),
-                  ListTile(leading: const Icon(Icons.account_balance_wallet, color: Colors.teal), title: const Text('المركز المالي للوكيل'), onTap: () {}),
-                  ListTile(leading: const Icon(Icons.analytics, color: Colors.redAccent), title: const Text('التقارير والمبيعات'), onTap: () {}),
-                  const Divider(),
-                  ListTile(leading: const Icon(Icons.settings, color: Colors.grey), title: const Text('إعدادات الربط والشبكة'), onTap: () {}),
-                  ListTile(leading: const Icon(Icons.logout, color: Colors.red), title: const Text('تسجيل الخروج'), onTap: () {}),
-                ],
-              ),
-            ),
           ],
         ),
       ),
