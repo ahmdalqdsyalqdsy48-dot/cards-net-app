@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import '../../core/widgets/custom_header.dart'; 
-import 'widgets/custom_agent_drawer.dart'; 
-// 👇 هذا هو السطر الجديد الذي يستدعي شاشة الميكروتك
-import 'screens/mikrotik_categories_screen.dart';
+// 👇 تم تصحيح جميع المسارات لتتناسب مع الهيكلية الجديدة
+import '../../../core/widgets/custom_header.dart'; 
+import '../widgets/custom_agent_drawer.dart'; 
+import 'mikrotik_categories_screen.dart';
+import 'quick_pos_screen.dart'; // 👈 استدعاء شاشة الكاشير الجديدة
 
 class AgentDashboardScreen extends StatefulWidget {
   const AgentDashboardScreen({super.key});
@@ -45,12 +46,17 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
     return '${date.year}/${date.month}/${date.day}';
   }
 
-  // 👇 قمنا بتحديث هذه الدالة لتنقلنا فعلياً إلى الشاشة بدلاً من إظهار رسالة فقط
+  // 👇 تحديث دالة التنقل لتدعم شاشة الكاشير
   void _navigateTo(String screenName) {
     if (screenName == 'إدارة الميكروتك والفئات') {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const MikrotikCategoriesScreen()),
+        MaterialPageRoute(builder: (context) => MikrotikCategoriesScreen()),
+      );
+    } else if (screenName == 'شاشة الكاشير') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => QuickPosScreen()),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('جاري الانتقال إلى: $screenName')));
@@ -62,8 +68,8 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: const CustomHeader(title: 'لوحة تحكم الوكيل'),
-      drawer: const CustomAgentDrawer(
+      appBar: CustomHeader(title: 'لوحة تحكم الوكيل'),
+      drawer: CustomAgentDrawer(
         agentName: 'شبكة الصقر للواي فاي',
         phoneNumber: '777777777',
         role: 'وكيل معتمد (Agent)',
