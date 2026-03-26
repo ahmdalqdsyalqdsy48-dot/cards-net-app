@@ -8,10 +8,125 @@ class MikrotikCategoriesScreen extends StatefulWidget {
 }
 
 class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
+  
+  // ==========================================
+  // دالة نافذة إضافة سيرفر ميكروتك جديد
+  // ==========================================
+  void _showAddServerBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true, // ضروري لكي ترتفع النافذة مع لوحة المفاتيح
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom, // تفادي تغطية لوحة المفاتيح
+            top: 20, left: 16, right: 16,
+          ),
+          child: Directionality(
+            textDirection: TextDirection.rtl,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('إضافة سيرفر ميكروتك جديد 📡', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 20),
+                  TextField(decoration: InputDecoration(labelText: 'الاسم (مثال: سيرفر المنطقة الشمالية)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.dns))),
+                  const SizedBox(height: 12),
+                  TextField(decoration: InputDecoration(labelText: 'عنوان IP (مثال: 192.168.88.1)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.wifi))),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(child: TextField(decoration: InputDecoration(labelText: 'اسم المستخدم', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.person)))),
+                      const SizedBox(width: 10),
+                      Expanded(child: TextField(obscureText: true, decoration: InputDecoration(labelText: 'كلمة المرور', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.lock)))),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(decoration: InputDecoration(labelText: 'API Port (الافتراضي: 8728)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.settings_ethernet))),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade800, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة السيرفر ومحاولة الاتصال بنجاح 🟢'), backgroundColor: Colors.green));
+                      },
+                      child: const Text('حفظ واتصال', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ==========================================
+  // دالة نافذة إضافة فئة كروت جديدة (Profile)
+  // ==========================================
+  void _showAddCategoryBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+            top: 20, left: 16, right: 16,
+          ),
+          child: Directionality(
+            textDirection: TextDirection.rtl,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('إضافة فئة جديدة (Profile) 🎟️', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 20),
+                  TextField(decoration: InputDecoration(labelText: 'اسم الفئة (مثال: أبو 1000)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.category))),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(child: TextField(keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'الوقت (ساعة)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.timer)))),
+                      const SizedBox(width: 10),
+                      Expanded(child: TextField(keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'السعة (ميجا)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.data_usage)))),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'سعر البيع للجمهور (ريال)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.attach_money))),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الفئة بنجاح 📋'), backgroundColor: Colors.green));
+                      },
+                      child: const Text('حفظ الفئة', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4, // عدد التبويبات
+      length: 4, 
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Scaffold(
@@ -21,7 +136,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
             foregroundColor: Colors.white,
             elevation: 0,
             bottom: const TabBar(
-              isScrollable: true, // يسمح بتمرير التبويبات إذا كانت الشاشة صغيرة
+              isScrollable: true,
               labelColor: Colors.white,
               unselectedLabelColor: Colors.white54,
               indicatorColor: Colors.orange,
@@ -48,9 +163,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
     );
   }
 
-  // ==========================================
-  // 1. تبويب سيرفرات الربط (الميكروتك)
-  // ==========================================
   Widget _buildServersTab() {
     return Scaffold(
       body: ListView(
@@ -70,7 +182,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {},
+        onPressed: _showAddServerBottomSheet, // 👇 ربط الزر بالنافذة المنبثقة
         backgroundColor: Colors.blue.shade800,
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text('إضافة سيرفر', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -78,9 +190,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
     );
   }
 
-  // ==========================================
-  // 2. تبويب إدارة الفئات (Profiles)
-  // ==========================================
   Widget _buildCategoriesTab() {
     return Scaffold(
       body: ListView(
@@ -91,7 +200,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {},
+        onPressed: _showAddCategoryBottomSheet, // 👇 ربط الزر بالنافذة المنبثقة
         backgroundColor: Colors.orange.shade700,
         icon: const Icon(Icons.add_circle, color: Colors.white),
         label: const Text('إضافة فئة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -131,9 +240,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
     );
   }
 
-  // ==========================================
-  // 3. تبويب شرائح الخصم (للبقالات)
-  // ==========================================
   Widget _buildDiscountTiersTab() {
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -168,9 +274,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
     );
   }
 
-  // ==========================================
-  // 4. تبويب توليد الكروت
-  // ==========================================
   Widget _buildGenerateCardsTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
