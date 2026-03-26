@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-// استدعاء لوحة المالك 
+// استدعاء لوحة المالك (المسار صحيح)
 import '../../super_admin/screens/super_admin_dashboard.dart';
-// 👇 جديد: استدعاء لوحة الوكيل لكي نتمكن من الانتقال إليها
-import '../../../agent_panel/agent_dashboard_screen.dart';
+// 👇 التصحيح هنا: استدعاء لوحة الوكيل من مسارها الجديد داخل features
+import '../../agent_panel/screens/agent_dashboard_screen.dart';
 
 class SSOLoginScreen extends StatefulWidget {
   const SSOLoginScreen({super.key});
@@ -132,7 +132,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                   MaterialPageRoute(builder: (context) => const SuperAdminDashboard()),
                 );
               } 
-              // 2. حساب الوكيل التجريبي (Agent) - جديد 👇
+              // 2. حساب الوكيل التجريبي (Agent)
               else if (phone == '777777777' && password == 'agent123') {
                 Navigator.pushReplacement(
                   context,
