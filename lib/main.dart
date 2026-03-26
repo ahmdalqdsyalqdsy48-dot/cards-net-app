@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-// هذا السطر مهم جداً: وهو يخبر النظام بمكان صفحة تسجيل الدخول التي أنشأناها
+// استدعاء صفحة تسجيل الدخول الموحد
 import 'features/auth/screens/sso_login_screen.dart';
 
 void main() {
@@ -14,11 +14,11 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'نظام كروت نت',
       debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.system, // لدعم الوضع المظلم والنهاري
+      themeMode: ThemeMode.system,
       theme: ThemeData.light(),
       darkTheme: ThemeData.dark(),
       
-      // هنا قمنا بتغيير الواجهة المؤقتة لفتح شاشة تسجيل الدخول الموحد مباشرة
+      // أعدنا الواجهة الرئيسية لتكون شاشة تسجيل الدخول
       home: const SSOLoginScreen(),
     );
   }
