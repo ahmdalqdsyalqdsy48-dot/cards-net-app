@@ -10,17 +10,37 @@ class MikrotikCategoriesScreen extends StatefulWidget {
 class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
   
   // ==========================================
+  // قاعدة البيانات الوهمية (State)
+  // ==========================================
+  
+  // قائمة السيرفرات
+  final List<Map<String, dynamic>> _servers = [
+    {'id': '1', 'name': 'سيرفر المنطقة الشمالية', 'ip': '192.168.88.1', 'status': 'متصل نشط 🟢'},
+  ];
+
+  // قائمة الفئات مع (عدد الكروت المتوفرة - المخزون)
+  final List<Map<String, dynamic>> _categories = [
+    {'id': '1', 'name': 'فئة أبو 1000', 'time': '24 ساعة', 'capacity': '1 جيجا', 'price': 1000, 'color': Colors.blue, 'stock': 5}, // مخزون منخفض للتجربة
+    {'id': '2', 'name': 'فئة أبو 500', 'time': '12 ساعة', 'capacity': '500 ميجا', 'price': 500, 'color': Colors.orange, 'stock': 150},
+  ];
+
+  // متغيرات تبويب التوليد
+  String? _selectedServerToGenerate;
+  String? _selectedCategoryToGenerate;
+  final TextEditingController _generateAmountController = TextEditingController();
+
+  // ==========================================
   // دالة نافذة إضافة سيرفر ميكروتك جديد
   // ==========================================
   void _showAddServerBottomSheet() {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true, // ضروري لكي ترتفع النافذة مع لوحة المفاتيح
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return Padding(
           padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom, // تفادي تغطية لوحة المفاتيح
+            bottom: MediaQuery.of(context).viewInsets.bottom,
             top: 20, left: 16, right: 16,
           ),
           child: Directionality(
@@ -68,56 +88,116 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
   }
 
   // ==========================================
-  // دالة نافذة إضافة فئة كروت جديدة (Profile)
+  // دالة نافذة إضافة فئة كروت جديدة (مع منتقي ألوان)
   // ==========================================
   void _showAddCategoryBottomSheet() {
+    String newName = '';
+    String newTime = '';
+    String newCapacity = '';
+    String newPrice = '';
+    Color selectedColor = Colors.blue;
+    final List<Color> colorOptions = [Colors.blue, Colors.orange, Colors.green, Colors.purple, Colors.red, Colors.teal];
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-            top: 20, left: 16, right: 16,
-          ),
-          child: Directionality(
-            textDirection: TextDirection.rtl,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('إضافة فئة جديدة (Profile) 🎟️', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 20),
-                  TextField(decoration: InputDecoration(labelText: 'اسم الفئة (مثال: أبو 1000)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.category))),
-                  const SizedBox(height: 12),
-                  Row(
+        // نستخدم StatefulBuilder لكي نتمكن من تحديث اللون المختار داخل النافذة فقط
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+                top: 20, left: 16, right: 16,
+              ),
+              child: Directionality(
+                textDirection: TextDirection.rtl,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(child: TextField(keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'الوقت (ساعة)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.timer)))),
-                      const SizedBox(width: 10),
-                      Expanded(child: TextField(keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'السعة (ميجا)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.data_usage)))),
+                      const Text('إضافة فئة جديدة (Profile) 🎟️', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 20),
+                      TextField(
+                        onChanged: (val) => newName = val,
+                        decoration: InputDecoration(labelText: 'اسم الفئة (مثال: أبو 1000)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.category))
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(child: TextField(
+                            onChanged: (val) => newTime = val,
+                            keyboardType: TextInputType.text, decoration: InputDecoration(labelText: 'الوقت (ساعة/يوم)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.timer))
+                          )),
+                          const SizedBox(width: 10),
+                          Expanded(child: TextField(
+                            onChanged: (val) => newCapacity = val,
+                            keyboardType: TextInputType.text, decoration: InputDecoration(labelText: 'السعة (ميجا/جيجا)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.data_usage))
+                          )),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        onChanged: (val) => newPrice = val,
+                        keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'سعر البيع للجمهور (ريال)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.attach_money))
+                      ),
+                      const SizedBox(height: 15),
+                      const Align(alignment: Alignment.centerRight, child: Text('اختر لون الفئة:', style: TextStyle(fontWeight: FontWeight.bold))),
+                      const SizedBox(height: 10),
+                      // منتقي الألوان
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: colorOptions.map((color) {
+                          return GestureDetector(
+                            onTap: () {
+                              setModalState(() {
+                                selectedColor = color;
+                              });
+                            },
+                            child: CircleAvatar(
+                              backgroundColor: color,
+                              radius: 20,
+                              child: selectedColor == color ? const Icon(Icons.check, color: Colors.white) : null,
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(backgroundColor: selectedColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                          onPressed: () {
+                            if (newName.isNotEmpty && newPrice.isNotEmpty) {
+                              setState(() {
+                                _categories.add({
+                                  'id': DateTime.now().toString(),
+                                  'name': newName,
+                                  'time': newTime.isNotEmpty ? newTime : 'غير محدد',
+                                  'capacity': newCapacity.isNotEmpty ? newCapacity : 'مفتوح',
+                                  'price': int.tryParse(newPrice) ?? 0,
+                                  'color': selectedColor,
+                                  'stock': 0, // تبدأ بمخزون صفر حتى يتم التوليد
+                                });
+                              });
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الفئة بنجاح 📋'), backgroundColor: Colors.green));
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء إدخال الاسم والسعر!'), backgroundColor: Colors.red));
+                            }
+                          },
+                          child: const Text('حفظ الفئة', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  TextField(keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'سعر البيع للجمهور (ريال)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.attach_money))),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                      onPressed: () {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الفئة بنجاح 📋'), backgroundColor: Colors.green));
-                      },
-                      child: const Text('حفظ الفئة', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          }
         );
       }
     );
@@ -144,7 +224,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
               labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
               tabs: [
                 Tab(icon: Icon(Icons.dns), text: 'سيرفرات الربط'),
-                Tab(icon: Icon(Icons.category), text: 'إدارة الفئات'),
+                Tab(icon: Icon(Icons.category), text: 'المخزون والفئات'),
                 Tab(icon: Icon(Icons.local_offer), text: 'شرائح الخصم'),
                 Tab(icon: Icon(Icons.autorenew), text: 'توليد الكروت'),
               ],
@@ -165,24 +245,26 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
 
   Widget _buildServersTab() {
     return Scaffold(
-      body: ListView(
+      body: ListView.builder(
         padding: const EdgeInsets.all(16),
-        children: [
-          Card(
+        itemCount: _servers.length,
+        itemBuilder: (context, index) {
+          final server = _servers[index];
+          return Card(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
             elevation: 3,
             child: ListTile(
               contentPadding: const EdgeInsets.all(16),
               leading: const CircleAvatar(backgroundColor: Colors.green, child: Icon(Icons.router, color: Colors.white)),
-              title: const Text('سيرفر المنطقة الشمالية', style: TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: const Text('IP: 192.168.88.1\nالحالة: متصل نشط 🟢'),
+              title: Text(server['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Text('IP: ${server['ip']}\nالحالة: ${server['status']}'),
               trailing: IconButton(icon: const Icon(Icons.settings, color: Colors.grey), onPressed: () {}),
             ),
-          ),
-        ],
+          );
+        }
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddServerBottomSheet, // 👇 ربط الزر بالنافذة المنبثقة
+        onPressed: _showAddServerBottomSheet,
         backgroundColor: Colors.blue.shade800,
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text('إضافة سيرفر', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -192,15 +274,18 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
 
   Widget _buildCategoriesTab() {
     return Scaffold(
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _buildCategoryCard('فئة أبو 1000', 'الوقت: 24 ساعة | السعة: 1 جيجا', 'سعر الجمهور: 1000 ريال', Colors.blue),
-          _buildCategoryCard('فئة أبو 500', 'الوقت: 12 ساعة | السعة: 500 ميجا', 'سعر الجمهور: 500 ريال', Colors.orange),
-        ],
-      ),
+      body: _categories.isEmpty 
+        ? const Center(child: Text('لا توجد فئات حالياً، قم بإضافة فئة جديدة.'))
+        : ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: _categories.length,
+          itemBuilder: (context, index) {
+            final category = _categories[index];
+            return _buildCategoryCard(category);
+          }
+        ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddCategoryBottomSheet, // 👇 ربط الزر بالنافذة المنبثقة
+        onPressed: _showAddCategoryBottomSheet,
         backgroundColor: Colors.orange.shade700,
         icon: const Icon(Icons.add_circle, color: Colors.white),
         label: const Text('إضافة فئة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -208,9 +293,11 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
     );
   }
 
-  Widget _buildCategoryCard(String title, String details, String price, Color color) {
+  Widget _buildCategoryCard(Map<String, dynamic> category) {
+    bool isLowStock = category['stock'] < 10;
+    
     return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: color.withOpacity(0.5))),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: category['color'].withOpacity(0.5))),
       margin: const EdgeInsets.only(bottom: 15),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -220,20 +307,43 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: color)),
+                Text(category['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: category['color'])),
                 Row(
                   children: [
                     IconButton(icon: const Icon(Icons.edit, color: Colors.blue, size: 20), onPressed: () {}, constraints: const BoxConstraints(), padding: EdgeInsets.zero),
                     const SizedBox(width: 15),
-                    IconButton(icon: const Icon(Icons.delete, color: Colors.red, size: 20), onPressed: () {}, constraints: const BoxConstraints(), padding: EdgeInsets.zero),
+                    IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red, size: 20), 
+                      onPressed: () {
+                        setState(() { _categories.remove(category); });
+                      }, 
+                      constraints: const BoxConstraints(), padding: EdgeInsets.zero
+                    ),
                   ],
                 ),
               ],
             ),
             const SizedBox(height: 8),
-            Text(details, style: const TextStyle(color: Colors.grey)),
+            Text('الوقت: ${category['time']} | السعة: ${category['capacity']}', style: const TextStyle(color: Colors.grey)),
             const Divider(),
-            Text(price, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('سعر الجمهور: ${category['price']} ريال', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                // 👇 عرض المخزون مع التنبيه
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: isLowStock ? Colors.red.shade100 : Colors.green.shade100,
+                    borderRadius: BorderRadius.circular(10)
+                  ),
+                  child: Text(
+                    'المخزون: ${category['stock']} كرت', 
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: isLowStock ? Colors.red : Colors.green.shade800)
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -284,29 +394,44 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
           const SizedBox(height: 20),
           DropdownButtonFormField<String>(
             decoration: InputDecoration(labelText: 'اختر سيرفر الميكروتك', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
-            items: const [DropdownMenuItem(value: '1', child: Text('سيرفر المنطقة الشمالية'))],
-            onChanged: (value) {},
+            value: _selectedServerToGenerate,
+            items: _servers.map((s) => DropdownMenuItem(value: s['id'] as String, child: Text(s['name']))).toList(),
+            onChanged: (value) => setState(() => _selectedServerToGenerate = value),
           ),
           const SizedBox(height: 15),
           DropdownButtonFormField<String>(
             decoration: InputDecoration(labelText: 'اختر الفئة (Profile)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
-            items: const [
-              DropdownMenuItem(value: '1', child: Text('فئة أبو 1000')),
-              DropdownMenuItem(value: '2', child: Text('فئة أبو 500')),
-            ],
-            onChanged: (value) {},
+            value: _selectedCategoryToGenerate,
+            items: _categories.map((c) => DropdownMenuItem(value: c['id'] as String, child: Text(c['name']))).toList(),
+            onChanged: (value) => setState(() => _selectedCategoryToGenerate = value),
           ),
           const SizedBox(height: 15),
           TextField(
+            controller: _generateAmountController,
             keyboardType: TextInputType.number,
-            decoration: InputDecoration(labelText: 'الكمية المطلوب توليدها (مثال: 500)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.format_list_numbered)),
+            decoration: InputDecoration(labelText: 'الكمية المطلوب توليدها (مثال: 100)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.format_list_numbered)),
           ),
           const SizedBox(height: 30),
           SizedBox(
             width: double.infinity,
             height: 50,
             child: ElevatedButton.icon(
-              onPressed: () {},
+              onPressed: () {
+                if (_selectedCategoryToGenerate != null && _generateAmountController.text.isNotEmpty) {
+                  int amount = int.tryParse(_generateAmountController.text) ?? 0;
+                  if (amount > 0) {
+                    // تحديث المخزون
+                    setState(() {
+                      var category = _categories.firstWhere((c) => c['id'] == _selectedCategoryToGenerate);
+                      category['stock'] += amount;
+                    });
+                    _generateAmountController.clear();
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم توليد وإضافة $amount كرت بنجاح! ✅'), backgroundColor: Colors.green));
+                  }
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء اختيار الفئة وإدخال الكمية'), backgroundColor: Colors.red));
+                }
+              },
               icon: const Icon(Icons.autorenew, color: Colors.white),
               label: const Text('بدء التوليد والسحب', style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
