@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-// 👇 تم تصحيح جميع المسارات لتتناسب مع الهيكلية الجديدة
 import '../../../core/widgets/custom_header.dart'; 
 import '../widgets/custom_agent_drawer.dart'; 
 import 'mikrotik_categories_screen.dart';
-import 'quick_pos_screen.dart'; // 👈 استدعاء شاشة الكاشير الجديدة
+import 'quick_pos_screen.dart'; 
 
 class AgentDashboardScreen extends StatefulWidget {
   const AgentDashboardScreen({super.key});
@@ -46,20 +45,13 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
     return '${date.year}/${date.month}/${date.day}';
   }
 
-  // 👇 تحديث دالة التنقل لتدعم شاشة الكاشير
   void _navigateTo(String screenName) {
     if (screenName == 'إدارة الميكروتك والفئات') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => MikrotikCategoriesScreen()),
-      );
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const MikrotikCategoriesScreen()));
     } else if (screenName == 'شاشة الكاشير') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => QuickPosScreen()),
-      );
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const QuickPosScreen()));
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('جاري الانتقال إلى: $screenName')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('قريباً: $screenName 🚀')));
     }
   }
 
@@ -68,8 +60,8 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: CustomHeader(title: 'لوحة تحكم الوكيل'),
-      drawer: CustomAgentDrawer(
+      appBar: const CustomHeader(title: 'لوحة تحكم الوكيل'),
+      drawer: const CustomAgentDrawer(
         agentName: 'شبكة الصقر للواي فاي',
         phoneNumber: '777777777',
         role: 'وكيل معتمد (Agent)',
@@ -79,6 +71,9 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
+            // ==========================================
+            // 1. شريط الفلترة العلوية
+            // ==========================================
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
@@ -125,69 +120,56 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  // ==========================================
+                  // 2. بطاقات الإحصائيات (مخصصة للتقارير فقط)
+                  // ==========================================
+                  const Text("إحصائيات الشبكة", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.blueGrey)),
+                  const SizedBox(height: 10),
                   GridView.count(
                     crossAxisCount: 2, 
                     shrinkWrap: true, 
                     physics: const NeverScrollableScrollPhysics(), 
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,
-                    childAspectRatio: 1.1, 
+                    childAspectRatio: 1.2, // تغيير الحجم ليكون مناسباً أكثر
                     children: [
                       _buildDashboardCard(
                         title: 'الرصيد المتاح',
                         value: '125,000 ريال',
-                        subValue: '+ أرباح اليوم: 4,500',
                         icon: Icons.account_balance_wallet,
                         color: Colors.green,
-                        onTap: () => _navigateTo('المركز المالي للوكيل'),
+                        onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تفاصيل المركز المالي'))),
                       ),
                       _buildDashboardCard(
-                        title: 'نواقص المخزون',
-                        value: 'فئة 1000',
-                        subValue: 'المتبقي 3 كروت فقط!',
-                        icon: Icons.warning_amber_rounded,
-                        color: Colors.redAccent,
-                        isAlert: true,
-                        onTap: () => _navigateTo('إدارة الميكروتك والفئات'),
-                      ),
-                      _buildDashboardCard(
-                        title: 'مبيعات الشبكة',
-                        value: '145 كرت',
-                        subValue: 'مباشر + نقاط البيع',
-                        icon: Icons.storefront,
+                        title: 'أرباح اليوم',
+                        value: '4,500 ريال',
+                        icon: Icons.trending_up,
                         color: Colors.blue,
-                        onTap: () => _navigateTo('تقارير المبيعات'),
+                        onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تقرير الأرباح اليومية'))),
+                      ),
+                      _buildDashboardCard(
+                        title: 'كروت مباعة (اليوم)',
+                        value: '145 كرت',
+                        icon: Icons.sell,
+                        color: Colors.purple,
+                        onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سجل المبيعات المباشرة'))),
                       ),
                       _buildDashboardCard(
                         title: 'طلبات شحن واردة',
-                        value: '2 طلبات',
-                        subValue: 'من بقالة الأمانة والسعادة',
+                        value: '2 طلبات جديدة',
                         icon: Icons.notifications_active,
                         color: Colors.orange,
                         isAlert: true,
-                        onTap: () => _navigateTo('طلبات نقاط البيع'),
-                      ),
-                      _buildDashboardCard(
-                        title: 'المتجر السريع',
-                        value: 'كاشير',
-                        subValue: 'بيع مباشر للزبائن',
-                        icon: Icons.point_of_sale,
-                        color: Colors.teal,
-                        onTap: () => _navigateTo('شاشة الكاشير'),
-                      ),
-                      _buildDashboardCard(
-                        title: 'البقالات النشطة',
-                        value: '12 بقالة',
-                        subValue: 'إجمالي الرصيد لديهم: 85 ألف',
-                        icon: Icons.people_alt,
-                        color: Colors.purple,
-                        onTap: () => _navigateTo('إدارة نقاط البيع'),
+                        onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سجل طلبات البقالات'))),
                       ),
                     ],
                   ),
                   
                   const SizedBox(height: 30),
                   
+                  // ==========================================
+                  // 3. الإجراءات السريعة (مخصصة للعمليات)
+                  // ==========================================
                   const Text("إجراءات سريعة", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.blueGrey)),
                   const SizedBox(height: 15),
                   _buildQuickActionsGrid(),
@@ -203,7 +185,6 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
   Widget _buildDashboardCard({
     required String title,
     required String value,
-    required String subValue,
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
@@ -246,8 +227,6 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
             Text(title, style: const TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
             Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isAlert ? Colors.red : null)), 
-            const SizedBox(height: 4),
-            Text(subValue, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold)),
           ],
         ),
       ),
@@ -264,10 +243,10 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
       children: [
         _buildActionItem("بيع سريع", Icons.point_of_sale, Colors.blue, () => _navigateTo('شاشة الكاشير')),
         _buildActionItem("توليد كروت", Icons.autorenew, Colors.green, () => _navigateTo('إدارة الميكروتك والفئات')),
-        _buildActionItem("تغذية بقالة", Icons.account_balance_wallet, Colors.purple, () => _navigateTo('إدارة نقاط البيع')),
-        _buildActionItem("إضافة فئة", Icons.add_circle_outline, Colors.orange, () => _navigateTo('إدارة الميكروتك والفئات')),
-        _buildActionItem("كشف حساب", Icons.receipt_long, Colors.teal, () => _navigateTo('المركز المالي للوكيل')),
-        _buildActionItem("تذكرة دعم", Icons.support_agent, Colors.redAccent, () {}),
+        _buildActionItem("تغذية بقالة", Icons.account_balance_wallet, Colors.purple, () => _navigateTo('تغذية بقالة')),
+        _buildActionItem("تسديد دين", Icons.money_off, Colors.red, () => _navigateTo('تسديد دين')),
+        _buildActionItem("نواقص المخزون", Icons.warning_amber_rounded, Colors.orange, () => _navigateTo('إدارة الميكروتك والفئات')),
+        _buildActionItem("تذكرة دعم", Icons.support_agent, Colors.indigo, () => _navigateTo('تذكرة دعم')),
       ],
     );
   }
