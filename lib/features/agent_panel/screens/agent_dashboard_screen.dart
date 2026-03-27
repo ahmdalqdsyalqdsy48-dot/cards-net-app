@@ -3,6 +3,7 @@ import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart'; 
 import 'mikrotik_categories_screen.dart';
 import 'quick_pos_screen.dart'; 
+import 'sub_agents_screen.dart'; // 👈 إضافة مسار شاشة البقالات
 
 class AgentDashboardScreen extends StatefulWidget {
   const AgentDashboardScreen({super.key});
@@ -45,11 +46,14 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
     return '${date.year}/${date.month}/${date.day}';
   }
 
+  // 👇 تحديث دالة التنقل لربط الأزرار بشاشة البقالات الجديدة
   void _navigateTo(String screenName) {
     if (screenName == 'إدارة الميكروتك والفئات') {
       Navigator.push(context, MaterialPageRoute(builder: (context) => const MikrotikCategoriesScreen()));
     } else if (screenName == 'شاشة الكاشير') {
       Navigator.push(context, MaterialPageRoute(builder: (context) => const QuickPosScreen()));
+    } else if (screenName == 'إدارة نقاط البيع' || screenName == 'تغذية بقالة' || screenName == 'طلبات نقاط البيع') {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const SubAgentsScreen()));
     } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('قريباً: $screenName 🚀')));
     }
@@ -131,7 +135,7 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                     physics: const NeverScrollableScrollPhysics(), 
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,
-                    childAspectRatio: 1.2, // تغيير الحجم ليكون مناسباً أكثر
+                    childAspectRatio: 1.2, 
                     children: [
                       _buildDashboardCard(
                         title: 'الرصيد المتاح',
@@ -160,7 +164,7 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
                         icon: Icons.notifications_active,
                         color: Colors.orange,
                         isAlert: true,
-                        onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سجل طلبات البقالات'))),
+                        onTap: () => _navigateTo('طلبات نقاط البيع'), // 👈 تم التفعيل هنا
                       ),
                     ],
                   ),
@@ -243,7 +247,7 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
       children: [
         _buildActionItem("بيع سريع", Icons.point_of_sale, Colors.blue, () => _navigateTo('شاشة الكاشير')),
         _buildActionItem("توليد كروت", Icons.autorenew, Colors.green, () => _navigateTo('إدارة الميكروتك والفئات')),
-        _buildActionItem("تغذية بقالة", Icons.account_balance_wallet, Colors.purple, () => _navigateTo('تغذية بقالة')),
+        _buildActionItem("تغذية بقالة", Icons.account_balance_wallet, Colors.purple, () => _navigateTo('تغذية بقالة')), // 👈 تم التفعيل هنا مسبقاً
         _buildActionItem("تسديد دين", Icons.money_off, Colors.red, () => _navigateTo('تسديد دين')),
         _buildActionItem("نواقص المخزون", Icons.warning_amber_rounded, Colors.orange, () => _navigateTo('إدارة الميكروتك والفئات')),
         _buildActionItem("تذكرة دعم", Icons.support_agent, Colors.indigo, () => _navigateTo('تذكرة دعم')),
