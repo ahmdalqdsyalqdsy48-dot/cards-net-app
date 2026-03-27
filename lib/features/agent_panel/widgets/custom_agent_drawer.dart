@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import '../screens/agent_dashboard_screen.dart';
 import '../screens/quick_pos_screen.dart';
 import '../screens/mikrotik_categories_screen.dart';
-import '../screens/sub_agents_screen.dart'; // 👈 تم إضافة استدعاء شاشة البقالات
+import '../screens/sub_agents_screen.dart'; 
+import '../screens/agent_wallet_screen.dart'; // 👈 استدعاء شاشة المحفظة
 import '../../auth/screens/sso_login_screen.dart';
-import '../screens/agent_wallet_screen.dart';
 
 class CustomAgentDrawer extends StatefulWidget {
   final String agentName;
@@ -190,10 +190,8 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                 children: [
-                  // تم استبدال الألوان المتدرجة بتصميم أنيق وصلب
                   _buildSectionTitle('عمليات البيع والشبكة', Colors.blue.shade700),
                   
-                  // 👇 ربط شاشة لوحة القيادة
                   _buildDrawerItem(
                     title: 'الرئيسية (غرفة القيادة)', 
                     icon: Icons.dashboard, 
@@ -207,24 +205,22 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                     }
                   ),
 
-                  // 👇 ربط شاشة الكاشير السريع
                   _buildDrawerItem(
                     title: 'المتجر السريع (الكاشير)', 
                     icon: Icons.point_of_sale, 
                     iconColor: Colors.green, 
                     onTap: () {
-                      Navigator.pop(context); // إغلاق القائمة
+                      Navigator.pop(context);
                       Navigator.push(context, MaterialPageRoute(builder: (context) => const QuickPosScreen()));
                     }
                   ),
 
-                  // 👇 ربط شاشة الميكروتك
                   _buildDrawerItem(
                     title: 'إدارة الفئات والميكروتك', 
                     icon: Icons.router, 
                     iconColor: Colors.orange, 
                     onTap: () {
-                      Navigator.pop(context); // إغلاق القائمة
+                      Navigator.pop(context);
                       Navigator.push(context, MaterialPageRoute(builder: (context) => const MikrotikCategoriesScreen()));
                     }
                   ),
@@ -233,7 +229,6 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
 
                   _buildSectionTitle('الإدارة والتسويق', Colors.orange.shade800),
                   
-                  // 👇 تم ربط شاشة إدارة البقالات هنا
                   _buildDrawerItem(
                     title: 'إدارة نقاط البيع (البقالات)', 
                     icon: Icons.storefront, 
@@ -249,7 +244,18 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                   const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider()),
 
                   _buildSectionTitle('المالية والمحاسبة', Colors.teal.shade700),
-                  _buildDrawerItem(title: 'محفظة الوكيل', icon: Icons.account_balance_wallet, iconColor: Colors.teal, onTap: _showComingSoonMessage),
+                  
+                  // 👇 هنا التعديل الذي كنت نسيته وتم إصلاحه لفتح المحفظة
+                  _buildDrawerItem(
+                    title: 'محفظة الوكيل', 
+                    icon: Icons.account_balance_wallet, 
+                    iconColor: Colors.teal, 
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const AgentWalletScreen()));
+                    }
+                  ),
+                  
                   _buildDrawerItem(title: 'كشف الحساب المتقدم', icon: Icons.receipt_long, iconColor: Colors.cyan, onTap: _showComingSoonMessage),
                   _buildDrawerItem(title: 'التقارير التحليلية', icon: Icons.analytics, iconColor: Colors.redAccent, onTap: _showComingSoonMessage),
 
@@ -261,7 +267,6 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
 
                   const SizedBox(height: 20),
                   
-                  // 👇 برمجة زر تسجيل الخروج
                   ListTile(
                     leading: const Icon(Icons.logout, color: Colors.red),
                     title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
@@ -269,7 +274,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                       Navigator.pushAndRemoveUntil(
                         context,
                         MaterialPageRoute(builder: (context) => const SSOLoginScreen()),
-                        (route) => false, // مسح كل الشاشات السابقة لعدم التمكن من العودة بالزر الخلفي
+                        (route) => false, 
                       );
                     },
                   ),
@@ -302,7 +307,6 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     );
   }
 
-  // 👇 دالة جديدة للعناوين بدلاً من الألوان المتدرجة (Gradient) لتكون أكثر تناسقاً
   Widget _buildSectionTitle(String title, Color color) {
     return Padding(
       padding: const EdgeInsets.only(right: 16, bottom: 8, top: 8),
@@ -313,16 +317,15 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     );
   }
 
-  // 👇 تم تحديث الدالة وفرض الاتجاه لليمين وحل مشكلة الأيقونات المعكوسة
   Widget _buildDrawerItem({required String title, required IconData icon, required Color iconColor, required VoidCallback onTap}) {
     return Directionality(
-      textDirection: TextDirection.rtl, // تأكيد فرض الاتجاه
+      textDirection: TextDirection.rtl, 
       child: ListTile(
         dense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16),
         leading: Icon(icon, color: iconColor), 
         title: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-        trailing: Icon(Icons.arrow_back_ios_new, size: 14, color: Colors.grey.shade500), // السهم يتجه لليسار للدلالة على الدخول للقسم
+        trailing: Icon(Icons.arrow_back_ios_new, size: 14, color: Colors.grey.shade500), 
         onTap: onTap,
       ),
     );
