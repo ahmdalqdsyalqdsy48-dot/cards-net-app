@@ -5,7 +5,8 @@ import '../screens/agent_dashboard_screen.dart';
 import '../screens/quick_pos_screen.dart';
 import '../screens/mikrotik_categories_screen.dart';
 import '../screens/sub_agents_screen.dart'; 
-import '../screens/agent_wallet_screen.dart'; // 👈 استدعاء شاشة المحفظة
+import '../screens/agent_wallet_screen.dart'; 
+import '../screens/advanced_statement_screen.dart'; // 👈 استدعاء شاشة كشف الحساب
 import '../../auth/screens/sso_login_screen.dart';
 
 class CustomAgentDrawer extends StatefulWidget {
@@ -45,7 +46,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 20),
             child: Column(
-              mainAxisSize: MainAxisSize.min, // لكي تأخذ القائمة مساحة على قدر المحتوى فقط
+              mainAxisSize: MainAxisSize.min, 
               children: [
                 const Text('تعديل شعار الشبكة', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 10),
@@ -54,7 +55,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                   leading: const Icon(Icons.image, color: Colors.blue),
                   title: const Text('عرض الصورة'),
                   onTap: () {
-                    Navigator.pop(context); // إغلاق القائمة
+                    Navigator.pop(context); 
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سيتم عرض الصورة بحجم كامل')));
                   },
                 ),
@@ -86,7 +87,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
   // دالة مساعدة للتنقل للأقسام غير المكتملة
   // ==========================================
   void _showComingSoonMessage() {
-    Navigator.pop(context); // إغلاق القائمة الجانبية أولاً
+    Navigator.pop(context); 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('قريباً.. هذه الميزة قيد التطوير 🚀', textDirection: TextDirection.rtl),
@@ -102,7 +103,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     return Drawer(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       child: Directionality(
-        textDirection: TextDirection.rtl, // فرض اتجاه اللغة لليمين
+        textDirection: TextDirection.rtl, 
         child: Column(
           children: [
             // ==========================================
@@ -143,15 +144,12 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                   Text(widget.agentName, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 15),
                   
-                  // بطاقة الدور (برتقالي)
                   _buildColorBadge(widget.role, Icons.admin_panel_settings, Colors.orange.shade700),
                   const SizedBox(height: 8),
                   
-                  // بطاقة رقم الهاتف (أخضر)
                   _buildColorBadge(widget.phoneNumber, Icons.phone, Colors.green.shade600),
                   const SizedBox(height: 8),
 
-                  // بطاقة المحفظة مع زر الإخفاء (بنفسجي)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(color: Colors.purple.shade700, borderRadius: BorderRadius.circular(8)),
@@ -245,7 +243,6 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
 
                   _buildSectionTitle('المالية والمحاسبة', Colors.teal.shade700),
                   
-                  // 👇 هنا التعديل الذي كنت نسيته وتم إصلاحه لفتح المحفظة
                   _buildDrawerItem(
                     title: 'محفظة الوكيل', 
                     icon: Icons.account_balance_wallet, 
@@ -256,7 +253,17 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                     }
                   ),
                   
-                  _buildDrawerItem(title: 'كشف الحساب المتقدم', icon: Icons.receipt_long, iconColor: Colors.cyan, onTap: _showComingSoonMessage),
+                  // 👇 هنا تم ربط شاشة كشف الحساب المتقدم
+                  _buildDrawerItem(
+                    title: 'كشف الحساب المتقدم', 
+                    icon: Icons.receipt_long, 
+                    iconColor: Colors.cyan, 
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const AdvancedStatementScreen()));
+                    }
+                  ),
+                  
                   _buildDrawerItem(title: 'التقارير التحليلية', icon: Icons.analytics, iconColor: Colors.redAccent, onTap: _showComingSoonMessage),
 
                   const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider()),
