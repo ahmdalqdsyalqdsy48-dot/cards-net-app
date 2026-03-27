@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
 
+// 👇 استدعاء الشاشات لربطها بالقائمة الجانبية
+import '../screens/agent_dashboard_screen.dart';
+import '../screens/quick_pos_screen.dart';
+import '../screens/mikrotik_categories_screen.dart';
+import '../../auth/screens/sso_login_screen.dart';
+
 class CustomAgentDrawer extends StatefulWidget {
   final String agentName;
   final String phoneNumber;
@@ -74,6 +80,19 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     );
   }
 
+  // ==========================================
+  // دالة مساعدة للتنقل للأقسام غير المكتملة
+  // ==========================================
+  void _showComingSoonMessage() {
+    Navigator.pop(context); // إغلاق القائمة الجانبية أولاً
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('قريباً.. هذه الميزة قيد التطوير 🚀', textDirection: TextDirection.rtl),
+        backgroundColor: Colors.blueGrey,
+      )
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -97,7 +116,6 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
               ),
               child: Column(
                 children: [
-                  // 👇 هنا تم تحويل الصورة إلى زر تفاعلي مع أيقونة كاميرا
                   GestureDetector(
                     onTap: () => _showProfileImageMenu(context),
                     child: Stack(
@@ -171,35 +189,75 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                 children: [
                   _buildGradientTitle('عمليات البيع والشبكة', [Colors.blue.shade700, Colors.lightBlueAccent]),
-                  _buildDrawerItem(title: 'الرئيسية (غرفة القيادة)', icon: Icons.dashboard, iconColor: Colors.blue, onTap: () {}),
-                  _buildDrawerItem(title: 'المتجر السريع (الكاشير)', icon: Icons.point_of_sale, iconColor: Colors.green, onTap: () {}),
-                  _buildDrawerItem(title: 'إدارة الفئات والميكروتك', icon: Icons.router, iconColor: Colors.orange, onTap: () {}),
+                  
+                  // 👇 ربط شاشة لوحة القيادة
+                  _buildDrawerItem(
+                    title: 'الرئيسية (غرفة القيادة)', 
+                    icon: Icons.dashboard, 
+                    iconColor: Colors.blue, 
+                    onTap: () {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (context) => const AgentDashboardScreen()),
+                        (route) => false,
+                      );
+                    }
+                  ),
+
+                  // 👇 ربط شاشة الكاشير السريع
+                  _buildDrawerItem(
+                    title: 'المتجر السريع (الكاشير)', 
+                    icon: Icons.point_of_sale, 
+                    iconColor: Colors.green, 
+                    onTap: () {
+                      Navigator.pop(context); // إغلاق القائمة
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const QuickPosScreen()));
+                    }
+                  ),
+
+                  // 👇 ربط شاشة الميكروتك
+                  _buildDrawerItem(
+                    title: 'إدارة الفئات والميكروتك', 
+                    icon: Icons.router, 
+                    iconColor: Colors.orange, 
+                    onTap: () {
+                      Navigator.pop(context); // إغلاق القائمة
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const MikrotikCategoriesScreen()));
+                    }
+                  ),
                   
                   const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider()),
 
                   _buildGradientTitle('الإدارة والتسويق', [Colors.orange.shade700, Colors.amber]),
-                  _buildDrawerItem(title: 'إدارة نقاط البيع (البقالات)', icon: Icons.storefront, iconColor: Colors.purple, onTap: () {}),
-                  _buildDrawerItem(title: 'التسويق والعروض', icon: Icons.campaign, iconColor: Colors.pinkAccent, onTap: () {}),
+                  _buildDrawerItem(title: 'إدارة نقاط البيع (البقالات)', icon: Icons.storefront, iconColor: Colors.purple, onTap: _showComingSoonMessage),
+                  _buildDrawerItem(title: 'التسويق والعروض', icon: Icons.campaign, iconColor: Colors.pinkAccent, onTap: _showComingSoonMessage),
 
                   const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider()),
 
                   _buildGradientTitle('المالية والمحاسبة', [Colors.green.shade700, Colors.teal]),
-                  _buildDrawerItem(title: 'محفظة الوكيل', icon: Icons.account_balance_wallet, iconColor: Colors.teal, onTap: () {}),
-                  _buildDrawerItem(title: 'كشف الحساب المتقدم', icon: Icons.receipt_long, iconColor: Colors.cyan, onTap: () {}),
-                  _buildDrawerItem(title: 'التقارير التحليلية', icon: Icons.analytics, iconColor: Colors.redAccent, onTap: () {}),
+                  _buildDrawerItem(title: 'محفظة الوكيل', icon: Icons.account_balance_wallet, iconColor: Colors.teal, onTap: _showComingSoonMessage),
+                  _buildDrawerItem(title: 'كشف الحساب المتقدم', icon: Icons.receipt_long, iconColor: Colors.cyan, onTap: _showComingSoonMessage),
+                  _buildDrawerItem(title: 'التقارير التحليلية', icon: Icons.analytics, iconColor: Colors.redAccent, onTap: _showComingSoonMessage),
 
                   const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider()),
 
                   _buildGradientTitle('الإعدادات والدعم', [Colors.purple.shade700, Colors.deepPurpleAccent]),
-                  _buildDrawerItem(title: 'الدعم الفني الموحد', icon: Icons.support_agent, iconColor: Colors.indigo, onTap: () {}),
-                  _buildDrawerItem(title: 'إعدادات النظام الموسعة', icon: Icons.settings, iconColor: Colors.blueGrey, onTap: () {}),
+                  _buildDrawerItem(title: 'الدعم الفني الموحد', icon: Icons.support_agent, iconColor: Colors.indigo, onTap: _showComingSoonMessage),
+                  _buildDrawerItem(title: 'إعدادات النظام الموسعة', icon: Icons.settings, iconColor: Colors.blueGrey, onTap: _showComingSoonMessage),
 
                   const SizedBox(height: 20),
                   
+                  // 👇 برمجة زر تسجيل الخروج
                   ListTile(
                     leading: const Icon(Icons.logout, color: Colors.red),
                     title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                    onTap: () {},
+                    onTap: () {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (context) => const SSOLoginScreen()),
+                        (route) => false, // مسح كل الشاشات السابقة لعدم التمكن من العودة بالزر الخلفي
+                      );
+                    },
                   ),
                   const SizedBox(height: 20),
                 ],
