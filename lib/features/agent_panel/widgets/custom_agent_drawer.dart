@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../screens/agent_dashboard_screen.dart';
 import '../screens/quick_pos_screen.dart';
 import '../screens/mikrotik_categories_screen.dart';
+import '../screens/sub_agents_screen.dart'; // 👈 تم إضافة استدعاء شاشة البقالات
 import '../../auth/screens/sso_login_screen.dart';
 
 class CustomAgentDrawer extends StatefulWidget {
@@ -100,7 +101,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     return Drawer(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       child: Directionality(
-        textDirection: TextDirection.rtl,
+        textDirection: TextDirection.rtl, // فرض اتجاه اللغة لليمين
         child: Column(
           children: [
             // ==========================================
@@ -188,7 +189,8 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                 children: [
-                  _buildGradientTitle('عمليات البيع والشبكة', [Colors.blue.shade700, Colors.lightBlueAccent]),
+                  // تم استبدال الألوان المتدرجة بتصميم أنيق وصلب
+                  _buildSectionTitle('عمليات البيع والشبكة', Colors.blue.shade700),
                   
                   // 👇 ربط شاشة لوحة القيادة
                   _buildDrawerItem(
@@ -228,20 +230,31 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                   
                   const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider()),
 
-                  _buildGradientTitle('الإدارة والتسويق', [Colors.orange.shade700, Colors.amber]),
-                  _buildDrawerItem(title: 'إدارة نقاط البيع (البقالات)', icon: Icons.storefront, iconColor: Colors.purple, onTap: _showComingSoonMessage),
+                  _buildSectionTitle('الإدارة والتسويق', Colors.orange.shade800),
+                  
+                  // 👇 تم ربط شاشة إدارة البقالات هنا
+                  _buildDrawerItem(
+                    title: 'إدارة نقاط البيع (البقالات)', 
+                    icon: Icons.storefront, 
+                    iconColor: Colors.purple, 
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const SubAgentsScreen()));
+                    }
+                  ),
+                  
                   _buildDrawerItem(title: 'التسويق والعروض', icon: Icons.campaign, iconColor: Colors.pinkAccent, onTap: _showComingSoonMessage),
 
                   const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider()),
 
-                  _buildGradientTitle('المالية والمحاسبة', [Colors.green.shade700, Colors.teal]),
+                  _buildSectionTitle('المالية والمحاسبة', Colors.teal.shade700),
                   _buildDrawerItem(title: 'محفظة الوكيل', icon: Icons.account_balance_wallet, iconColor: Colors.teal, onTap: _showComingSoonMessage),
                   _buildDrawerItem(title: 'كشف الحساب المتقدم', icon: Icons.receipt_long, iconColor: Colors.cyan, onTap: _showComingSoonMessage),
                   _buildDrawerItem(title: 'التقارير التحليلية', icon: Icons.analytics, iconColor: Colors.redAccent, onTap: _showComingSoonMessage),
 
                   const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider()),
 
-                  _buildGradientTitle('الإعدادات والدعم', [Colors.purple.shade700, Colors.deepPurpleAccent]),
+                  _buildSectionTitle('الإعدادات والدعم', Colors.deepPurple.shade700),
                   _buildDrawerItem(title: 'الدعم الفني الموحد', icon: Icons.support_agent, iconColor: Colors.indigo, onTap: _showComingSoonMessage),
                   _buildDrawerItem(title: 'إعدادات النظام الموسعة', icon: Icons.settings, iconColor: Colors.blueGrey, onTap: _showComingSoonMessage),
 
@@ -288,26 +301,29 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     );
   }
 
-  Widget _buildGradientTitle(String title, List<Color> colors) {
+  // 👇 دالة جديدة للعناوين بدلاً من الألوان المتدرجة (Gradient) لتكون أكثر تناسقاً
+  Widget _buildSectionTitle(String title, Color color) {
     return Padding(
       padding: const EdgeInsets.only(right: 16, bottom: 8, top: 8),
-      child: ShaderMask(
-        shaderCallback: (bounds) => LinearGradient(colors: colors).createShader(bounds),
-        child: Text(
-          title,
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14),
-        ),
+      child: Text(
+        title,
+        style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 14),
       ),
     );
   }
 
+  // 👇 تم تحديث الدالة وفرض الاتجاه لليمين وحل مشكلة الأيقونات المعكوسة
   Widget _buildDrawerItem({required String title, required IconData icon, required Color iconColor, required VoidCallback onTap}) {
-    return ListTile(
-      dense: true,
-      leading: Icon(icon, color: iconColor), 
-      title: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-      trailing: Icon(Icons.arrow_back_ios_new, size: 14, color: Colors.grey.shade400),
-      onTap: onTap,
+    return Directionality(
+      textDirection: TextDirection.rtl, // تأكيد فرض الاتجاه
+      child: ListTile(
+        dense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        leading: Icon(icon, color: iconColor), 
+        title: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+        trailing: Icon(Icons.arrow_back_ios_new, size: 14, color: Colors.grey.shade500), // السهم يتجه لليسار للدلالة على الدخول للقسم
+        onTap: onTap,
+      ),
     );
   }
 }
