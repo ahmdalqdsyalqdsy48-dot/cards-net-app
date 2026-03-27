@@ -6,6 +6,7 @@ import '../screens/quick_pos_screen.dart';
 import '../screens/mikrotik_categories_screen.dart';
 import '../screens/sub_agents_screen.dart'; // 👈 تم إضافة استدعاء شاشة البقالات
 import '../../auth/screens/sso_login_screen.dart';
+import '../screens/agent_wallet_screen.dart';
 
 class CustomAgentDrawer extends StatefulWidget {
   final String agentName;
