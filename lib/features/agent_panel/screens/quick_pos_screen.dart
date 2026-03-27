@@ -97,9 +97,9 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                   padding: const EdgeInsets.all(15),
                   decoration: BoxDecoration(
                     color: _selectedCategory!['color'].withOpacity(0.1),
-                    border: Border.all(color: _selectedCategory!['color']),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: _selectedCategory!['color'].withOpacity(0.5), width: 2, style: BorderStyle.solid) // تأثير داش غير مدعوم مباشرة فاستخدمنا شفافية
+                    // 👇 تم إبقاء أمر واحد فقط لتنسيق الإطار (border)
+                    border: Border.all(color: _selectedCategory!['color'].withOpacity(0.5), width: 2, style: BorderStyle.solid),
                   ),
                   child: Column(
                     children: [
