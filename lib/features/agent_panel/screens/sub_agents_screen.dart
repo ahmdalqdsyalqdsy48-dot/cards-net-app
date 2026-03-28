@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/custom_agent_drawer.dart';
 
 class SubAgentsScreen extends StatefulWidget {
   const SubAgentsScreen({super.key});
@@ -8,25 +9,19 @@ class SubAgentsScreen extends StatefulWidget {
 }
 
 class _SubAgentsScreenState extends State<SubAgentsScreen> {
-  // رصيد الوكيل الفعلي (لخصم المبالغ منه عند تغذية البقالات)
   double _agentWalletBalance = 125000.0;
 
-  // قائمة البقالات الوهمية المرتبطة بالوكيل
   final List<Map<String, dynamic>> _subAgents = [
     {'id': '1', 'name': 'بقالة الأمانة', 'phone': '771234567', 'balance': 15000.0, 'status': 'نشط'},
     {'id': '2', 'name': 'مركز السعادة للجوالات', 'phone': '779876543', 'balance': 2500.0, 'status': 'نشط'},
     {'id': '3', 'name': 'سوبر ماركت النور', 'phone': '774455667', 'balance': 500.0, 'status': 'رصيد منخفض'},
   ];
 
-  // قائمة طلبات الشحن الواردة من البقالات
   final List<Map<String, dynamic>> _pendingRequests = [
     {'id': 'req1', 'agentId': '3', 'agentName': 'سوبر ماركت النور', 'amount': 20000.0, 'date': 'منذ 10 دقائق'},
     {'id': 'req2', 'agentId': '2', 'agentName': 'مركز السعادة للجوالات', 'amount': 10000.0, 'date': 'منذ ساعتين'},
   ];
 
-  // ==========================================
-  // دالة نافذة التغذية المباشرة (تحويل رصيد لبقالة)
-  // ==========================================
   void _showTransferModal(Map<String, dynamic> agent) {
     final TextEditingController amountController = TextEditingController();
 
@@ -63,9 +58,9 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> {
                   double amount = double.tryParse(amountController.text) ?? 0;
                   if (amount > 0 && amount <= _agentWalletBalance) {
                     setState(() {
-                      _agentWalletBalance -= amount; // الخصم من الوكيل
-                      agent['balance'] += amount; // الإضافة للبقالة
-                      if (agent['balance'] > 1000) agent['status'] = 'نشط'; // تحديث الحالة
+                      _agentWalletBalance -= amount;
+                      agent['balance'] += amount; 
+                      if (agent['balance'] > 1000) agent['status'] = 'نشط';
                     });
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم تحويل $amount ريال إلى ${agent['name']} بنجاح! ✅'), backgroundColor: Colors.green));
@@ -82,9 +77,6 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> {
     );
   }
 
-  // ==========================================
-  // دالة نافذة إضافة بقالة جديدة
-  // ==========================================
   void _showAddSubAgentModal() {
     String name = '', phone = '';
     
@@ -146,6 +138,13 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> {
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Scaffold(
+          // 👇 تم إضافة القائمة الجانبية هنا
+          drawer: const CustomAgentDrawer(
+            agentName: 'شبكة الصقر للواي فاي',
+            phoneNumber: '777777777',
+            role: 'وكيل معتمد (Agent)',
+            currentBalance: 125000.0,
+          ),
           appBar: AppBar(
             title: const Text('إدارة نقاط البيع (البقالات)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
             backgroundColor: Colors.purple.shade800,
@@ -174,9 +173,6 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> {
     );
   }
 
-  // ==========================================
-  // تبويب 1: قائمة البقالات النشطة
-  // ==========================================
   Widget _buildSubAgentsTab() {
     return Scaffold(
       body: ListView.builder(
@@ -251,9 +247,6 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> {
     );
   }
 
-  // ==========================================
-  // تبويب 2: طلبات الشحن الواردة
-  // ==========================================
   Widget _buildPendingRequestsTab() {
     if (_pendingRequests.isEmpty) {
       return const Center(child: Text('لا توجد طلبات شحن معلقة حالياً. 🎉', style: TextStyle(fontSize: 16, color: Colors.grey)));
