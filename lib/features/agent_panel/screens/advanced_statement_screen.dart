@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/custom_agent_drawer.dart';
 
 class AdvancedStatementScreen extends StatefulWidget {
   const AdvancedStatementScreen({super.key});
@@ -8,11 +9,9 @@ class AdvancedStatementScreen extends StatefulWidget {
 }
 
 class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
-  // متغيرات الفلترة
   DateTimeRange? _selectedDateRange;
   String _selectedType = 'الكل';
 
-  // قاعدة بيانات وهمية للعمليات المحاسبية (دفتر الأستاذ / Ledger)
   final List<Map<String, dynamic>> _ledgerData = [
     {'id': '101', 'date': '2023/10/25', 'time': '10:30 ص', 'desc': 'مبيعات كاشير (5 كروت)', 'credit': 2500.0, 'debit': 0.0, 'balance': 125000.0},
     {'id': '102', 'date': '2023/10/25', 'time': '09:15 ص', 'desc': 'تغذية بقالة النور', 'credit': 0.0, 'debit': 20000.0, 'balance': 122500.0},
@@ -21,7 +20,6 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
     {'id': '105', 'date': '2023/10/23', 'time': '02:10 م', 'desc': 'مبيعات كاشير (1 كرت)', 'credit': 1000.0, 'debit': 0.0, 'balance': 102500.0},
   ];
 
-  // دالة اختيار التاريخ
   Future<void> _selectDateRange() async {
     final DateTimeRange? picked = await showDateRangePicker(
       context: context,
@@ -45,6 +43,13 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: Colors.grey.shade100,
+        // 👇 تم إضافة القائمة الجانبية هنا
+        drawer: const CustomAgentDrawer(
+          agentName: 'شبكة الصقر للواي فاي',
+          phoneNumber: '777777777',
+          role: 'وكيل معتمد (Agent)',
+          currentBalance: 125000.0,
+        ),
         appBar: AppBar(
           title: const Text('كشف الحساب المتقدم', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
           backgroundColor: Colors.cyan.shade800,
@@ -69,9 +74,6 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
         ),
         body: Column(
           children: [
-            // ==========================================
-            // 1. شريط الفلاتر العلوي
-            // ==========================================
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -113,12 +115,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
                 ],
               ),
             ),
-
             const SizedBox(height: 10),
-
-            // ==========================================
-            // 2. ترويسة الجدول
-            // ==========================================
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Container(
@@ -134,17 +131,12 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
                 ),
               ),
             ),
-
-            // ==========================================
-            // 3. بيانات الكشف المحاسبي
-            // ==========================================
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.all(16),
                 itemCount: _ledgerData.length,
                 itemBuilder: (context, index) {
                   final row = _ledgerData[index];
-                  // تنسيق الألوان
                   Color creditColor = row['credit'] > 0 ? Colors.green.shade700 : Colors.grey.shade400;
                   Color debitColor = row['debit'] > 0 ? Colors.red.shade700 : Colors.grey.shade400;
 
@@ -159,7 +151,6 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // البيان والتاريخ
                         Expanded(
                           flex: 3,
                           child: Column(
@@ -171,17 +162,14 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
                             ],
                           ),
                         ),
-                        // دائن
                         Expanded(
                           flex: 2,
                           child: Text(row['credit'] > 0 ? '+${row['credit']}' : '-', textAlign: TextAlign.center, style: TextStyle(color: creditColor, fontWeight: FontWeight.bold, fontSize: 12)),
                         ),
-                        // مدين
                         Expanded(
                           flex: 2,
                           child: Text(row['debit'] > 0 ? '-${row['debit']}' : '-', textAlign: TextAlign.center, style: TextStyle(color: debitColor, fontWeight: FontWeight.bold, fontSize: 12)),
                         ),
-                        // الرصيد
                         Expanded(
                           flex: 2,
                           child: Text('${row['balance']}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 12)),
