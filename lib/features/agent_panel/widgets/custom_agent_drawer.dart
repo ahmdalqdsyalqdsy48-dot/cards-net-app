@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
-// 👇 استدعاء الشاشات الخاصة بالوكيل
+// 👇 استدعاء الشاشات الخاصة بالوكيل (تمت إضافة الشاشات الجديدة هنا)
 import '../screens/agent_dashboard_screen.dart';
 import '../screens/quick_pos_screen.dart';
 import '../screens/mikrotik_categories_screen.dart';
 import '../screens/sub_agents_screen.dart'; 
 import '../screens/agent_wallet_screen.dart'; 
 import '../screens/advanced_statement_screen.dart'; 
+import '../screens/marketing_offers_screen.dart'; // 👈 الشاشة الجديدة (التسويق)
+import '../screens/analytics_reports_screen.dart'; // 👈 الشاشة الجديدة (التقارير)
 import '../../auth/screens/sso_login_screen.dart';
 
 class CustomAgentDrawer extends StatefulWidget {
@@ -40,7 +42,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     _currentLocalImageUrl = widget.profileImageUrl;
   }
 
-  // 👇 آلية التنقل الجديدة (نفس منطق الإدارة)
+  // آلية التنقل الحقيقية لفتح الشاشات
   void _navigateTo(BuildContext context, Widget screen) {
     Navigator.pop(context); // إغلاق القائمة الجانبية
     Navigator.pushReplacement(
@@ -49,6 +51,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     );
   }
 
+  // رسالة قريباً للشاشات التي لم تبرمج بعد
   void _showComingSoonMessage(BuildContext context) {
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -60,7 +63,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
   }
 
   // ==========================================
-  // نافذة إدارة الصورة الشخصية (نفس تصميم الإدارة)
+  // نافذة إدارة الصورة الشخصية
   // ==========================================
   void _showProfileImageActionDialog(BuildContext context) {
     bool hasImage = _currentLocalImageUrl != null;
@@ -141,7 +144,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
               child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
-                  // 1. الترويسة العلوية الفخمة (متحركة مع القائمة)
+                  // 1. الترويسة العلوية الفخمة
                   SafeArea(
                     bottom: false,
                     child: Container(
@@ -212,7 +215,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                     ),
                   ),
 
-                  // 2. أزرار الانتقال (نفس تصميم لوحة الإدارة)
+                  // 2. أزرار الانتقال
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('عمليات البيع والشبكة', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
                   _buildDrawerItem(context, 'الرئيسية (غرفة القيادة)', Icons.dashboard, Colors.blue, const AgentDashboardScreen()),
                   _buildDrawerItem(context, 'المتجر السريع (الكاشير)', Icons.point_of_sale, Colors.green, const QuickPosScreen()),
@@ -221,16 +224,19 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                   const Divider(),
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الإدارة والتسويق', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
                   _buildDrawerItem(context, 'إدارة نقاط البيع (البقالات)', Icons.storefront, Colors.purple, const SubAgentsScreen()),
-                  _buildComingSoonItem(context, 'التسويق والعروض', Icons.campaign, Colors.pinkAccent),
+                  // 👇 تم فتح الباب لشاشة التسويق والعروض بنجاح!
+                  _buildDrawerItem(context, 'التسويق والعروض', Icons.campaign, Colors.pinkAccent, const MarketingOffersScreen()),
 
                   const Divider(),
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('المالية والمحاسبة', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
                   _buildDrawerItem(context, 'محفظة الوكيل', Icons.account_balance_wallet, Colors.teal, const AgentWalletScreen()),
                   _buildDrawerItem(context, 'كشف الحساب المتقدم', Icons.receipt_long, Colors.cyan, const AdvancedStatementScreen()),
-                  _buildComingSoonItem(context, 'التقارير التحليلية', Icons.analytics, Colors.redAccent),
+                  // 👇 تم فتح الباب لشاشة التقارير التحليلية بنجاح!
+                  _buildDrawerItem(context, 'التقارير التحليلية', Icons.analytics, Colors.redAccent, const AnalyticsReportsScreen()),
 
                   const Divider(),
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الإعدادات والدعم', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
+                  // هؤلاء الشاشتين لا يزالان قيد التطوير فسنتركهم مع رسالة قريباً
                   _buildComingSoonItem(context, 'الدعم الفني الموحد', Icons.support_agent, Colors.indigo),
                   _buildComingSoonItem(context, 'إعدادات النظام الموسعة', Icons.settings, Colors.blueGrey),
                 ],
@@ -294,7 +300,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     );
   }
 
-  // بناء زر التنقل العادي
+  // بناء زر التنقل العادي الذي يفتح الشاشات
   Widget _buildDrawerItem(BuildContext context, String title, IconData icon, Color iconColor, Widget targetScreen) {
     return ListTile(
       dense: true,
@@ -306,7 +312,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     );
   }
 
-  // بناء زر التنقل للأقسام غير المكتملة
+  // بناء زر التنقل للأقسام غير المكتملة (يظهر رسالة قريباً)
   Widget _buildComingSoonItem(BuildContext context, String title, IconData icon, Color iconColor) {
     return ListTile(
       dense: true,
