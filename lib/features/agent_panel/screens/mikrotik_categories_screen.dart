@@ -187,19 +187,21 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
 
     return DefaultTabController(
       length: 4, 
-      child: Directionality(
-        textDirection: TextDirection.rtl,
-        child: Scaffold(
-          appBar: const CustomHeader(title: 'إدارة الميكروتك والفئات'),
-          drawer: const CustomAgentDrawer(
-            agentName: 'شبكة الصقر للواي فاي',
-            phoneNumber: '777777777',
-            role: 'وكيل معتمد (Agent)',
-            currentBalance: 125000.0,
-          ),
-          body: Column(
+      // 👇 التعديل الجذري: الـ Scaffold هو الحاوي الخارجي ليحفظ اتجاه القائمة الجانبية (Drawer)
+      child: Scaffold(
+        appBar: const CustomHeader(title: 'إدارة الميكروتك والفئات'),
+        drawer: const CustomAgentDrawer(
+          agentName: 'شبكة الصقر للواي فاي',
+          phoneNumber: '777777777',
+          role: 'وكيل معتمد (Agent)',
+          currentBalance: 125000.0,
+        ),
+        // 👇 الأمر الخاص باللغة العربية تم نقله ليغطي المحتوى الداخلي فقط
+        body: Directionality(
+          textDirection: TextDirection.rtl,
+          child: Column(
             children: [
-              // 👇 الحاوية العلوية المنحنية وبداخلها التبويبات (هيكلية موحدة)
+              // الحاوية العلوية المنحنية وبداخلها التبويبات
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.only(bottom: 5, top: 5),
@@ -241,6 +243,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
 
   Widget _buildServersTab() {
     return Scaffold(
+      backgroundColor: Colors.transparent, // لجعل الخلفية تتناسب مع ثيم التطبيق
       body: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: _servers.length,
@@ -270,6 +273,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
 
   Widget _buildCategoriesTab() {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: _categories.isEmpty 
         ? const Center(child: Text('لا توجد فئات حالياً، قم بإضافة فئة جديدة.'))
         : ListView.builder(
