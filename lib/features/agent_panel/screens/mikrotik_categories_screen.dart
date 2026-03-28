@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/custom_agent_drawer.dart';
 
 class MikrotikCategoriesScreen extends StatefulWidget {
   const MikrotikCategoriesScreen({super.key});
@@ -8,30 +9,19 @@ class MikrotikCategoriesScreen extends StatefulWidget {
 }
 
 class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
-  
-  // ==========================================
-  // قاعدة البيانات الوهمية (State)
-  // ==========================================
-  
-  // قائمة السيرفرات
   final List<Map<String, dynamic>> _servers = [
     {'id': '1', 'name': 'سيرفر المنطقة الشمالية', 'ip': '192.168.88.1', 'status': 'متصل نشط 🟢'},
   ];
 
-  // قائمة الفئات مع (عدد الكروت المتوفرة - المخزون)
   final List<Map<String, dynamic>> _categories = [
-    {'id': '1', 'name': 'فئة أبو 1000', 'time': '24 ساعة', 'capacity': '1 جيجا', 'price': 1000, 'color': Colors.blue, 'stock': 5}, // مخزون منخفض للتجربة
+    {'id': '1', 'name': 'فئة أبو 1000', 'time': '24 ساعة', 'capacity': '1 جيجا', 'price': 1000, 'color': Colors.blue, 'stock': 5}, 
     {'id': '2', 'name': 'فئة أبو 500', 'time': '12 ساعة', 'capacity': '500 ميجا', 'price': 500, 'color': Colors.orange, 'stock': 150},
   ];
 
-  // متغيرات تبويب التوليد
   String? _selectedServerToGenerate;
   String? _selectedCategoryToGenerate;
   final TextEditingController _generateAmountController = TextEditingController();
 
-  // ==========================================
-  // دالة نافذة إضافة سيرفر ميكروتك جديد
-  // ==========================================
   void _showAddServerBottomSheet() {
     showModalBottomSheet(
       context: context,
@@ -87,9 +77,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
     );
   }
 
-  // ==========================================
-  // دالة نافذة إضافة فئة كروت جديدة (مع منتقي ألوان)
-  // ==========================================
   void _showAddCategoryBottomSheet() {
     String newName = '';
     String newTime = '';
@@ -103,7 +90,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
-        // نستخدم StatefulBuilder لكي نتمكن من تحديث اللون المختار داخل النافذة فقط
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
             return Padding(
@@ -145,7 +131,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
                       const SizedBox(height: 15),
                       const Align(alignment: Alignment.centerRight, child: Text('اختر لون الفئة:', style: TextStyle(fontWeight: FontWeight.bold))),
                       const SizedBox(height: 10),
-                      // منتقي الألوان
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: colorOptions.map((color) {
@@ -179,7 +164,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
                                   'capacity': newCapacity.isNotEmpty ? newCapacity : 'مفتوح',
                                   'price': int.tryParse(newPrice) ?? 0,
                                   'color': selectedColor,
-                                  'stock': 0, // تبدأ بمخزون صفر حتى يتم التوليد
+                                  'stock': 0, 
                                 });
                               });
                               Navigator.pop(context);
@@ -210,6 +195,13 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Scaffold(
+          // 👇 تم إضافة القائمة الجانبية هنا
+          drawer: const CustomAgentDrawer(
+            agentName: 'شبكة الصقر للواي فاي',
+            phoneNumber: '777777777',
+            role: 'وكيل معتمد (Agent)',
+            currentBalance: 125000.0,
+          ),
           appBar: AppBar(
             title: const Text('إدارة الميكروتك والفئات', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
             backgroundColor: Colors.blue.shade800,
@@ -330,7 +322,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('سعر الجمهور: ${category['price']} ريال', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                // 👇 عرض المخزون مع التنبيه
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
@@ -420,7 +411,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
                 if (_selectedCategoryToGenerate != null && _generateAmountController.text.isNotEmpty) {
                   int amount = int.tryParse(_generateAmountController.text) ?? 0;
                   if (amount > 0) {
-                    // تحديث المخزون
                     setState(() {
                       var category = _categories.firstWhere((c) => c['id'] == _selectedCategoryToGenerate);
                       category['stock'] += amount;
