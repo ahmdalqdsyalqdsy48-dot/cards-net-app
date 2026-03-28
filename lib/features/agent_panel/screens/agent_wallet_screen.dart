@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/custom_agent_drawer.dart';
 
 class AgentWalletScreen extends StatefulWidget {
   const AgentWalletScreen({super.key});
@@ -8,13 +9,9 @@ class AgentWalletScreen extends StatefulWidget {
 }
 
 class _AgentWalletScreenState extends State<AgentWalletScreen> {
-  // الرصيد الحالي للوكيل
   final double _currentBalance = 125000.0;
-  
-  // فلتر العمليات
   String _selectedFilter = 'الكل'; 
 
-  // قاعدة بيانات وهمية لسجل الحركات المالية
   final List<Map<String, dynamic>> _transactions = [
     {'id': '1', 'title': 'بيع كاشير مباشر (5 كروت)', 'amount': 2500.0, 'type': 'income', 'date': 'اليوم 10:30 ص'},
     {'id': '2', 'title': 'تغذية بقالة (سوبر ماركت النور)', 'amount': 20000.0, 'type': 'expense', 'date': 'اليوم 09:15 ص'},
@@ -25,7 +22,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // تصفية العمليات بناءً على الفلتر المختار
     List<Map<String, dynamic>> filteredTransactions = _transactions.where((txn) {
       if (_selectedFilter == 'الكل') return true;
       if (_selectedFilter == 'إيداع/أرباح' && txn['type'] == 'income') return true;
@@ -37,6 +33,13 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: Colors.grey.shade100,
+        // 👇 تم إضافة القائمة الجانبية هنا
+        drawer: const CustomAgentDrawer(
+          agentName: 'شبكة الصقر للواي فاي',
+          phoneNumber: '777777777',
+          role: 'وكيل معتمد (Agent)',
+          currentBalance: 125000.0,
+        ),
         appBar: AppBar(
           title: const Text('المركز المالي والمحفظة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
           backgroundColor: Colors.teal.shade700,
@@ -45,9 +48,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
         ),
         body: Column(
           children: [
-            // ==========================================
-            // 1. بطاقة الرصيد الإجمالي
-            // ==========================================
             Container(
               width: double.infinity,
               padding: const EdgeInsets.only(bottom: 30, top: 20, right: 20, left: 20),
@@ -82,12 +82,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
                 ],
               ),
             ),
-
             const SizedBox(height: 15),
-
-            // ==========================================
-            // 2. فلاتر سجل العمليات
-            // ==========================================
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
@@ -100,10 +95,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
                     icon: const Icon(Icons.filter_list, color: Colors.teal),
                     style: const TextStyle(color: Colors.teal, fontWeight: FontWeight.bold, fontFamily: 'Tajawal'),
                     items: ['الكل', 'إيداع/أرباح', 'سحب/مصروفات'].map((String value) {
-                      return DropdownMenuItem<String>(
-                        value: value,
-                        child: Text(value),
-                      );
+                      return DropdownMenuItem<String>(value: value, child: Text(value));
                     }).toList(),
                     onChanged: (newValue) {
                       setState(() {
@@ -114,10 +106,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
                 ],
               ),
             ),
-
-            // ==========================================
-            // 3. قائمة سجل الحركات المالية
-            // ==========================================
             Expanded(
               child: filteredTransactions.isEmpty
                   ? const Center(child: Text('لا توجد عمليات تطابق هذا الفلتر', style: TextStyle(color: Colors.grey)))
@@ -162,7 +150,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
     );
   }
 
-  // أداة مساعدة لبناء أزرار الإجراءات السريعة تحت الرصيد
   Widget _buildQuickActionButton(IconData icon, String label, Color color, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
