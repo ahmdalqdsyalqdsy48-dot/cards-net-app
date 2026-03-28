@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 
-// 👇 استدعاء الشاشات الخاصة بالوكيل (تمت إضافة الشاشات الجديدة هنا)
+// 👇 استدعاء جميع الشاشات الـ 10 الخاصة بالوكيل (اكتملت بنسبة 100%)
 import '../screens/agent_dashboard_screen.dart';
 import '../screens/quick_pos_screen.dart';
 import '../screens/mikrotik_categories_screen.dart';
 import '../screens/sub_agents_screen.dart'; 
+import '../screens/marketing_offers_screen.dart';
 import '../screens/agent_wallet_screen.dart'; 
 import '../screens/advanced_statement_screen.dart'; 
-import '../screens/marketing_offers_screen.dart'; // 👈 الشاشة الجديدة (التسويق)
-import '../screens/analytics_reports_screen.dart'; // 👈 الشاشة الجديدة (التقارير)
+import '../screens/analytics_reports_screen.dart'; 
+import '../screens/agent_support_screen.dart'; // 👈 الشاشة الجديدة للدعم
+import '../screens/agent_settings_screen.dart'; // 👈 الشاشة الجديدة للإعدادات
 import '../../auth/screens/sso_login_screen.dart';
 
 class CustomAgentDrawer extends StatefulWidget {
@@ -51,7 +53,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     );
   }
 
-  // رسالة قريباً للشاشات التي لم تبرمج بعد
+  // رسالة قريباً (أبقيناها كأداة مساعدة للمستقبل إذا أردت إضافة شاشات جديدة)
   void _showComingSoonMessage(BuildContext context) {
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -215,7 +217,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                     ),
                   ),
 
-                  // 2. أزرار الانتقال
+                  // 2. أزرار الانتقال (جميعها مفعلة الآن!)
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('عمليات البيع والشبكة', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
                   _buildDrawerItem(context, 'الرئيسية (غرفة القيادة)', Icons.dashboard, Colors.blue, const AgentDashboardScreen()),
                   _buildDrawerItem(context, 'المتجر السريع (الكاشير)', Icons.point_of_sale, Colors.green, const QuickPosScreen()),
@@ -224,21 +226,19 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                   const Divider(),
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الإدارة والتسويق', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
                   _buildDrawerItem(context, 'إدارة نقاط البيع (البقالات)', Icons.storefront, Colors.purple, const SubAgentsScreen()),
-                  // 👇 تم فتح الباب لشاشة التسويق والعروض بنجاح!
                   _buildDrawerItem(context, 'التسويق والعروض', Icons.campaign, Colors.pinkAccent, const MarketingOffersScreen()),
 
                   const Divider(),
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('المالية والمحاسبة', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
                   _buildDrawerItem(context, 'محفظة الوكيل', Icons.account_balance_wallet, Colors.teal, const AgentWalletScreen()),
                   _buildDrawerItem(context, 'كشف الحساب المتقدم', Icons.receipt_long, Colors.cyan, const AdvancedStatementScreen()),
-                  // 👇 تم فتح الباب لشاشة التقارير التحليلية بنجاح!
                   _buildDrawerItem(context, 'التقارير التحليلية', Icons.analytics, Colors.redAccent, const AnalyticsReportsScreen()),
 
                   const Divider(),
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الإعدادات والدعم', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
-                  // هؤلاء الشاشتين لا يزالان قيد التطوير فسنتركهم مع رسالة قريباً
-                  _buildComingSoonItem(context, 'الدعم الفني الموحد', Icons.support_agent, Colors.indigo),
-                  _buildComingSoonItem(context, 'إعدادات النظام الموسعة', Icons.settings, Colors.blueGrey),
+                  // 👇 تم فتح الباب لشاشتي الدعم والإعدادات بنجاح!
+                  _buildDrawerItem(context, 'الدعم الفني الموحد', Icons.support_agent, Colors.indigo, const AgentSupportScreen()),
+                  _buildDrawerItem(context, 'إعدادات النظام الموسعة', Icons.settings, Colors.blueGrey, const AgentSettingsScreen()),
                 ],
               ),
             ),
@@ -312,7 +312,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     );
   }
 
-  // بناء زر التنقل للأقسام غير المكتملة (يظهر رسالة قريباً)
+  // بناء زر التنقل للأقسام غير المكتملة (أداة مساعدة احتياطية للمستقبل)
   Widget _buildComingSoonItem(BuildContext context, String title, IconData icon, Color iconColor) {
     return ListTile(
       dense: true,
