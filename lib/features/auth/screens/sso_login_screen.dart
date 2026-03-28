@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-// استدعاء لوحة المالك (المسار صحيح)
+// استدعاء لوحة المالك 
 import '../../super_admin/screens/super_admin_dashboard.dart';
-// 👇 التصحيح هنا: استدعاء لوحة الوكيل من مسارها الجديد داخل features
+// استدعاء لوحة الوكيل 
 import '../../agent_panel/screens/agent_dashboard_screen.dart';
+// 👇 الإضافة الجديدة: استدعاء لوحة المستخدم (الزبون)
+import '../../user_panel/screens/user_dashboard_screen.dart';
 
 class SSOLoginScreen extends StatefulWidget {
   const SSOLoginScreen({super.key});
@@ -139,7 +141,14 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                   MaterialPageRoute(builder: (context) => const AgentDashboardScreen()),
                 );
               } 
-              // 3. في حال إدخال بيانات خاطئة
+              // 👇 3. الإضافة الجديدة: حساب المستخدم العادي (الزبون)
+              else if (phone == '777123456' && password == 'user123') {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const UserDashboardScreen()),
+                );
+              } 
+              // 4. في حال إدخال بيانات خاطئة
               else {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
