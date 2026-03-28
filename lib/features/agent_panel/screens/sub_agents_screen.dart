@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الترويسة المخصصة
 import '../widgets/custom_agent_drawer.dart';
 
 class SubAgentsScreen extends StatefulWidget {
@@ -79,7 +80,6 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> {
 
   void _showAddSubAgentModal() {
     String name = '', phone = '';
-    
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -94,16 +94,9 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> {
               children: [
                 const Text('إضافة نقطة بيع جديدة (بقالة) 🏪', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 20),
-                TextField(
-                  onChanged: (val) => name = val,
-                  decoration: InputDecoration(labelText: 'اسم البقالة / المحل', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.storefront)),
-                ),
+                TextField(onChanged: (val) => name = val, decoration: InputDecoration(labelText: 'اسم البقالة / المحل', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.storefront))),
                 const SizedBox(height: 12),
-                TextField(
-                  onChanged: (val) => phone = val,
-                  keyboardType: TextInputType.phone,
-                  decoration: InputDecoration(labelText: 'رقم الهاتف (لتسجيل الدخول)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.phone)),
-                ),
+                TextField(onChanged: (val) => phone = val, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: 'رقم الهاتف (لتسجيل الدخول)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.phone))),
                 const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,
@@ -116,7 +109,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> {
                           _subAgents.add({'id': DateTime.now().toString(), 'name': name, 'phone': phone, 'balance': 0.0, 'status': 'جديد'});
                         });
                         Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة نقطة البيع بنجاح، يمكنهم الآن تسجيل الدخول! ✅'), backgroundColor: Colors.green));
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة نقطة البيع بنجاح! ✅'), backgroundColor: Colors.green));
                       }
                     },
                     child: const Text('حفظ وإضافة', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
@@ -133,39 +126,50 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return DefaultTabController(
       length: 2,
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Scaffold(
-          // 👇 تم إضافة القائمة الجانبية هنا
+          appBar: const CustomHeader(title: 'إدارة نقاط البيع (البقالات)'),
           drawer: const CustomAgentDrawer(
             agentName: 'شبكة الصقر للواي فاي',
             phoneNumber: '777777777',
             role: 'وكيل معتمد (Agent)',
             currentBalance: 125000.0,
           ),
-          appBar: AppBar(
-            title: const Text('إدارة نقاط البيع (البقالات)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-            backgroundColor: Colors.purple.shade800,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            bottom: const TabBar(
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.white54,
-              indicatorColor: Colors.orange,
-              indicatorWeight: 4,
-              labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              tabs: [
-                Tab(icon: Icon(Icons.storefront), text: 'البقالات النشطة'),
-                Tab(icon: Icon(Icons.notifications_active), text: 'طلبات الشحن'),
-              ],
-            ),
-          ),
-          body: TabBarView(
+          body: Column(
             children: [
-              _buildSubAgentsTab(),
-              _buildPendingRequestsTab(),
+              // 👇 الحاوية العلوية المنحنية
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.only(bottom: 5, top: 5),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey.shade900 : Colors.purple.shade800,
+                  borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
+                ),
+                child: const TabBar(
+                  labelColor: Colors.white,
+                  unselectedLabelColor: Colors.white54,
+                  indicatorColor: Colors.orange,
+                  indicatorWeight: 4,
+                  labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  tabs: [
+                    Tab(icon: Icon(Icons.storefront), text: 'البقالات النشطة'),
+                    Tab(icon: Icon(Icons.notifications_active), text: 'طلبات الشحن'),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    _buildSubAgentsTab(),
+                    _buildPendingRequestsTab(),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
