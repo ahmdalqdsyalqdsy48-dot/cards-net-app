@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/custom_header.dart'; // استدعاء الترويسة الموحدة
 import '../widgets/custom_user_drawer.dart'; // استدعاء القائمة الجانبية للمستخدم
+// 👇 الإضافة الجديدة 1: استدعاء شاشة المحفظة الذكية
+import 'user_wallet_screen.dart'; 
 
 class UserDashboardScreen extends StatefulWidget {
   const UserDashboardScreen({super.key});
@@ -10,12 +12,12 @@ class UserDashboardScreen extends StatefulWidget {
 }
 
 class _UserDashboardScreenState extends State<UserDashboardScreen> {
-  // بيانات وهمية للزبون (سيتم ربطها بقاعدة البيانات لاحقاً)
+  // بيانات وهمية للزبون
   final String _userName = 'محمد أحمد';
   final String _phoneNumber = '777123456';
   final double _walletBalance = 2500.0;
   
-  // بيانات وهمية لكرت نشط (إذا كان الزبون قد اشترى كرتاً ولم ينتهِ بعد)
+  // بيانات وهمية لكرت نشط
   final bool _hasActiveCard = true;
   final Map<String, String> _activeCardData = {
     'network': 'شبكة الصقر للواي فاي',
@@ -30,11 +32,18 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
     );
   }
 
+  // 👇 الإضافة الجديدة 2: دالة الانتقال إلى شاشة المحفظة الذكية
+  void _navigateToWallet() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const UserWalletScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // 👇 Scaffold في الخارج لضمان بقاء القائمة الجانبية في اليسار
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: const CustomHeader(title: 'الرئيسية'),
@@ -43,7 +52,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
         phoneNumber: _phoneNumber,
         walletBalance: _walletBalance,
       ),
-      // 👇 Directionality داخل الـ body لجعل محتوى الشاشة بالعربية (من اليمين لليسار)
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: SingleChildScrollView(
@@ -81,7 +89,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                           style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
                         ),
                         ElevatedButton.icon(
-                          onPressed: () => _showComingSoon('شحن المحفظة'),
+                          // 👇 الإضافة الجديدة 3: ربط زر الشحن بشاشة المحفظة
+                          onPressed: _navigateToWallet,
                           icon: const Icon(Icons.add_circle, color: Colors.blue, size: 18),
                           label: const Text('شحن', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
                           style: ElevatedButton.styleFrom(
@@ -105,8 +114,10 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     _buildQuickActionBtn(Icons.wifi, 'شراء كرت', Colors.orange, () => _showComingSoon('سوق الشبكات')),
-                    _buildQuickActionBtn(Icons.send_to_mobile, 'تحويل رصيد', Colors.teal, () => _showComingSoon('التحويل للأصدقاء')),
-                    _buildQuickActionBtn(Icons.qr_code_scanner, 'الدفع بـ QR', Colors.purple, () => _showComingSoon('مسح QR')),
+                    // 👇 الإضافة الجديدة 4: ربط زر التحويل بشاشة المحفظة
+                    _buildQuickActionBtn(Icons.send_to_mobile, 'تحويل رصيد', Colors.teal, _navigateToWallet),
+                    // 👇 الإضافة الجديدة 5: ربط زر QR بشاشة المحفظة
+                    _buildQuickActionBtn(Icons.qr_code_scanner, 'الدفع بـ QR', Colors.purple, _navigateToWallet),
                     _buildQuickActionBtn(Icons.sos, 'سلفني', Colors.redAccent, () => _showComingSoon('خدمة سلفني')),
                   ],
                 ),
@@ -202,11 +213,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
     );
   }
 
-  // ==========================================
-  // أدوات مساعدة (Widgets) لتقليل تكرار الكود
-  // ==========================================
-
-  // بناء الأزرار الدائرية السريعة
+  // أداة مساعدة لبناء الأزرار السريعة
   Widget _buildQuickActionBtn(IconData icon, String label, Color color, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
@@ -228,7 +235,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
     );
   }
 
-  // بناء بطاقات الإعلانات الجانبية
+  // أداة مساعدة لبناء الإعلانات
   Widget _buildPromoBanner(String title, String subtitle, Color color1, Color color2) {
     return Container(
       width: 280,
