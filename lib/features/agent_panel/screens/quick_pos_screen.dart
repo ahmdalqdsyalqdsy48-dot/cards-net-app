@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الترويسة المخصصة مثل الرئيسية
+import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart';
 
 class QuickPosScreen extends StatefulWidget {
@@ -10,16 +10,10 @@ class QuickPosScreen extends StatefulWidget {
 }
 
 class _QuickPosScreenState extends State<QuickPosScreen> {
-  // رصيد الوكيل الوهمي للتجربة
   double _walletBalance = 125000.0;
-  
-  // الفئة المحددة حالياً
   Map<String, dynamic>? _selectedCategory;
-  
-  // المتغير الخاص بالكمية المطلوبة
   int _quantity = 1;
 
-  // قائمة وهمية للفئات المتاحة للبيع
   final List<Map<String, dynamic>> _categories = [
     {'name': 'فئة أبو 1000', 'price': 1000, 'time': '24 ساعة', 'color': Colors.blue},
     {'name': 'فئة أبو 500', 'price': 500, 'time': '12 ساعة', 'color': Colors.orange},
@@ -27,14 +21,9 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
     {'name': 'فئة أبو 100', 'price': 100, 'time': 'ساعتين', 'color': Colors.purple},
   ];
 
-  // ==========================================
-  // دالة نافذة تأكيد عملية البيع
-  // ==========================================
   void _showConfirmSaleDialog() {
     if (_selectedCategory == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الرجاء اختيار فئة أولاً!'), backgroundColor: Colors.red),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء اختيار فئة أولاً!'), backgroundColor: Colors.red));
       return;
     }
 
@@ -48,15 +37,9 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
           child: AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
             title: const Text('تأكيد البيع 🛒', style: TextStyle(fontWeight: FontWeight.bold)),
-            content: Text(
-              'هل أنت متأكد من خصم مبلغ $totalPrice ريال من محفظتك لبيع عدد ($_quantity) كرت من (${_selectedCategory!['name']})؟',
-              style: const TextStyle(fontSize: 16),
-            ),
+            content: Text('هل أنت متأكد من خصم مبلغ $totalPrice ريال من محفظتك لبيع عدد ($_quantity) كرت من (${_selectedCategory!['name']})؟', style: const TextStyle(fontSize: 16)),
             actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('إلغاء', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-              ),
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                 onPressed: () {
@@ -72,14 +55,8 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
     );
   }
 
-  // ==========================================
-  // دالة معالجة البيع وعرض نافذة الكروت الجديدة
-  // ==========================================
   void _processSale(int totalPrice) {
-    setState(() {
-      _walletBalance -= totalPrice; 
-    });
-
+    setState(() { _walletBalance -= totalPrice; });
     List<String> generatedPins = List.generate(_quantity, (index) => "8472 9102 334${index + 1}");
 
     showDialog(
@@ -100,7 +77,6 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                   const Text('تمت عملية البيع بنجاح!', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.green)),
                   Text('تم إصدار ($_quantity) كرت', style: const TextStyle(color: Colors.grey, fontSize: 14)),
                   const SizedBox(height: 15),
-                  
                   Flexible(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxHeight: 250),
@@ -136,29 +112,19 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                       ),
                     ),
                   ),
-                  
                   const SizedBox(height: 15),
-                  
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _buildActionButton(Icons.share, 'مشاركة الكل', Colors.blue, () {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري فتح واتساب...')));
-                      }),
-                      _buildActionButton(Icons.print, 'طباعة الكل', Colors.orange, () {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري الإرسال للطابعة...')));
-                      }),
+                      _buildActionButton(Icons.share, 'مشاركة الكل', Colors.blue, () { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري فتح واتساب...'))); }),
+                      _buildActionButton(Icons.print, 'طباعة الكل', Colors.orange, () { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري الإرسال للطابعة...'))); }),
                     ],
                   ),
-                  
                   const SizedBox(height: 10),
                   TextButton(
                     onPressed: () {
                       Navigator.pop(context);
-                      setState(() {
-                        _selectedCategory = null; 
-                        _quantity = 1; 
-                      });
+                      setState(() { _selectedCategory = null; _quantity = 1; });
                     },
                     child: const Text('إغلاق وبدء بيع جديد', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
                   )
@@ -194,7 +160,6 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      // 👇 استخدام CustomHeader تماماً مثل الشاشة الرئيسية
       appBar: const CustomHeader(title: 'المتجر السريع (الكاشير)'),
       drawer: const CustomAgentDrawer(
         agentName: 'شبكة الصقر للواي فاي',
@@ -206,9 +171,6 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // ==========================================
-            // 1. شريط رصيد المحفظة العلوي (بنفس منحنيات الرئيسية)
-            // ==========================================
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
               decoration: BoxDecoration(
@@ -223,12 +185,7 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                 ],
               ),
             ),
-
             const SizedBox(height: 15),
-
-            // ==========================================
-            // 2. شبكة الفئات المتاحة للبيع
-            // ==========================================
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -241,52 +198,31 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                       child: GridView.builder(
                         padding: const EdgeInsets.only(bottom: 20),
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 15,
-                          mainAxisSpacing: 15,
-                          childAspectRatio: 1.2,
+                          crossAxisCount: 2, crossAxisSpacing: 15, mainAxisSpacing: 15, childAspectRatio: 1.2,
                         ),
                         itemCount: _categories.length,
                         itemBuilder: (context, index) {
                           final category = _categories[index];
                           final isSelected = _selectedCategory == category;
-
                           return InkWell(
-                            onTap: () {
-                              setState(() {
-                                _selectedCategory = category;
-                                _quantity = 1; 
-                              });
-                            },
+                            onTap: () { setState(() { _selectedCategory = category; _quantity = 1; }); },
                             borderRadius: BorderRadius.circular(15),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 200),
                               decoration: BoxDecoration(
                                 color: isSelected ? category['color'] : (isDark ? Colors.grey.shade800 : Colors.white),
                                 borderRadius: BorderRadius.circular(15),
-                                border: Border.all(
-                                  color: isSelected ? category['color'] : Colors.grey.shade300,
-                                  width: isSelected ? 3 : 1,
-                                ),
-                                boxShadow: [
-                                  if (isSelected)
-                                    BoxShadow(color: category['color'].withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 5))
-                                ],
+                                border: Border.all(color: isSelected ? category['color'] : Colors.grey.shade300, width: isSelected ? 3 : 1),
+                                boxShadow: [if (isSelected) BoxShadow(color: category['color'].withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 5))],
                               ),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Icon(Icons.wifi, size: 30, color: isSelected ? Colors.white : category['color']),
                                   const SizedBox(height: 10),
-                                  Text(
-                                    category['name'],
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isSelected ? Colors.white : (isDark ? Colors.white : Colors.black87)),
-                                  ),
+                                  Text(category['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isSelected ? Colors.white : (isDark ? Colors.white : Colors.black87))),
                                   const SizedBox(height: 5),
-                                  Text(
-                                    '${category['price']} ريال',
-                                    style: TextStyle(fontSize: 14, color: isSelected ? Colors.white70 : Colors.grey),
-                                  ),
+                                  Text('${category['price']} ريال', style: TextStyle(fontSize: 14, color: isSelected ? Colors.white70 : Colors.grey)),
                                 ],
                               ),
                             ),
@@ -298,10 +234,6 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                 ),
               ),
             ),
-
-            // ==========================================
-            // 3. قسم البيع السفلي (يظهر فقط عند اختيار فئة)
-            // ==========================================
             if (_selectedCategory != null)
               Container(
                 padding: const EdgeInsets.all(20),
@@ -317,37 +249,18 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                       children: [
                         const Text('الكمية المطلوبة:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                         Container(
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey.shade300),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
+                          decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(10)),
                           child: Row(
                             children: [
-                              IconButton(
-                                icon: const Icon(Icons.remove, color: Colors.red),
-                                onPressed: () {
-                                  if (_quantity > 1) {
-                                    setState(() => _quantity--);
-                                  }
-                                },
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 15),
-                                child: Text('$_quantity', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.add, color: Colors.green),
-                                onPressed: () {
-                                  setState(() => _quantity++);
-                                },
-                              ),
+                              IconButton(icon: const Icon(Icons.remove, color: Colors.red), onPressed: () { if (_quantity > 1) setState(() => _quantity--); }),
+                              Container(padding: const EdgeInsets.symmetric(horizontal: 15), child: Text('$_quantity', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+                              IconButton(icon: const Icon(Icons.add, color: Colors.green), onPressed: () => setState(() => _quantity++)),
                             ],
                           ),
                         ),
                       ],
                     ),
                     const Divider(height: 30),
-                    
                     Row(
                       children: [
                         Expanded(
@@ -367,10 +280,7 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                               onPressed: _showConfirmSaleDialog,
                               icon: const Icon(Icons.point_of_sale, color: Colors.white, size: 24),
                               label: const Text('بيع الآن', style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.teal.shade700,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                              ),
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.teal.shade700, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
                             ),
                           ),
                         ),
