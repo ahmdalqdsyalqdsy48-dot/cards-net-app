@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الترويسة المخصصة
 import '../widgets/custom_agent_drawer.dart';
 
 class MikrotikCategoriesScreen extends StatefulWidget {
@@ -29,10 +30,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-            top: 20, left: 16, right: 16,
-          ),
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, top: 20, left: 16, right: 16),
           child: Directionality(
             textDirection: TextDirection.rtl,
             child: SingleChildScrollView(
@@ -93,10 +91,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
             return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
-                top: 20, left: 16, right: 16,
-              ),
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, top: 20, left: 16, right: 16),
               child: Directionality(
                 textDirection: TextDirection.rtl,
                 child: SingleChildScrollView(
@@ -114,12 +109,12 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
                         children: [
                           Expanded(child: TextField(
                             onChanged: (val) => newTime = val,
-                            keyboardType: TextInputType.text, decoration: InputDecoration(labelText: 'الوقت (ساعة/يوم)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.timer))
+                            decoration: InputDecoration(labelText: 'الوقت (ساعة/يوم)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.timer))
                           )),
                           const SizedBox(width: 10),
                           Expanded(child: TextField(
                             onChanged: (val) => newCapacity = val,
-                            keyboardType: TextInputType.text, decoration: InputDecoration(labelText: 'السعة (ميجا/جيجا)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.data_usage))
+                            decoration: InputDecoration(labelText: 'السعة (ميجا/جيجا)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.data_usage))
                           )),
                         ],
                       ),
@@ -136,9 +131,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
                         children: colorOptions.map((color) {
                           return GestureDetector(
                             onTap: () {
-                              setModalState(() {
-                                selectedColor = color;
-                              });
+                              setModalState(() => selectedColor = color);
                             },
                             child: CircleAvatar(
                               backgroundColor: color,
@@ -190,44 +183,55 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return DefaultTabController(
       length: 4, 
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Scaffold(
-          // 👇 تم إضافة القائمة الجانبية هنا
+          appBar: const CustomHeader(title: 'إدارة الميكروتك والفئات'),
           drawer: const CustomAgentDrawer(
             agentName: 'شبكة الصقر للواي فاي',
             phoneNumber: '777777777',
             role: 'وكيل معتمد (Agent)',
             currentBalance: 125000.0,
           ),
-          appBar: AppBar(
-            title: const Text('إدارة الميكروتك والفئات', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-            backgroundColor: Colors.blue.shade800,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            bottom: const TabBar(
-              isScrollable: true,
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.white54,
-              indicatorColor: Colors.orange,
-              indicatorWeight: 4,
-              labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              tabs: [
-                Tab(icon: Icon(Icons.dns), text: 'سيرفرات الربط'),
-                Tab(icon: Icon(Icons.category), text: 'المخزون والفئات'),
-                Tab(icon: Icon(Icons.local_offer), text: 'شرائح الخصم'),
-                Tab(icon: Icon(Icons.autorenew), text: 'توليد الكروت'),
-              ],
-            ),
-          ),
-          body: TabBarView(
+          body: Column(
             children: [
-              _buildServersTab(),
-              _buildCategoriesTab(),
-              _buildDiscountTiersTab(),
-              _buildGenerateCardsTab(),
+              // 👇 الحاوية العلوية المنحنية وبداخلها التبويبات (هيكلية موحدة)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.only(bottom: 5, top: 5),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey.shade900 : Colors.blue.shade800,
+                  borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
+                ),
+                child: const TabBar(
+                  isScrollable: true,
+                  labelColor: Colors.white,
+                  unselectedLabelColor: Colors.white54,
+                  indicatorColor: Colors.orange,
+                  indicatorWeight: 4,
+                  labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  tabs: [
+                    Tab(icon: Icon(Icons.dns), text: 'سيرفرات الربط'),
+                    Tab(icon: Icon(Icons.category), text: 'المخزون والفئات'),
+                    Tab(icon: Icon(Icons.local_offer), text: 'شرائح الخصم'),
+                    Tab(icon: Icon(Icons.autorenew), text: 'توليد الكروت'),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    _buildServersTab(),
+                    _buildCategoriesTab(),
+                    _buildDiscountTiersTab(),
+                    _buildGenerateCardsTab(),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
