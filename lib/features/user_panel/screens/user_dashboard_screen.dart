@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
-import '../../../core/widgets/custom_header.dart'; // استدعاء الترويسة الموحدة
-import '../widgets/custom_user_drawer.dart'; // استدعاء القائمة الجانبية للمستخدم
-// 👇 الإضافة الجديدة 1: استدعاء شاشة المحفظة الذكية
-import 'user_wallet_screen.dart'; 
+import '../../../core/widgets/custom_header.dart'; 
+import '../widgets/custom_user_drawer.dart';
+
+// 👇 استدعاء جميع الشاشات التي قمنا بتأسيسها
+import 'user_wallet_screen.dart';
+import 'network_store_screen.dart';
+import 'my_cards_screen.dart';
+import 'rewards_screen.dart';
+import 'user_transactions_screen.dart';
+import 'user_support_screen.dart';
 
 class UserDashboardScreen extends StatefulWidget {
   const UserDashboardScreen({super.key});
@@ -12,12 +18,11 @@ class UserDashboardScreen extends StatefulWidget {
 }
 
 class _UserDashboardScreenState extends State<UserDashboardScreen> {
-  // بيانات وهمية للزبون
+  // بيانات تجريبية
   final String _userName = 'محمد أحمد';
   final String _phoneNumber = '777123456';
   final double _walletBalance = 2500.0;
   
-  // بيانات وهمية لكرت نشط
   final bool _hasActiveCard = true;
   final Map<String, String> _activeCardData = {
     'network': 'شبكة الصقر للواي فاي',
@@ -25,18 +30,11 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
     'timeRemaining': '10 ساعات و 15 دقيقة',
   };
 
-  // دالة لعرض رسالة مؤقتة للأزرار التي لم نبرمج شاشاتها بعد
-  void _showComingSoon(String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('سيتم نقلك إلى شاشة ($feature) 🚀'), backgroundColor: Colors.blueGrey),
-    );
-  }
-
-  // 👇 الإضافة الجديدة 2: دالة الانتقال إلى شاشة المحفظة الذكية
-  void _navigateToWallet() {
+  // دالة موحدة للانتقال بين الشاشات
+  void _goTo(Widget screen) {
     Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const UserWalletScreen()),
+      context, 
+      MaterialPageRoute(builder: (context) => screen)
     );
   }
 
@@ -58,153 +56,36 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ==========================================
               // 1. بطاقة الرصيد الفاخرة
-              // ==========================================
-              Container(
-                width: double.infinity,
-                margin: const EdgeInsets.all(16),
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.blue.shade900, Colors.blue.shade500],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(color: Colors.blue.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5)),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('الرصيد المتاح', style: TextStyle(color: Colors.white70, fontSize: 14)),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          '$_walletBalance ريال',
-                          style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
-                        ),
-                        ElevatedButton.icon(
-                          // 👇 الإضافة الجديدة 3: ربط زر الشحن بشاشة المحفظة
-                          onPressed: _navigateToWallet,
-                          icon: const Icon(Icons.add_circle, color: Colors.blue, size: 18),
-                          label: const Text('شحن', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+              _buildBalanceCard(),
 
-              // ==========================================
-              // 2. الأزرار السريعة (Quick Actions)
-              // ==========================================
+              // 2. الأزرار السريعة (تم ربطها جميعاً بالشاشات الفعلية)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildQuickActionBtn(Icons.wifi, 'شراء كرت', Colors.orange, () => _showComingSoon('سوق الشبكات')),
-                    // 👇 الإضافة الجديدة 4: ربط زر التحويل بشاشة المحفظة
-                    _buildQuickActionBtn(Icons.send_to_mobile, 'تحويل رصيد', Colors.teal, _navigateToWallet),
-                    // 👇 الإضافة الجديدة 5: ربط زر QR بشاشة المحفظة
-                    _buildQuickActionBtn(Icons.qr_code_scanner, 'الدفع بـ QR', Colors.purple, _navigateToWallet),
-                    _buildQuickActionBtn(Icons.sos, 'سلفني', Colors.redAccent, () => _showComingSoon('خدمة سلفني')),
+                    _buildQuickActionBtn(Icons.wifi, 'شراء كرت', Colors.orange, () => _goTo(const NetworkStoreScreen())),
+                    _buildQuickActionBtn(Icons.send_to_mobile, 'تحويل رصيد', Colors.teal, () => _goTo(const UserWalletScreen())),
+                    _buildQuickActionBtn(Icons.stars, 'المكافآت', Colors.amber, () => _goTo(const RewardsScreen())),
+                    _buildQuickActionBtn(Icons.sos, 'سلفني', Colors.redAccent, () => _goTo(const MyCardsScreen())),
                   ],
                 ),
               ),
 
               const SizedBox(height: 25),
 
-              // ==========================================
-              // 3. الكرت النشط حالياً (Active Card)
-              // ==========================================
-              if (_hasActiveCard) ...[
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: Text('الكرت النشط حالياً 🌐', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                ),
-                Container(
-                  margin: const EdgeInsets.all(16),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.grey.shade800 : Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(15),
-                    border: Border.all(color: Colors.green.shade200),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(_activeCardData['network']!, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green)),
-                          const Icon(Icons.check_circle, color: Colors.green),
-                        ],
-                      ),
-                      const Divider(),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('رقم الكرت (PIN):', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                          Row(
-                            children: [
-                              Text(_activeCardData['pin']!, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: 2)),
-                              IconButton(
-                                icon: const Icon(Icons.copy, color: Colors.blue, size: 20),
-                                onPressed: () {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم نسخ رقم الكرت بنجاح ✅'), backgroundColor: Colors.green));
-                                },
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 5),
-                      Text('الوقت المتبقي: ${_activeCardData['timeRemaining']}', style: const TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 15),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () => _showComingSoon('تسجيل الدخول لشبكة الميكروتك'),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                          child: const Text('تسجيل الدخول للشبكة تلقائياً', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+              // 3. قسم الكرت النشط
+              if (_hasActiveCard) _buildActiveCardSection(isDark),
 
-              // ==========================================
-              // 4. العروض الإعلانية (Carousel Banner)
-              // ==========================================
+              // 4. قسم العروض الإعلانية
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16),
                 child: Text('عروض حصرية لك 🔥', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               ),
               const SizedBox(height: 10),
-              SizedBox(
-                height: 120,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  children: [
-                    _buildPromoBanner('خصم 20%', 'على جميع كروت فئة 1000 من شبكة النور', Colors.orange.shade400, Colors.deepOrange),
-                    const SizedBox(width: 10),
-                    _buildPromoBanner('نقاط مضاعفة!', 'احصل على ضعف النقاط عند الشراء اليوم', Colors.purple.shade400, Colors.deepPurple),
-                  ],
-                ),
-              ),
+              _buildPromoSection(),
+              
               const SizedBox(height: 30),
             ],
           ),
@@ -213,7 +94,47 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
     );
   }
 
-  // أداة مساعدة لبناء الأزرار السريعة
+  // --- بناء بطاقة الرصيد ---
+  Widget _buildBalanceCard() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.blue.shade900, Colors.blue.shade500],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('الرصيد المتاح', style: TextStyle(color: Colors.white70, fontSize: 14)),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('$_walletBalance ريال', style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+              ElevatedButton.icon(
+                onPressed: () => _goTo(const UserWalletScreen()),
+                icon: const Icon(Icons.add_circle, color: Colors.blue, size: 18),
+                label: const Text('شحن', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- بناء الأزرار الدائرية ---
   Widget _buildQuickActionBtn(IconData icon, String label, Color color, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
@@ -235,13 +156,81 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
     );
   }
 
-  // أداة مساعدة لبناء الإعلانات
-  Widget _buildPromoBanner(String title, String subtitle, Color color1, Color color2) {
+  // --- بناء قسم الكرت النشط ---
+  Widget _buildActiveCardSection(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Text('الكرت النشط حالياً 🌐', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        ),
+        Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.grey.shade800 : Colors.green.shade50,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: Colors.green.shade200),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(_activeCardData['network']!, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green)),
+                  const Icon(Icons.check_circle, color: Colors.green),
+                ],
+              ),
+              const Divider(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('رقم الكرت (PIN):', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  Text(_activeCardData['pin']!, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: 2)),
+                ],
+              ),
+              const SizedBox(height: 5),
+              Text('الوقت المتبقي: ${_activeCardData['timeRemaining']}', style: const TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 15),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => _goTo(const MyCardsScreen()),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                  child: const Text('إدارة كروتي', style: TextStyle(color: Colors.white)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // --- بناء قسم العروض ---
+  Widget _buildPromoSection() {
+    return SizedBox(
+      height: 120,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          _buildPromoBanner('خصم 20%', 'على شبكة النور', Colors.orange.shade400, Colors.deepOrange),
+          const SizedBox(width: 10),
+          _buildPromoBanner('نقاط مضاعفة!', 'اشتري الآن واحصل على الضعف', Colors.purple.shade400, Colors.deepPurple),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPromoBanner(String title, String subtitle, Color c1, Color c2) {
     return Container(
       width: 280,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [color1, color2], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        gradient: LinearGradient(colors: [c1, c2]),
         borderRadius: BorderRadius.circular(15),
       ),
       child: Column(
@@ -249,7 +238,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-          const SizedBox(height: 5),
           Text(subtitle, style: const TextStyle(color: Colors.white70, fontSize: 12)),
         ],
       ),
