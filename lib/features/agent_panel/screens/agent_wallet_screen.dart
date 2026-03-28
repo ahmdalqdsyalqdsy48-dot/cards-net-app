@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الترويسة المخصصة
 import '../widgets/custom_agent_drawer.dart';
 
 class AgentWalletScreen extends StatefulWidget {
@@ -22,6 +23,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     List<Map<String, dynamic>> filteredTransactions = _transactions.where((txn) {
       if (_selectedFilter == 'الكل') return true;
       if (_selectedFilter == 'إيداع/أرباح' && txn['type'] == 'income') return true;
@@ -32,27 +34,22 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: Colors.grey.shade100,
-        // 👇 تم إضافة القائمة الجانبية هنا
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        appBar: const CustomHeader(title: 'المركز المالي والمحفظة'),
         drawer: const CustomAgentDrawer(
           agentName: 'شبكة الصقر للواي فاي',
           phoneNumber: '777777777',
           role: 'وكيل معتمد (Agent)',
           currentBalance: 125000.0,
         ),
-        appBar: AppBar(
-          title: const Text('المركز المالي والمحفظة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-          backgroundColor: Colors.teal.shade700,
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
         body: Column(
           children: [
+            // 👇 الحاوية العلوية المنحنية
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.only(bottom: 30, top: 20, right: 20, left: 20),
+              padding: const EdgeInsets.only(bottom: 30, top: 15, right: 20, left: 20),
               decoration: BoxDecoration(
-                color: Colors.teal.shade700,
+                color: isDark ? Colors.grey.shade900 : Colors.teal.shade700,
                 borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30)),
                 boxShadow: [BoxShadow(color: Colors.teal.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
               ),
