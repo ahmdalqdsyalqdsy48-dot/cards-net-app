@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../widgets/custom_agent_drawer.dart'; // 👈 تم استدعاء القائمة الجانبية
+import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الترويسة المخصصة مثل الرئيسية
+import '../widgets/custom_agent_drawer.dart';
 
 class QuickPosScreen extends StatefulWidget {
   const QuickPosScreen({super.key});
@@ -15,7 +16,7 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
   // الفئة المحددة حالياً
   Map<String, dynamic>? _selectedCategory;
   
-  // المتغير الجديد الخاص بالكمية المطلوبة
+  // المتغير الخاص بالكمية المطلوبة
   int _quantity = 1;
 
   // قائمة وهمية للفئات المتاحة للبيع
@@ -59,8 +60,8 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                 onPressed: () {
-                  Navigator.pop(context); // إغلاق نافذة التأكيد
-                  _processSale(totalPrice); // تنفيذ البيع
+                  Navigator.pop(context); 
+                  _processSale(totalPrice); 
                 },
                 child: const Text('تأكيد وبيع', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               ),
@@ -76,15 +77,14 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
   // ==========================================
   void _processSale(int totalPrice) {
     setState(() {
-      _walletBalance -= totalPrice; // خصم الإجمالي من المحفظة
+      _walletBalance -= totalPrice; 
     });
 
-    // توليد أرقام كروت وهمية بحسب الكمية المطلوبة
     List<String> generatedPins = List.generate(_quantity, (index) => "8472 9102 334${index + 1}");
 
     showDialog(
       context: context,
-      barrierDismissible: false, // لا يمكن إغلاقها بالنقر خارجها
+      barrierDismissible: false, 
       builder: (context) {
         return Directionality(
           textDirection: TextDirection.rtl,
@@ -101,7 +101,6 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                   Text('تم إصدار ($_quantity) كرت', style: const TextStyle(color: Colors.grey, fontSize: 14)),
                   const SizedBox(height: 15),
                   
-                  // عرض الكروت المشتراة داخل قائمة قابلة للتمرير
                   Flexible(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxHeight: 250),
@@ -140,7 +139,6 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                   
                   const SizedBox(height: 15),
                   
-                  // أزرار المشاركة والطباعة
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
@@ -148,7 +146,7 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري فتح واتساب...')));
                       }),
                       _buildActionButton(Icons.print, 'طباعة الكل', Colors.orange, () {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري الإرسال للطابعة بلوتوث...')));
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري الإرسال للطابعة...')));
                       }),
                     ],
                   ),
@@ -158,8 +156,8 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                     onPressed: () {
                       Navigator.pop(context);
                       setState(() {
-                        _selectedCategory = null; // إعادة التعيين
-                        _quantity = 1; // إرجاع الكمية لـ 1
+                        _selectedCategory = null; 
+                        _quantity = 1; 
                       });
                     },
                     child: const Text('إغلاق وبدء بيع جديد', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
@@ -195,43 +193,38 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        // 👇 تم إضافة القائمة الجانبية هنا
-        drawer: const CustomAgentDrawer(
-          agentName: 'شبكة الصقر للواي فاي',
-          phoneNumber: '777777777',
-          role: 'وكيل معتمد (Agent)',
-          currentBalance: 125000.0,
-        ),
-        appBar: AppBar(
-          title: const Text('المتجر السريع (الكاشير)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-          backgroundColor: Colors.teal.shade700,
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-        body: Column(
+    return Scaffold(
+      // 👇 استخدام CustomHeader تماماً مثل الشاشة الرئيسية
+      appBar: const CustomHeader(title: 'المتجر السريع (الكاشير)'),
+      drawer: const CustomAgentDrawer(
+        agentName: 'شبكة الصقر للواي فاي',
+        phoneNumber: '777777777',
+        role: 'وكيل معتمد (Agent)',
+        currentBalance: 125000.0,
+      ),
+      body: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Column(
           children: [
             // ==========================================
-            // 1. شريط رصيد المحفظة العلوي
+            // 1. شريط رصيد المحفظة العلوي (بنفس منحنيات الرئيسية)
             // ==========================================
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
               decoration: BoxDecoration(
-                color: Colors.teal.shade700,
+                color: isDark ? Colors.grey.shade900 : Colors.teal.shade700,
                 borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('رصيد المحفظة المتاح:', style: TextStyle(color: Colors.white70, fontSize: 16)),
+                  const Text('رصيد المحفظة المتاح:', style: TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.bold)),
                   Text('${_walletBalance.toStringAsFixed(0)} ريال', style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
 
             // ==========================================
             // 2. شبكة الفئات المتاحة للبيع
@@ -246,6 +239,7 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                     const SizedBox(height: 15),
                     Expanded(
                       child: GridView.builder(
+                        padding: const EdgeInsets.only(bottom: 20),
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 2,
                           crossAxisSpacing: 15,
@@ -261,7 +255,7 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                             onTap: () {
                               setState(() {
                                 _selectedCategory = category;
-                                _quantity = 1; // إرجاع الكمية إلى 1 عند تغيير الفئة
+                                _quantity = 1; 
                               });
                             },
                             borderRadius: BorderRadius.circular(15),
@@ -318,7 +312,6 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                 ),
                 child: Column(
                   children: [
-                    // صف التحكم بالكمية (+ و -)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -355,7 +348,6 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                     ),
                     const Divider(height: 30),
                     
-                    // صف الإجمالي وزر البيع
                     Row(
                       children: [
                         Expanded(
