@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/custom_agent_drawer.dart'; // 👈 تم استدعاء القائمة الجانبية
 
 class QuickPosScreen extends StatefulWidget {
   const QuickPosScreen({super.key});
@@ -14,7 +15,7 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
   // الفئة المحددة حالياً
   Map<String, dynamic>? _selectedCategory;
   
-  // 👇 المتغير الجديد الخاص بالكمية المطلوبة
+  // المتغير الجديد الخاص بالكمية المطلوبة
   int _quantity = 1;
 
   // قائمة وهمية للفئات المتاحة للبيع
@@ -100,7 +101,7 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                   Text('تم إصدار ($_quantity) كرت', style: const TextStyle(color: Colors.grey, fontSize: 14)),
                   const SizedBox(height: 15),
                   
-                  // 👇 عرض الكروت المشتراة داخل قائمة قابلة للتمرير (تحسباً للكميات الكبيرة)
+                  // عرض الكروت المشتراة داخل قائمة قابلة للتمرير
                   Flexible(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxHeight: 250),
@@ -197,6 +198,13 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
+        // 👇 تم إضافة القائمة الجانبية هنا
+        drawer: const CustomAgentDrawer(
+          agentName: 'شبكة الصقر للواي فاي',
+          phoneNumber: '777777777',
+          role: 'وكيل معتمد (Agent)',
+          currentBalance: 125000.0,
+        ),
         appBar: AppBar(
           title: const Text('المتجر السريع (الكاشير)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
           backgroundColor: Colors.teal.shade700,
@@ -310,7 +318,7 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                 ),
                 child: Column(
                   children: [
-                    // 👇 صف التحكم بالكمية (+ و -)
+                    // صف التحكم بالكمية (+ و -)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -347,7 +355,7 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                     ),
                     const Divider(height: 30),
                     
-                    // 👇 صف الإجمالي وزر البيع
+                    // صف الإجمالي وزر البيع
                     Row(
                       children: [
                         Expanded(
@@ -355,7 +363,6 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text('الإجمالي المطلوب:', style: TextStyle(color: Colors.grey, fontSize: 14)),
-                              // حساب الإجمالي تلقائياً
                               Text('${_selectedCategory!['price'] * _quantity} ريال', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24, color: Colors.green)),
                             ],
                           ),
