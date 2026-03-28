@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الترويسة المخصصة
 import '../widgets/custom_agent_drawer.dart';
 
 class AdvancedStatementScreen extends StatefulWidget {
@@ -39,45 +40,60 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: Colors.grey.shade100,
-        // 👇 تم إضافة القائمة الجانبية هنا
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        appBar: const CustomHeader(title: 'كشف الحساب المتقدم'),
         drawer: const CustomAgentDrawer(
           agentName: 'شبكة الصقر للواي فاي',
           phoneNumber: '777777777',
           role: 'وكيل معتمد (Agent)',
           currentBalance: 125000.0,
         ),
-        appBar: AppBar(
-          title: const Text('كشف الحساب المتقدم', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-          backgroundColor: Colors.cyan.shade800,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.picture_as_pdf),
-              tooltip: 'تصدير PDF',
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري تجهيز وتنزيل ملف PDF 📄...'), backgroundColor: Colors.green));
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.table_view),
-              tooltip: 'تصدير Excel',
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري تجهيز وتنزيل ملف Excel 📊...'), backgroundColor: Colors.green));
-              },
-            ),
-          ],
-        ),
         body: Column(
           children: [
+            // 👇 الحاوية العلوية المنحنية مع أدوات التصدير
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.grey.shade900 : Colors.cyan.shade800,
+                borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('تصدير التقرير المحاسبي:', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
+                        tooltip: 'تصدير PDF',
+                        onPressed: () {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري تجهيز وتنزيل ملف PDF 📄...'), backgroundColor: Colors.green));
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.table_view, color: Colors.white),
+                        tooltip: 'تصدير Excel',
+                        onPressed: () {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري تجهيز وتنزيل ملف Excel 📊...'), backgroundColor: Colors.green));
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 10),
+
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).cardColor,
                 boxShadow: [BoxShadow(color: Colors.grey.shade200, blurRadius: 5, offset: const Offset(0, 3))],
               ),
               child: Column(
@@ -144,7 +160,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
                     margin: const EdgeInsets.only(bottom: 8),
                     padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: Theme.of(context).cardColor,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: Colors.grey.shade200),
                     ),
