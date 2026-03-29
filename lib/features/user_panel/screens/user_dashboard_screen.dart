@@ -59,16 +59,16 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
               // 1. بطاقة الرصيد الفاخرة
               _buildBalanceCard(),
 
-              // 2. الأزرار السريعة (تم ربطها جميعاً بالشاشات الفعلية)
+              // 2. الأزرار السريعة (تم إصلاح خطأ الـ const هنا)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildQuickActionBtn(Icons.wifi, 'شراء كرت', Colors.orange, () => _goTo(const NetworkStoreScreen())),
-                    _buildQuickActionBtn(Icons.send_to_mobile, 'تحويل رصيد', Colors.teal, () => _goTo(const UserWalletScreen())),
-                    _buildQuickActionBtn(Icons.stars, 'المكافآت', Colors.amber, () => _goTo(const RewardsScreen())),
-                    _buildQuickActionBtn(Icons.sos, 'سلفني', Colors.redAccent, () => _goTo(const MyCardsScreen())),
+                    _buildQuickActionBtn(Icons.wifi, 'شراء كرت', Colors.orange, () => _goTo(NetworkStoreScreen())),
+                    _buildQuickActionBtn(Icons.send_to_mobile, 'تحويل رصيد', Colors.teal, () => _goTo(UserWalletScreen())),
+                    _buildQuickActionBtn(Icons.stars, 'المكافآت', Colors.amber, () => _goTo(RewardsScreen())),
+                    _buildQuickActionBtn(Icons.sos, 'سلفني', Colors.redAccent, () => _goTo(MyCardsScreen())),
                   ],
                 ),
               ),
@@ -119,7 +119,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
             children: [
               Text('$_walletBalance ريال', style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
               ElevatedButton.icon(
-                onPressed: () => _goTo(const UserWalletScreen()),
+                // تم إصلاح خطأ الـ const هنا
+                onPressed: () => _goTo(UserWalletScreen()),
                 icon: const Icon(Icons.add_circle, color: Colors.blue, size: 18),
                 label: const Text('شحن', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
                 style: ElevatedButton.styleFrom(
@@ -197,7 +198,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () => _goTo(const MyCardsScreen()),
+                  // تم إصلاح خطأ الـ const هنا
+                  onPressed: () => _goTo(MyCardsScreen()),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                   child: const Text('إدارة كروتي', style: TextStyle(color: Colors.white)),
                 ),
