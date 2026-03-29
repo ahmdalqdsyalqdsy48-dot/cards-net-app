@@ -7,6 +7,7 @@ import '../screens/my_cards_screen.dart';
 import '../screens/rewards_screen.dart';
 import '../screens/user_transactions_screen.dart';
 import '../screens/user_support_screen.dart';
+import '../screens/user_dashboard_screen.dart'; // استدعاء الشاشة الرئيسية
 
 class CustomUserDrawer extends StatelessWidget {
   final String userName;
@@ -23,7 +24,8 @@ class CustomUserDrawer extends StatelessWidget {
   // 🛠️ دالة مساعدة للانتقال وإغلاق القائمة الجانبية في نفس الوقت
   void _navigateTo(BuildContext context, Widget screen) {
     Navigator.pop(context); // إغلاق القائمة الجانبية أولاً
-    Navigator.push(context, MaterialPageRoute(builder: (context) => screen)); // الانتقال للشاشة
+    // استخدام pushReplacement لتجنب تكدس الشاشات وتسهيل التنقل
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => screen)); 
   }
 
   @override
@@ -77,22 +79,22 @@ class CustomUserDrawer extends StatelessWidget {
               child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
-                  // زر الرئيسية (يقوم بإغلاق القائمة فقط لأننا فيها بالفعل)
-                  _buildMenuItem(Icons.dashboard, 'الرئيسية', () => Navigator.pop(context)),
+                  // تم ربط زر الرئيسية بالشاشة بشكل صريح
+                  _buildMenuItem(Icons.dashboard, 'الرئيسية', () => _navigateTo(context, UserDashboardScreen())),
 
                   _buildSectionHeader('المالية والمشتريات'),
-                  _buildMenuItem(Icons.account_balance_wallet, 'المحفظة الذكية والتحويلات', () => _navigateTo(context, const UserWalletScreen())),
-                  _buildMenuItem(Icons.storefront, 'سوق الشبكات ونقاط البيع', () => _navigateTo(context, const NetworkStoreScreen())),
-                  _buildMenuItem(Icons.receipt_long, 'كروتي ومشترياتي', () => _navigateTo(context, const MyCardsScreen())),
+                  // إزالة const من جميع استدعاءات الشاشات
+                  _buildMenuItem(Icons.account_balance_wallet, 'المحفظة الذكية والتحويلات', () => _navigateTo(context, UserWalletScreen())),
+                  _buildMenuItem(Icons.storefront, 'سوق الشبكات ونقاط البيع', () => _navigateTo(context, NetworkStoreScreen())),
+                  _buildMenuItem(Icons.receipt_long, 'كروتي ومشترياتي', () => _navigateTo(context, MyCardsScreen())),
 
                   _buildSectionHeader('الامتيازات والسجلات'),
-                  _buildMenuItem(Icons.stars, 'برنامج الولاء والمكافآت', () => _navigateTo(context, const RewardsScreen())),
-                  _buildMenuItem(Icons.history, 'سجل العمليات المالية', () => _navigateTo(context, const UserTransactionsScreen())),
+                  _buildMenuItem(Icons.stars, 'برنامج الولاء والمكافآت', () => _navigateTo(context, RewardsScreen())),
+                  _buildMenuItem(Icons.history, 'سجل العمليات المالية', () => _navigateTo(context, UserTransactionsScreen())),
 
                   _buildSectionHeader('الإعدادات والدعم'),
-                  _buildMenuItem(Icons.support_agent, 'الدعم الفني والشكاوى', () => _navigateTo(context, const UserSupportScreen())),
-                  // زر الملف الشخصي يوجه مؤقتاً للدعم حتى نقوم ببرمجته مستقبلاً
-                  _buildMenuItem(Icons.person_outline, 'الملف الشخصي والإعدادات', () => _navigateTo(context, const UserSupportScreen())),
+                  _buildMenuItem(Icons.support_agent, 'الدعم الفني والشكاوى', () => _navigateTo(context, UserSupportScreen())),
+                  _buildMenuItem(Icons.person_outline, 'الملف الشخصي والإعدادات', () => _navigateTo(context, UserSupportScreen())),
 
                   const Divider(),
                   
@@ -101,7 +103,6 @@ class CustomUserDrawer extends StatelessWidget {
                     leading: const Icon(Icons.logout, color: Colors.red),
                     title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                     onTap: () {
-                      // يمكنك لاحقاً ربط هذا الزر بمسح بيانات الدخول والعودة لشاشة الدخول
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تسجيل الخروج ✅')));
                     },
                   ),
