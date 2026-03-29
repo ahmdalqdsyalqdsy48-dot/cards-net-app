@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
-// 👇 استدعاء جميع الشاشات لربطها بالقائمة الجانبية
+// 👇 1. تم إضافة جميع الاستدعاءات (Imports) للشاشات التي قمنا ببرمجتها
+import '../screens/user_dashboard_screen.dart'; 
 import '../screens/user_wallet_screen.dart';
 import '../screens/network_store_screen.dart';
 import '../screens/my_cards_screen.dart';
 import '../screens/rewards_screen.dart';
 import '../screens/user_transactions_screen.dart';
 import '../screens/user_support_screen.dart';
-import '../screens/user_dashboard_screen.dart'; // استدعاء الشاشة الرئيسية
+import '../../auth/screens/sso_login_screen.dart';
 
 class CustomUserDrawer extends StatelessWidget {
   final String userName;
@@ -21,117 +22,132 @@ class CustomUserDrawer extends StatelessWidget {
     required this.walletBalance,
   });
 
-  // 🛠️ دالة مساعدة للانتقال وإغلاق القائمة الجانبية في نفس الوقت
+  // 👇 2. دالة الانتقال الفعلي بين الشاشات
   void _navigateTo(BuildContext context, Widget screen) {
     Navigator.pop(context); // إغلاق القائمة الجانبية أولاً
-    // استخدام pushReplacement لتجنب تكدس الشاشات وتسهيل التنقل
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => screen)); 
+    Navigator.pushReplacement( // استخدام pushReplacement لتجنب تكدس الشاشات
+      context,
+      MaterialPageRoute(builder: (context) => screen),
+    );
+  }
+
+  // احتفظنا بهذه الدالة مؤقتاً لأي زر لم نبرمجه بعد (إن وُجد)
+  void _showComingSoon(BuildContext context, String title) {
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('قريباً.. جاري برمجة شاشة ($title) 🚀'),
+        backgroundColor: Colors.blueGrey,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // تحديد ما إذا كان الوضع الليلي مفعلاً لضبط الألوان
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Drawer(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      child: Column(
-        children: [
-          // ==========================================
-          // 1. ترويسة القائمة (بيانات المستخدم)
-          // ==========================================
-          UserAccountsDrawerHeader(
-            decoration: BoxDecoration(
-              color: isDark ? Colors.blueGrey.shade900 : Colors.blue.shade800,
-            ),
-            currentAccountPicture: const CircleAvatar(
-              backgroundColor: Colors.white,
-              child: Icon(Icons.person, size: 40, color: Colors.blue),
-            ),
-            accountName: Text(userName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white)),
-            accountEmail: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(phoneNumber, style: const TextStyle(color: Colors.white)),
-                const SizedBox(height: 5),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    'رصيد المحفظة: $walletBalance ريال',
-                    style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
+      child: Directionality(
+        textDirection: TextDirection.rtl, // لضمان عرض القائمة باللغة العربية
+        child: Column(
+          children: [
+            // ==========================================
+            // 1. الترويسة العلوية (بيانات الزبون والمحفظة)
+            // ==========================================
+            UserAccountsDrawerHeader(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.blue.shade900, Colors.blue.shade500],
+                  begin: Alignment.topRight,
+                  end: Alignment.bottomLeft,
                 ),
-              ],
-            ),
-          ),
-
-          // ==========================================
-          // 2. عناصر القائمة الجانبية المربوطة بالشاشات
-          // ==========================================
-          Expanded(
-            child: Directionality(
-              textDirection: TextDirection.rtl,
-              child: ListView(
-                padding: EdgeInsets.zero,
+              ),
+              currentAccountPicture: CircleAvatar(
+                backgroundColor: Colors.white,
+                child: Text(
+                  userName.substring(0, 1), // عرض أول حرف من اسم الزبون
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.blue.shade900),
+                ),
+              ),
+              accountName: Text(userName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              accountEmail: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // تم ربط زر الرئيسية بالشاشة بشكل صريح
-                  _buildMenuItem(Icons.dashboard, 'الرئيسية', () => _navigateTo(context, UserDashboardScreen())),
-
-                  _buildSectionHeader('المالية والمشتريات'),
-                  // إزالة const من جميع استدعاءات الشاشات
-                  _buildMenuItem(Icons.account_balance_wallet, 'المحفظة الذكية والتحويلات', () => _navigateTo(context, UserWalletScreen())),
-                  _buildMenuItem(Icons.storefront, 'سوق الشبكات ونقاط البيع', () => _navigateTo(context, NetworkStoreScreen())),
-                  _buildMenuItem(Icons.receipt_long, 'كروتي ومشترياتي', () => _navigateTo(context, MyCardsScreen())),
-
-                  _buildSectionHeader('الامتيازات والسجلات'),
-                  _buildMenuItem(Icons.stars, 'برنامج الولاء والمكافآت', () => _navigateTo(context, RewardsScreen())),
-                  _buildMenuItem(Icons.history, 'سجل العمليات المالية', () => _navigateTo(context, UserTransactionsScreen())),
-
-                  _buildSectionHeader('الإعدادات والدعم'),
-                  _buildMenuItem(Icons.support_agent, 'الدعم الفني والشكاوى', () => _navigateTo(context, UserSupportScreen())),
-                  _buildMenuItem(Icons.person_outline, 'الملف الشخصي والإعدادات', () => _navigateTo(context, UserSupportScreen())),
-
-                  const Divider(),
-                  
-                  // زر تسجيل الخروج
-                  ListTile(
-                    leading: const Icon(Icons.logout, color: Colors.red),
-                    title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تسجيل الخروج ✅')));
-                    },
+                  Text(phoneNumber, style: const TextStyle(color: Colors.white70)),
+                  const SizedBox(height: 4),
+                  // بطاقة الرصيد الأنيقة
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: Text(
+                      'رصيد المحفظة: $walletBalance ريال', 
+                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
                   ),
                 ],
               ),
             ),
-          ),
-        ],
+
+            // ==========================================
+            // 2. خيارات القائمة الفائقة (Super App Menu)
+            // ==========================================
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  // 👇 3. تم ربط جميع الأزرار بالشاشات الحقيقية وإزالة رسالة "قريباً"
+                  _buildDrawerItem(context, 'الرئيسية', Icons.dashboard, Colors.blue, () => _navigateTo(context, UserDashboardScreen())),
+                  
+                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Text('المالية والمشتريات', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
+                  _buildDrawerItem(context, 'المحفظة الذكية والتحويلات', Icons.account_balance_wallet, Colors.teal, () => _navigateTo(context, UserWalletScreen())),
+                  _buildDrawerItem(context, 'سوق الشبكات ونقاط البيع', Icons.storefront, Colors.orange, () => _navigateTo(context, NetworkStoreScreen())),
+                  _buildDrawerItem(context, 'كروتي ومشترياتي', Icons.receipt_long, Colors.green, () => _navigateTo(context, MyCardsScreen())),
+                  
+                  const Divider(),
+                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Text('الامتيازات والسجلات', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
+                  _buildDrawerItem(context, 'برنامج الولاء والمكافآت', Icons.stars, Colors.amber.shade700, () => _navigateTo(context, RewardsScreen())),
+                  _buildDrawerItem(context, 'سجل العمليات المالية', Icons.history, Colors.indigo, () => _navigateTo(context, UserTransactionsScreen())),
+                  
+                  const Divider(),
+                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Text('الإعدادات والدعم', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
+                  _buildDrawerItem(context, 'الدعم الفني والشكاوى', Icons.support_agent, Colors.redAccent, () => _navigateTo(context, UserSupportScreen())),
+                  // تم توجيه زر الملف الشخصي مؤقتاً لشاشة الدعم حتى نقوم بتطويره لاحقاً
+                  _buildDrawerItem(context, 'الملف الشخصي والإعدادات', Icons.person, Colors.blueGrey, () => _navigateTo(context, UserSupportScreen())),
+                ],
+              ),
+            ),
+
+            // ==========================================
+            // 3. زر تسجيل الخروج
+            // ==========================================
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.red),
+              title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+              onTap: () {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  // تم استخدام الشاشة الحقيقية لتسجيل الدخول
+                  MaterialPageRoute(builder: (context) => const SSOLoginScreen()),
+                  (route) => false,
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+          ],
+        ),
       ),
     );
   }
 
-  // أداة مساعدة لإنشاء العناوين الفرعية لتنظيم القائمة
-  Widget _buildSectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 16, top: 15, bottom: 5, left: 16),
-      child: Text(
-        title,
-        style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold),
-      ),
-    );
-  }
-
-  // أداة مساعدة لإنشاء أزرار القائمة القابلة للنقر
-  Widget _buildMenuItem(IconData icon, String title, VoidCallback onTap) {
+  // أداة مساعدة لبناء أزرار القائمة بشكل مرتب لتقليل تكرار الكود
+  Widget _buildDrawerItem(BuildContext context, String title, IconData icon, Color color, VoidCallback onTap) {
     return ListTile(
-      leading: Icon(icon, color: Colors.blueGrey),
-      title: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+      dense: true,
+      leading: Icon(icon, color: color),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+      trailing: const Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey),
       onTap: onTap,
     );
   }
