@@ -8,6 +8,8 @@ import '../screens/my_cards_screen.dart';
 import '../screens/rewards_screen.dart';
 import '../screens/user_transactions_screen.dart';
 import '../screens/user_support_screen.dart';
+// 👇 2. تم إضافة استدعاء شاشة الإعدادات الجديدة هنا
+import '../screens/user_settings_screen.dart'; 
 import '../../auth/screens/sso_login_screen.dart';
 
 class CustomUserDrawer extends StatelessWidget {
@@ -22,7 +24,7 @@ class CustomUserDrawer extends StatelessWidget {
     required this.walletBalance,
   });
 
-  // 👇 2. دالة الانتقال الفعلي بين الشاشات
+  // دالة الانتقال الفعلي بين الشاشات
   void _navigateTo(BuildContext context, Widget screen) {
     Navigator.pop(context); // إغلاق القائمة الجانبية أولاً
     Navigator.pushReplacement( // استخدام pushReplacement لتجنب تكدس الشاشات
@@ -96,7 +98,6 @@ class CustomUserDrawer extends StatelessWidget {
               child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
-                  // 👇 3. تم ربط جميع الأزرار بالشاشات الحقيقية وإزالة رسالة "قريباً"
                   _buildDrawerItem(context, 'الرئيسية', Icons.dashboard, Colors.blue, () => _navigateTo(context, UserDashboardScreen())),
                   
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Text('المالية والمشتريات', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
@@ -112,8 +113,9 @@ class CustomUserDrawer extends StatelessWidget {
                   const Divider(),
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Text('الإعدادات والدعم', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
                   _buildDrawerItem(context, 'الدعم الفني والشكاوى', Icons.support_agent, Colors.redAccent, () => _navigateTo(context, UserSupportScreen())),
-                  // تم توجيه زر الملف الشخصي مؤقتاً لشاشة الدعم حتى نقوم بتطويره لاحقاً
-                  _buildDrawerItem(context, 'الملف الشخصي والإعدادات', Icons.person, Colors.blueGrey, () => _navigateTo(context, UserSupportScreen())),
+                  
+                  // 👇 3. هنا تم الإصلاح: الزر الآن ينقلك لشاشة الإعدادات الحقيقية
+                  _buildDrawerItem(context, 'الملف الشخصي والإعدادات', Icons.person, Colors.blueGrey, () => _navigateTo(context, const UserSettingsScreen())),
                 ],
               ),
             ),
@@ -128,7 +130,6 @@ class CustomUserDrawer extends StatelessWidget {
               onTap: () {
                 Navigator.pushAndRemoveUntil(
                   context,
-                  // تم استخدام الشاشة الحقيقية لتسجيل الدخول
                   MaterialPageRoute(builder: (context) => const SSOLoginScreen()),
                   (route) => false,
                 );
