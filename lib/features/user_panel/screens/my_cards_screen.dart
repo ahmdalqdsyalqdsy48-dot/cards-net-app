@@ -1,22 +1,29 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // مكتبة لتمكين نسخ النصوص
-import '../../../core/widgets/custom_header.dart'; // استدعاء الترويسة الموحدة
+import 'package:flutter/services.dart'; 
+import '../../../core/widgets/custom_header.dart';
+// 👇 1. استدعاء القائمة الجانبية
+import '../widgets/custom_user_drawer.dart'; 
 
 class MyCardsScreen extends StatelessWidget {
   const MyCardsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // قائمة بيانات وهمية للكروت السابقة
     final List<Map<String, dynamic>> myCards = [
       {'network': 'شبكة الصقر للواي فاي', 'pin': '88229911', 'date': '2026/03/30', 'status': 'نشط', 'color': Colors.green},
       {'network': 'شبكة النور السريعة', 'pin': '44556677', 'date': '2026/03/25', 'status': 'منتهي', 'color': Colors.grey},
     ];
 
     return Scaffold(
-      appBar: const CustomHeader(title: 'كروتي ومشترياتي'), // ترويسة الشاشة
+      appBar: const CustomHeader(title: 'كروتي ومشترياتي'),
+      // 👇 2. إضافة القائمة الجانبية لهيكل الشاشة ليظهر الزر
+      drawer: const CustomUserDrawer(
+        userName: 'محمد أحمد',
+        phoneNumber: '777123456',
+        walletBalance: 2500.0,
+      ),
       body: Directionality(
-        textDirection: TextDirection.rtl, // توجيه النص من اليمين لليسار
+        textDirection: TextDirection.rtl, 
         child: ListView.builder(
           padding: const EdgeInsets.all(16),
           itemCount: myCards.length,
@@ -32,7 +39,6 @@ class MyCardsScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // السطر الأول: اسم الشبكة وحالتها
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -48,7 +54,6 @@ class MyCardsScreen extends StatelessWidget {
                       ],
                     ),
                     const Divider(height: 25),
-                    // السطر الثاني: رقم الكرت وزر النسخ
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -59,7 +64,6 @@ class MyCardsScreen extends StatelessWidget {
                             Text(card['pin'], style: const TextStyle(fontSize: 20, letterSpacing: 2, fontWeight: FontWeight.bold)),
                           ],
                         ),
-                        // زر نسخ الكرت يظهر فقط إذا كان الكرت نشطاً
                         if (isActive)
                           ElevatedButton.icon(
                             onPressed: () {
