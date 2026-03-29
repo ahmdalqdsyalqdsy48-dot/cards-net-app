@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/custom_header.dart';
+// 👇 1. استدعاء القائمة الجانبية
+import '../widgets/custom_user_drawer.dart';
 
 class RewardsScreen extends StatelessWidget {
   const RewardsScreen({super.key});
@@ -8,13 +10,18 @@ class RewardsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const CustomHeader(title: 'المكافآت والولاء'),
+      // 👇 2. إرفاق القائمة بالشاشة
+      drawer: const CustomUserDrawer(
+        userName: 'محمد أحمد',
+        phoneNumber: '777123456',
+        walletBalance: 2500.0,
+      ),
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
-              // بطاقة عرض النقاط الحالية
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(30),
@@ -32,7 +39,6 @@ class RewardsScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 30),
-              // قسم استبدال النقاط بجوائز
               const Align(
                 alignment: Alignment.centerRight,
                 child: Text('استبدل نقاطك بكروت مجانية 🎁', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -53,7 +59,6 @@ class RewardsScreen extends StatelessWidget {
     );
   }
 
-  // دالة مساعدة لبناء شكل الجائزة
   Widget _buildRewardItem(BuildContext context, String title, String points, Color color) {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
