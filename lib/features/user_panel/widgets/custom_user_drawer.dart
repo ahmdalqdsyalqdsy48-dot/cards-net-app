@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // 👈 1. استدعاء مكتبة العقل المدبر
+
+// استدعاء مزودات النظام والألوان التي أنشأناها
+import '../../../core/providers/theme_provider.dart';
+import '../../../core/providers/system_provider.dart'; // 👈 2. استدعاء الخادم المحلي الشامل
 
 // الاستدعاءات الخاصة بالشاشات
 import '../screens/user_dashboard_screen.dart'; 
@@ -15,14 +20,13 @@ import '../../auth/screens/sso_login_screen.dart';
 class CustomUserDrawer extends StatefulWidget {
   final String userName;
   final String phoneNumber;
-  final double walletBalance;
+  // 💡 لاحظ: قمنا بإزالة المتغير القديم walletBalance من هنا تماماً
   final String? profileImageUrl;
 
   const CustomUserDrawer({
     super.key,
     required this.userName,
     required this.phoneNumber,
-    required this.walletBalance,
     this.profileImageUrl,
   });
 
@@ -138,7 +142,11 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
   @override
   Widget build(BuildContext context) {
     bool hasImage = _currentLocalImageUrl != null;
-    final primaryColor = Theme.of(context).primaryColor;
+    
+    // 👇 3. الاستماع للخادم المحلي ومزود الألوان
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final systemProvider = Provider.of<SystemProvider>(context);
+    final primaryColor = themeProvider.primaryColor;
 
     return Drawer(
       child: Directionality(
@@ -157,11 +165,9 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                     child: Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-                      // خلفية الترويسة تتلون بلون التطبيق الخفيف جداً
                       color: primaryColor.withOpacity(0.05), 
                       child: Column(
                         children: [
-                          // صف يحتوي على زر الباركود والصورة الشخصية
                           Stack(
                             alignment: Alignment.center,
                             children: [
@@ -193,28 +199,25 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                           ),
                           const SizedBox(height: 15),
 
-                          // البطاقة 1: اسم الزبون
                           _buildGradientCard(
                             text: widget.userName,
                             icon: Icons.person,
                             colors: [Colors.blue.shade800, Colors.blue.shade500],
                           ),
 
-                          // البطاقة 2: رقم الهاتف
                           _buildGradientCard(
                             text: widget.phoneNumber,
                             icon: Icons.phone,
                             colors: [Colors.teal.shade800, Colors.teal.shade500],
                           ),
 
-                          // البطاقة 3: شارة مستوى الزبون
                           _buildGradientCard(
                             text: 'المستوى: عضو ذهبي 🥇',
                             icon: Icons.stars,
                             colors: [Colors.orange.shade800, Colors.orange.shade500],
                           ),
 
-                          // البطاقة 4: المحفظة (مع ميزة الإخفاء)
+                          // 👇 4. قراءة الرصيد الحقيقي من الخادم المحلي الشامل (SystemProvider)
                           GestureDetector(
                             onTap: () {
                               setState(() {
@@ -222,7 +225,7 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                               });
                             },
                             child: _buildGradientCard(
-                              text: _isBalanceHidden ? 'المحفظة: ******' : 'المحفظة: ${widget.walletBalance.toStringAsFixed(0)} ريال',
+                              text: _isBalanceHidden ? 'المحفظة: ******' : 'المحفظة: ${systemProvider.currentUserBalance.toStringAsFixed(0)} ريال',
                               icon: Icons.account_balance_wallet,
                               colors: [Colors.purple.shade800, Colors.purple.shade500],
                               trailingIcon: _isBalanceHidden ? Icons.visibility_off : Icons.visibility,
@@ -237,7 +240,7 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                   ),
 
                   // ==========================================
-                  // 2. خيارات القائمة الفائقة (مع الألوان الزاهية)
+                  // 2. خيارات القائمة الفائقة
                   // ==========================================
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Text('المالية والمشتريات', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
                   _buildDrawerItem(context, 'الرئيسية', Icons.dashboard, Colors.blue, const UserDashboardScreen()),
@@ -259,7 +262,7 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
             ),
             
             // ==========================================
-            // 3. الفوتر (تسجيل الخروج ثابت في الأسفل)
+            // 3. الفوتر
             // ==========================================
             const Divider(height: 1),
             ListTile(
@@ -285,7 +288,6 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
   // أدوات مساعدة 
   // ==========================================
 
-  // بناء البطاقات المتدرجة الأنيقة 
   Widget _buildGradientCard({required String text, required IconData icon, required List<Color> colors, IconData? trailingIcon}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8), 
@@ -316,7 +318,6 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
     );
   }
 
-  // بناء زر التنقل مع لونه الخاص
   Widget _buildDrawerItem(BuildContext context, String title, IconData icon, Color iconColor, Widget targetScreen) {
     return ListTile(
       dense: true,
