@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // 👈 1. استدعاء مكتبة العقل المدبر
+
+import '../../../core/providers/system_provider.dart'; // 👈 2. استدعاء الخادم المحلي
 import '../../../core/widgets/custom_drawer.dart';
-import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الهيدر الجديد
+import '../../../core/widgets/custom_header.dart'; 
 
 class BannersScreen extends StatefulWidget {
   const BannersScreen({super.key});
@@ -10,7 +13,7 @@ class BannersScreen extends StatefulWidget {
 }
 
 class _BannersScreenState extends State<BannersScreen> {
-  // قاعدة بيانات وهمية للإعلانات
+  // قاعدة بيانات للإعلانات (قابلة للتعديل والإضافة)
   final List<Map<String, dynamic>> _banners = [
     {
       'title': 'عرض خصم 10% لكروت يمن موبايل',
@@ -45,17 +48,19 @@ class _BannersScreenState extends State<BannersScreen> {
   ];
 
   // ==========================================
-  // 1. نافذة إنشاء إعلان جديد (الاستهداف المتقدم) ➕
+  // 1. نافذة إنشاء إعلان جديد (مفعلة برمجياً) ➕
   // ==========================================
   void _showAddBannerDialog() {
-    int adType = 1; // 1: صورة بانر, 2: شريط إخباري
-    int sendChannel = 1; // 1: الكل, 2: تطبيق, 3: إيميل
+    int adType = 1; 
+    int sendChannel = 1; 
     
-    // Checkboxes للاستهداف الدقيق
     bool targetEndUsers = true;
     bool targetMainAgents = true;
     bool targetSubAgents = false;
     bool targetStaff = false;
+
+    // 👈 متحكم لقراءة عنوان الإعلان من المستخدم
+    final TextEditingController titleController = TextEditingController();
 
     showDialog(
       context: context,
@@ -75,25 +80,29 @@ class _BannersScreenState extends State<BannersScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // نوع الإعلان
                   const Text('نوع الإعلان:', style: TextStyle(fontWeight: FontWeight.bold)),
                   Row(
                     children: [
                       Expanded(child: RadioListTile(title: const Text('صورة (Carousel)', style: TextStyle(fontSize: 12)), value: 1, groupValue: adType, onChanged: (val) => setStateDialog(() => adType = val as int))),
-                      Expanded(child: RadioListTile(title: const Text('شريط زجاجي', style: TextStyle(fontSize: 12)), value: 2, groupValue: adType, onChanged: (val) => setStateDialog(() => adType = val as int))),
+                      Expanded(child: RadioListTile(title: const Text('شريط إخباري', style: TextStyle(fontSize: 12)), value: 2, groupValue: adType, onChanged: (val) => setStateDialog(() => adType = val as int))),
                     ],
                   ),
+                  
+                  // حقل العنوان المربوط بالمتحكم
+                  _buildTextField(
+                    adType == 1 ? 'عنوان العرض التسويقي' : 'نص الشريط الإخباري المتحرك', 
+                    Icons.title,
+                    controller: titleController,
+                  ),
+                  
                   if (adType == 1) ...[
                     ElevatedButton.icon(onPressed: (){}, icon: const Icon(Icons.upload_file), label: const Text('رفع الصورة المدمجة')),
                     const SizedBox(height: 10),
                     _buildTextField('نص زر الإجراء (CTA) - مثلاً: اغتنم الفرصة', Icons.smart_button),
-                  ] else ...[
-                    _buildTextField('نص الشريط الإخباري المتحرك', Icons.text_fields),
                   ],
                   _buildTextField('الرابط عند النقر (URL أو توجيه داخلي)', Icons.link),
                   
                   const Divider(),
-                  // قناة الإرسال
                   const Text('قناة الإرسال:', style: TextStyle(fontWeight: FontWeight.bold)),
                   DropdownButtonFormField<int>(
                     value: sendChannel,
@@ -107,7 +116,6 @@ class _BannersScreenState extends State<BannersScreen> {
                   ),
                   
                   const Divider(),
-                  // الاستهداف الدقيق
                   const Text('الاستهداف الدقيق لمن يرى الإعلان:', style: TextStyle(fontWeight: FontWeight.bold)),
                   CheckboxListTile(title: const Text('المستخدمين النهائيين (الزبائن)'), value: targetEndUsers, onChanged: (val) => setStateDialog(() => targetEndUsers = val!)),
                   CheckboxListTile(title: const Text('الوكلاء الرئيسيين'), value: targetMainAgents, onChanged: (val) => setStateDialog(() => targetMainAgents = val!)),
@@ -115,7 +123,6 @@ class _BannersScreenState extends State<BannersScreen> {
                   CheckboxListTile(title: const Text('الموظفين الداخليين'), value: targetStaff, onChanged: (val) => setStateDialog(() => targetStaff = val!)),
                   
                   const Divider(),
-                  // الجدولة
                   const Text('الجدولة الزمنية:', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
                   Row(
@@ -132,13 +139,64 @@ class _BannersScreenState extends State<BannersScreen> {
               TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
               ElevatedButton(
                 onPressed: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إطلاق/جدولة الحملة التسويقية بنجاح! 🚀'), backgroundColor: Colors.green));
+                  if (titleController.text.trim().isNotEmpty) {
+                    // إضافة الإعلان الجديد إلى أعلى القائمة برمجياً
+                    setState(() {
+                      _banners.insert(0, {
+                        'title': titleController.text,
+                        'type': adType == 1 ? 'صورة بانر (Carousel)' : 'شريط إخباري',
+                        'target': targetEndUsers && targetMainAgents ? 'الكل' : 'مخصص',
+                        'status': 'نشط',
+                        'views': '0',
+                        'clicksApp': '0',
+                        'clicksEmail': '0',
+                        'color': Colors.blue, // لون افتراضي للإعلان الجديد
+                      });
+                    });
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إطلاق الحملة التسويقية بنجاح! 🚀', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى كتابة عنوان الإعلان على الأقل! ❌', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                  }
                 },
                 child: const Text('اعتماد الإعلان'),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // نافذة تعديل إعلان موجود ✏️ (جديدة)
+  // ==========================================
+  void _showEditBannerDialog(int index, Map<String, dynamic> banner) {
+    final titleController = TextEditingController(text: banner['title']);
+    
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('تعديل عنوان الإعلان', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          content: _buildTextField('عنوان الإعلان', Icons.edit, controller: titleController),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+              onPressed: () {
+                if (titleController.text.isNotEmpty) {
+                  setState(() {
+                    _banners[index]['title'] = titleController.text;
+                  });
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تعديل الإعلان بنجاح ✏️', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                }
+              },
+              child: const Text('حفظ التعديل', style: TextStyle(color: Colors.white)),
+            ),
+          ],
         ),
       ),
     );
@@ -174,7 +232,7 @@ class _BannersScreenState extends State<BannersScreen> {
               onPressed: () {
                 setState(() => _banners.removeAt(index));
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم الحذف بنجاح.'), backgroundColor: Colors.red));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم الحذف بنجاح.', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
               },
               child: const Text('حذف', style: TextStyle(color: Colors.white)),
             ),
@@ -186,16 +244,21 @@ class _BannersScreenState extends State<BannersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 👈 3. جلب الأرباح الحقيقية للنظام من العقل المدبر
+    final systemProvider = Provider.of<SystemProvider>(context);
+    final adminBalance = systemProvider.adminMainBalance;
+
     return Scaffold(
-      // 👈 تم تركيب الهيدر الشامل هنا بنجاح!
       appBar: const CustomHeader(title: 'الإعلانات والبنرات'),
       
-      drawer: const CustomDrawer(
+      // 👈 تمرير الرصيد بأمان بدون خطأ الـ const
+      drawer: CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
         role: 'مالك النظام (Super Admin)',
-        balanceOrPoints: 'أرباح النظام: 5,430,000 ريال',
+        balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
       ),
+      
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
@@ -220,7 +283,9 @@ class _BannersScreenState extends State<BannersScreen> {
 
             // جدول المراقبة والإحصائيات
             Expanded(
-              child: ListView.builder(
+              child: _banners.isEmpty 
+                ? const Center(child: Text('لا توجد إعلانات حالياً. ابدأ بإنشاء حملتك الأولى! 🚀', style: TextStyle(color: Colors.grey)))
+                : ListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: _banners.length,
                 itemBuilder: (context, index) {
@@ -243,7 +308,7 @@ class _BannersScreenState extends State<BannersScreen> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Chip(
-                                label: Text(banner['status'], style: const TextStyle(color: Colors.white, fontSize: 11)),
+                                label: Text(banner['status'], style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
                                 backgroundColor: banner['color'],
                                 padding: EdgeInsets.zero,
                               ),
@@ -251,14 +316,17 @@ class _BannersScreenState extends State<BannersScreen> {
                             ],
                           ),
                           const SizedBox(height: 5),
-                          Text(banner['title'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isExpired ? Colors.grey : null)), // تم تعديل اللون ليتوافق مع الوضع الليلي
+                          Text(banner['title'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isExpired ? Colors.grey : null)),
                           Text('الاستهداف: ${banner['target']}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
                           
                           const Divider(),
-                          // الإحصائيات التفصيلية (المشاهدات والنقرات)
+                          // الإحصائيات التفصيلية
                           Container(
                             padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), // تعديل الخلفية لتلائم الوضعين
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).brightness == Brightness.dark ? Colors.black12 : Colors.blue.shade50, 
+                              borderRadius: BorderRadius.circular(10)
+                            ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceAround,
                               children: [
@@ -280,7 +348,8 @@ class _BannersScreenState extends State<BannersScreen> {
                                   tooltip: 'إيقاف/تشغيل',
                                   onPressed: () => _toggleBannerStatus(index),
                                 ),
-                              IconButton(icon: const Icon(Icons.edit, color: Colors.blue), tooltip: 'تعديل', onPressed: () {}),
+                              // 👈 زر التعديل تم ربطه بدالة التعديل الجديدة
+                              IconButton(icon: const Icon(Icons.edit, color: Colors.blue), tooltip: 'تعديل', onPressed: () => _showEditBannerDialog(index, banner)),
                               IconButton(icon: const Icon(Icons.delete, color: Colors.red), tooltip: 'حذف', onPressed: () => _deleteBanner(index)),
                             ],
                           ),
@@ -297,11 +366,12 @@ class _BannersScreenState extends State<BannersScreen> {
     );
   }
 
-  // أداة بناء حقول النصوص في النافذة
-  Widget _buildTextField(String hint, IconData icon) {
+  // أداة بناء حقول النصوص في النافذة (تم تحديثها لدعم المتحكمات)
+  Widget _buildTextField(String hint, IconData icon, {TextEditingController? controller}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10.0),
       child: TextField(
+        controller: controller,
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: const TextStyle(fontSize: 12),
