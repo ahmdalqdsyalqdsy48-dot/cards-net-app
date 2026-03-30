@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // 👈 1. استدعاء العقل المدبر
+
+import '../../../core/providers/system_provider.dart'; // 👈 2. الخادم المحلي
 import '../../../core/widgets/custom_drawer.dart';
-import '../../../core/widgets/custom_header.dart';
+import '../../../core/widgets/custom_header.dart'; 
 
 class FinancialCenterScreen extends StatefulWidget {
   const FinancialCenterScreen({super.key});
@@ -50,7 +53,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     setState(() {
       _rechargeRequests.removeAt(index);
     });
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تأكيد الشحن وإيداع المبلغ في محفظة الوكيل بنجاح ✅'), backgroundColor: Colors.green));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تأكيد الشحن وإيداع المبلغ في محفظة الوكيل بنجاح ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
   }
 
   void _showRejectDialog(int index) {
@@ -83,7 +86,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                   _rechargeRequests.removeAt(index);
                 });
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم رفض الطلب وإشعار الوكيل بالسبب.'), backgroundColor: Colors.red));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم رفض الطلب وإشعار الوكيل بالسبب.', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
               },
               child: const Text('تأكيد الرفض', style: TextStyle(color: Colors.white)),
             ),
@@ -130,7 +133,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                     ],
                   ),
                   const SizedBox(height: 10),
-                  _buildTextField('المبلغ (بالريال)', Icons.money),
+                  _buildTextField('المبلغ (بالريال)', Icons.money, isNumber: true),
                   const SizedBox(height: 10),
                   _buildTextField('السبب (إجباري للتسجيل بالسجل)', Icons.edit_note),
                 ],
@@ -141,7 +144,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
               ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت التسوية بنجاح وتحديث السجل الشامل.')));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت التسوية بنجاح وتحديث السجل الشامل. ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
                 },
                 child: const Text('تنفيذ التسوية'),
               ),
@@ -176,7 +179,13 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-            ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('حفظ الحد')),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث حد الخطر بنجاح.', textDirection: TextDirection.rtl)));
+              }, 
+              child: const Text('حفظ الحد')
+            ),
           ],
         ),
       ),
@@ -194,6 +203,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
             mainAxisSize: MainAxisSize.min,
             children: [
               _buildTextField('من تاريخ (YYYY-MM-DD)', Icons.date_range),
+              const SizedBox(height: 10),
               _buildTextField('إلى تاريخ (YYYY-MM-DD)', Icons.date_range),
             ],
           ),
@@ -203,7 +213,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري توليد ملف الـ PDF الرسمي...'), backgroundColor: Colors.red));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري توليد ملف الـ PDF الرسمي... 📄', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
               },
               icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
               label: const Text('تصدير الكشف (PDF)', style: TextStyle(color: Colors.white)),
@@ -216,14 +226,19 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
 
   @override
   Widget build(BuildContext context) {
+    // 👈 3. جلب أرباح النظام الحقيقية من العقل المدبر
+    final systemProvider = Provider.of<SystemProvider>(context);
+    final adminBalance = systemProvider.adminMainBalance;
+
     return Scaffold(
       appBar: const CustomHeader(title: 'المركز المالي والمحافظ'),
       
-      drawer: const CustomDrawer(
+      // 👈 تمرير الرصيد المتغير للقائمة الجانبية بأمان
+      drawer: CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
         role: 'مالك النظام (Super Admin)',
-        balanceOrPoints: 'أرباح النظام: 5,430,000 ريال',
+        balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
@@ -298,7 +313,9 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                 const SizedBox(height: 10),
                 
                 OutlinedButton.icon(
-                  onPressed: () {},
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سيتم عرض صورة السند المرفقة قريباً 📸', textDirection: TextDirection.rtl)));
+                  },
                   icon: const Icon(Icons.image, size: 18),
                   label: const Text('عرض صورة سند التحويل'),
                   style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 40)),
@@ -310,8 +327,8 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () => _acceptRequest(index),
-                        icon: const Icon(Icons.check_circle, color: Colors.white),
-                        label: const Text('تأكيد الشحن ✅', style: TextStyle(color: Colors.white)),
+                        icon: const Icon(Icons.check_circle, color: Colors.white, size: 18),
+                        label: const Text('تأكيد الشحن ✅', style: TextStyle(color: Colors.white, fontSize: 13)),
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                       ),
                     ),
@@ -319,8 +336,8 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () => _showRejectDialog(index),
-                        icon: const Icon(Icons.cancel, color: Colors.white),
-                        label: const Text('رفض مع السبب ❌', style: TextStyle(color: Colors.white)),
+                        icon: const Icon(Icons.cancel, color: Colors.white, size: 18),
+                        label: const Text('رفض مع السبب ❌', style: TextStyle(color: Colors.white, fontSize: 13)),
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                       ),
                     ),
@@ -429,14 +446,15 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     );
   }
 
+  // ==========================================
   // دوال مساعدة للتصميم
+  // ==========================================
   Widget _buildInfoRow(String title, String value, {bool isBold = false, Color? color}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // 👈 التعديل هنا: إزالة const من الـ Text
           Text(title, style: const TextStyle(color: Colors.blueGrey)),
           Text(value, style: TextStyle(fontWeight: isBold ? FontWeight.bold : FontWeight.normal, color: color)),
         ],
@@ -444,8 +462,9 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     );
   }
 
-  Widget _buildTextField(String label, IconData icon) {
+  Widget _buildTextField(String label, IconData icon, {bool isNumber = false}) {
     return TextField(
+      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon, color: Colors.blueAccent),
@@ -458,13 +477,17 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
   Widget _buildIconButton(IconData icon, String label, Color color, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color),
-          const SizedBox(height: 4),
-          Text(label, style: TextStyle(fontSize: 12, color: color)),
-        ],
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color),
+            const SizedBox(height: 4),
+            Text(label, style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.bold)),
+          ],
+        ),
       ),
     );
   }
