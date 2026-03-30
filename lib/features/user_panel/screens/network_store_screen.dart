@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // نحتاجها لميزة نسخ النص (رقم الكرت)
-import '../../../core/widgets/custom_header.dart'; // الترويسة الموحدة
+import 'package:flutter/services.dart'; // ميزة نسخ النص
+import 'package:provider/provider.dart'; // 👈 استدعاء مكتبة العقل المدبر
+
+import '../../../core/providers/system_provider.dart'; // 👈 الخادم المحلي
+import '../../../core/widgets/custom_header.dart'; // الترويسة
 import '../widgets/custom_user_drawer.dart'; // القائمة الجانبية
 
 class NetworkStoreScreen extends StatefulWidget {
@@ -11,10 +14,10 @@ class NetworkStoreScreen extends StatefulWidget {
 }
 
 class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
-  // متغير لحفظ نص البحث
+  // متغير البحث
   String _searchQuery = '';
 
-  // 1. قاعدة بيانات وهمية للشبكات المتاحة
+  // 1. قاعدة بيانات الشبكات (كما هي)
   final List<Map<String, dynamic>> _networks = [
     {
       'name': 'شبكة الصقر للواي فاي',
@@ -36,7 +39,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     },
   ];
 
-  // 2. قاعدة بيانات وهمية لنقاط البيع (البقالات)
+  // 2. قاعدة بيانات نقاط البيع (كما هي)
   final List<Map<String, dynamic>> _pointsOfSale = [
     {
       'name': 'بقالة التوفيق',
@@ -50,19 +53,21 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   ];
 
   // ==========================================
-  // دالة الشراء (تظهر نافذة منبثقة من الأسفل)
+  // دالة الشراء (تم ربطها بـ SystemProvider)
   // ==========================================
   void _showPurchaseBottomSheet(BuildContext context, String title, double price) {
-    // متغير لتتبع حالة الشراء (هل تمت أم لا يزال في صفحة التأكيد؟)
     bool isPurchased = false;
-    String generatedPin = '1234-5678-9101'; // كرت وهمي
+    String generatedPin = '1234-5678-${DateTime.now().millisecondsSinceEpoch.toString().substring(9)}'; // رقم كرت شبه عشوائي
+    
+    // 👈 استدعاء الخادم المحلي قبل فتح النافذة المنبثقة
+    final systemProvider = Provider.of<SystemProvider>(context, listen: false);
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
-        return StatefulBuilder( // نستخدم StatefulBuilder لتحديث النافذة من الداخل
+        return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
             return Directionality(
               textDirection: TextDirection.rtl,
@@ -71,7 +76,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // تصميم شريط السحب العلوي للنافذة
                     Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10))),
                     const SizedBox(height: 20),
                     
@@ -83,6 +87,22 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                       const SizedBox(height: 10),
                       Text('هل أنت متأكد من شراء كرت ($title)؟', textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
                       const SizedBox(height: 20),
+                      
+                      // عرض الرصيد الحالي للمستخدم لتأكيد القدرة على الشراء
+                      Container(
+                        padding: const EdgeInsets.all(15),
+                        decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.blue.shade200)),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('رصيدك الحالي:', style: TextStyle(fontWeight: FontWeight.bold)),
+                            // قراءة الرصيد الحقيقي من النظام
+                            Text('${systemProvider.currentUserBalance.toStringAsFixed(0)} ريال', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 16)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+
                       Container(
                         padding: const EdgeInsets.all(15),
                         decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.orange.shade200)),
@@ -101,8 +121,21 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                           onPressed: () {
-                            // تغيير الحالة إلى "تم الشراء" لتحديث النافذة
-                            setModalState(() { isPurchased = true; });
+                            // 👇 التحقق من الرصيد والخصم من النظام الشامل
+                            bool success = systemProvider.userBuyCard(price, title);
+                            
+                            if (success) {
+                              setModalState(() { isPurchased = true; }); // نجاح الشراء
+                            } else {
+                              // فشل الشراء (رصيد غير كافٍ أو لا توجد كروت)
+                              Navigator.pop(context); // إغلاق النافذة
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('عفواً، رصيدك غير كافٍ أو لا توجد كروت متوفرة بالنظام! ❌', textDirection: TextDirection.rtl,),
+                                  backgroundColor: Colors.red,
+                                )
+                              );
+                            }
                           },
                           child: const Text('تأكيد وشراء الآن', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
                         ),
@@ -124,7 +157,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                             const SizedBox(height: 15),
                             ElevatedButton.icon(
                               onPressed: () {
-                                // نسخ النص للحافظة
                                 Clipboard.setData(ClipboardData(text: generatedPin));
                                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم نسخ الكرت بنجاح! ✅'), backgroundColor: Colors.green));
                               },
@@ -137,7 +169,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                       ),
                       const SizedBox(height: 20),
                       TextButton(
-                        onPressed: () => Navigator.pop(context), // إغلاق النافذة
+                        onPressed: () => Navigator.pop(context),
                         child: const Text('إغلاق', style: TextStyle(fontSize: 16, color: Colors.grey)),
                       )
                     ]
@@ -153,18 +185,20 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // تصفية الشبكات حسب نص البحث
-    final filteredNetworks = _networks.where((net) => net['name'].toString().contains(_searchQuery)).toList();
-    // تصفية نقاط البيع حسب نص البحث
-    final filteredPoS = _pointsOfSale.where((pos) => pos['name'].toString().contains(_searchQuery)).toList();
+    // تصفية الشبكات والنقاط بناءً على نص البحث
+    final filteredNetworks = _networks.where((net) => net['name'].toString().contains(_searchQuery) || net['location'].toString().contains(_searchQuery)).toList();
+    final filteredPoS = _pointsOfSale.where((pos) => pos['name'].toString().contains(_searchQuery) || pos['location'].toString().contains(_searchQuery)).toList();
 
     return DefaultTabController(
       length: 2,
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: const CustomHeader(title: 'سوق الشبكات ونقاط البيع'),
+        
+        // 👈 لاحظ أننا تركنا الاستدعاء نظيفاً دون تمرير الرصيد يدوياً
         drawer: const CustomUserDrawer(
-          userName: 'محمد أحمد', phoneNumber: '777123456', walletBalance: 2500.0,
+          userName: 'محمد أحمد', 
+          phoneNumber: '777123456', 
         ),
         body: Directionality(
           textDirection: TextDirection.rtl,
@@ -178,11 +212,11 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                 padding: const EdgeInsets.all(16),
                 child: TextField(
                   onChanged: (value) {
-                    setState(() { _searchQuery = value; }); // تحديث البحث
+                    setState(() { _searchQuery = value; }); // تحديث الواجهة فوراً عند الكتابة
                   },
                   style: const TextStyle(color: Colors.black),
                   decoration: InputDecoration(
-                    hintText: 'ابحث عن شبكة أو بقالة...',
+                    hintText: 'ابحث عن شبكة أو بقالة أو منطقة...',
                     prefixIcon: const Icon(Icons.search, color: Colors.blue),
                     filled: true,
                     fillColor: Colors.white,
@@ -215,15 +249,14 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
               Expanded(
                 child: TabBarView(
                   children: [
-                    // تبويب الشبكات المتاحة
+                    // تبويب الشبكات
                     filteredNetworks.isEmpty 
                       ? const Center(child: Text('لا توجد شبكات مطابقة للبحث'))
                       : ListView.builder(
                           padding: const EdgeInsets.all(16),
                           itemCount: filteredNetworks.length,
                           itemBuilder: (context, index) {
-                            final net = filteredNetworks[index];
-                            return _buildNetworkCard(net);
+                            return _buildNetworkCard(filteredNetworks[index]);
                           },
                         ),
                     
@@ -234,8 +267,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                           padding: const EdgeInsets.all(16),
                           itemCount: filteredPoS.length,
                           itemBuilder: (context, index) {
-                            final pos = filteredPoS[index];
-                            return _buildPoSCard(pos);
+                            return _buildPoSCard(filteredPoS[index]);
                           },
                         ),
                   ],
@@ -249,7 +281,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   }
 
   // ==========================================
-  // تصميم بطاقة "الشبكة المتاحة" (قابلة للتوسعة)
+  // تصميم بطاقة "الشبكة"
   // ==========================================
   Widget _buildNetworkCard(Map<String, dynamic> network) {
     return Card(
@@ -297,7 +329,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   }
 
   // ==========================================
-  // تصميم بطاقة "نقطة البيع" (قابلة للتوسعة)
+  // تصميم بطاقة "نقطة البيع"
   // ==========================================
   Widget _buildPoSCard(Map<String, dynamic> pos) {
     return Card(
