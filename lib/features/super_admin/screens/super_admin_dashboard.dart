@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // 👈 1. استدعاء مكتبة العقل المدبر
+import 'package:provider/provider.dart'; // 👈 استدعاء مكتبة العقل المدبر
 
-import '../../../core/providers/system_provider.dart'; // 👈 2. استدعاء الخادم المحلي للرصيد
+import '../../../core/providers/system_provider.dart'; // 👈 استدعاء الخادم المحلي للرصيد
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart';
 
@@ -11,7 +11,7 @@ import 'staff_support_screen.dart';
 import 'reports_screen.dart';
 import 'agent_management_screen.dart';
 import 'sms_gateway_screen.dart';
-import 'global_settings_screen.dart'; // 👈 تم تصحيح اسم الملف ليتطابق مع ما بنيناه سابقاً
+import 'settings_screen.dart'; // 👈 تم إعادة الاستدعاء ليتطابق مع اسم الملف الفعلي لديك
 
 class SuperAdminDashboard extends StatefulWidget {
   const SuperAdminDashboard({super.key});
@@ -73,14 +73,13 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    // 👈 3. جلب الأرباح الحقيقية للنظام من العقل المدبر
+    // 👈 جلب الأرباح الحقيقية للنظام من العقل المدبر
     final systemProvider = Provider.of<SystemProvider>(context);
     final adminBalance = systemProvider.adminMainBalance;
 
     return Scaffold(
       appBar: const CustomHeader(title: 'غرفة العمليات المركزية'),
       
-      // 👈 تمرير الرصيد المتغير وإزالة الـ const
       drawer: CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
@@ -138,7 +137,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
             const SizedBox(height: 10),
 
             // ==========================================
-            // شبكة البطاقات الـ 8 (الآن كلها تنقلك للشاشات الحقيقية!)
+            // شبكة البطاقات الـ 8 
             // ==========================================
             Expanded(
               child: GridView.count(
@@ -148,7 +147,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                 mainAxisSpacing: 12,
                 childAspectRatio: 1.1, 
                 children: [
-                  // 1. السيولة والأرباح -> تنقل للمركز المالي
                   _buildDashboardCard(
                     title: 'مبيعات اليوم',
                     value: '1,250,000',
@@ -157,7 +155,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     color: Colors.green,
                     onTap: () => _navigateTo(const FinancialCenterScreen()),
                   ),
-                  // 2. طلبات الشحن -> تنقل للمركز المالي (تبويب الطلبات)
                   _buildDashboardCard(
                     title: 'طلبات شحن معلقة',
                     value: '3 طلبات',
@@ -167,7 +164,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     isAlert: true,
                     onTap: () => _navigateTo(const FinancialCenterScreen()),
                   ),
-                  // 3. رادار الخطر -> تنقل للمركز المالي (تبويب المحافظ)
                   _buildDashboardCard(
                     title: 'رادار الخطر',
                     value: '2 وكلاء',
@@ -176,7 +172,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     color: Colors.orange,
                     onTap: () => _navigateTo(const FinancialCenterScreen()),
                   ),
-                  // 4. تذاكر الدعم الفني -> تنقل لإدارة الموظفين والدعم
                   _buildDashboardCard(
                     title: 'تذاكر الدعم',
                     value: '5 مفتوحة',
@@ -185,7 +180,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     color: Colors.blue,
                     onTap: () => _navigateTo(const StaffSupportScreen()),
                   ),
-                  // 5. المخزون العام -> تنقل للتقارير الشاملة
                   _buildDashboardCard(
                     title: 'إجمالي المخزون',
                     value: '8.5 مليون',
@@ -194,7 +188,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     color: Colors.teal,
                     onTap: () => _navigateTo(const ReportsScreen()),
                   ),
-                  // 6. الوكيل الأنشط -> تنقل لإدارة الوكلاء
                   _buildDashboardCard(
                     title: 'الوكيل الأنشط',
                     value: 'شبكة الصقر',
@@ -203,7 +196,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     color: Colors.amber.shade600,
                     onTap: () => _navigateTo(const AgentManagementScreen()),
                   ),
-                  // 7. رصيد SMS -> تنقل لبوابة الرسائل
                   _buildDashboardCard(
                     title: 'رصيد الـ SMS',
                     value: '4,500',
@@ -212,7 +204,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     color: Colors.purple,
                     onTap: () => _navigateTo(const SmsGatewayScreen()),
                   ),
-                  // 8. الإعدادات العامة -> تنقل للإعدادات
                   _buildDashboardCard(
                     title: 'إعدادات النظام',
                     value: 'تحكم كامل',
