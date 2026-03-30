@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // 👈 1. استدعاء مكتبة العقل المدبر
+
+import '../../../core/providers/system_provider.dart'; // 👈 2. استدعاء الخادم المحلي الشامل
 import '../../../core/widgets/custom_drawer.dart';
-import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الهيدر الجديد
+import '../../../core/widgets/custom_header.dart';
 
 class SubscriptionsScreen extends StatefulWidget {
   const SubscriptionsScreen({super.key});
@@ -10,7 +13,7 @@ class SubscriptionsScreen extends StatefulWidget {
 }
 
 class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
-  // قاعدة بيانات وهمية لاشتراكات الوكلاء مع حالاتهم المختلفة
+  // قاعدة بيانات تجريبية لاشتراكات الوكلاء مع حالاتهم المختلفة (قابلة للتعديل)
   final List<Map<String, dynamic>> _subscriptions = [
     {'name': 'أحمد القدسي', 'plan': 'باقة 5% (مفتوح)', 'expiry': '2026-04-10', 'status': 'نشط', 'color': Colors.blue},
     {'name': 'محمد علي', 'plan': 'فترة مجانية (14 يوم)', 'expiry': '2026-03-28', 'status': 'فترة مجانية', 'color': Colors.green},
@@ -43,8 +46,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildTextField('نسبة ربح النظام (مثلاً 5% أو 7%)', Icons.percent),
-                  _buildTextField('مدة الخطة (بالأشهر)', Icons.calendar_today),
-                  _buildTextField('الحد الأقصى لنقاط البيع (أو اترك فارغ للمفتوح)', Icons.storefront),
+                  _buildTextField('مدة الخطة (بالأشهر)', Icons.calendar_today, isNumber: true),
+                  _buildTextField('الحد الأقصى لنقاط البيع (أو اترك فارغ للمفتوح)', Icons.storefront, isNumber: true),
                   
                   const Divider(),
                   const Text('فلاتر الاستهداف (التخصيص المتقدم):', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -76,7 +79,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
               ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال الخطة للروبوت الآلي لتطبيقها.'), backgroundColor: Colors.blue));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال الخطة للروبوت الآلي لتطبيقها بنجاح 🚀', textDirection: TextDirection.rtl), backgroundColor: Colors.blue));
                 },
                 child: const Text('حفظ واعتماد الخطة'),
               ),
@@ -96,7 +99,13 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          title: const Text('توليد كوبون ترويجي', style: TextStyle(fontWeight: FontWeight.bold)),
+          title: const Row(
+            children: [
+              Icon(Icons.local_offer, color: Colors.green),
+              SizedBox(width: 8),
+              Text('توليد كوبون ترويجي', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ],
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -106,7 +115,14 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-            ElevatedButton(onPressed: () => Navigator.pop(context), style: ElevatedButton.styleFrom(backgroundColor: Colors.green), child: const Text('توليد الكوبون', style: TextStyle(color: Colors.white))),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم توليد الكوبون وحفظه في النظام ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+              }, 
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green), 
+              child: const Text('توليد الكوبون', style: TextStyle(color: Colors.white))
+            ),
           ],
         ),
       ),
@@ -126,15 +142,21 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('بمجرد الحفظ، سيصل إشعار فوري للوكيل وسيتبرمج الرادار للعد التنازلي.', style: TextStyle(fontSize: 12, color: Colors.grey)),
-              const SizedBox(height: 10),
+              const Text('بمجرد الحفظ، سيصل إشعار فوري للوكيل وسيتبرمج الرادار للعد التنازلي.', style: TextStyle(fontSize: 12, color: Colors.grey, height: 1.5)),
+              const SizedBox(height: 15),
               _buildTextField('تاريخ البداية (YYYY-MM-DD)', Icons.play_circle_outline),
               _buildTextField('تاريخ النهاية بدقة (YYYY-MM-DD)', Icons.stop_circle_outlined),
             ],
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-            ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('تحديث العداد')),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث فترة السماح بنجاح ⏱️', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+              }, 
+              child: const Text('تحديث العداد')
+            ),
           ],
         ),
       ),
@@ -150,7 +172,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          title: Text('السجل التاريخي لخطط: $agentName', style: const TextStyle(fontWeight: FontWeight.bold)),
+          title: Text('السجل التاريخي لخطط: $agentName', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           content: SizedBox(
             width: double.maxFinite,
             child: ListView(
@@ -191,20 +213,29 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         _subscriptions[index]['color'] = Colors.grey;
       }
     });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(_subscriptions[index]['status'] == 'نشط' ? 'تم استئناف الخطة بنجاح ▶️' : 'تم إيقاف الخطة مؤقتاً ⏸️', textDirection: TextDirection.rtl),
+      backgroundColor: _subscriptions[index]['status'] == 'نشط' ? Colors.green : Colors.orange,
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
+    // 👈 3. الاتصال بالعقل المدبر لقراءة الأرباح الحقيقية
+    final systemProvider = Provider.of<SystemProvider>(context);
+    final adminBalance = systemProvider.adminMainBalance;
+
     return Scaffold(
-      // 👈 تم تركيب الهيدر الشامل هنا بنجاح!
       appBar: const CustomHeader(title: 'إدارة الاشتراكات'),
       
-      drawer: const CustomDrawer(
+      // 👈 تمرير الرصيد المتغير للـ Drawer وتجنب الـ const
+      drawer: CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
         role: 'مالك النظام (Super Admin)',
-        balanceOrPoints: 'أرباح النظام: 5,430,000 ريال',
+        balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
       ),
+      
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
@@ -234,7 +265,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // 👈 زر إعدادات الرادار الذي كان في الهيدر نقلناه هنا ليكون دائماً في متناول يدك!
+                  // زر إعدادات الرادار
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.grey.withOpacity(0.1),
@@ -244,7 +275,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                       icon: const Icon(Icons.settings_suggest, color: Colors.blueAccent),
                       tooltip: 'إعدادات الرادار الآلي وفترة السماح',
                       onPressed: () {
-                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('إعدادات فترة السماح (Grace Period) للروبوت.')));
+                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('نافذة إعدادات فترة السماح (Grace Period) ستتوفر قريباً.', textDirection: TextDirection.rtl)));
                       },
                     ),
                   ),
@@ -313,10 +344,12 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     );
   }
 
-  Widget _buildTextField(String label, IconData icon) {
+  // أداة بناء حقول الإدخال
+  Widget _buildTextField(String label, IconData icon, {bool isNumber = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: TextField(
+        keyboardType: isNumber ? TextInputType.number : TextInputType.text,
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(icon, color: Colors.blueAccent),
@@ -327,6 +360,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     );
   }
 
+  // أداة بناء أزرار الإجراءات
   Widget _buildActionButton(IconData icon, String tooltip, Color color, VoidCallback onTap) {
     return IconButton(
       icon: Icon(icon, color: color),
