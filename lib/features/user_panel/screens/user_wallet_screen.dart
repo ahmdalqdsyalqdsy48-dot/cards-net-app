@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // 👈 1. استدعاء مكتبة العقل المدبر
+import 'package:provider/provider.dart'; // 👈 استدعاء مكتبة العقل المدبر
 
-import '../../../core/providers/system_provider.dart'; // 👈 2. استدعاء الخادم المحلي الشامل
+import '../../../core/providers/system_provider.dart'; // 👈 الخادم المحلي الشامل
 import '../../../core/widgets/custom_header.dart'; 
 import '../widgets/custom_user_drawer.dart'; 
 
@@ -43,7 +43,7 @@ class _UserWalletScreenState extends State<UserWalletScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    // 👇 3. الاتصال بالعقل المدبر لقراءة الرصيد الحقيقي للزبون
+    // 👇 الاتصال بالعقل المدبر لقراءة الرصيد الحقيقي للزبون
     final systemProvider = Provider.of<SystemProvider>(context);
     final double realBalance = systemProvider.currentUserBalance;
 
@@ -53,7 +53,7 @@ class _UserWalletScreenState extends State<UserWalletScreen> {
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: const CustomHeader(title: 'المحفظة الذكية'),
         
-        // 👇 4. تم تنظيف القائمة الجانبية لتجنب الأخطاء
+        // 👇 تم إزالة `walletBalance` من هنا نهائياً ليختفي الخطأ
         drawer: const CustomUserDrawer(
           userName: 'محمد أحمد',
           phoneNumber: '777123456',
@@ -231,7 +231,6 @@ class _UserWalletScreenState extends State<UserWalletScreen> {
                 if (_transferPhoneController.text.length >= 9 && amount > 0 && amount <= currentBalance) {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم تحويل $amount ريال بنجاح! ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
                   
-                  // ملاحظة: هنا يجب أن نستدعي الخادم المحلي لخصم المبلغ فعلياً (مثلما فعلنا في صفحة الشراء)، ولكن لمحاكاة التحويل نكتفي بمسح الحقول
                   _transferAmountController.clear();
                   _transferPhoneController.clear();
                   setState(() => _validatedFriendName = '');
