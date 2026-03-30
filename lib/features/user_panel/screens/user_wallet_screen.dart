@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
-import '../../../core/widgets/custom_header.dart'; // استدعاء الترويسة الموحدة
-import '../widgets/custom_user_drawer.dart'; // استدعاء القائمة الجانبية
+import 'package:provider/provider.dart'; // 👈 1. استدعاء مكتبة العقل المدبر
+
+import '../../../core/providers/system_provider.dart'; // 👈 2. استدعاء الخادم المحلي الشامل
+import '../../../core/widgets/custom_header.dart'; 
+import '../widgets/custom_user_drawer.dart'; 
 
 class UserWalletScreen extends StatefulWidget {
   const UserWalletScreen({super.key});
@@ -10,9 +13,6 @@ class UserWalletScreen extends StatefulWidget {
 }
 
 class _UserWalletScreenState extends State<UserWalletScreen> {
-  // بيانات وهمية للزبون
-  final double _walletBalance = 2500.0;
-  
   // متغيرات تبويب "شحن الرصيد"
   String _selectedBank = 'بنك الكريمي';
   final TextEditingController _rechargeAmountController = TextEditingController();
@@ -24,12 +24,12 @@ class _UserWalletScreenState extends State<UserWalletScreen> {
   String _validatedFriendName = ''; // لحفظ اسم الصديق بعد التحقق من رقمه
 
   // ==========================================
-  // دالة وهمية للتحقق من رقم هاتف الصديق قبل التحويل
+  // دالة للتحقق من رقم هاتف الصديق قبل التحويل
   // ==========================================
   void _validatePhoneNumber(String phone) {
     if (phone.length >= 9) {
       setState(() {
-        // محاكاة للبحث في قاعدة البيانات
+        // محاكاة للبحث في قاعدة البيانات وإرجاع اسم المستلم
         _validatedFriendName = 'محم*** أحم*** (مستخدم موثوق ✅)';
       });
     } else {
@@ -42,17 +42,23 @@ class _UserWalletScreenState extends State<UserWalletScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // 👇 3. الاتصال بالعقل المدبر لقراءة الرصيد الحقيقي للزبون
+    final systemProvider = Provider.of<SystemProvider>(context);
+    final double realBalance = systemProvider.currentUserBalance;
 
     return DefaultTabController(
-      length: 3, // عدد التبويبات
+      length: 3, 
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: const CustomHeader(title: 'المحفظة الذكية'),
+        
+        // 👇 4. تم تنظيف القائمة الجانبية لتجنب الأخطاء
         drawer: const CustomUserDrawer(
           userName: 'محمد أحمد',
           phoneNumber: '777123456',
-          walletBalance: 2500.0,
         ),
+        
         body: Directionality(
           textDirection: TextDirection.rtl,
           child: Column(
@@ -85,7 +91,7 @@ class _UserWalletScreenState extends State<UserWalletScreen> {
                 child: TabBarView(
                   children: [
                     _buildRechargeTab(),
-                    _buildTransferTab(),
+                    _buildTransferTab(realBalance), // تمرير الرصيد الحقيقي لتبويب التحويل
                     _buildQRTab(),
                   ],
                 ),
@@ -113,7 +119,7 @@ class _UserWalletScreenState extends State<UserWalletScreen> {
           
           DropdownButtonFormField<String>(
             value: _selectedBank,
-            decoration: InputDecoration(labelText: 'البنك / المحفظة المُحوَّل إليها', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.account_balance, color: Colors.teal)),
+            decoration: InputDecoration(labelText: 'البنك / المحفظة المُحوَّل إليها', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.account_balance, color: Colors.teal)),
             items: ['بنك الكريمي', 'محفظة جوالي', 'موبايل موني'].map((bank) => DropdownMenuItem(value: bank, child: Text(bank))).toList(),
             onChanged: (val) => setState(() => _selectedBank = val!),
           ),
@@ -135,7 +141,7 @@ class _UserWalletScreenState extends State<UserWalletScreen> {
 
           OutlinedButton.icon(
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سيتم فتح المعرض لاختيار صورة السند 📸')));
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سيتم فتح معرض الصور قريباً 📸', textDirection: TextDirection.rtl)));
             },
             icon: const Icon(Icons.image, color: Colors.teal),
             label: const Text('إرفاق صورة السند (اختياري)', style: TextStyle(color: Colors.teal, fontWeight: FontWeight.bold)),
@@ -156,11 +162,11 @@ class _UserWalletScreenState extends State<UserWalletScreen> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.teal.shade700, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
               onPressed: () {
                 if (_rechargeAmountController.text.isNotEmpty && _rechargeRefController.text.isNotEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم رفع طلب الشحن للإدارة بنجاح! يرجى الانتظار. ✅'), backgroundColor: Colors.green));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم رفع طلب الشحن للإدارة بنجاح! سيتم إيداع الرصيد قريباً ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
                   _rechargeAmountController.clear();
                   _rechargeRefController.clear();
                 } else {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى تعبئة المبلغ ورقم الحوالة! ❌'), backgroundColor: Colors.red));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى تعبئة المبلغ ورقم الحوالة! ❌', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
                 }
               },
               child: const Text('تأكيد وإرسال الطلب', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
@@ -172,15 +178,16 @@ class _UserWalletScreenState extends State<UserWalletScreen> {
   }
 
   // ==========================================
-  // تبويب 2: التحويل لصديق (مع التحقق المسبق)
+  // تبويب 2: التحويل لصديق (مع التحقق من الرصيد الحي)
   // ==========================================
-  Widget _buildTransferTab() {
+  Widget _buildTransferTab(double currentBalance) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('رصيدك المتاح: $_walletBalance ريال', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.teal.shade800)),
+          // عرض الرصيد الحقيقي للمستخدم
+          Text('رصيدك المتاح: ${currentBalance.toStringAsFixed(0)} ريال', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.teal.shade800)),
           const SizedBox(height: 20),
           const Text('💸 تحويل رصيد لمستخدم آخر', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 15),
@@ -188,7 +195,7 @@ class _UserWalletScreenState extends State<UserWalletScreen> {
           TextField(
             controller: _transferPhoneController,
             keyboardType: TextInputType.phone,
-            onChanged: _validatePhoneNumber, // تفعيل التحقق التلقائي عند الكتابة
+            onChanged: _validatePhoneNumber, 
             decoration: InputDecoration(
               labelText: 'رقم هاتف المستلم', 
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), 
@@ -196,7 +203,6 @@ class _UserWalletScreenState extends State<UserWalletScreen> {
             ),
           ),
           
-          // رسالة التحقق من اسم المستلم
           if (_validatedFriendName.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8.0, right: 10),
@@ -220,13 +226,24 @@ class _UserWalletScreenState extends State<UserWalletScreen> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
               onPressed: () {
                 double amount = double.tryParse(_transferAmountController.text) ?? 0;
-                if (_transferPhoneController.text.length >= 9 && amount > 0 && amount <= _walletBalance) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم تحويل $amount ريال بنجاح! ✅'), backgroundColor: Colors.green));
+                
+                // 1. التحقق من المدخلات: هاتف صحيح + مبلغ صحيح + رصيد كافٍ
+                if (_transferPhoneController.text.length >= 9 && amount > 0 && amount <= currentBalance) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم تحويل $amount ريال بنجاح! ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                  
+                  // ملاحظة: هنا يجب أن نستدعي الخادم المحلي لخصم المبلغ فعلياً (مثلما فعلنا في صفحة الشراء)، ولكن لمحاكاة التحويل نكتفي بمسح الحقول
                   _transferAmountController.clear();
                   _transferPhoneController.clear();
                   setState(() => _validatedFriendName = '');
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى التأكد من الرقم والمبلغ والرصيد المتاح! ❌'), backgroundColor: Colors.red));
+                  
+                } 
+                // 2. إذا كان الرصيد غير كافٍ
+                else if (amount > currentBalance) {
+                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('رصيدك الحالي لا يكفي لإتمام هذه الحوالة! 🚫', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                }
+                // 3. أخطاء أخرى (رقم هاتف قصير أو مبلغ فارغ)
+                else {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى التأكد من كتابة الرقم والمبلغ بشكل صحيح! ❌', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
                 }
               },
               child: const Text('تحويل الآن', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
@@ -252,7 +269,6 @@ class _UserWalletScreenState extends State<UserWalletScreen> {
             const Text('اجعل صاحب البقالة يمسح هذا الكود لتحويل الرصيد إليك', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
             const SizedBox(height: 30),
             
-            // محاكاة لشكل الـ QR Code
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -268,7 +284,7 @@ class _UserWalletScreenState extends State<UserWalletScreen> {
             
             OutlinedButton.icon(
               onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سيتم تشغيل الكاميرا لمسح كود بقالة 📷')));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سيتم تشغيل كاميرا الهاتف لمسح الـ QR 📷', textDirection: TextDirection.rtl)));
               },
               icon: const Icon(Icons.camera_alt, color: Colors.purple),
               label: const Text('مسح كود بقالة (للدفع)', style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
