@@ -11,6 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.2
+  provider: ^6.1.2 # 👈 تم إضافة مكتبة العقل (Provider) هنا بنجاح
 
 dev_dependencies:
   flutter_test:
