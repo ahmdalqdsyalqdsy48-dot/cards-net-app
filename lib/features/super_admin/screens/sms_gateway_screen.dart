@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // 👈 1. استدعاء مكتبة العقل المدبر
+
+import '../../../core/providers/system_provider.dart'; // 👈 2. استدعاء الخادم المحلي الشامل
 import '../../../core/widgets/custom_drawer.dart';
-import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الهيدر الجديد
+import '../../../core/widgets/custom_header.dart';
 
 class SmsGatewayScreen extends StatefulWidget {
   const SmsGatewayScreen({super.key});
@@ -12,14 +15,14 @@ class SmsGatewayScreen extends StatefulWidget {
 class _SmsGatewayScreenState extends State<SmsGatewayScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  // قاعدة بيانات وهمية لقوالب الرسائل
+  // قاعدة بيانات تجريبية لقوالب الرسائل
   final List<Map<String, dynamic>> _templates = [
     {'title': 'كود التحقق (OTP)', 'body': 'كود الدخول السري هو {code}، يرجى عدم مشاركته مع أحد. - شبكة الصقر'},
     {'title': 'نجاح الشحن', 'body': 'تم إيداع {amount} ريال في محفظتك بنجاح. الرصيد الحالي: {balance}.'},
     {'title': 'تنبيه التجميد (الرادار)', 'body': 'عزيزي الوكيل، محفظتك فارغة تقريباً وسيتم تجميد شبكتك قريباً. يرجى الشحن.'},
   ];
 
-  // قاعدة بيانات وهمية لسجل الإرسال
+  // قاعدة بيانات تجريبية لسجل الإرسال
   final List<Map<String, dynamic>> _smsLogs = [
     {'phone': '774578241', 'text': 'كود الدخول السري هو 4589...', 'time': 'اليوم 10:30 ص', 'status': 'تم التسليم 🟢'},
     {'phone': '711223344', 'text': 'تم إيداع 50,000 ريال في محفظتك...', 'time': 'اليوم 09:15 ص', 'status': 'تم التسليم 🟢'},
@@ -48,12 +51,13 @@ class _SmsGatewayScreenState extends State<SmsGatewayScreen> with SingleTickerPr
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: const [
-              CircularProgressIndicator(),
+              CircularProgressIndicator(color: Colors.blue),
               SizedBox(height: 15),
-              Text('جاري فحص الاتصال بمزود الخدمة...'),
+              Text('جاري فحص الاتصال بمزود الخدمة...', style: TextStyle(fontWeight: FontWeight.bold)),
             ],
           ),
         ),
@@ -64,7 +68,7 @@ class _SmsGatewayScreenState extends State<SmsGatewayScreen> with SingleTickerPr
     Future.delayed(const Duration(seconds: 2), () {
       Navigator.pop(context); // إغلاق نافذة التحميل
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✅ تم الاتصال بنجاح! الرصيد متاح والربط سليم.'), backgroundColor: Colors.green)
+        const SnackBar(content: Text('✅ تم الاتصال بنجاح! الرصيد متاح والربط سليم.', textDirection: TextDirection.rtl), backgroundColor: Colors.green)
       );
     });
   }
@@ -74,6 +78,7 @@ class _SmsGatewayScreenState extends State<SmsGatewayScreen> with SingleTickerPr
   // ==========================================
   void _editTemplate(int index) {
     TextEditingController bodyController = TextEditingController(text: _templates[index]['body']);
+    
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -84,7 +89,7 @@ class _SmsGatewayScreenState extends State<SmsGatewayScreen> with SingleTickerPr
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('💡 استخدم المتغيرات بين الأقواس ليقوم النظام باستبدالها آلياً (مثل: {amount}, {code})', style: TextStyle(fontSize: 11, color: Colors.blueGrey)),
+              const Text('💡 استخدم المتغيرات بين الأقواس ليقوم النظام باستبدالها آلياً (مثل: {amount}, {code})', style: TextStyle(fontSize: 11, color: Colors.blueGrey, height: 1.5)),
               const SizedBox(height: 10),
               TextField(
                 controller: bodyController,
@@ -97,9 +102,11 @@ class _SmsGatewayScreenState extends State<SmsGatewayScreen> with SingleTickerPr
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
             ElevatedButton(
               onPressed: () {
-                setState(() => _templates[index]['body'] = bodyController.text);
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ القالب بنجاح.'), backgroundColor: Colors.green));
+                if (bodyController.text.trim().isNotEmpty) {
+                  setState(() => _templates[index]['body'] = bodyController.text);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ القالب بنجاح. ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                }
               },
               child: const Text('حفظ التعديلات'),
             ),
@@ -111,30 +118,34 @@ class _SmsGatewayScreenState extends State<SmsGatewayScreen> with SingleTickerPr
 
   @override
   Widget build(BuildContext context) {
+    // 👈 3. الاتصال بالعقل المدبر لقراءة الأرباح الحقيقية
+    final systemProvider = Provider.of<SystemProvider>(context);
+    final adminBalance = systemProvider.adminMainBalance;
+
     return Scaffold(
-      // 👈 تم تركيب الهيدر الشامل هنا بنجاح!
       appBar: const CustomHeader(title: 'بوابة رسائل الـ SMS'),
       
-      drawer: const CustomDrawer(
+      // 👈 تمرير الرصيد المتغير وإزالة الـ const
+      drawer: CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
         role: 'مالك النظام (Super Admin)',
-        balanceOrPoints: 'أرباح النظام: 5,430,000 ريال',
+        balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
       ),
+      
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // 👈 نقلنا شريط التبويبات إلى هنا
             Container(
-              color: Colors.transparent, // دعم الوضع الليلي
+              color: Colors.transparent, 
               child: TabBar(
                 controller: _tabController,
                 labelColor: Colors.blueAccent,
                 unselectedLabelColor: Colors.grey,
                 indicatorColor: Colors.blueAccent,
                 tabs: const [
-                  Tab(icon: Icon(Icons.electrical_services), text: 'إعدادات الربط API'),
+                  Tab(icon: Icon(Icons.electrical_services), text: 'إعدادات الربط'),
                   Tab(icon: Icon(Icons.sms), text: 'القوالب الآلية'),
                   Tab(icon: Icon(Icons.history), text: 'السجل والرصيد'),
                 ],
@@ -185,7 +196,7 @@ class _SmsGatewayScreenState extends State<SmsGatewayScreen> with SingleTickerPr
             ),
           ),
           const SizedBox(height: 15),
-          const Text('💡 عند الضغط على فحص الاتصال، سيقوم النظام بإرسال رسالة تجريبية إلى رقم هاتفك المسجل للتأكد من نجاح الربط.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+          const Text('💡 عند الضغط على فحص الاتصال، سيقوم النظام بإرسال رسالة تجريبية إلى رقم هاتفك المسجل للتأكد من نجاح الربط.', style: TextStyle(color: Colors.grey, fontSize: 12, height: 1.5)),
         ],
       ),
     );
@@ -219,7 +230,7 @@ class _SmsGatewayScreenState extends State<SmsGatewayScreen> with SingleTickerPr
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(8)),
+                  decoration: BoxDecoration(color: Theme.of(context).brightness == Brightness.dark ? Colors.black12 : Colors.grey.shade50, borderRadius: BorderRadius.circular(8)),
                   child: Text(_templates[index]['body'], style: const TextStyle(fontSize: 14)),
                 ),
               ],
@@ -246,8 +257,8 @@ class _SmsGatewayScreenState extends State<SmsGatewayScreen> with SingleTickerPr
             borderRadius: BorderRadius.circular(15),
             boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8)],
           ),
-          child: Column(
-            children: const [
+          child: const Column(
+            children: [
               Text('رصيد باقة الرسائل المتبقي', style: TextStyle(color: Colors.white70, fontSize: 14)),
               SizedBox(height: 5),
               Text('4,500 رسالة', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
