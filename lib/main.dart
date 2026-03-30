@@ -1,17 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // 👈 1. استدعاء مكتبة العقل المدبر (Provider)
+import 'package:provider/provider.dart';
 
-// 👇 2. استدعاء ملف الذاكرة الذي أنشأناه للتو لحفظ الألوان والوضع الليلي
-import 'core/providers/theme_provider.dart'; 
-// استدعاء صفحة تسجيل الدخول الموحد
+import 'core/providers/theme_provider.dart';
 import 'features/auth/screens/sso_login_screen.dart';
 
 void main() {
-  // 3. قمنا بتغليف التطبيق بـ MultiProvider لكي نتمكن من توزيع "العقل" على كل الشاشات
   runApp(
     MultiProvider(
       providers: [
-        // إخبار التطبيق بإنشاء واستخدام ThemeProvider منذ اللحظة الأولى
         ChangeNotifierProvider(create: (context) => ThemeProvider()),
       ],
       child: const MyApp(),
@@ -24,37 +20,46 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 4. هنا نقوم بـ "الاستماع" للعقل المدبر لمعرفة اللون والوضع الحالي
     final themeProvider = Provider.of<ThemeProvider>(context);
 
     return MaterialApp(
-      title: 'نظام كروت نت', // حافظنا على اسم تطبيقك الأصلي الرائع
-      debugShowCheckedModeBanner: false, // إخفاء شريط التجربة
+      title: 'نظام كروت نت',
+      debugShowCheckedModeBanner: false,
       
-      // 5. تطبيق الوضع الليلي أو النهاري بناءً على ما يتذكره التطبيق
+      // تطبيق الوضع الليلي أو النهاري
       themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
       
-      // 6. تخصيص المظهر الفاتح ليتلون باللون الذي يختاره الزبون
+      // ==========================================
+      // تصميم الوضع النهاري
+      // ==========================================
       theme: ThemeData(
         primaryColor: themeProvider.primaryColor,
+        // 👇 هنا الإصلاح: إعطاء الخلفية صبغة خفيفة جداً (5%) من اللون المختار
+        scaffoldBackgroundColor: themeProvider.primaryColor.withOpacity(0.05),
         colorScheme: ColorScheme.fromSeed(
           seedColor: themeProvider.primaryColor,
-          brightness: Brightness.light, // مظهر فاتح
+          brightness: Brightness.light,
         ),
         useMaterial3: true,
       ),
       
-      // 7. تخصيص المظهر الداكن ليتلون أيضاً باللون الذي يختاره الزبون
+      // ==========================================
+      // تصميم الوضع الليلي
+      // ==========================================
       darkTheme: ThemeData(
         primaryColor: themeProvider.primaryColor,
+        // 👇 هنا الإصلاح: دمج اللون المختار بنسبة (10%) مع اللون الأسود الداكن
+        scaffoldBackgroundColor: Color.alphaBlend(
+          themeProvider.primaryColor.withOpacity(0.1), 
+          const Color(0xFF121212),
+        ),
         colorScheme: ColorScheme.fromSeed(
           seedColor: themeProvider.primaryColor,
-          brightness: Brightness.dark, // مظهر داكن
+          brightness: Brightness.dark,
         ),
         useMaterial3: true,
       ),
       
-      // الواجهة الرئيسية (شاشة تسجيل الدخول)
       home: const SSOLoginScreen(),
     );
   }
