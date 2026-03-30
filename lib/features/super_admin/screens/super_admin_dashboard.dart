@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // 👈 1. استدعاء مكتبة العقل المدبر
+
+import '../../../core/providers/system_provider.dart'; // 👈 2. استدعاء الخادم المحلي للرصيد
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart';
 
@@ -8,7 +11,7 @@ import 'staff_support_screen.dart';
 import 'reports_screen.dart';
 import 'agent_management_screen.dart';
 import 'sms_gateway_screen.dart';
-import 'settings_screen.dart';
+import 'global_settings_screen.dart'; // 👈 تم تصحيح اسم الملف ليتطابق مع ما بنيناه سابقاً
 
 class SuperAdminDashboard extends StatefulWidget {
   const SuperAdminDashboard({super.key});
@@ -46,7 +49,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
         _selectedDateRange = picked;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم تحديث الإحصائيات للفترة من ${_formatDate(picked.start)} إلى ${_formatDate(picked.end)} 📊'), backgroundColor: Colors.green)
+        SnackBar(content: Text('تم تحديث الإحصائيات للفترة من ${_formatDate(picked.start)} إلى ${_formatDate(picked.end)} 📊', textDirection: TextDirection.rtl), backgroundColor: Colors.green)
       );
     }
   }
@@ -69,15 +72,22 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // 👈 3. جلب الأرباح الحقيقية للنظام من العقل المدبر
+    final systemProvider = Provider.of<SystemProvider>(context);
+    final adminBalance = systemProvider.adminMainBalance;
 
     return Scaffold(
       appBar: const CustomHeader(title: 'غرفة العمليات المركزية'),
-      drawer: const CustomDrawer(
+      
+      // 👈 تمرير الرصيد المتغير وإزالة الـ const
+      drawer: CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
         role: 'مالك النظام (Super Admin)',
-        balanceOrPoints: 'أرباح النظام: 5,430,000 ريال',
+        balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
       ),
+      
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
@@ -117,7 +127,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                       icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
                       tooltip: 'تصدير تقرير فوري',
                       onPressed: () {
-                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري تصدير التقرير للفترة المحددة...')));
+                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري تصدير التقرير للفترة المحددة... 📄', textDirection: TextDirection.rtl)));
                       },
                     ),
                   ),
@@ -128,7 +138,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
             const SizedBox(height: 10),
 
             // ==========================================
-            // شبكة البطاقات الـ 8 (الآن كلها تعمل!)
+            // شبكة البطاقات الـ 8 (الآن كلها تنقلك للشاشات الحقيقية!)
             // ==========================================
             Expanded(
               child: GridView.count(
