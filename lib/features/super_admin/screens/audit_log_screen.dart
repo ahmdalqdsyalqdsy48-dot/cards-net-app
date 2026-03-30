@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // 👈 1. استدعاء مكتبة العقل المدبر
+
+import '../../../core/providers/system_provider.dart'; // 👈 2. استدعاء الخادم المحلي الشامل
 import '../../../core/widgets/custom_drawer.dart';
-import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الهيدر الجديد
+import '../../../core/widgets/custom_header.dart'; 
 
 class AuditLogScreen extends StatefulWidget {
   const AuditLogScreen({super.key});
@@ -10,6 +13,9 @@ class AuditLogScreen extends StatefulWidget {
 }
 
 class _AuditLogScreenState extends State<AuditLogScreen> {
+  // متغير لحفظ نص البحث
+  String _searchQuery = '';
+
   // قاعدة بيانات وهمية للسجل الأسود (غير قابلة للحذف)
   final List<Map<String, dynamic>> _auditLogs = [
     {
@@ -64,16 +70,29 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 👈 3. الاتصال بالعقل المدبر لقراءة أرباح النظام الحقيقية
+    final systemProvider = Provider.of<SystemProvider>(context);
+    final double adminBalance = systemProvider.adminMainBalance;
+
+    // 👈 4. دالة البحث الذكية لتصفية السجل بناءً على النص المدخل
+    final filteredLogs = _auditLogs.where((log) {
+      final query = _searchQuery.toLowerCase();
+      return log['name'].toString().toLowerCase().contains(query) ||
+             log['phone'].toString().toLowerCase().contains(query) ||
+             log['action'].toString().toLowerCase().contains(query);
+    }).toList();
+
     return Scaffold(
-      // 👈 تم تركيب الهيدر الشامل هنا بنجاح!
       appBar: const CustomHeader(title: 'السجل الأسود للنشاط'),
       
-      drawer: const CustomDrawer(
+      // 👈 تم تمرير الرصيد الحقيقي للقائمة الجانبية وتجنب خطأ الـ const
+      drawer: CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
         role: 'مالك النظام (Super Admin)',
-        balanceOrPoints: 'أرباح النظام: 5,430,000 ريال',
+        balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
       ),
+      
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
@@ -81,18 +100,24 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
             // === 1. أدوات الفلترة والبحث السريع ===
             Container(
               padding: const EdgeInsets.all(16.0),
-              color: Colors.transparent, // 👈 تعديل لدعم الوضع الليلي
+              color: Colors.transparent, 
               child: Column(
                 children: [
                   Row(
                     children: [
                       Expanded(
                         child: TextField(
+                          onChanged: (value) {
+                            // تحديث الواجهة عند كتابة أي حرف في البحث
+                            setState(() {
+                              _searchQuery = value;
+                            });
+                          },
                           decoration: InputDecoration(
                             hintText: 'ابحث برقم الهاتف، أو اسم الموظف / الوكيل...',
                             prefixIcon: const Icon(Icons.search, color: Colors.blueAccent),
                             filled: true,
-                            fillColor: Theme.of(context).cardColor, // 👈 يتغير لونه حسب الوضع
+                            fillColor: Theme.of(context).cardColor, 
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
                               borderSide: BorderSide(color: Colors.grey.withOpacity(0.3)),
@@ -102,7 +127,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      // 👈 زر الطباعة تم نقله إلى هنا بشكل أنيق!
+                      // زر الطباعة
                       Container(
                         decoration: BoxDecoration(
                           color: Colors.blueGrey.withOpacity(0.1),
@@ -113,7 +138,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                           tooltip: 'طباعة السجل المنظم',
                           onPressed: () {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('جاري تجهيز السجل للطباعة الرسمية والتوثيق...'), backgroundColor: Colors.blueGrey)
+                              const SnackBar(content: Text('جاري تجهيز السجل للطباعة الرسمية والتوثيق... 🖨️', textDirection: TextDirection.rtl), backgroundColor: Colors.blueGrey)
                             );
                           },
                         ),
@@ -125,7 +150,9 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () {},
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('نافذة فلترة نوع العملية ستتوفر قريباً ⚙️', textDirection: TextDirection.rtl)));
+                          },
                           icon: const Icon(Icons.filter_list, size: 16),
                           label: const Text('نوع العملية'),
                         ),
@@ -133,7 +160,9 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () {},
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('نافذة تحديد التاريخ ستتوفر قريباً 📅', textDirection: TextDirection.rtl)));
+                          },
                           icon: const Icon(Icons.date_range, size: 16),
                           label: const Text('تاريخ محدد'),
                         ),
@@ -148,7 +177,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-              color: Colors.red.withOpacity(0.1), // 👈 تعديل لدعم الوضع الليلي
+              color: Colors.red.withOpacity(0.1),
               child: const Row(
                 children: [
                   Icon(Icons.security, color: Colors.red, size: 18),
@@ -165,11 +194,13 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
 
             // === 3. جدول المراقبة الشامل (The Immutable Ledger) ===
             Expanded(
-              child: ListView.builder(
+              child: filteredLogs.isEmpty 
+                ? const Center(child: Text('لا توجد سجلات مطابقة للبحث.', style: TextStyle(color: Colors.grey)))
+                : ListView.builder(
                 padding: const EdgeInsets.all(16),
-                itemCount: _auditLogs.length,
+                itemCount: filteredLogs.length,
                 itemBuilder: (context, index) {
-                  final log = _auditLogs[index];
+                  final log = filteredLogs[index];
                   final color = _getSeverityColor(log['severity']);
                   final icon = _getSeverityIcon(log['severity']);
 
@@ -183,7 +214,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                     child: IntrinsicHeight(
                       child: Row(
                         children: [
-                          // شريط اللون الجانبي لبيان الخطورة (أحمر، أصفر، أخضر)
+                          // شريط اللون الجانبي لبيان الخطورة
                           Container(
                             width: 8,
                             decoration: BoxDecoration(
@@ -201,12 +232,14 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Row(
-                                        children: [
-                                          Icon(icon, color: color, size: 18),
-                                          const SizedBox(width: 6),
-                                          Text(log['action'], style: TextStyle(fontWeight: FontWeight.bold, color: color, fontSize: 14)),
-                                        ],
+                                      Expanded(
+                                        child: Row(
+                                          children: [
+                                            Icon(icon, color: color, size: 18),
+                                            const SizedBox(width: 6),
+                                            Expanded(child: Text(log['action'], style: TextStyle(fontWeight: FontWeight.bold, color: color, fontSize: 14), overflow: TextOverflow.ellipsis)),
+                                          ],
+                                        ),
                                       ),
                                       Text(log['datetime'], style: const TextStyle(color: Colors.grey, fontSize: 11), textDirection: TextDirection.ltr),
                                     ],
@@ -217,7 +250,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                                     padding: const EdgeInsets.all(8),
                                     width: double.infinity,
                                     decoration: BoxDecoration(
-                                      color: Colors.grey.withOpacity(0.1), // 👈 يتناغم مع الوضعين
+                                      color: Colors.grey.withOpacity(0.1),
                                       borderRadius: BorderRadius.circular(5)
                                     ),
                                     child: Text(log['details'], style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
