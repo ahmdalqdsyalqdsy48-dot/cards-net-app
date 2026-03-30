@@ -29,11 +29,13 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
 
     return Scaffold(
       appBar: const CustomHeader(title: 'الإعدادات والمظهر'),
+      
+      // 👇 تم التعديل هنا: إزالة السطر الخاص بالرصيد لكي يعمل القالب الذكي الجديد بنجاح
       drawer: const CustomUserDrawer(
         userName: 'محمد أحمد',
         phoneNumber: '777123456',
-        walletBalance: 2500.0,
       ),
+      
       body: Directionality(
         textDirection: TextDirection.rtl, 
         child: ListView(
@@ -44,7 +46,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
 
             _buildSectionTitle('المظهر والتفضيلات 🎨'),
             _buildSettingsCard([
-              // 👇 4. ربط زر الوضع الليلي بالعقل المدبر
+              // ربط زر الوضع الليلي بالعقل المدبر
               _buildSwitchTile(
                 Icons.dark_mode, 
                 'الوضع الليلي', 
@@ -125,7 +127,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     );
   }
 
-  // 👇 5. تم تحديث هذه الدالة لكي تغير اللون في التطبيق بالكامل عبر العقل المدبر
+  // تم تحديث هذه الدالة لكي تغير اللون في التطبيق بالكامل عبر العقل المدبر
   Widget _buildColorPicker(ThemeProvider themeProvider) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
