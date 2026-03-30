@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../core/widgets/custom_header.dart';
+import '../../../core/widgets/custom_header.dart'; // استدعاء الترويسة الموحدة
 
 class AgentProfileScreen extends StatefulWidget {
   final Map<String, dynamic> agentData; // استقبال بيانات الوكيل من الشاشة السابقة
@@ -10,27 +10,28 @@ class AgentProfileScreen extends StatefulWidget {
   State<AgentProfileScreen> createState() => _AgentProfileScreenState();
 }
 
+// استخدام SingleTickerProviderStateMixin ضروري جداً لعمل حركات التبويبات (Animations)
 class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  // 1. بيانات المبيعات العامة (وهمية بناءً على طلبك)
+  // 1. بيانات المبيعات العامة (تجريبية لعرض التصميم)
   final Map<String, dynamic> _salesData = {
     'totalCardsSold': 1250,
     'totalSalesValue': '1,250,000 ريال',
     'agentDirectSales': '450,000 ريال',
     'posTotalSales': '800,000 ريال',
     'profitRate': '5%',
-    'totalAvailableCards': 3400, // إجمالي الكروت في كل الفئات
+    'totalAvailableCards': 3400, 
   };
 
-  // 2. بيانات الفئات والمخزون للوكيل (وهمية)
+  // 2. بيانات الفئات والمخزون للوكيل (تجريبية)
   final List<Map<String, dynamic>> _categories = [
     {'name': 'يمن موبايل - فئة 1000', 'available': 1500, 'sold': 450, 'color': Colors.blue},
     {'name': 'سبأفون - فئة 1000', 'available': 800, 'sold': 300, 'color': Colors.orange},
     {'name': 'يو (YOU) - فئة 500', 'available': 1100, 'sold': 500, 'color': Colors.green},
   ];
 
-  // 3. بيانات نقاط البيع (البقالات) المعقدة (وهمية)
+  // 3. بيانات نقاط البيع (البقالات) المعقدة (تجريبية)
   final List<Map<String, dynamic>> _posDetails = [
     {
       'name': 'بقالة الأمانة',
@@ -55,11 +56,13 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
   @override
   void initState() {
     super.initState();
+    // تهيئة متحكم التبويبات (3 تبويبات)
     _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
   void dispose() {
+    // تنظيف الذاكرة عند إغلاق الشاشة لتجنب تسريب الذاكرة (Memory Leak)
     _tabController.dispose();
     super.dispose();
   }
@@ -67,6 +70,10 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // 👈 حماية أمان: جلب أول حرف من الاسم، وإذا كان الاسم فارغاً نضع '?' لتجنب انهيار التطبيق
+    final String agentName = widget.agentData['name'] ?? 'غير معروف';
+    final String nameInitial = agentName.trim().isNotEmpty ? agentName.trim().substring(0, 1) : '?';
 
     return Scaffold(
       appBar: const CustomHeader(title: 'الملف الشامل للوكيل'),
@@ -75,7 +82,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
         child: Column(
           children: [
             // ==========================================
-            // بطاقة هوية الوكيل العلوية (ثابتة)
+            // بطاقة هوية الوكيل العلوية (ثابتة في كل التبويبات)
             // ==========================================
             Container(
               padding: const EdgeInsets.all(16),
@@ -88,14 +95,14 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
                   CircleAvatar(
                     radius: 30,
                     backgroundColor: Colors.white24,
-                    child: Text(widget.agentData['name'].substring(0, 1), style: const TextStyle(fontSize: 24, color: Colors.white, fontWeight: FontWeight.bold)),
+                    child: Text(nameInitial, style: const TextStyle(fontSize: 24, color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                   const SizedBox(width: 15),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(widget.agentData['name'], style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                        Text(agentName, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                         Text('${widget.agentData['network']} | الهاتف: ${widget.agentData['phone']}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
                         const SizedBox(height: 5),
                         Row(
@@ -111,7 +118,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
                   Column(
                     children: [
                       Chip(
-                        label: Text(widget.agentData['status'], style: const TextStyle(color: Colors.white, fontSize: 12)),
+                        label: Text(widget.agentData['status'], style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
                         backgroundColor: widget.agentData['status'] == 'نشط' ? Colors.green : Colors.red,
                       ),
                     ],
@@ -121,7 +128,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
             ),
 
             // ==========================================
-            // شريط التبويبات
+            // شريط التبويبات القابل للتنقل
             // ==========================================
             Container(
               color: Colors.transparent,
@@ -132,15 +139,15 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
                 indicatorColor: Colors.blueAccent,
                 indicatorWeight: 3,
                 tabs: const [
-                  Tab(icon: Icon(Icons.analytics), text: 'نظرة ومبيعات'),
-                  Tab(icon: Icon(Icons.inventory_2), text: 'المخزون والفئات'),
-                  Tab(icon: Icon(Icons.store), text: 'نقاط البيع'),
+                  Tab(icon: Icon(Icons.analytics), text: 'مبيعات'),
+                  Tab(icon: Icon(Icons.inventory_2), text: 'مخزون'),
+                  Tab(icon: Icon(Icons.store), text: 'بقالات'),
                 ],
               ),
             ),
 
             // ==========================================
-            // محتوى التبويبات
+            // محتوى التبويبات المتغير
             // ==========================================
             Expanded(
               child: TabBarView(
@@ -167,7 +174,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // بطاقة إجمالي المبيعات (كروت = قيمة)
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -199,22 +205,21 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
           ),
           const SizedBox(height: 20),
 
-          // تفصيل المبيعات (وكيل مباشر vs نقاط البيع)
           const Text('تفصيل مصدر المبيعات:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
           const SizedBox(height: 10),
           Row(
             children: [
-              Expanded(child: _buildStatCard('مبيعات الوكيل المباشرة', _salesData['agentDirectSales'], Icons.person, Colors.orange)),
+              Expanded(child: _buildStatCard('مبيعات الوكيل', _salesData['agentDirectSales'], Icons.person, Colors.orange)),
               const SizedBox(width: 10),
-              Expanded(child: _buildStatCard('مبيعات نقاط البيع (${_posDetails.length})', _salesData['posTotalSales'], Icons.storefront, Colors.purple)),
+              Expanded(child: _buildStatCard('نقاط البيع (${_posDetails.length})', _salesData['posTotalSales'], Icons.storefront, Colors.purple)),
             ],
           ),
           const SizedBox(height: 10),
           Row(
             children: [
-               Expanded(child: _buildStatCard('نسبة عمولة الوكيل', _salesData['profitRate'], Icons.percent, Colors.green)),
+               Expanded(child: _buildStatCard('نسبة العمولة', _salesData['profitRate'], Icons.percent, Colors.green)),
                const SizedBox(width: 10),
-               Expanded(child: _buildStatCard('إجمالي الكروت المتوفرة', '${_salesData['totalAvailableCards']}', Icons.inventory, Colors.blueGrey)),
+               Expanded(child: _buildStatCard('الكروت المتوفرة', '${_salesData['totalAvailableCards']}', Icons.inventory, Colors.blueGrey)),
             ],
           )
         ],
@@ -310,7 +315,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
           elevation: 3,
           margin: const EdgeInsets.only(bottom: 16),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          child: ExpansionTile( // 👈 القائمة المنسدلة الذكية لإخفاء/إظهار التفاصيل
+          child: ExpansionTile( 
             iconColor: Colors.blueAccent,
             collapsedIconColor: Colors.grey,
             title: Text(pos['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
@@ -328,7 +333,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
                   children: [
                     const Text('تفاصيل الفئات المتوفرة في هذه النقطة:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     const SizedBox(height: 10),
-                    // جدول داخلي لعرض بيانات الفئات للبقالة المحددة
+                    // جدول داخلي يعرض بيانات المخزون
                     Table(
                       border: TableBorder.all(color: Colors.grey.withOpacity(0.3), borderRadius: BorderRadius.circular(8)),
                       columnWidths: const {0: FlexColumnWidth(2), 1: FlexColumnWidth(1), 2: FlexColumnWidth(1)},
@@ -341,6 +346,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
                             Padding(padding: EdgeInsets.all(8.0), child: Text('مباع', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12), textAlign: TextAlign.center)),
                           ],
                         ),
+                        // دمج بيانات المخزون داخل الجدول برمجياً (Spread Operator)
                         ...inventory.map((inv) {
                           return TableRow(
                             children: [
@@ -362,7 +368,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
     );
   }
 
-  // أداة بناء البطاقات الإحصائية الصغيرة
+  // أداة بناء البطاقات الإحصائية الصغيرة بأسلوب نظيف (Clean Code)
   Widget _buildStatCard(String title, String value, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -385,4 +391,3 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
     );
   }
 }
-
