@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+// استدعاء العقول (Providers) التي أنشأناها
 import 'core/providers/theme_provider.dart';
+import 'core/providers/system_provider.dart'; // 👈 1. استدعاء الخادم المحلي الشامل
+
 import 'features/auth/screens/sso_login_screen.dart';
 
 void main() {
   runApp(
     MultiProvider(
       providers: [
+        // تفعيل مزود الألوان
         ChangeNotifierProvider(create: (context) => ThemeProvider()),
+        // 👇 2. تفعيل مزود النظام الشامل ليكون متاحاً لجميع الشاشات
+        ChangeNotifierProvider(create: (context) => SystemProvider()), 
       ],
       child: const MyApp(),
     ),
@@ -26,15 +32,10 @@ class MyApp extends StatelessWidget {
       title: 'نظام كروت نت',
       debugShowCheckedModeBanner: false,
       
-      // تطبيق الوضع الليلي أو النهاري
       themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
       
-      // ==========================================
-      // تصميم الوضع النهاري
-      // ==========================================
       theme: ThemeData(
         primaryColor: themeProvider.primaryColor,
-        // 👇 هنا الإصلاح: إعطاء الخلفية صبغة خفيفة جداً (5%) من اللون المختار
         scaffoldBackgroundColor: themeProvider.primaryColor.withOpacity(0.05),
         colorScheme: ColorScheme.fromSeed(
           seedColor: themeProvider.primaryColor,
@@ -43,12 +44,8 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       
-      // ==========================================
-      // تصميم الوضع الليلي
-      // ==========================================
       darkTheme: ThemeData(
         primaryColor: themeProvider.primaryColor,
-        // 👇 هنا الإصلاح: دمج اللون المختار بنسبة (10%) مع اللون الأسود الداكن
         scaffoldBackgroundColor: Color.alphaBlend(
           themeProvider.primaryColor.withOpacity(0.1), 
           const Color(0xFF121212),
