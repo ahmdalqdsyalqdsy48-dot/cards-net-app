@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // 👈 1. استدعاء العقل المدبر
+
+import '../../../core/providers/system_provider.dart'; // 👈 2. استدعاء الخادم المحلي الشامل
 import '../../../core/widgets/custom_drawer.dart';
-import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الهيدر الجديد
+import '../../../core/widgets/custom_header.dart'; 
 
 class BankAccountsScreen extends StatefulWidget {
   const BankAccountsScreen({super.key});
@@ -10,7 +13,7 @@ class BankAccountsScreen extends StatefulWidget {
 }
 
 class _BankAccountsScreenState extends State<BankAccountsScreen> {
-  // قاعدة بيانات وهمية للحسابات البنكية
+  // قائمة الحسابات (تم تحويلها لمتغير قابل للتعديل)
   final List<Map<String, dynamic>> _bankAccounts = [
     {'id': 1, 'bankName': 'بنك الكريمي', 'accountNumber': '3020104050', 'beneficiary': 'أحمد القدسي', 'status': 'نشط', 'hasQR': true},
     {'id': 2, 'bankName': 'محفظة جوالي', 'accountNumber': '774578241', 'beneficiary': 'أحمد القدسي', 'status': 'نشط', 'hasQR': false},
@@ -18,9 +21,14 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
   ];
 
   // ==========================================
-  // 1. نافذة إضافة حساب بنكي جديد ➕
+  // 1. نافذة إضافة حساب بنكي جديد ➕ (مفعلة برمجياً)
   // ==========================================
   void _showAddAccountDialog() {
+    // متحكمات لقراءة النصوص التي سيدخلها المدير
+    final bankNameController = TextEditingController();
+    final accountNumberController = TextEditingController();
+    final beneficiaryController = TextEditingController();
+
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -37,9 +45,9 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _buildTextField('اسم البنك / المحفظة (مثال: الكريمي)', Icons.account_balance_wallet),
-                _buildTextField('رقم الحساب / رقم المحفظة', Icons.numbers),
-                _buildTextField('الاسم الرباعي للمستفيد', Icons.person),
+                _buildTextField('اسم البنك / المحفظة (مثال: الكريمي)', Icons.account_balance_wallet, controller: bankNameController),
+                _buildTextField('رقم الحساب / رقم المحفظة', Icons.numbers, controller: accountNumberController, isNumber: true),
+                _buildTextField('الاسم الرباعي للمستفيد', Icons.person, controller: beneficiaryController),
                 _buildTextField('ملاحظات التحويل (اختياري)', Icons.notes),
                 const SizedBox(height: 10),
                 
@@ -60,7 +68,9 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
                       const Text('يسهل على الوكيل الدفع بالمسح مباشرة', style: TextStyle(fontSize: 11, color: Colors.grey)),
                       const SizedBox(height: 10),
                       ElevatedButton.icon(
-                        onPressed: () {},
+                        onPressed: () {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سيتم فتح المعرض لاختيار الصورة 📸', textDirection: TextDirection.rtl)));
+                        },
                         icon: const Icon(Icons.upload_file, size: 16),
                         label: const Text('اختيار صورة من المعرض'),
                         style: ElevatedButton.styleFrom(elevation: 0),
@@ -75,8 +85,23 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
             ElevatedButton(
               onPressed: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الحساب بنجاح. سيظهر الآن للوكلاء.'), backgroundColor: Colors.green));
+                // التحقق من إدخال البيانات الأساسية قبل الحفظ
+                if (bankNameController.text.isNotEmpty && accountNumberController.text.isNotEmpty) {
+                  setState(() {
+                    _bankAccounts.add({
+                      'id': DateTime.now().millisecondsSinceEpoch, // إنشاء ID فريد
+                      'bankName': bankNameController.text,
+                      'accountNumber': accountNumberController.text,
+                      'beneficiary': beneficiaryController.text.isNotEmpty ? beneficiaryController.text : 'غير محدد',
+                      'status': 'نشط',
+                      'hasQR': false,
+                    });
+                  });
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الحساب بنجاح ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال اسم البنك ورقم الحساب على الأقل ❌', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                }
               },
               child: const Text('حفظ الحساب'),
             ),
@@ -87,18 +112,66 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
   }
 
   // ==========================================
-  // 2. دوال التحكم (الإيقاف المؤقت، والحذف) 👁️ 🗑️
+  // 2. نافذة تعديل حساب موجود ✏️ (جديدة)
+  // ==========================================
+  void _showEditAccountDialog(int index, Map<String, dynamic> account) {
+    // تعبئة الحقول بالبيانات الحالية للحساب
+    final bankNameController = TextEditingController(text: account['bankName']);
+    final accountNumberController = TextEditingController(text: account['accountNumber']);
+    final beneficiaryController = TextEditingController(text: account['beneficiary']);
+
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.edit, color: Colors.orange),
+              SizedBox(width: 10),
+              Text('تعديل بيانات الحساب', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildTextField('اسم البنك / المحفظة', Icons.account_balance_wallet, controller: bankNameController),
+                _buildTextField('رقم الحساب', Icons.numbers, controller: accountNumberController, isNumber: true),
+                _buildTextField('اسم المستفيد', Icons.person, controller: beneficiaryController),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+              onPressed: () {
+                setState(() {
+                  _bankAccounts[index]['bankName'] = bankNameController.text;
+                  _bankAccounts[index]['accountNumber'] = accountNumberController.text;
+                  _bankAccounts[index]['beneficiary'] = beneficiaryController.text;
+                });
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تعديل الحساب بنجاح ✏️', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+              },
+              child: const Text('حفظ التعديلات', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // 3. دوال التحكم (الإيقاف المؤقت، والحذف) 👁️ 🗑️
   // ==========================================
   void _toggleAccountStatus(int index) {
     setState(() {
-      if (_bankAccounts[index]['status'] == 'نشط') {
-        _bankAccounts[index]['status'] = 'موقوف';
-      } else {
-        _bankAccounts[index]['status'] = 'نشط';
-      }
+      _bankAccounts[index]['status'] = _bankAccounts[index]['status'] == 'نشط' ? 'موقوف' : 'نشط';
     });
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(_bankAccounts[index]['status'] == 'نشط' ? 'تم تفعيل الحساب وسيظهر للوكلاء.' : 'تم إيقاف الحساب وإخفاؤه عن الوكلاء.'),
+      content: Text(_bankAccounts[index]['status'] == 'نشط' ? 'تم تفعيل الحساب وسيظهر للوكلاء ▶️' : 'تم إيقاف الحساب وإخفاؤه عن الوكلاء ⏸️', textDirection: TextDirection.rtl),
       backgroundColor: _bankAccounts[index]['status'] == 'نشط' ? Colors.green : Colors.orange,
     ));
   }
@@ -120,7 +193,7 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
                   _bankAccounts.removeAt(index);
                 });
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف الحساب نهائياً.'), backgroundColor: Colors.red));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف الحساب نهائياً 🗑️', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
               },
               child: const Text('نعم، احذف الحساب', style: TextStyle(color: Colors.white)),
             ),
@@ -132,15 +205,19 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 👈 قراءة رصيد النظام من العقل المدبر لعرضه في القائمة الجانبية
+    final systemProvider = Provider.of<SystemProvider>(context);
+    final adminBalance = systemProvider.adminMainBalance;
+
     return Scaffold(
-      // 👈 تم تركيب الهيدر الشامل هنا بنجاح!
       appBar: const CustomHeader(title: 'الحسابات البنكية'),
       
-      drawer: const CustomDrawer(
+      // 👈 تمرير الرصيد المتغير وإزالة const
+      drawer: CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
         role: 'مالك النظام (Super Admin)',
-        balanceOrPoints: 'أرباح النظام: 5,430,000 ريال',
+        balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
@@ -180,7 +257,7 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
             // === قائمة الحسابات بتقنية السحب والإفلات (ReorderableListView) ===
             Expanded(
               child: _bankAccounts.isEmpty
-                  ? const Center(child: Text('لا توجد حسابات مضافة حالياً.'))
+                  ? const Center(child: Text('لا توجد حسابات مضافة حالياً.', style: TextStyle(color: Colors.grey)))
                   : ReorderableListView.builder(
                       padding: const EdgeInsets.all(16),
                       itemCount: _bankAccounts.length,
@@ -245,7 +322,8 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
                                     Text('المستفيد: ${account['beneficiary']}', style: const TextStyle(color: Colors.blueGrey, fontSize: 13)),
                                     Row(
                                       children: [
-                                        _buildSmallButton(Icons.edit, 'تعديل', Colors.orange, () {}),
+                                        // 👈 ربط زر التعديل بدالة التعديل
+                                        _buildSmallButton(Icons.edit, 'تعديل', Colors.orange, () => _showEditAccountDialog(index, account)),
                                         _buildSmallButton(
                                           isActive ? Icons.visibility_off : Icons.visibility,
                                           isActive ? 'إيقاف' : 'تفعيل',
@@ -270,11 +348,15 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
     );
   }
 
+  // ==========================================
   // دوال مساعدة للتصميم
-  Widget _buildTextField(String label, IconData icon) {
+  // ==========================================
+  Widget _buildTextField(String label, IconData icon, {TextEditingController? controller, bool isNumber = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: TextField(
+        controller: controller,
+        keyboardType: isNumber ? TextInputType.number : TextInputType.text,
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(icon, color: Colors.blueAccent),
