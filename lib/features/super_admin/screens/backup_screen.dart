@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // 👈 1. استدعاء مكتبة العقل المدبر
+
+import '../../../core/providers/system_provider.dart'; // 👈 2. استدعاء الخادم المحلي الشامل
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart';
 
@@ -17,14 +20,14 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
   String _backupFrequency = 'يومياً';
   String _backupTime = '04:00 فجراً';
   
-  // 👈 المتغير الجديد: البريد الإلكتروني المخصص للطوارئ
+  // البريد الإلكتروني المخصص للطوارئ
   String _emergencyEmail = 'admin@cardsnet.com'; 
 
   // متغيرات الربط السحابي
   bool _isDriveLinked = true;
   bool _isDropboxLinked = false;
 
-  // قاعدة بيانات وهمية للنسخ السابقة
+  // قاعدة بيانات تجريبية للنسخ السابقة (قابلة للحذف والإضافة)
   final List<Map<String, dynamic>> _backups = [
     {'id': 1, 'date': '2026-03-23 04:00 AM', 'size': '45 MB', 'type': 'آلي (سحابي)', 'icon': Icons.cloud_done, 'color': Colors.green},
     {'id': 2, 'date': '2026-03-20 11:30 PM', 'size': '42 MB', 'type': 'يدوي (محلي)', 'icon': Icons.save, 'color': Colors.blue},
@@ -49,25 +52,28 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
   void _takeManualBackup() {
     showDialog(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: false, // يمنع إغلاق النافذة أثناء التحميل
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          content: Column(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          content: const Column(
             mainAxisSize: MainAxisSize.min,
-            children: const [
-              CircularProgressIndicator(),
-              SizedBox(height: 15),
-              Text('جاري ضغط قاعدة البيانات وتشفيرها...'),
+            children: [
+              CircularProgressIndicator(color: Colors.blue),
+              SizedBox(height: 20),
+              Text('جاري ضغط قاعدة البيانات وتشفيرها...', style: TextStyle(fontWeight: FontWeight.bold)),
             ],
           ),
         ),
       ),
     );
 
+    // محاكاة لعملية النسخ التي تأخذ 3 ثوانٍ
     Future.delayed(const Duration(seconds: 3), () {
-      Navigator.pop(context); // إغلاق التحميل
+      Navigator.pop(context); // إغلاق نافذة التحميل
       setState(() {
+        // إضافة النسخة الجديدة إلى أعلى القائمة
         _backups.insert(0, {
           'id': DateTime.now().millisecondsSinceEpoch,
           'date': 'الآن (نسخة حديثة)',
@@ -77,7 +83,9 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
           'color': Colors.blue,
         });
       });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ تم أخذ النسخة الاحتياطية بنجاح!'), backgroundColor: Colors.green));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم أخذ النسخة الاحتياطية بنجاح! ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green)
+      );
     });
   }
 
@@ -90,10 +98,11 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
+      builder: (context) => StatefulBuilder( // نستخدم StatefulBuilder لتحديث حالة النافذة (Error) من الداخل
         builder: (context, setStateDialog) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
             title: const Row(
               children: [
                 Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
@@ -127,9 +136,10 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                 onPressed: () {
+                  // محاكاة التحقق من رمز PIN
                   if (pinController.text == '123456') { 
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم التحقق. جاري استعادة النظام...'), backgroundColor: Colors.orange));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم التحقق. جاري استعادة النظام... 🔄', textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
                   } else {
                     setStateDialog(() => isError = true);
                   }
@@ -143,21 +153,26 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
     );
   }
 
-  // دالة الحذف
+  // دالة حذف نسخة احتياطية
   void _deleteBackup(int index) {
     setState(() => _backups.removeAt(index));
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم مسح النسخة لتوفير المساحة.'), backgroundColor: Colors.red));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم مسح النسخة لتوفير المساحة 🗑️', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
   }
 
   @override
   Widget build(BuildContext context) {
+    // 👈 3. جلب الأرباح الحقيقية للنظام من العقل المدبر
+    final systemProvider = Provider.of<SystemProvider>(context);
+    final adminBalance = systemProvider.adminMainBalance;
+
     return Scaffold(
       appBar: const CustomHeader(title: 'النسخ الاحتياطي السحابي'),
-      drawer: const CustomDrawer(
+      // 👈 تم إزالة const لتمرير الرصيد المتغير بأمان
+      drawer: CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
         role: 'مالك النظام (Super Admin)',
-        balanceOrPoints: 'أرباح النظام: 5,430,000 ريال',
+        balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
@@ -170,6 +185,7 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
                 labelColor: Colors.blueAccent,
                 unselectedLabelColor: Colors.grey,
                 indicatorColor: Colors.blueAccent,
+                indicatorWeight: 3,
                 tabs: const [
                   Tab(icon: Icon(Icons.autorenew), text: 'النسخ الآلي'),
                   Tab(icon: Icon(Icons.cloud_sync), text: 'الربط السحابي'),
@@ -207,7 +223,10 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
             subtitle: const Text('يقوم النظام بأخذ نسخة احتياطية آلياً دون تدخلك.'),
             value: _isAutoBackupEnabled,
             activeColor: Colors.blueAccent,
-            onChanged: (val) => setState(() => _isAutoBackupEnabled = val),
+            onChanged: (val) {
+              setState(() => _isAutoBackupEnabled = val);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(val ? 'تم تفعيل النسخ الآلي ✅' : 'تم إيقاف النسخ الآلي ❌', textDirection: TextDirection.rtl)));
+            },
           ),
           const Divider(),
           if (_isAutoBackupEnabled) ...[
@@ -229,7 +248,6 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
               onChanged: (val) => setState(() => _backupTime = val!),
             ),
             
-            // 👈 التعديل الجديد: إضافة حقل بريد الطوارئ
             const SizedBox(height: 20),
             const Text('بريد الطوارئ (لاستقبال نسخة مضغوطة):', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
@@ -244,7 +262,7 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
               onChanged: (val) => _emergencyEmail = val,
             ),
             const SizedBox(height: 15),
-            const Text('💡 سيقوم النظام بضغط البيانات ليلاً وتشفيرها ثم إرسالها إلى هذا الإيميل كخط دفاع أخير لضمان عدم ضياع أي فاتورة.', style: TextStyle(color: Colors.blueGrey, fontSize: 12)),
+            const Text('💡 سيقوم النظام بضغط البيانات ليلاً وتشفيرها ثم إرسالها إلى هذا الإيميل كخط دفاع أخير لضمان عدم ضياع أي فاتورة.', style: TextStyle(color: Colors.blueGrey, fontSize: 12, height: 1.5)),
           ],
         ],
       ),
@@ -259,7 +277,7 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          const Text('حفظ النسخة في السيرفر فقط خطر جداً. اربط نظامك بحساباتك السحابية ليتم رفع النسخة المشفرة إليها آلياً.', style: TextStyle(color: Colors.blueGrey, fontSize: 13)),
+          const Text('حفظ النسخة في السيرفر فقط خطر جداً. اربط نظامك بحساباتك السحابية ليتم رفع النسخة المشفرة إليها آلياً.', style: TextStyle(color: Colors.blueGrey, fontSize: 13, height: 1.5)),
           const SizedBox(height: 20),
           
           Card(
@@ -271,7 +289,10 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
               subtitle: Text(_isDriveLinked ? 'متصل ($_emergencyEmail)' : 'غير متصل'),
               trailing: ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: _isDriveLinked ? Colors.red.withOpacity(0.1) : Colors.blue.withOpacity(0.1), elevation: 0),
-                onPressed: () => setState(() => _isDriveLinked = !_isDriveLinked),
+                onPressed: () {
+                  setState(() => _isDriveLinked = !_isDriveLinked);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_isDriveLinked ? 'تم ربط Google Drive بنجاح ✅' : 'تم إلغاء الربط ❌', textDirection: TextDirection.rtl)));
+                },
                 child: Text(_isDriveLinked ? 'إلغاء الربط' : 'ربط الحساب', style: TextStyle(color: _isDriveLinked ? Colors.red : Colors.blue)),
               ),
             ),
@@ -280,13 +301,17 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
           
           Card(
             elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: _isDropboxLinked ? Colors.blue : Colors.transparent)),
             child: ListTile(
               leading: const Icon(Icons.cloud, color: Colors.blue, size: 30),
               title: const Text('Dropbox', style: TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text(_isDropboxLinked ? 'متصل' : 'غير متصل'),
               trailing: ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: _isDropboxLinked ? Colors.red.withOpacity(0.1) : Colors.blue.withOpacity(0.1), elevation: 0),
-                onPressed: () => setState(() => _isDropboxLinked = !_isDropboxLinked),
+                onPressed: () {
+                  setState(() => _isDropboxLinked = !_isDropboxLinked);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_isDropboxLinked ? 'تم ربط Dropbox بنجاح ✅' : 'تم إلغاء الربط ❌', textDirection: TextDirection.rtl)));
+                },
                 child: Text(_isDropboxLinked ? 'إلغاء الربط' : 'ربط الحساب', style: TextStyle(color: _isDropboxLinked ? Colors.red : Colors.blue)),
               ),
             ),
@@ -321,7 +346,9 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
           child: Align(alignment: Alignment.centerRight, child: Text('النسخ المتوفرة للاستعادة:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey))),
         ),
         Expanded(
-          child: ListView.builder(
+          child: _backups.isEmpty 
+            ? const Center(child: Text('لا توجد نسخ احتياطية مسجلة حالياً.', style: TextStyle(color: Colors.grey)))
+            : ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: _backups.length,
             itemBuilder: (context, index) {
@@ -353,13 +380,18 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
-                          _buildActionButton(Icons.download, 'تحميل للجهاز', Colors.blue, () {}),
+                          _buildActionButton(Icons.download, 'تحميل للجهاز', Colors.blue, () {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري تحميل النسخة إلى جهازك... ⬇️', textDirection: TextDirection.rtl)));
+                          }),
                           _buildActionButton(Icons.delete, 'حذف', Colors.red.shade300, () => _deleteBackup(index)),
                           ElevatedButton.icon(
                             onPressed: () => _showRestoreDialog(backup),
                             icon: const Icon(Icons.restore, color: Colors.white, size: 18),
                             label: const Text('استعادة النظام', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade800),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red.shade800,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                            ),
                           ),
                         ],
                       ),
