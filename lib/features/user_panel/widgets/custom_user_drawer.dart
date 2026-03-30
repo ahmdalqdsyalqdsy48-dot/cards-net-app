@@ -11,28 +11,46 @@ import '../screens/user_support_screen.dart';
 import '../screens/user_settings_screen.dart'; 
 import '../../auth/screens/sso_login_screen.dart';
 
-class CustomUserDrawer extends StatelessWidget {
+// تم تحويل الكلاس إلى StatefulWidget لدعم تفاعل الأزرار وإخفاء الرصيد
+class CustomUserDrawer extends StatefulWidget {
   final String userName;
   final String phoneNumber;
   final double walletBalance;
+  final String? profileImageUrl;
 
   const CustomUserDrawer({
     super.key,
     required this.userName,
     required this.phoneNumber,
     required this.walletBalance,
+    this.profileImageUrl,
   });
+
+  @override
+  State<CustomUserDrawer> createState() => _CustomUserDrawerState();
+}
+
+class _CustomUserDrawerState extends State<CustomUserDrawer> {
+  // متغيرات الحالة (State) للتحكم في الواجهة
+  bool _isBalanceHidden = false;
+  String? _currentLocalImageUrl; 
+
+  @override
+  void initState() {
+    super.initState();
+    _currentLocalImageUrl = widget.profileImageUrl;
+  }
 
   // دالة الانتقال بين الشاشات
   void _navigateTo(BuildContext context, Widget screen) {
     Navigator.pop(context); 
-    Navigator.pushReplacement( 
+    Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (context) => screen),
     );
   }
 
-  // 👇 دالة جديدة لإظهار نافذة الباركود (QR Code) عند النقر على الأيقونة
+  // نافذة الباركود (QR Code)
   void _showQRCodeDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -44,10 +62,9 @@ class CustomUserDrawer extends StatelessWidget {
           children: [
             const Text('امسح الباركود لتحويل الرصيد إليّ مباشرة', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 13)),
             const SizedBox(height: 20),
-            // أيقونة تمثل الباركود (في المستقبل سنستخدم مكتبة qr_flutter لتوليد باركود حقيقي)
             Icon(Icons.qr_code_2, size: 150, color: Theme.of(context).primaryColor),
             const SizedBox(height: 20),
-            Text(phoneNumber, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 2)),
+            Text(widget.phoneNumber, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 2)),
           ],
         ),
         actions: [
@@ -57,121 +74,203 @@ class CustomUserDrawer extends StatelessWidget {
     );
   }
 
+  // نافذة إدارة الصورة الشخصية
+  void _showProfileImageActionDialog(BuildContext context) {
+    bool hasImage = _currentLocalImageUrl != null;
+
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('إدارة الصورة الشخصية', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.grey.shade100,
+                  border: Border.all(color: Theme.of(context).primaryColor.withOpacity(0.5), width: 3),
+                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)],
+                  image: hasImage 
+                      ? DecorationImage(image: NetworkImage(_currentLocalImageUrl!), fit: BoxFit.cover) 
+                      : null,
+                ),
+                child: !hasImage ? const Icon(Icons.person, size: 60, color: Colors.blueGrey) : null,
+              ),
+              const SizedBox(height: 25),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سيتم فتح المعرض لاختيار صورة.')));
+                    },
+                    icon: Icon(hasImage ? Icons.sync : Icons.add_photo_alternate, color: Colors.white, size: 18),
+                    label: Text(hasImage ? 'تغيير' : 'إضافة', style: const TextStyle(color: Colors.white)),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade600),
+                  ),
+                  if (hasImage) 
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        setState(() => _currentLocalImageUrl = null);
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف الصورة.'), backgroundColor: Colors.red));
+                      },
+                      icon: const Icon(Icons.delete_forever, color: Colors.white, size: 18),
+                      label: const Text('حذف', style: TextStyle(color: Colors.white)),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade400),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // 👇 4. سحب اللون الأساسي للتطبيق ليكون لون الترويسة ديناميكياً
+    bool hasImage = _currentLocalImageUrl != null;
     final primaryColor = Theme.of(context).primaryColor;
 
     return Drawer(
       child: Directionality(
-        textDirection: TextDirection.rtl, 
+        textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // ==========================================
-            // 1. الترويسة العلوية الاحترافية المحدثة
-            // ==========================================
-            UserAccountsDrawerHeader(
-              decoration: BoxDecoration(
-                color: primaryColor, // اللون يتغير حسب الثيم الآن
-              ),
-              // 👇 1. الصورة الشخصية مع أيقونة الكاميرا
-              currentAccountPicture: Stack(
-                alignment: Alignment.bottomRight,
-                children: [
-                  const CircleAvatar(
-                    radius: 40,
-                    // صورة تجريبية (Placeholder) لترى شكل الصورة الحقيقية
-                    backgroundImage: NetworkImage('https://i.pravatar.cc/150?img=11'),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                    child: Icon(Icons.camera_alt, size: 14, color: primaryColor),
-                  ),
-                ],
-              ),
-              // 👇 3. أيقونة الباركود في الزاوية العلوية اليسرى
-              otherAccountsPictures: [
-                IconButton(
-                  icon: const Icon(Icons.qr_code_scanner, color: Colors.white, size: 28),
-                  onPressed: () => _showQRCodeDialog(context), // استدعاء نافذة الباركود
-                ),
-              ],
-              // 👇 2. الاسم مع شارة المستوى الذهبي
-              accountName: Row(
-                children: [
-                  Text(userName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.amber, // لون الشارة الذهبية
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Text('عضو ذهبي 🥇', style: TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              ),
-              accountEmail: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(phoneNumber, style: const TextStyle(color: Colors.white70)),
-                  const SizedBox(height: 4),
-                  // بطاقة الرصيد
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: Text(
-                      'رصيد المحفظة: $walletBalance ريال', 
-                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // ==========================================
-            // 2. خيارات القائمة الفائقة (Super App Menu)
-            // ==========================================
             Expanded(
               child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
-                  _buildDrawerItem(context, 'الرئيسية', Icons.dashboard, primaryColor, () => _navigateTo(context, const UserDashboardScreen())),
-                  
+                  // ==========================================
+                  // 1. الترويسة العلوية الفخمة (بنظام البطاقات)
+                  // ==========================================
+                  SafeArea(
+                    bottom: false,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+                      // خلفية الترويسة تتلون بلون التطبيق الخفيف جداً
+                      color: primaryColor.withOpacity(0.05), 
+                      child: Column(
+                        children: [
+                          // صف يحتوي على زر الباركود والصورة الشخصية
+                          Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: IconButton(
+                                  icon: Icon(Icons.qr_code_scanner, color: primaryColor, size: 28),
+                                  onPressed: () => _showQRCodeDialog(context),
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: () => _showProfileImageActionDialog(context),
+                                child: Container(
+                                  width: 90, 
+                                  height: 90,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.white,
+                                    border: Border.all(color: primaryColor.withOpacity(0.5), width: 2),
+                                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))],
+                                    image: hasImage 
+                                        ? DecorationImage(image: NetworkImage(_currentLocalImageUrl!), fit: BoxFit.cover) 
+                                        : null,
+                                  ),
+                                  child: !hasImage ? Icon(Icons.person, size: 45, color: primaryColor.withOpacity(0.7)) : null,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 15),
+
+                          // البطاقة 1: اسم الزبون
+                          _buildGradientCard(
+                            text: widget.userName,
+                            icon: Icons.person,
+                            colors: [Colors.blue.shade800, Colors.blue.shade500],
+                          ),
+
+                          // البطاقة 2: رقم الهاتف
+                          _buildGradientCard(
+                            text: widget.phoneNumber,
+                            icon: Icons.phone,
+                            colors: [Colors.teal.shade800, Colors.teal.shade500],
+                          ),
+
+                          // البطاقة 3: شارة مستوى الزبون
+                          _buildGradientCard(
+                            text: 'المستوى: عضو ذهبي 🥇',
+                            icon: Icons.stars,
+                            colors: [Colors.orange.shade800, Colors.orange.shade500],
+                          ),
+
+                          // البطاقة 4: المحفظة (مع ميزة الإخفاء)
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _isBalanceHidden = !_isBalanceHidden;
+                              });
+                            },
+                            child: _buildGradientCard(
+                              text: _isBalanceHidden ? 'المحفظة: ******' : 'المحفظة: ${widget.walletBalance.toStringAsFixed(0)} ريال',
+                              icon: Icons.account_balance_wallet,
+                              colors: [Colors.purple.shade800, Colors.purple.shade500],
+                              trailingIcon: _isBalanceHidden ? Icons.visibility_off : Icons.visibility,
+                            ),
+                          ),
+                          
+                          const SizedBox(height: 10),
+                          const Divider(height: 1),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // ==========================================
+                  // 2. خيارات القائمة الفائقة (مع الألوان الزاهية)
+                  // ==========================================
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Text('المالية والمشتريات', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
-                  _buildDrawerItem(context, 'المحفظة الذكية والتحويلات', Icons.account_balance_wallet, primaryColor, () => _navigateTo(context, const UserWalletScreen())),
-                  _buildDrawerItem(context, 'سوق الشبكات ونقاط البيع', Icons.storefront, primaryColor, () => _navigateTo(context, const NetworkStoreScreen())),
-                  _buildDrawerItem(context, 'كروتي ومشترياتي', Icons.receipt_long, primaryColor, () => _navigateTo(context, const MyCardsScreen())),
+                  _buildDrawerItem(context, 'الرئيسية', Icons.dashboard, Colors.blue, const UserDashboardScreen()),
+                  _buildDrawerItem(context, 'المحفظة الذكية والتحويلات', Icons.account_balance_wallet, Colors.teal, const UserWalletScreen()),
+                  _buildDrawerItem(context, 'سوق الشبكات ونقاط البيع', Icons.storefront, Colors.orange, const NetworkStoreScreen()),
+                  _buildDrawerItem(context, 'كروتي ومشترياتي', Icons.receipt_long, Colors.green, const MyCardsScreen()),
                   
                   const Divider(),
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Text('الامتيازات والسجلات', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
-                  _buildDrawerItem(context, 'برنامج الولاء والمكافآت', Icons.stars, Colors.amber.shade700, () => _navigateTo(context, const RewardsScreen())),
-                  _buildDrawerItem(context, 'سجل العمليات المالية', Icons.history, primaryColor, () => _navigateTo(context, const UserTransactionsScreen())),
+                  _buildDrawerItem(context, 'برنامج الولاء والمكافآت', Icons.stars, Colors.amber.shade700, const RewardsScreen()),
+                  _buildDrawerItem(context, 'سجل العمليات المالية', Icons.history, Colors.indigo, const UserTransactionsScreen()),
                   
                   const Divider(),
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Text('الإعدادات والدعم', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
-                  _buildDrawerItem(context, 'الدعم الفني والشكاوى', Icons.support_agent, primaryColor, () => _navigateTo(context, const UserSupportScreen())),
-                  _buildDrawerItem(context, 'الملف الشخصي والإعدادات', Icons.person, primaryColor, () => _navigateTo(context, const UserSettingsScreen())),
+                  _buildDrawerItem(context, 'الدعم الفني والشكاوى', Icons.support_agent, Colors.redAccent, const UserSupportScreen()),
+                  _buildDrawerItem(context, 'الملف الشخصي والإعدادات', Icons.settings, Colors.blueGrey, const UserSettingsScreen()),
                 ],
               ),
             ),
-
+            
             // ==========================================
-            // 3. زر تسجيل الخروج
+            // 3. الفوتر (تسجيل الخروج ثابت في الأسفل)
             // ==========================================
             const Divider(height: 1),
             ListTile(
-              leading: const Icon(Icons.logout, color: Colors.red),
+              dense: true,
+              leading: const Icon(Icons.logout, color: Colors.red, size: 20),
               title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
               onTap: () {
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(builder: (context) => const SSOLoginScreen()),
-                  (route) => false,
+                  (route) => false, 
                 );
               },
             ),
@@ -182,14 +281,50 @@ class CustomUserDrawer extends StatelessWidget {
     );
   }
 
-  // أداة مساعدة لبناء أزرار القائمة
-  Widget _buildDrawerItem(BuildContext context, String title, IconData icon, Color color, VoidCallback onTap) {
+  // ==========================================
+  // أدوات مساعدة 
+  // ==========================================
+
+  // بناء البطاقات المتدرجة الأنيقة 
+  Widget _buildGradientCard({required String text, required IconData icon, required List<Color> colors, IconData? trailingIcon}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8), 
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: colors,
+          begin: Alignment.topRight, 
+          end: Alignment.bottomLeft,
+        ),
+        borderRadius: BorderRadius.circular(10), 
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))], 
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.white, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (trailingIcon != null) Icon(trailingIcon, color: Colors.white70, size: 17),
+        ],
+      ),
+    );
+  }
+
+  // بناء زر التنقل مع لونه الخاص
+  Widget _buildDrawerItem(BuildContext context, String title, IconData icon, Color iconColor, Widget targetScreen) {
     return ListTile(
       dense: true,
-      leading: Icon(icon, color: color),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey),
-      onTap: onTap,
+      visualDensity: VisualDensity.compact,
+      leading: Icon(icon, color: iconColor, size: 20),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+      trailing: const Icon(Icons.arrow_forward_ios, size: 11, color: Colors.grey),
+      onTap: () => _navigateTo(context, targetScreen),
     );
   }
 }
