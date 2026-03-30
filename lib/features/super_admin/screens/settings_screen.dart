@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // 👈 1. استدعاء مكتبة العقل المدبر
+
+import '../../../core/providers/system_provider.dart'; // 👈 2. استدعاء الخادم المحلي للرصيد
+import '../../../core/providers/theme_provider.dart'; // 👈 3. استدعاء الخادم المحلي للمظهر
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart';
 
@@ -144,13 +148,18 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
 
   @override
   Widget build(BuildContext context) {
+    // 👈 4. جلب البيانات الحقيقية من مزودي الحالة (Providers)
+    final systemProvider = Provider.of<SystemProvider>(context);
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final adminBalance = systemProvider.adminMainBalance;
+
     return Scaffold(
       appBar: const CustomHeader(title: 'إعدادات النظام الشخصية'),
       drawer: CustomDrawer(
-        userName: _ownerName, // 👈 الاسم هنا أصبح يتغير ديناميكياً
+        userName: _ownerName, 
         phoneNumber: '774578241',
         role: 'مالك النظام (Super Admin)',
-        balanceOrPoints: 'أرباح النظام: 5,430,000 ريال',
+        balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال', // ديناميكي
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
@@ -166,7 +175,7 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
                 indicatorColor: Colors.blueAccent,
                 tabs: const [
                   Tab(icon: Icon(Icons.palette), text: 'المظهر الشخصي'),
-                  Tab(icon: Icon(Icons.security), text: 'الملف والأمان'), // 👈 تم تغيير اسم التبويب
+                  Tab(icon: Icon(Icons.security), text: 'الملف والأمان'), 
                   Tab(icon: Icon(Icons.settings_input_component), text: 'حالة النظام'),
                   Tab(icon: Icon(Icons.gavel), text: 'السياسات والحدود'),
                 ],
@@ -176,7 +185,8 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildAppearanceTab(),
+                  // تمرير themeProvider لتبويب المظهر لكي يتمكن من تغيير الألوان
+                  _buildAppearanceTab(themeProvider),
                   _buildSecurityTab(),
                   _buildSystemStatusTab(),
                   _buildPolicyTab(),
@@ -200,9 +210,9 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
   }
 
   // ==========================================
-  // 1. تبويب المظهر والتخصيص 🎨
+  // 1. تبويب المظهر والتخصيص 🎨 (مربوط برمجياً)
   // ==========================================
-  Widget _buildAppearanceTab() {
+  Widget _buildAppearanceTab(ThemeProvider themeProvider) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -215,12 +225,13 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
             child: ListView(
               scrollDirection: Axis.horizontal,
               children: [
-                _buildColorCircle([Colors.blue, Colors.blueAccent]),
-                _buildColorCircle([Colors.redAccent, Colors.red]),
-                _buildColorCircle([Colors.purple, Colors.deepPurple]),
-                _buildColorCircle([Colors.teal, Colors.green]),
-                _buildColorCircle([Colors.orange, Colors.deepOrange]),
-                _buildColorCircle([Colors.black, Colors.grey]),
+                // 👈 تم ربط كل دائرة لون بـ themeProvider لتقوم بتغيير لون النظام فعلياً
+                _buildColorCircle([Colors.blue, Colors.blueAccent], themeProvider, Colors.blue),
+                _buildColorCircle([Colors.redAccent, Colors.red], themeProvider, Colors.red),
+                _buildColorCircle([Colors.purple, Colors.deepPurple], themeProvider, Colors.purple),
+                _buildColorCircle([Colors.teal, Colors.green], themeProvider, Colors.green),
+                _buildColorCircle([Colors.orange, Colors.deepOrange], themeProvider, Colors.orange),
+                _buildColorCircle([Colors.blueGrey, Colors.grey], themeProvider, Colors.blueGrey),
               ],
             ),
           ),
@@ -236,8 +247,10 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
           SwitchListTile(
             secondary: const Icon(Icons.dark_mode, color: Colors.indigo),
             title: const Text('تفعيل الوضع الليلي (Dark Mode)'),
-            value: false,
-            onChanged: (val) {},
+            value: themeProvider.isDarkMode, // 👈 يقرأ الحالة الحقيقية من النظام
+            onChanged: (val) {
+              themeProvider.toggleTheme(val); // 👈 يغير المظهر بالكامل عند النقر
+            },
           ),
         ],
       ),
@@ -245,7 +258,7 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
   }
 
   // ==========================================
-  // 2. تبويب الأمان والبيانات الشخصية 🔐 (تمت الترقية هنا!)
+  // 2. تبويب الأمان والبيانات الشخصية 🔐
   // ==========================================
   Widget _buildSecurityTab() {
     return SingleChildScrollView(
@@ -354,15 +367,25 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
     return Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueGrey));
   }
 
-  Widget _buildColorCircle(List<Color> colors) {
-    return Container(
-      width: 50,
-      margin: const EdgeInsets.symmetric(horizontal: 5),
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(colors: colors),
-        border: Border.all(color: Colors.white, width: 2),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5)],
+  // 👈 تم تحديث الدالة لتقبل المعلمات اللازمة لتغيير لون النظام
+  Widget _buildColorCircle(List<Color> colors, ThemeProvider themeProvider, Color baseColor) {
+    // تحديد ما إذا كان هذا اللون هو اللون النشط حالياً
+    bool isSelected = themeProvider.primaryColor == baseColor;
+    
+    return GestureDetector(
+      onTap: () {
+        themeProvider.changeColor(baseColor);
+      },
+      child: Container(
+        width: 50,
+        margin: const EdgeInsets.symmetric(horizontal: 5),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(colors: colors),
+          border: Border.all(color: isSelected ? Colors.white : Colors.transparent, width: 3), // تمييز اللون المختار
+          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5)],
+        ),
+        child: isSelected ? const Icon(Icons.check, color: Colors.white) : null,
       ),
     );
   }
@@ -380,7 +403,6 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
     );
   }
 
-  // بطاقة تفاعلية جديدة مخصصة للملف الشخصي
   Widget _buildInteractiveCard(IconData icon, String title, String value, VoidCallback onTap, {Color color = Colors.blueAccent}) {
     return Card(
       elevation: 2,
@@ -389,14 +411,14 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
       child: ListTile(
         leading: CircleAvatar(backgroundColor: color.withOpacity(0.1), child: Icon(icon, color: color)),
         title: Text(title, style: const TextStyle(fontSize: 13, color: Colors.grey)),
-        subtitle: Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
+        // 👈 تمت إزالة `color: Colors.black87` لكي يتحول النص للأبيض تلقائياً في الوضع الليلي
+        subtitle: Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), 
         trailing: IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: onTap),
         onTap: onTap,
       ),
     );
   }
 
-  // أداة لبناء حقول الإدخال في النوافذ المنبثقة
   Widget _buildDialogTextField(String hint, {bool isPassword = false, bool isNumber = false, int? maxLength}) {
     return TextField(
       obscureText: isPassword,
