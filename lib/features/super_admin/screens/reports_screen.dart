@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // 👈 1. استدعاء مكتبة العقل المدبر
+
+import '../../../core/providers/system_provider.dart'; // 👈 2. استدعاء الخادم المحلي الشامل
 import '../../../core/widgets/custom_drawer.dart';
-import '../../../core/widgets/custom_header.dart'; // 👈 استدعاء الهيدر الجديد
+import '../../../core/widgets/custom_header.dart'; 
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -27,6 +30,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // ==========================================
   void _showScheduleDialog() {
     String scheduleType = 'شهرياً';
+    final TextEditingController emailController = TextEditingController(text: 'admin@cardsnet.com');
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -56,12 +61,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ),
                 const SizedBox(height: 10),
                 TextField(
+                  controller: emailController,
+                  keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
                     labelText: 'البريد الإلكتروني المستلم',
                     prefixIcon: const Icon(Icons.email, color: Colors.blue),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  controller: TextEditingController(text: 'admin@cardsnet.com'),
                 ),
                 const SizedBox(height: 10),
                 const Text('💡 سيتم الإرسال الساعة 12:00 منتصف الليل.', style: TextStyle(fontSize: 12, color: Colors.orange)),
@@ -71,8 +77,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
               TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
               ElevatedButton(
                 onPressed: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت جدولة التقرير بنجاح! ⏱️'), backgroundColor: Colors.green));
+                  if (emailController.text.isNotEmpty && emailController.text.contains('@')) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت جدولة التقرير بنجاح! ⏱️', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال بريد إلكتروني صحيح!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                  }
                 },
                 child: const Text('حفظ الجدولة'),
               ),
@@ -85,17 +95,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 👈 3. الاتصال بالعقل المدبر لقراءة الأرباح الحقيقية
+    final systemProvider = Provider.of<SystemProvider>(context);
+    final adminBalance = systemProvider.adminMainBalance;
+
     return Scaffold(
-      // 👈 تم تركيب الهيدر الشامل هنا بنجاح!
       appBar: const CustomHeader(title: 'التقارير الشاملة'),
       
-      drawer: const CustomDrawer(
+      // 👈 تمرير الرصيد المتغير وإزالة الـ const
+      drawer: CustomDrawer(
         userName: 'مالك النظام',
         phoneNumber: '774578241',
         role: 'مالك النظام (Super Admin)',
-        balanceOrPoints: 'أرباح النظام: 5,430,000 ريال',
+        balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
       ),
-      // الشريط السفلي الثابت
+      
+      // الشريط السفلي الثابت (إحصائيات سريعة)
       bottomNavigationBar: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -120,6 +135,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
         ),
       ),
+      
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
@@ -127,16 +143,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
             // === 1. أزرار التصدير والأتمتة العلوية ===
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: Colors.blue.shade50,
+              color: Theme.of(context).brightness == Brightness.dark ? Colors.black12 : Colors.blue.shade50,
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
-                    _buildExportBtn(Icons.table_view, 'Excel', Colors.green.shade700, () {}),
+                    _buildExportBtn(Icons.table_view, 'Excel', Colors.green.shade700, () {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري تصدير التقرير إلى ملف Excel... 📊', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                    }),
                     const SizedBox(width: 8),
-                    _buildExportBtn(Icons.picture_as_pdf, 'PDF', Colors.red.shade700, () {}),
+                    _buildExportBtn(Icons.picture_as_pdf, 'PDF', Colors.red.shade700, () {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري تصدير التقرير إلى ملف PDF... 📄', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                    }),
                     const SizedBox(width: 8),
-                    _buildExportBtn(Icons.print, 'طباعة', Colors.blueGrey, () {}),
+                    _buildExportBtn(Icons.print, 'طباعة', Colors.blueGrey, () {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري إرسال التقرير للطابعة... 🖨️', textDirection: TextDirection.rtl), backgroundColor: Colors.blueGrey));
+                    }),
                     const SizedBox(width: 8),
                     _buildExportBtn(Icons.schedule, 'جدولة', Colors.orange.shade800, _showScheduleDialog),
                   ],
@@ -180,7 +202,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           Expanded(
                             flex: 1,
                             child: ElevatedButton.icon(
-                              onPressed: () {},
+                              onPressed: () {
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('نافذة تحديد التاريخ ستتوفر قريباً 📅', textDirection: TextDirection.rtl)));
+                              },
                               icon: const Icon(Icons.date_range, size: 16),
                               label: const Text('المدة'),
                               style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
@@ -230,9 +254,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
       itemBuilder: (context, index) {
         final row = _reportData[index];
         return Card(
+          elevation: 2,
           margin: const EdgeInsets.only(bottom: 8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           child: ListTile(
-            leading: const CircleAvatar(backgroundColor: Colors.blue, child: Icon(Icons.monetization_on, color: Colors.white, size: 20)),
+            leading: const CircleAvatar(backgroundColor: Colors.blueAccent, child: Icon(Icons.monetization_on, color: Colors.white, size: 20)),
             title: Text(row['agent'], style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text('التاريخ: ${row['date']} | المبيعات: ${row['sales']}'),
             trailing: Text(row['profit'], style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 15), textDirection: TextDirection.ltr),
