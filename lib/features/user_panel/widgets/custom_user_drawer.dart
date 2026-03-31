@@ -16,11 +16,11 @@ import '../screens/user_support_screen.dart';
 import '../screens/user_settings_screen.dart'; 
 import '../../auth/screens/sso_login_screen.dart';
 
-// تم تحويل الكلاس إلى StatefulWidget لدعم تفاعل الأزرار وإخفاء الرصيد
 class CustomUserDrawer extends StatefulWidget {
+  // 💡 تركنا هذه المتغيرات لكي لا تظهر أخطاء في الشاشات القديمة التي تستدعي القائمة
+  // لكننا سنتجاهلها في الداخل ونستخدم البيانات الحقيقية من الخادم
   final String userName;
   final String phoneNumber;
-  // 💡 لاحظ: قمنا بإزالة المتغير القديم walletBalance من هنا تماماً
   final String? profileImageUrl;
 
   const CustomUserDrawer({
@@ -54,8 +54,8 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
     );
   }
 
-  // نافذة الباركود (QR Code)
-  void _showQRCodeDialog(BuildContext context) {
+  // نافذة الباركود (QR Code) - تم تحديثها لتستقبل الرقم الحقيقي
+  void _showQRCodeDialog(BuildContext context, String realPhone) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -68,7 +68,8 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
             const SizedBox(height: 20),
             Icon(Icons.qr_code_2, size: 150, color: Theme.of(context).primaryColor),
             const SizedBox(height: 20),
-            Text(widget.phoneNumber, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 2)),
+            // عرض رقم الهاتف الحقيقي المسجل في النظام
+            Text(realPhone, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 2)),
           ],
         ),
         actions: [
@@ -148,6 +149,10 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
     final systemProvider = Provider.of<SystemProvider>(context);
     final primaryColor = themeProvider.primaryColor;
 
+    // ✨ جلب البيانات الحقيقية من الذاكرة بدلاً من المتغيرات الثابتة
+    final String dynamicUserName = systemProvider.currentUserName;
+    final String dynamicUserPhone = systemProvider.currentUserPhone;
+
     return Drawer(
       child: Directionality(
         textDirection: TextDirection.rtl,
@@ -175,7 +180,8 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                                 alignment: Alignment.centerLeft,
                                 child: IconButton(
                                   icon: Icon(Icons.qr_code_scanner, color: primaryColor, size: 28),
-                                  onPressed: () => _showQRCodeDialog(context),
+                                  // تمرير الرقم الحقيقي للنافذة المنبثقة
+                                  onPressed: () => _showQRCodeDialog(context, dynamicUserPhone),
                                 ),
                               ),
                               GestureDetector(
@@ -199,14 +205,16 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                           ),
                           const SizedBox(height: 15),
 
+                          // عرض الاسم الحقيقي هنا
                           _buildGradientCard(
-                            text: widget.userName,
+                            text: dynamicUserName, 
                             icon: Icons.person,
                             colors: [Colors.blue.shade800, Colors.blue.shade500],
                           ),
 
+                          // عرض رقم الهاتف الحقيقي هنا
                           _buildGradientCard(
-                            text: widget.phoneNumber,
+                            text: dynamicUserPhone, 
                             icon: Icons.phone,
                             colors: [Colors.teal.shade800, Colors.teal.shade500],
                           ),
