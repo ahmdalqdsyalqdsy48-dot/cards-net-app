@@ -12,6 +12,7 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.2
   provider: ^6.1.2 # 👈 تم إضافة مكتبة العقل (Provider) هنا بنجاح
+  local_auth: ^2.1.6 # 👈 إضافة مكتبة البصمة الحقيقية هنا
 
 dev_dependencies:
   flutter_test:
