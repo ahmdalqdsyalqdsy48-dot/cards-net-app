@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:local_auth/local_auth.dart'; // 👈 استدعاء مكتبة البصمة الحقيقية
+import 'package:local_auth/local_auth.dart'; // مكتبة البصمة الحقيقية
 
 import '../../../core/providers/theme_provider.dart';
+import '../../../core/providers/system_provider.dart'; // 👈 استدعاء قاعدة البيانات الحقيقية
+
 import '../../super_admin/screens/super_admin_dashboard.dart';
 import '../../agent_panel/screens/agent_dashboard_screen.dart';
 import '../../user_panel/screens/user_dashboard_screen.dart';
@@ -18,40 +20,32 @@ class SSOLoginScreen extends StatefulWidget {
 class _SSOLoginScreenState extends State<SSOLoginScreen> {
   bool isLoginTab = true;
   
-  // متحكمات النصوص
+  // متحكمات النصوص لقراءة المدخلات
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController nameController = TextEditingController();
 
   // ==========================================
-  // 1. قاعدة بيانات محلية (لمحاكاة النظام الحقيقي)
-  // ==========================================
-  final List<Map<String, String>> _usersDB = [
-    {'phone': '774578241', 'password': '123', 'role': 'super_admin', 'name': 'مالك النظام'},
-    {'phone': '777777777', 'password': '123', 'role': 'agent', 'name': 'وكيل تجريبي'},
-    {'phone': '777123456', 'password': '123', 'role': 'user', 'name': 'مستخدم تجريبي'},
-  ];
-
-  // ==========================================
-  // 2. متغيرات الإعلانات المتحركة (Carousel)
+  // متغيرات الإعلانات المتحركة (Carousel)
   // ==========================================
   final PageController _pageController = PageController();
   Timer? _carouselTimer;
   int _currentPage = 0;
+  // هنا نضع ألوان الإعلانات (لاحقاً يمكن استبدالها بصور حقيقية Image.network)
   final List<Color> _adColors = [Colors.blue.shade800, Colors.deepPurple, Colors.teal];
 
-  // مكتبة البصمة
+  // مكتبة البصمة الفعالة
   final LocalAuthentication auth = LocalAuthentication();
 
   @override
   void initState() {
     super.initState();
-    // تشغيل المؤقت ليغير الصورة كل 5 ثواني
+    // تشغيل المؤقت ليغير الإعلان كل 5 ثواني تلقائياً
     _carouselTimer = Timer.periodic(const Duration(seconds: 5), (Timer timer) {
       if (_currentPage < _adColors.length - 1) {
         _currentPage++;
       } else {
-        _currentPage = 0;
+        _currentPage = 0; // العودة للإعلان الأول
       }
       if (_pageController.hasClients) {
         _pageController.animateToPage(
@@ -65,7 +59,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
 
   @override
   void dispose() {
-    _carouselTimer?.cancel();
+    _carouselTimer?.cancel(); // إيقاف المؤقت عند الخروج من الشاشة للحفاظ على الذاكرة
     _pageController.dispose();
     phoneController.dispose();
     passwordController.dispose();
@@ -74,10 +68,11 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   }
 
   // ==========================================
-  // 3. دالة البصمة الحقيقية
+  // دالة البصمة الحقيقية
   // ==========================================
   Future<void> _authenticateWithBiometrics() async {
     try {
+      // فحص هل الهاتف يمتلك حساس بصمة وهل هو مفعل
       final bool canAuthenticateWithBiometrics = await auth.canCheckBiometrics;
       final bool canAuthenticate = canAuthenticateWithBiometrics || await auth.isDeviceSupported();
 
@@ -86,15 +81,19 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
         return;
       }
 
+      // إظهار نافذة البصمة الخاصة بنظام التشغيل
       final bool didAuthenticate = await auth.authenticate(
         localizedReason: 'يرجى وضع إصبعك على المستشعر لتسجيل الدخول',
         options: const AuthenticationOptions(biometricOnly: true, stickyAuth: true),
       );
 
       if (didAuthenticate) {
-        // إذا نجحت البصمة، نوجهه مثلاً كمالك نظام (أو حسب آخر مستخدم حفظه النظام)
-        Provider.of<ThemeProvider>(context, listen: false).setRole('super_admin');
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SuperAdminDashboard()));
+        // في النظام الفعلي: هنا نقرأ آخر مستخدم محفوظ في ذاكرة الهاتف وندخله
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('نجحت البصمة! جاري توجيهك...', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+        
+        // كمثال: توجيهه للوحة المستخدم (ستتغير برمجياً لاحقاً حسب آخر دخول)
+        Provider.of<ThemeProvider>(context, listen: false).setRole('user');
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('فشلت عملية التحقق من البصمة.', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
@@ -102,34 +101,53 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   }
 
   // ==========================================
-  // 4. دالة تسجيل الدخول (الذكية)
+  // دالة تسجيل الدخول (الديناميكية الحقيقية)
   // ==========================================
   void _processLogin() {
     String phone = phoneController.text.trim();
     String password = passwordController.text.trim();
 
-    // البحث عن المستخدم في قاعدة البيانات
-    var user = _usersDB.where((u) => u['phone'] == phone && u['password'] == password).toList();
+    if (phone.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال رقم الهاتف وكلمة المرور.', textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
+      return;
+    }
 
-    if (user.isNotEmpty) {
-      String role = user.first['role']!;
+    // 1. حساب مالك النظام (الثابت الوحيد المسموح له بإدارة كل شيء)
+    if (phone == '774578241' && password == '75486958aaa') {
+      Provider.of<ThemeProvider>(context, listen: false).setRole('super_admin');
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SuperAdminDashboard()));
+      return;
+    }
+
+    // 2. الاتصال بقاعدة البيانات الحقيقية للبحث عن المستخدم
+    final systemProvider = Provider.of<SystemProvider>(context, listen: false);
+    
+    // الدالة loginUser ستقوم بالبحث عن الرقم وكلمة المرور (سنبنيها في الخطوة القادمة)
+    final Map<String, dynamic>? userData = systemProvider.loginUser(phone, password);
+    
+    if (userData != null) {
+      // الحساب موجود وصحيح! نقرأ ما هو دوره
+      String userRole = userData['role']; 
+      
+      // نطبق المظهر الخاص بدوره
+      Provider.of<ThemeProvider>(context, listen: false).setRole(userRole);
       
       // توجيه ذكي حسب الدور
-      Provider.of<ThemeProvider>(context, listen: false).setRole(role);
-      if (role == 'super_admin') {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SuperAdminDashboard()));
-      } else if (role == 'agent') {
+      if (userRole == 'agent') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const AgentDashboardScreen()));
-      } else {
+      } else if (userRole == 'user') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('دور المستخدم غير مدعوم حالياً.', textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
       }
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('رقم الهاتف أو كلمة المرور غير صحيحة!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+      // 3. رفض الدخول (لا يوجد وكيل أو مستخدم بهذا الرقم)
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('رقم الهاتف غير مسجل في النظام، أو كلمة المرور خاطئة!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
     }
   }
 
   // ==========================================
-  // 5. دالة التسجيل الجديد (الذكية)
+  // دالة التسجيل الجديد (تمنع التكرار فعلياً)
   // ==========================================
   void _processRegistration() {
     String phone = phoneController.text.trim();
@@ -141,18 +159,22 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       return;
     }
 
-    // فحص ما إذا كان الرقم مسجلاً مسبقاً
-    bool isExist = _usersDB.any((u) => u['phone'] == phone);
+    final systemProvider = Provider.of<SystemProvider>(context, listen: false);
+    
+    // التحقق الفعلي من قاعدة البيانات لعدم تكرار الرقم
+    bool isExist = systemProvider.checkUserExists(phone);
 
     if (isExist) {
-      // الحساب موجود: إظهار رسالة وتحويله لصفحة الدخول
+      // الحساب موجود! نرفض التسجيل ونعيده لشاشة الدخول
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('هذا الحساب مسجل مسبقاً! يرجى تسجيل الدخول.', textDirection: TextDirection.rtl), backgroundColor: Colors.blue));
       setState(() {
-        isLoginTab = true; // العودة لتبويب الدخول تلقائياً
+        isLoginTab = true; 
       });
     } else {
-      // حساب جديد: إضافته كـ (مستخدم نهائي) وتوجيهه
-      _usersDB.add({'phone': phone, 'password': password, 'role': 'user', 'name': name});
+      // حساب جديد: نضيفه كمستخدم نهائي (user) ونحفظه في العقل المدبر
+      systemProvider.registerNewUser(name: name, phone: phone, password: password, role: 'user');
+      
+      // توجيهه فوراً للوحة المستخدم
       Provider.of<ThemeProvider>(context, listen: false).setRole('user');
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم التسجيل بنجاح! أهلاً بك.', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
@@ -224,15 +246,10 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
               ),
               
               const SizedBox(height: 20),
-
-              const Text(
-                'كروت نت',
-                style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.blueAccent),
-              ),
-
+              const Text('كروت نت', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.blueAccent)),
               const SizedBox(height: 20),
 
-              // أزرار التبديل بين الدخول والتسجيل
+              // أزرار التبديل
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -270,35 +287,35 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
         TextField(
           controller: phoneController,
           keyboardType: TextInputType.phone,
-          decoration: InputDecoration(labelText: 'رقم الهاتف (جرب: 777777777)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.phone)),
+          decoration: InputDecoration(labelText: 'رقم الهاتف', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.phone)),
         ),
         const SizedBox(height: 15),
         TextField(
           controller: passwordController,
           obscureText: true,
-          decoration: InputDecoration(labelText: 'كلمة المرور (جرب: 123)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.lock), suffixIcon: const Icon(Icons.visibility)),
+          decoration: InputDecoration(labelText: 'كلمة المرور', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.lock), suffixIcon: const Icon(Icons.visibility)),
         ),
         const SizedBox(height: 25),
         Row(
           children: [
-            // زر الدخول بالبصمة الحقيقي
+            // زر البصمة الحقيقي
             Container(
               height: 50,
               decoration: BoxDecoration(border: Border.all(color: Colors.blueAccent), borderRadius: BorderRadius.circular(10)),
               child: IconButton(
                 icon: const Icon(Icons.fingerprint, color: Colors.blueAccent, size: 28),
                 tooltip: 'الدخول بالبصمة',
-                onPressed: _authenticateWithBiometrics, // 👈 استدعاء الدالة الحقيقية
+                onPressed: _authenticateWithBiometrics, 
               ),
             ),
             const SizedBox(width: 10),
-            // زر الدخول الذكي
+            // زر الدخول الحقيقي
             Expanded(
               child: SizedBox(
                 height: 50,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                  onPressed: _processLogin, // 👈 استدعاء دالة الفحص الذكية
+                  onPressed: _processLogin, 
                   child: const Text('دخول', style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
               ),
@@ -334,7 +351,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
           height: 50,
           child: ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-            onPressed: _processRegistration, // 👈 استدعاء دالة التسجيل الذكية التي تفحص التكرار
+            onPressed: _processRegistration, 
             child: const Text('تسجيل حساب جديد', style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ),
@@ -373,7 +390,7 @@ class _CustomMarqueeState extends State<_CustomMarquee> with SingleTickerProvide
         double maxScroll = _scrollController.position.maxScrollExtent;
         double currentScroll = _scrollController.offset;
         if (currentScroll >= maxScroll) {
-          _scrollController.jumpTo(0.0); // العودة للبداية عند النهاية
+          _scrollController.jumpTo(0.0); // العودة للبداية عند الوصول للنهاية
         } else {
           _scrollController.animateTo(currentScroll + 2.0, duration: const Duration(milliseconds: 50), curve: Curves.linear);
         }
@@ -393,8 +410,8 @@ class _CustomMarqueeState extends State<_CustomMarquee> with SingleTickerProvide
     return ListView(
       controller: _scrollController,
       scrollDirection: Axis.horizontal,
-      reverse: true, // لجعله يتحرك من اليمين لليسار لأننا بالعربية
-      physics: const NeverScrollableScrollPhysics(), // منع سحب المستخدم له يدوياً
+      reverse: true, // يتحرك من اليمين لليسار للغة العربية
+      physics: const NeverScrollableScrollPhysics(), // منع السحب اليدوي
       children: [
         Center(
           child: Padding(
