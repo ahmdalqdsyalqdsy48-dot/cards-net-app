@@ -43,7 +43,22 @@ class SystemProvider extends ChangeNotifier {
   // ==========================================
   // 5. دوال القراءة الذكية (للمستخدم النشط حالياً)
   // ==========================================
-  // هذه الدوال تحل مشكلة الأخطاء الحمراء في شاشات المستخدم
+  // هذه الدوال تحل مشكلة الأخطاء الحمراء في شاشات المستخدم وتجلب بياناته الحقيقية
+
+  // جلب اسم المستخدم الذي سجل دخوله الآن (✨ الإضافة الجديدة)
+  String get currentUserName {
+    if (_activeUserPhone == null) return 'مستخدم غير معروف';
+    final user = _usersDatabase.firstWhere(
+      (u) => u['phone'] == _activeUserPhone, 
+      orElse: () => {'name': 'مستخدم غير معروف'}
+    );
+    return user['name'] ?? 'مستخدم غير معروف';
+  }
+
+  // جلب رقم هاتف المستخدم الذي سجل دخوله الآن (✨ الإضافة الجديدة)
+  String get currentUserPhone {
+    return _activeUserPhone ?? 'لا يوجد رقم';
+  }
 
   // جلب رصيد المستخدم الذي سجل دخوله الآن
   double get currentUserBalance {
