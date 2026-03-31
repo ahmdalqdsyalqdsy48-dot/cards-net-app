@@ -1,10 +1,9 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:local_auth/local_auth.dart'; // مكتبة البصمة الحقيقية
+import 'package:local_auth/local_auth.dart'; // مكتبة البصمة
 
 import '../../../core/providers/theme_provider.dart';
-import '../../../core/providers/system_provider.dart'; // 👈 استدعاء قاعدة البيانات الحقيقية
+import '../../../core/providers/system_provider.dart';
 
 import '../../super_admin/screens/super_admin_dashboard.dart';
 import '../../agent_panel/screens/agent_dashboard_screen.dart';
@@ -18,408 +17,258 @@ class SSOLoginScreen extends StatefulWidget {
 }
 
 class _SSOLoginScreenState extends State<SSOLoginScreen> {
-  bool isLoginTab = true;
-  
-  // متحكمات النصوص لقراءة المدخلات
+  // ==========================================
+  // 1. متحكمات وحالة الشاشة (State)
+  // ==========================================
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-  final TextEditingController nameController = TextEditingController();
+  
+  bool isLoading = false; // حالة التحميل (Loading) لمنع الضغط المتكرر
+  bool obscurePassword = true; // إخفاء/إظهار كلمة المرور
+  bool rememberMe = false; // خيار تذكرني
+  bool isLoginMode = true; // التبديل بين تسجيل الدخول وإنشاء حساب جديد
 
-  // ==========================================
-  // متغيرات الإعلانات المتحركة (Carousel)
-  // ==========================================
-  final PageController _pageController = PageController();
-  Timer? _carouselTimer;
-  int _currentPage = 0;
-  // هنا نضع ألوان الإعلانات (لاحقاً يمكن استبدالها بصور حقيقية Image.network)
-  final List<Color> _adColors = [Colors.blue.shade800, Colors.deepPurple, Colors.teal];
-
-  // مكتبة البصمة الفعالة
+  // مكتبة البصمة
   final LocalAuthentication auth = LocalAuthentication();
 
   @override
-  void initState() {
-    super.initState();
-    // تشغيل المؤقت ليغير الإعلان كل 5 ثواني تلقائياً
-    _carouselTimer = Timer.periodic(const Duration(seconds: 5), (Timer timer) {
-      if (_currentPage < _adColors.length - 1) {
-        _currentPage++;
-      } else {
-        _currentPage = 0; // العودة للإعلان الأول
-      }
-      if (_pageController.hasClients) {
-        _pageController.animateToPage(
-          _currentPage,
-          duration: const Duration(milliseconds: 500),
-          curve: Curves.easeInOut,
-        );
-      }
-    });
-  }
-
-  @override
   void dispose() {
-    _carouselTimer?.cancel(); // إيقاف المؤقت عند الخروج من الشاشة للحفاظ على الذاكرة
-    _pageController.dispose();
     phoneController.dispose();
     passwordController.dispose();
-    nameController.dispose();
     super.dispose();
   }
 
   // ==========================================
-  // دالة البصمة الحقيقية
+  // 2. دالة تسجيل الدخول (الذكية والآمنة)
   // ==========================================
-  Future<void> _authenticateWithBiometrics() async {
-    try {
-      // فحص هل الهاتف يمتلك حساس بصمة وهل هو مفعل
-      final bool canAuthenticateWithBiometrics = await auth.canCheckBiometrics;
-      final bool canAuthenticate = canAuthenticateWithBiometrics || await auth.isDeviceSupported();
+  Future<void> _processLogin() async {
+    // إخفاء لوحة المفاتيح عند الضغط
+    FocusScope.of(context).unfocus();
 
-      if (!canAuthenticate) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جهازك لا يدعم البصمة أو غير مفعلة.', textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
-        return;
-      }
-
-      // إظهار نافذة البصمة الخاصة بنظام التشغيل
-      final bool didAuthenticate = await auth.authenticate(
-        localizedReason: 'يرجى وضع إصبعك على المستشعر لتسجيل الدخول',
-        options: const AuthenticationOptions(biometricOnly: true, stickyAuth: true),
-      );
-
-      if (didAuthenticate) {
-        // في النظام الفعلي: هنا نقرأ آخر مستخدم محفوظ في ذاكرة الهاتف وندخله
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('نجحت البصمة! جاري توجيهك...', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
-        
-        // كمثال: توجيهه للوحة المستخدم (ستتغير برمجياً لاحقاً حسب آخر دخول)
-        Provider.of<ThemeProvider>(context, listen: false).setRole('user');
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('فشلت عملية التحقق من البصمة.', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
-    }
-  }
-
-  // ==========================================
-  // دالة تسجيل الدخول (الديناميكية الحقيقية)
-  // ==========================================
-  void _processLogin() {
     String phone = phoneController.text.trim();
     String password = passwordController.text.trim();
 
+    // 1. التحقق من الحقول الفارغة
     if (phone.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال رقم الهاتف وكلمة المرور.', textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
+      _showErrorSnackBar('يرجى إدخال رقم الهاتف وكلمة المرور.');
       return;
     }
 
-    // 1. حساب مالك النظام (الثابت الوحيد المسموح له بإدارة كل شيء)
+    // 2. تفعيل حالة التحميل (Loading)
+    setState(() => isLoading = true);
+
+    // محاكاة الاتصال بالخادم (تأخير بسيط ليرى المستخدم مؤشر التحميل)
+    await Future.delayed(const Duration(seconds: 1));
+
+    if (!mounted) return;
+
+    // 3. فحص حساب مالك النظام الثابت (حالة استثنائية عليا)
     if (phone == '774578241' && password == '75486958aaa') {
       Provider.of<ThemeProvider>(context, listen: false).setRole('super_admin');
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SuperAdminDashboard()));
       return;
     }
 
-    // 2. الاتصال بقاعدة البيانات الحقيقية للبحث عن المستخدم
+    // 4. الاتصال بقاعدة البيانات الحقيقية
     final systemProvider = Provider.of<SystemProvider>(context, listen: false);
-    
-    // الدالة loginUser ستقوم بالبحث عن الرقم وكلمة المرور (سنبنيها في الخطوة القادمة)
     final Map<String, dynamic>? userData = systemProvider.loginUser(phone, password);
     
+    // 5. إيقاف حالة التحميل بعد وصول الرد
+    setState(() => isLoading = false);
+
     if (userData != null) {
-      // الحساب موجود وصحيح! نقرأ ما هو دوره
+      // نجاح الدخول: التوجيه الذكي حسب الدور (بدون سؤال المستخدم)
       String userRole = userData['role']; 
-      
-      // نطبق المظهر الخاص بدوره
       Provider.of<ThemeProvider>(context, listen: false).setRole(userRole);
       
-      // توجيه ذكي حسب الدور
       if (userRole == 'agent') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const AgentDashboardScreen()));
       } else if (userRole == 'user') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('دور المستخدم غير مدعوم حالياً.', textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
       }
     } else {
-      // 3. رفض الدخول (لا يوجد وكيل أو مستخدم بهذا الرقم)
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('رقم الهاتف غير مسجل في النظام، أو كلمة المرور خاطئة!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+      // فشل الدخول: رسالة واضحة
+      _showErrorSnackBar('رقم الهاتف غير مسجل أو كلمة المرور خاطئة!');
     }
   }
 
   // ==========================================
-  // دالة التسجيل الجديد (تمنع التكرار فعلياً)
+  // 3. دالة البصمة
   // ==========================================
-  void _processRegistration() {
-    String phone = phoneController.text.trim();
-    String password = passwordController.text.trim();
-    String name = nameController.text.trim();
+  Future<void> _authenticateWithBiometrics() async {
+    try {
+      final bool canAuthenticate = await auth.canCheckBiometrics || await auth.isDeviceSupported();
+      if (!canAuthenticate) {
+        _showErrorSnackBar('جهازك لا يدعم البصمة أو غير مفعلة.');
+        return;
+      }
 
-    if (phone.isEmpty || password.isEmpty || name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى تعبئة جميع الحقول!', textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
-      return;
-    }
+      final bool didAuthenticate = await auth.authenticate(
+        localizedReason: 'يرجى وضع إصبعك على المستشعر لتسجيل الدخول السريع',
+        options: const AuthenticationOptions(biometricOnly: true, stickyAuth: true),
+      );
 
-    final systemProvider = Provider.of<SystemProvider>(context, listen: false);
-    
-    // التحقق الفعلي من قاعدة البيانات لعدم تكرار الرقم
-    bool isExist = systemProvider.checkUserExists(phone);
-
-    if (isExist) {
-      // الحساب موجود! نرفض التسجيل ونعيده لشاشة الدخول
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('هذا الحساب مسجل مسبقاً! يرجى تسجيل الدخول.', textDirection: TextDirection.rtl), backgroundColor: Colors.blue));
-      setState(() {
-        isLoginTab = true; 
-      });
-    } else {
-      // حساب جديد: نضيفه كمستخدم نهائي (user) ونحفظه في العقل المدبر
-      systemProvider.registerNewUser(name: name, phone: phone, password: password, role: 'user');
-      
-      // توجيهه فوراً للوحة المستخدم
-      Provider.of<ThemeProvider>(context, listen: false).setRole('user');
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم التسجيل بنجاح! أهلاً بك.', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+      if (didAuthenticate) {
+        // سيتم ربطها لاحقاً بجلب بيانات آخر مستخدم من ذاكرة الهاتف
+        _showSuccessSnackBar('نجحت البصمة! جاري الدخول...');
+        Provider.of<ThemeProvider>(context, listen: false).setRole('user');
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
+      }
+    } catch (e) {
+      _showErrorSnackBar('فشلت عملية التحقق من البصمة.');
     }
   }
 
+  // ==========================================
+  // 4. دوال مساعدة لرسائل الخطأ والنجاح
+  // ==========================================
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message, textDirection: TextDirection.rtl), backgroundColor: Colors.red.shade800, behavior: SnackBarBehavior.floating));
+  }
+
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message, textDirection: TextDirection.rtl), backgroundColor: Colors.green.shade800, behavior: SnackBarBehavior.floating));
+  }
+
+  // ==========================================
+  // 5. بناء واجهة المستخدم (Minimal & Clean UI)
+  // ==========================================
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
     return Scaffold(
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              // ==========================================
-              // الإعلانات الصورية المتغيرة تلقائياً + الأسهم
-              // ==========================================
-              SizedBox(
-                height: MediaQuery.of(context).size.height * 0.25,
-                width: double.infinity,
-                child: Stack(
-                  children: [
-                    PageView.builder(
-                      controller: _pageController,
-                      onPageChanged: (index) => setState(() => _currentPage = index),
-                      itemCount: _adColors.length,
-                      itemBuilder: (context, index) {
-                        return Container(
-                          color: _adColors[index],
-                          child: Center(child: Text('إعلان ترويجي رقم ${index + 1}', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold))),
-                        );
-                      },
-                    ),
-                    // سهم اليمين
-                    Positioned(
-                      right: 10, top: 0, bottom: 0,
-                      child: IconButton(
-                        icon: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 30),
-                        onPressed: () {
-                          if (_currentPage > 0) {
-                            _pageController.previousPage(duration: const Duration(milliseconds: 300), curve: Curves.easeIn);
-                          }
-                        },
-                      ),
-                    ),
-                    // سهم اليسار
-                    Positioned(
-                      left: 10, top: 0, bottom: 0,
-                      child: IconButton(
-                        icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 30),
-                        onPressed: () {
-                          if (_currentPage < _adColors.length - 1) {
-                            _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeIn);
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // ==========================================
-              // الشريط الإخباري المتحرك الفعلي (Marquee)
-              // ==========================================
-              Container(
-                width: double.infinity,
-                height: 40,
-                color: Colors.amber.withOpacity(0.3),
-                child: const _CustomMarquee(text: 'أهلاً بك في نظامنا الموحد - أسرع شبكة لبيع الكروت والخدمات... عروض خاصة اليوم! اغتنم الفرصة.'),
-              ),
-              
-              const SizedBox(height: 20),
-              const Text('كروت نت', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.blueAccent)),
-              const SizedBox(height: 20),
-
-              // أزرار التبديل
-              Row(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch, // لجعل الأزرار تمتد بعرض الشاشة
                 children: [
-                  TextButton(
-                    onPressed: () => setState(() => isLoginTab = true),
-                    child: Text('تسجيل الدخول', style: TextStyle(fontSize: 18, fontWeight: isLoginTab ? FontWeight.bold : FontWeight.normal)),
+                  // 1. الشعار واسم التطبيق
+                  const Icon(Icons.wifi_tethering, size: 80, color: Colors.blueAccent),
+                  const SizedBox(height: 16),
+                  const Text('كروت نت', textAlign: TextAlign.center, style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.blueAccent, letterSpacing: 1.5)),
+                  const SizedBox(height: 8),
+                  Text('أسرع شبكة لبيع الكروت والخدمات', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
+                  const SizedBox(height: 40),
+
+                  // 2. حقل رقم الهاتف
+                  TextField(
+                    controller: phoneController,
+                    keyboardType: TextInputType.phone,
+                    textInputAction: TextInputAction.next, // زر التالي في الكيبورد
+                    decoration: InputDecoration(
+                      labelText: "رقم الهاتف",
+                      prefixIcon: const Icon(Icons.phone_android),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      filled: true,
+                      fillColor: theme.cardColor,
+                    ),
                   ),
-                  const Text('|', style: TextStyle(fontSize: 18, color: Colors.grey)),
-                  TextButton(
-                    onPressed: () => setState(() => isLoginTab = false),
-                    child: Text('تسجيل جديد', style: TextStyle(fontSize: 18, fontWeight: !isLoginTab ? FontWeight.bold : FontWeight.normal)),
+                  const SizedBox(height: 20),
+
+                  // 3. حقل كلمة المرور مع زر الإظهار/الإخفاء 👁
+                  TextField(
+                    controller: passwordController,
+                    obscureText: obscurePassword,
+                    textInputAction: TextInputAction.done, // زر الإرسال في الكيبورد
+                    onSubmitted: (_) => isLoading ? null : _processLogin(), // الدخول عند ضغط Enter
+                    decoration: InputDecoration(
+                      labelText: "كلمة المرور",
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.grey),
+                        onPressed: () => setState(() => obscurePassword = !obscurePassword),
+                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      filled: true,
+                      fillColor: theme.cardColor,
+                    ),
+                  ),
+                  
+                  // 4. خيارات إضافية (تذكرني + نسيت كلمة المرور)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Checkbox(
+                            value: rememberMe,
+                            onChanged: (value) => setState(() => rememberMe = value!),
+                            activeColor: Colors.blueAccent,
+                          ),
+                          const Text("تذكرني", style: TextStyle(fontSize: 14)),
+                        ],
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          _showErrorSnackBar('سيتم تفعيل استعادة كلمة المرور لاحقاً.');
+                        },
+                        child: const Text("نسيت كلمة المرور؟", style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // 5. زر تسجيل الدخول (مع حالة التحميل)
+                  SizedBox(
+                    height: 55,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueAccent,
+                        foregroundColor: Colors.white,
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: isLoading ? null : _processLogin, // تعطيل الزر أثناء التحميل
+                      child: isLoading
+                          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                          : const Text("تسجيل الدخول", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 20),
+
+                  // 6. زر الدخول السريع بالبصمة
+                  SizedBox(
+                    height: 55,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.blueAccent, width: 1.5),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      icon: const Icon(Icons.fingerprint, size: 28, color: Colors.blueAccent),
+                      label: const Text("الدخول السريع بالبصمة", style: TextStyle(fontSize: 16, color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                      onPressed: isLoading ? null : _authenticateWithBiometrics,
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  // 7. رابط إنشاء حساب جديد
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text("ليس لديك حساب؟", style: TextStyle(fontSize: 15)),
+                      TextButton(
+                        onPressed: () {
+                          _showSuccessSnackBar('سيتم توجيهك لصفحة التسجيل قريباً.');
+                          // يمكنك لاحقاً فتح شاشة تسجيل مستقلة هنا
+                        },
+                        child: const Text("إنشاء حساب جديد", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                      ),
+                    ],
                   ),
                 ],
               ),
-
-              const SizedBox(height: 15),
-
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Directionality(
-                  textDirection: TextDirection.rtl,
-                  child: isLoginTab ? _buildLoginForm() : _buildRegisterForm(),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildLoginForm() {
-    return Column(
-      children: [
-        TextField(
-          controller: phoneController,
-          keyboardType: TextInputType.phone,
-          decoration: InputDecoration(labelText: 'رقم الهاتف', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.phone)),
-        ),
-        const SizedBox(height: 15),
-        TextField(
-          controller: passwordController,
-          obscureText: true,
-          decoration: InputDecoration(labelText: 'كلمة المرور', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.lock), suffixIcon: const Icon(Icons.visibility)),
-        ),
-        const SizedBox(height: 25),
-        Row(
-          children: [
-            // زر البصمة الحقيقي
-            Container(
-              height: 50,
-              decoration: BoxDecoration(border: Border.all(color: Colors.blueAccent), borderRadius: BorderRadius.circular(10)),
-              child: IconButton(
-                icon: const Icon(Icons.fingerprint, color: Colors.blueAccent, size: 28),
-                tooltip: 'الدخول بالبصمة',
-                onPressed: _authenticateWithBiometrics, 
-              ),
-            ),
-            const SizedBox(width: 10),
-            // زر الدخول الحقيقي
-            Expanded(
-              child: SizedBox(
-                height: 50,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                  onPressed: _processLogin, 
-                  child: const Text('دخول', style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRegisterForm() {
-    return Column(
-      children: [
-        TextField(
-          controller: nameController,
-          decoration: InputDecoration(labelText: 'الاسم الرباعي', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.person)),
-        ),
-        const SizedBox(height: 15),
-        TextField(
-          controller: phoneController,
-          keyboardType: TextInputType.phone,
-          decoration: InputDecoration(labelText: 'رقم الهاتف', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.phone)),
-        ),
-        const SizedBox(height: 15),
-        TextField(
-          controller: passwordController,
-          obscureText: true,
-          decoration: InputDecoration(labelText: 'كلمة المرور', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.lock)),
-        ),
-        const SizedBox(height: 25),
-        SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-            onPressed: _processRegistration, 
-            child: const Text('تسجيل حساب جديد', style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ==========================================
-// أداة بناء الشريط الإخباري المتحرك الحقيقي (Marquee)
-// ==========================================
-class _CustomMarquee extends StatefulWidget {
-  final String text;
-  const _CustomMarquee({required this.text});
-
-  @override
-  State<_CustomMarquee> createState() => _CustomMarqueeState();
-}
-
-class _CustomMarqueeState extends State<_CustomMarquee> with SingleTickerProviderStateMixin {
-  late ScrollController _scrollController;
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollController = ScrollController();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _startScrolling();
-    });
-  }
-
-  void _startScrolling() {
-    _timer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
-      if (_scrollController.hasClients) {
-        double maxScroll = _scrollController.position.maxScrollExtent;
-        double currentScroll = _scrollController.offset;
-        if (currentScroll >= maxScroll) {
-          _scrollController.jumpTo(0.0); // العودة للبداية عند الوصول للنهاية
-        } else {
-          _scrollController.animateTo(currentScroll + 2.0, duration: const Duration(milliseconds: 50), curve: Curves.linear);
-        }
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      controller: _scrollController,
-      scrollDirection: Axis.horizontal,
-      reverse: true, // يتحرك من اليمين لليسار للغة العربية
-      physics: const NeverScrollableScrollPhysics(), // منع السحب اليدوي
-      children: [
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 50.0),
-            child: Text(widget.text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-          ),
-        ),
-      ],
     );
   }
 }
