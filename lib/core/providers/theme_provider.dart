@@ -1,37 +1,60 @@
 import 'package:flutter/material.dart';
 
-// الكلاس ThemeProvider يمثل "الذاكرة" التي تحفظ شكل التطبيق
+// الكلاس ThemeProvider يمثل الآن "الخزانة الذكية" التي تحفظ شكل التطبيق لكل دور بشكل منفصل
 // نستخدم ChangeNotifier لكي نتمكن من إشعار الشاشات بأي تغيير يحدث
 class ThemeProvider extends ChangeNotifier {
   // ==========================================
-  // 1. المتغيرات الخاصة (تحفظ الحالة الحالية)
+  // 1. تحديد من هو المستخدم الحالي
   // ==========================================
-  bool _isDarkMode = false; // الوضع الليلي (الافتراضي: مغلق)
-  Color _primaryColor = Colors.blue; // اللون الأساسي للتطبيق (الافتراضي: أزرق)
+  // افتراضياً نجعله المالك، ولكن سنقوم بتغييره برمجياً عند تسجيل الدخول
+  String _currentRole = 'super_admin'; 
 
   // ==========================================
-  // 2. دوال القراءة (Getters) 
+  // 2. الخزانة المخصصة (Role Themes)
   // ==========================================
-  // هذه الدوال تسمح للشاشات بمعرفة الحالة الحالية دون تعديلها مباشرة
-  bool get isDarkMode => _isDarkMode;
-  Color get primaryColor => _primaryColor;
+  // نحفظ هنا إعدادات كل لوحة بشكل منفصل تماماً (كل دور له درج خاص به)
+  final Map<String, Map<String, dynamic>> _roleThemes = {
+    'super_admin': {'isDark': false, 'color': Colors.blue},        // مظهر المالك
+    'agent':       {'isDark': false, 'color': Colors.teal},        // مظهر الوكيل
+    'user':        {'isDark': false, 'color': Colors.deepOrange},  // مظهر المستخدم النهائي
+  };
 
   // ==========================================
-  // 3. دالة لتفعيل أو تعطيل الوضع الليلي
+  // 3. دوال القراءة (Getters) 
   // ==========================================
-  void toggleTheme(bool isDark) {
-    _isDarkMode = isDark;
-    // الدالة notifyListeners() هي تعويذة سحرية تخبر كل التطبيق: 
-    // "لقد تغير الوضع، يرجى تحديث الشاشات فوراً!"
-    notifyListeners(); 
+  // هذه الدوال تسمح للشاشات بمعرفة الحالة الحالية للمستخدم النشط فقط
+  
+  // هل الوضع الليلي مفعل للمستخدم الحالي؟
+  bool get isDarkMode => _roleThemes[_currentRole]!['isDark'];
+  
+  // ما هو اللون الأساسي للمستخدم الحالي؟
+  Color get primaryColor => _roleThemes[_currentRole]!['color'];
+
+  // معرفة الدور الحالي (تفيدنا في البرمجة لاحقاً لمعرفة من يتصفح التطبيق)
+  String get currentRole => _currentRole;
+
+  // ==========================================
+  // 4. دوال التعديل والكتابة (Setters)
+  // ==========================================
+
+  /// هذه الدالة سحرية: نستدعيها عند (تسجيل الدخول) لنخبر النظام من هو المستخدم
+  /// لكي يقوم بفتح الدرج الصحيح وجلب ألوانه الخاصة
+  void setRole(String role) {
+    if (_roleThemes.containsKey(role)) {
+      _currentRole = role;
+      notifyListeners(); // إشعار الشاشات لتطبيق مظهر هذا الدور فوراً
+    }
   }
 
-  // ==========================================
-  // 4. دالة لتغيير اللون الأساسي للتطبيق
-  // ==========================================
+  /// دالة لتفعيل أو تعطيل الوضع الليلي (تؤثر على درج المستخدم الحالي فقط)
+  void toggleTheme(bool isDark) {
+    _roleThemes[_currentRole]!['isDark'] = isDark;
+    notifyListeners(); // "لقد تغير الوضع، يرجى تحديث الشاشات فوراً!"
+  }
+
+  /// دالة لتغيير اللون الأساسي (تؤثر على درج المستخدم الحالي فقط)
   void changeColor(Color color) {
-    _primaryColor = color;
-    // إشعار التطبيق لتحديث كل الأزرار والترويسات باللون الجديد
-    notifyListeners(); 
+    _roleThemes[_currentRole]!['color'] = color;
+    notifyListeners(); // إشعار التطبيق لتحديث كل الأزرار باللون الجديد
   }
 }
