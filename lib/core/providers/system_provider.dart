@@ -1,39 +1,71 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // 👈 استدعاء مكتبة السحابة
 
 class SystemProvider extends ChangeNotifier {
-  // ==========================================
-  // 1. بيانات مالك النظام (الخزينة المركزية)
-  // ==========================================
+  // 1. الاتصال المباشر بقاعدة بيانات جوجل
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  // 2. المتغيرات المحلية (نستخدمها لسرعة عرض الواجهة دون تأخير)
   double _adminMainBalance = 10000000.0; 
   int _totalSystemCards = 5000; 
-
-  // ==========================================
-  // 2. الذاكرة النشطة (لمعرفة من يتصفح التطبيق الآن)
-  // ==========================================
   String? _activeUserPhone; 
+  List<Map<String, dynamic>> _usersDatabase = [];
+  List<String> _announcements = []; // 👈 أضفنا قائمة الإعلانات هنا
 
   // ==========================================
-  // 3. قاعدة البيانات المركزية الحقيقية (Users Database)
+  // 3. تهيئة النظام (الاستماع للسحابة لحظة بلحظة)
   // ==========================================
-  final List<Map<String, dynamic>> _usersDatabase = [
-    {
-      'id': 'SUPER_ADMIN_01',
-      'name': 'مالك النظام',
-      'phone': '774578241',
-      'password': '75486958aaa',
-      'role': 'super_admin',
-      'balance': 0.0,
-      'status': 'نشط',
-      'purchasedCards': [],
-      'isBiometricEnabled': false, // متغير البصمة الافتراضي
-    }
-  ];
+  SystemProvider() {
+    _initDatabaseSync();
+  }
+
+  void _initDatabaseSync() {
+    // أ. الاستماع لملف "الخزينة المركزية والإعلانات"
+    _db.collection('system').doc('main_info').snapshots().listen((snapshot) {
+      if (snapshot.exists) {
+        final data = snapshot.data()!;
+        _adminMainBalance = (data['adminMainBalance'] ?? 10000000.0).toDouble();
+        _totalSystemCards = data['totalSystemCards'] ?? 5000;
+        _announcements = List<String>.from(data['announcements'] ?? ['أهلاً بك في شبكة كروت نت...']);
+        notifyListeners();
+      } else {
+        // إذا كان التطبيق يُفتح لأول مرة، ننشئ الملف في فايربيس
+        _db.collection('system').doc('main_info').set({
+          'adminMainBalance': 10000000.0,
+          'totalSystemCards': 5000,
+          'announcements': ['أهلاً بك في شبكة كروت نت...'],
+        });
+      }
+    });
+
+    // ب. الاستماع لقائمة "المستخدمين" (المالك، الوكلاء، المستخدمين)
+    _db.collection('users').snapshots().listen((snapshot) {
+      _usersDatabase = snapshot.docs.map((doc) => doc.data()).toList();
+      
+      // التأكد من وجود حساب المالك، وإذا لم يوجد ننشئه في فايربيس
+      if (!_usersDatabase.any((u) => u['role'] == 'super_admin')) {
+        _db.collection('users').doc('774578241').set({
+          'id': 'SUPER_ADMIN_01',
+          'name': 'مالك النظام',
+          'phone': '774578241',
+          'password': '75486958aaa',
+          'role': 'super_admin',
+          'balance': 0.0,
+          'status': 'نشط',
+          'purchasedCards': [],
+          'isBiometricEnabled': false,
+        });
+      }
+      notifyListeners();
+    });
+  }
 
   // ==========================================
-  // 4. دوال القراءة (Getters) العامة
+  // 4. دوال القراءة (كما هي تماماً لكي لا تتعطل الشاشات)
   // ==========================================
   double get adminMainBalance => _adminMainBalance;
   int get totalSystemCards => _totalSystemCards;
+  List<String> get announcements => _announcements; // 👈 استدعاء الإعلانات
 
   List<Map<String, dynamic>> get agentsList => 
       _usersDatabase.where((user) => user['role'] == 'agent').toList();
@@ -41,43 +73,34 @@ class SystemProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get usersList => 
       _usersDatabase.where((user) => user['role'] == 'user').toList();
 
-  // ==========================================
-  // 5. دوال القراءة الذكية (للمستخدم النشط حالياً)
-  // ==========================================
-  
   String get currentUserName {
     if (_activeUserPhone == null) return 'مستخدم غير معروف';
-    final user = _usersDatabase.firstWhere(
-      (u) => u['phone'] == _activeUserPhone, 
-      orElse: () => {'name': 'مستخدم غير معروف'}
-    );
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'name': 'مستخدم غير معروف'});
     return user['name'] ?? 'مستخدم غير معروف';
   }
 
-  String get currentUserPhone {
-    return _activeUserPhone ?? 'لا يوجد رقم';
-  }
+  String get currentUserPhone => _activeUserPhone ?? 'لا يوجد رقم';
 
   double get currentUserBalance {
     if (_activeUserPhone == null) return 0.0;
-    final user = _usersDatabase.firstWhere(
-      (u) => u['phone'] == _activeUserPhone, 
-      orElse: () => {'balance': 0.0}
-    );
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'balance': 0.0});
     return user['balance'] ?? 0.0;
   }
 
   List<String> get userPurchasedCards {
     if (_activeUserPhone == null) return [];
-    final user = _usersDatabase.firstWhere(
-      (u) => u['phone'] == _activeUserPhone, 
-      orElse: () => {'purchasedCards': <String>[]}
-    );
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'purchasedCards': <String>[]});
     return List<String>.from(user['purchasedCards'] ?? []);
   }
 
+  bool get isBiometricCurrentlyEnabled {
+    if (_activeUserPhone == null) return false;
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'isBiometricEnabled': false});
+    return user['isBiometricEnabled'] ?? false;
+  }
+
   // ==========================================
-  // 6. دوال المصادقة وتسجيل الدخول
+  // 5. دوال الإضافة والتعديل (تكتب مباشرة في فايربيس) 🚀
   // ==========================================
 
   bool checkUserExists(String phone) {
@@ -86,10 +109,7 @@ class SystemProvider extends ChangeNotifier {
 
   Map<String, dynamic>? loginUser(String phone, String password) {
     try {
-      final user = _usersDatabase.firstWhere(
-        (user) => user['phone'] == phone && user['password'] == password,
-      );
-      // حفظ رقم المستخدم النشط في الذاكرة
+      final user = _usersDatabase.firstWhere((user) => user['phone'] == phone && user['password'] == password);
       _activeUserPhone = phone;
       notifyListeners();
       return user;
@@ -98,13 +118,9 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  void registerNewUser({
-    required String name,
-    required String phone,
-    required String password,
-    required String role,
-  }) {
-    _usersDatabase.add({
+  void registerNewUser({required String name, required String phone, required String password, required String role}) {
+    // 👈 حفظ في فايربيس بدلاً من الذاكرة المؤقتة
+    _db.collection('users').doc(phone).set({
       'id': 'USER_${DateTime.now().millisecondsSinceEpoch}',
       'name': name,
       'phone': phone,
@@ -113,20 +129,14 @@ class SystemProvider extends ChangeNotifier {
       'balance': 0.0,
       'status': 'نشط',
       'purchasedCards': [], 
-      'isBiometricEnabled': false, // القيمة الافتراضية للبصمة
+      'isBiometricEnabled': false,
     });
-    // حفظ رقم المستخدم الجديد كـ "مستخدم نشط" ليدخل مباشرة
     _activeUserPhone = phone;
-    notifyListeners(); 
   }
 
-  void addAgent({
-    required String name,
-    required String phone,
-    required String password,
-  }) {
+  void addAgent({required String name, required String phone, required String password}) {
     if (!checkUserExists(phone)) {
-      _usersDatabase.add({
+      _db.collection('users').doc(phone).set({
         'id': 'AGENT_${DateTime.now().millisecondsSinceEpoch}',
         'name': name,
         'phone': phone,
@@ -137,24 +147,31 @@ class SystemProvider extends ChangeNotifier {
         'purchasedCards': [],
         'isBiometricEnabled': false,
       });
-      notifyListeners();
     }
   }
 
+  // إضافة إعلان جديد
+  void addAnnouncement(String newAd) {
+    _db.collection('system').doc('main_info').update({
+      'announcements': FieldValue.arrayUnion([newAd]) // إضافة الإعلان للسحابة
+    });
+  }
+
   // ==========================================
-  // 7. الوظائف التشغيلية والمالية
+  // 6. العمليات المالية (آمنة ومباشرة على السحابة)
   // ==========================================
 
   bool transferFromAdminToAgent(String agentPhone, double amount) {
     if (_adminMainBalance >= amount) {
-      for (var user in _usersDatabase) {
-        if (user['phone'] == agentPhone && user['role'] == 'agent') {
-          _adminMainBalance -= amount; 
-          user['balance'] += amount; 
-          notifyListeners(); 
-          return true; 
-        }
-      }
+      // 1. خصم من الخزينة المركزية
+      _db.collection('system').doc('main_info').update({
+        'adminMainBalance': FieldValue.increment(-amount)
+      });
+      // 2. إضافة لحساب الوكيل
+      _db.collection('users').doc(agentPhone).update({
+        'balance': FieldValue.increment(amount)
+      });
+      return true; 
     }
     return false; 
   }
@@ -162,67 +179,39 @@ class SystemProvider extends ChangeNotifier {
   bool userBuyCard(double price, String cardName) {
     if (_activeUserPhone == null) return false;
 
-    for (var user in _usersDatabase) {
-      if (user['phone'] == _activeUserPhone && user['role'] == 'user') {
-        if (user['balance'] >= price && _totalSystemCards > 0) {
-          user['balance'] -= price; // خصم الرصيد
-          _totalSystemCards -= 1; // سحب كرت
-          
-          if (user['purchasedCards'] == null) {
-            user['purchasedCards'] = [];
-          }
-          user['purchasedCards'].add(cardName); // إضافة الكرت
-          
-          notifyListeners();
-          return true;
-        }
-      }
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
+    if (user['balance'] >= price && _totalSystemCards > 0) {
+      // 1. خصم كرت من النظام
+      _db.collection('system').doc('main_info').update({
+        'totalSystemCards': FieldValue.increment(-1)
+      });
+      // 2. خصم الرصيد من المستخدم وإضافة الكرت له
+      _db.collection('users').doc(_activeUserPhone).update({
+        'balance': FieldValue.increment(-price),
+        'purchasedCards': FieldValue.arrayUnion([cardName])
+      });
+      return true;
     }
     return false;
   }
 
   // ==========================================
-  // 8. إعدادات الأمان والحماية الحقيقية (✨ القسم المفقود لحل الخطأ)
+  // 7. إعدادات الأمان
   // ==========================================
 
-  /// دالة تغيير كلمة المرور الفعلية
   bool changeUserPassword(String oldPassword, String newPassword) {
     if (_activeUserPhone == null) return false;
     
-    for (var user in _usersDatabase) {
-      if (user['phone'] == _activeUserPhone) {
-        // التحقق من أن كلمة المرور القديمة صحيحة قبل تغييرها
-        if (user['password'] == oldPassword) {
-          user['password'] = newPassword; 
-          notifyListeners();
-          return true; // تمت العملية بنجاح
-        }
-      }
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
+    if (user['password'] == oldPassword) {
+      _db.collection('users').doc(_activeUserPhone).update({'password': newPassword});
+      return true; 
     }
-    return false; // فشلت العملية (كلمة المرور القديمة خاطئة)
+    return false; 
   }
 
-  /// دالة تفعيل أو إلغاء البصمة للمستخدم الحالي
   void toggleBiometric(bool isEnabled) {
     if (_activeUserPhone == null) return;
-    
-    for (var user in _usersDatabase) {
-      if (user['phone'] == _activeUserPhone) {
-        user['isBiometricEnabled'] = isEnabled; // حفظ الحالة الجديدة في قاعدة البيانات
-        notifyListeners();
-        break;
-      }
-    }
-  }
-
-  /// قراءة حالة البصمة للمستخدم الحالي (لإظهارها في الشاشة)
-  bool get isBiometricCurrentlyEnabled {
-    if (_activeUserPhone == null) return false;
-    
-    final user = _usersDatabase.firstWhere(
-      (u) => u['phone'] == _activeUserPhone, 
-      orElse: () => {'isBiometricEnabled': false}
-    );
-    return user['isBiometricEnabled'] ?? false;
+    _db.collection('users').doc(_activeUserPhone).update({'isBiometricEnabled': isEnabled});
   }
 }
