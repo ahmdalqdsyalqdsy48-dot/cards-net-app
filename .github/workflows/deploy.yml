@@ -1,5 +1,6 @@
 name: Deploy Flutter Web to GitHub Pages
 
+# الروبوت سيعمل تلقائياً عند أي تعديل أو رفع للكود على هذه المسارات
 on:
   push:
     branches:
@@ -11,27 +12,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: جلب الكود من المستودع
         uses: actions/checkout@v3
 
-      - name: Setup Flutter
+      - name: تجهيز بيئة فلاتر
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
 
-      - name: Install Dependencies
+      # 👈 أمر التنظيف الذي سألتني عنه لتجنب أي أخطاء سابقة
+      - name: تنظيف بيئة العمل
+        run: flutter clean
+
+      - name: تحميل المكاتب والإضافات
         run: flutter pub get
 
-      # هذا هو السطر السحري الذي قمنا بإضافته لحل المشكلة نهائياً
-      - name: Enable Web Support
+      # 👈 أمر تفعيل دعم الويب (مهم جداً لتجنب أخطاء بناء الويب)
+      - name: تفعيل دعم الويب
         run: flutter create . --platforms web
 
-      - name: Build Web
+      - name: بناء نسخة الويب
+        # هذا السطر مهم جداً لكي يتعرف التطبيق على مساره الصحيح في جيت هاب
         run: flutter build web --base-href "/cards-net-app/"
 
-      - name: Deploy to GitHub Pages
+      - name: النشر على رابط جيت هاب
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./build/web
-          
