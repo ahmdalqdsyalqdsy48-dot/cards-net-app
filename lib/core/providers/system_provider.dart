@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // 👈 استدعاء مكتبة السحابة
+import 'package:cloud_firestore/cloud_firestore.dart'; 
 
 class SystemProvider extends ChangeNotifier {
   // 1. الاتصال المباشر بقاعدة بيانات جوجل
@@ -9,8 +9,23 @@ class SystemProvider extends ChangeNotifier {
   double _adminMainBalance = 10000000.0; 
   int _totalSystemCards = 5000; 
   String? _activeUserPhone; 
-  List<Map<String, dynamic>> _usersDatabase = [];
-  List<String> _announcements = []; // 👈 أضفنا قائمة الإعلانات هنا
+  
+  // 👈 الحل الأول: وضعنا بيانات المالك كخط دفاع أول لتجنب تأخير الإنترنت
+  List<Map<String, dynamic>> _usersDatabase = [
+    {
+      'id': 'SUPER_ADMIN_01',
+      'name': 'مالك النظام',
+      'phone': '774578241',
+      'password': '75486958aaa',
+      'role': 'super_admin',
+      'balance': 0.0,
+      'status': 'نشط',
+      'purchasedCards': [],
+      'isBiometricEnabled': false,
+    }
+  ];
+  
+  List<String> _announcements = []; 
 
   // ==========================================
   // 3. تهيئة النظام (الاستماع للسحابة لحظة بلحظة)
@@ -29,7 +44,6 @@ class SystemProvider extends ChangeNotifier {
         _announcements = List<String>.from(data['announcements'] ?? ['أهلاً بك في شبكة كروت نت...']);
         notifyListeners();
       } else {
-        // إذا كان التطبيق يُفتح لأول مرة، ننشئ الملف في فايربيس
         _db.collection('system').doc('main_info').set({
           'adminMainBalance': 10000000.0,
           'totalSystemCards': 5000,
@@ -38,11 +52,12 @@ class SystemProvider extends ChangeNotifier {
       }
     });
 
-    // ب. الاستماع لقائمة "المستخدمين" (المالك، الوكلاء، المستخدمين)
+    // ب. الاستماع لقائمة "المستخدمين" 
     _db.collection('users').snapshots().listen((snapshot) {
-      _usersDatabase = snapshot.docs.map((doc) => doc.data()).toList();
+      if (snapshot.docs.isNotEmpty) {
+        _usersDatabase = snapshot.docs.map((doc) => doc.data()).toList();
+      }
       
-      // التأكد من وجود حساب المالك، وإذا لم يوجد ننشئه في فايربيس
       if (!_usersDatabase.any((u) => u['role'] == 'super_admin')) {
         _db.collection('users').doc('774578241').set({
           'id': 'SUPER_ADMIN_01',
@@ -61,11 +76,11 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 4. دوال القراءة (كما هي تماماً لكي لا تتعطل الشاشات)
+  // 4. دوال القراءة 
   // ==========================================
   double get adminMainBalance => _adminMainBalance;
   int get totalSystemCards => _totalSystemCards;
-  List<String> get announcements => _announcements; // 👈 استدعاء الإعلانات
+  List<String> get announcements => _announcements; 
 
   List<Map<String, dynamic>> get agentsList => 
       _usersDatabase.where((user) => user['role'] == 'agent').toList();
@@ -100,7 +115,7 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 5. دوال الإضافة والتعديل (تكتب مباشرة في فايربيس) 🚀
+  // 5. دوال الإضافة والتعديل 🚀
   // ==========================================
 
   bool checkUserExists(String phone) {
@@ -119,7 +134,6 @@ class SystemProvider extends ChangeNotifier {
   }
 
   void registerNewUser({required String name, required String phone, required String password, required String role}) {
-    // 👈 حفظ في فايربيس بدلاً من الذاكرة المؤقتة
     _db.collection('users').doc(phone).set({
       'id': 'USER_${DateTime.now().millisecondsSinceEpoch}',
       'name': name,
@@ -134,7 +148,15 @@ class SystemProvider extends ChangeNotifier {
     _activeUserPhone = phone;
   }
 
-  void addAgent({required String name, required String phone, required String password}) {
+  // 👈 الحل الثاني: تحديث دالة الوكيل لتقبل الحقول الجديدة
+  void addAgent({
+    required String name, 
+    required String phone, 
+    required String password,
+    String? networkName, 
+    String? profitMargin, 
+    String? location,
+  }) {
     if (!checkUserExists(phone)) {
       _db.collection('users').doc(phone).set({
         'id': 'AGENT_${DateTime.now().millisecondsSinceEpoch}',
@@ -142,6 +164,9 @@ class SystemProvider extends ChangeNotifier {
         'phone': phone,
         'password': password,
         'role': 'agent',
+        'networkName': networkName ?? 'غير محدد',
+        'profitMargin': profitMargin ?? 'غير محدد',
+        'location': location ?? 'غير محدد',
         'balance': 0.0,
         'status': 'نشط',
         'purchasedCards': [],
@@ -150,24 +175,21 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  // إضافة إعلان جديد
   void addAnnouncement(String newAd) {
     _db.collection('system').doc('main_info').update({
-      'announcements': FieldValue.arrayUnion([newAd]) // إضافة الإعلان للسحابة
+      'announcements': FieldValue.arrayUnion([newAd]) 
     });
   }
 
   // ==========================================
-  // 6. العمليات المالية (آمنة ومباشرة على السحابة)
+  // 6. العمليات المالية 
   // ==========================================
 
   bool transferFromAdminToAgent(String agentPhone, double amount) {
     if (_adminMainBalance >= amount) {
-      // 1. خصم من الخزينة المركزية
       _db.collection('system').doc('main_info').update({
         'adminMainBalance': FieldValue.increment(-amount)
       });
-      // 2. إضافة لحساب الوكيل
       _db.collection('users').doc(agentPhone).update({
         'balance': FieldValue.increment(amount)
       });
@@ -181,11 +203,9 @@ class SystemProvider extends ChangeNotifier {
 
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
     if (user['balance'] >= price && _totalSystemCards > 0) {
-      // 1. خصم كرت من النظام
       _db.collection('system').doc('main_info').update({
         'totalSystemCards': FieldValue.increment(-1)
       });
-      // 2. خصم الرصيد من المستخدم وإضافة الكرت له
       _db.collection('users').doc(_activeUserPhone).update({
         'balance': FieldValue.increment(-price),
         'purchasedCards': FieldValue.arrayUnion([cardName])
