@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show kIsWeb; // لمعرفة هل التطبيق يعمل على الويب
+import 'package:flutter/foundation.dart' show kIsWeb; 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:local_auth/local_auth.dart';
@@ -24,9 +24,9 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   // ==========================================
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-  final TextEditingController nameController = TextEditingController(); // لحساب جديد
+  final TextEditingController nameController = TextEditingController(); 
   
-  bool isLoginMode = true; // للتبديل بين تسجيل الدخول وإنشاء حساب
+  bool isLoginMode = true; 
   bool isLoading = false; 
   bool obscurePassword = true; 
   bool rememberMe = false; 
@@ -42,7 +42,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   @override
   void initState() {
     super.initState();
-    // تشغيل الإعلانات التلقائية
     _carouselTimer = Timer.periodic(const Duration(seconds: 5), (Timer timer) {
       if (_currentPage < _adColors.length - 1) {
         _currentPage++;
@@ -66,10 +65,10 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   }
 
   // ==========================================
-  // 2. العمليات الأساسية (الدخول، التسجيل، البصمة، استعادة)
+  // 2. العمليات الأساسية المربوطة بالعقل المدبر 🧠
   // ==========================================
 
-  // دالة تسجيل الدخول
+  // دالة تسجيل الدخول (تم الإصلاح لمنع التخطي)
   Future<void> _processLogin() async {
     FocusScope.of(context).unfocus();
     String phone = phoneController.text.trim();
@@ -81,15 +80,10 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     }
 
     setState(() => isLoading = true);
-    await Future.delayed(const Duration(seconds: 1)); // محاكاة التحميل
+    await Future.delayed(const Duration(seconds: 1)); 
     if (!mounted) return;
 
-    if (phone == '774578241' && password == '75486958aaa') {
-      Provider.of<ThemeProvider>(context, listen: false).setRole('super_admin');
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SuperAdminDashboard()));
-      return;
-    }
-
+    // 👈 هنا السحر: نرسل الجميع للعقل المدبر لكي يحفظ هويتهم في الذاكرة النشطة
     final systemProvider = Provider.of<SystemProvider>(context, listen: false);
     final Map<String, dynamic>? userData = systemProvider.loginUser(phone, password);
     
@@ -98,7 +92,11 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     if (userData != null) {
       String userRole = userData['role']; 
       Provider.of<ThemeProvider>(context, listen: false).setRole(userRole);
-      if (userRole == 'agent') {
+      
+      // التوجيه الذكي حسب الصلاحية
+      if (userRole == 'super_admin') {
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SuperAdminDashboard()));
+      } else if (userRole == 'agent') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const AgentDashboardScreen()));
       } else if (userRole == 'user') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
@@ -133,6 +131,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       _showErrorSnackBar('هذا الرقم مسجل مسبقاً! يرجى تسجيل الدخول.');
       setState(() => isLoginMode = true);
     } else {
+      // العقل المدبر سيقوم بحفظه وتسجيل دخوله فوراً
       systemProvider.registerNewUser(name: name, phone: phone, password: password, role: 'user');
       Provider.of<ThemeProvider>(context, listen: false).setRole('user');
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
@@ -140,34 +139,18 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     }
   }
 
-  // دالة البصمة (مع معالجة خطأ الويب)
+  // دالة البصمة
   Future<void> _authenticateWithBiometrics() async {
     if (kIsWeb) {
       _showErrorSnackBar('عذراً، الدخول بالبصمة يعمل فقط على تطبيقات الهواتف (Android/iOS) وليس المتصفح.');
       return;
     }
-
-    try {
-      final bool canAuthenticate = await auth.canCheckBiometrics || await auth.isDeviceSupported();
-      if (!canAuthenticate) {
-        _showErrorSnackBar('جهازك لا يدعم البصمة أو غير مفعلة.');
-        return;
-      }
-      final bool didAuthenticate = await auth.authenticate(
-        localizedReason: 'يرجى وضع إصبعك على المستشعر لتسجيل الدخول السريع',
-        options: const AuthenticationOptions(biometricOnly: true, stickyAuth: true),
-      );
-      if (didAuthenticate) {
-        _showSuccessSnackBar('نجحت البصمة!');
-        Provider.of<ThemeProvider>(context, listen: false).setRole('user');
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
-      }
-    } catch (e) {
-      _showErrorSnackBar('فشلت عملية التحقق من البصمة.');
-    }
+    
+    // ملاحظة: لكي تعمل البصمة بشكل حقيقي مستقبلاً، سنحتاج لحفظ رقم آخر مستخدم 
+    // في ذاكرة الهاتف المحلية (SharedPreferences) وتمريره للعقل المدبر.
+    _showErrorSnackBar('قم بتسجيل الدخول برقمك وكلمة المرور أولاً لتفعيل الجلسة.');
   }
 
-  // دالة نافذة استعادة كلمة المرور
   void _showForgotPasswordDialog() {
     showDialog(
       context: context,
@@ -213,7 +196,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
         child: SingleChildScrollView(
           child: Column(
             children: [
-              // --- الإعلانات والشريط الإخباري (مخفية فقط في حالة التسجيل لتخفيف الزحمة) ---
               if (isLoginMode) ...[
                 SizedBox(
                   height: MediaQuery.of(context).size.height * 0.2,
@@ -235,7 +217,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                 const SizedBox(height: 50),
               ],
 
-              // --- محتوى الفورم ---
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: Directionality(
@@ -248,7 +229,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                       Text(isLoginMode ? 'تسجيل الدخول' : 'إنشاء حساب جديد', textAlign: TextAlign.center, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
                       const SizedBox(height: 30),
 
-                      // حقل الاسم (يظهر فقط في حالة إنشاء حساب)
                       if (!isLoginMode) ...[
                         TextField(
                           controller: nameController,
@@ -257,7 +237,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                         const SizedBox(height: 15),
                       ],
 
-                      // حقل رقم الهاتف
                       TextField(
                         controller: phoneController,
                         keyboardType: TextInputType.phone,
@@ -265,10 +244,9 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                       ),
                       const SizedBox(height: 15),
 
-                      // حقل كلمة المرور مع زر العين الفعال 👁
                       TextField(
                         controller: passwordController,
-                        obscureText: obscurePassword, // 👈 هنا يتم تطبيق التغيير
+                        obscureText: obscurePassword, 
                         decoration: InputDecoration(
                           labelText: "كلمة المرور",
                           prefixIcon: const Icon(Icons.lock_outline),
@@ -276,7 +254,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                             icon: Icon(obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.grey),
                             onPressed: () {
                               setState(() {
-                                obscurePassword = !obscurePassword; // 👈 تغيير الحالة هنا
+                                obscurePassword = !obscurePassword; 
                               });
                             },
                           ),
@@ -285,7 +263,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                         ),
                       ),
                       
-                      // خيارات إضافية (تذكرني + نسيت كلمة المرور) في حالة الدخول فقط
                       if (isLoginMode)
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -297,7 +274,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                               ],
                             ),
                             TextButton(
-                              onPressed: _showForgotPasswordDialog, // 👈 فتح نافذة الاستعادة
+                              onPressed: _showForgotPasswordDialog, 
                               child: const Text("نسيت كلمة المرور؟", style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
                             ),
                           ],
@@ -305,7 +282,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                       
                       const SizedBox(height: 20),
 
-                      // زر التنفيذ الأساسي (دخول أو تسجيل)
                       SizedBox(
                         height: 55,
                         child: ElevatedButton(
@@ -319,7 +295,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                       
                       const SizedBox(height: 15),
 
-                      // زر البصمة (يظهر فقط في حالة الدخول)
                       if (isLoginMode)
                         SizedBox(
                           height: 55,
@@ -333,7 +308,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
 
                       const SizedBox(height: 20),
 
-                      // زر التبديل بين الدخول والتسجيل
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -341,7 +315,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                           TextButton(
                             onPressed: () {
                               setState(() {
-                                isLoginMode = !isLoginMode; // 👈 التبديل الحقيقي بين الشاشتين
+                                isLoginMode = !isLoginMode; 
                                 phoneController.clear();
                                 passwordController.clear();
                               });
