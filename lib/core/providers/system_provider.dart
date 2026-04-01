@@ -25,6 +25,7 @@ class SystemProvider extends ChangeNotifier {
       'balance': 0.0,
       'status': 'نشط',
       'purchasedCards': [],
+      'isBiometricEnabled': false, // متغير البصمة الافتراضي
     }
   ];
 
@@ -43,9 +44,7 @@ class SystemProvider extends ChangeNotifier {
   // ==========================================
   // 5. دوال القراءة الذكية (للمستخدم النشط حالياً)
   // ==========================================
-  // هذه الدوال تحل مشكلة الأخطاء الحمراء في شاشات المستخدم وتجلب بياناته الحقيقية
-
-  // جلب اسم المستخدم الذي سجل دخوله الآن (✨ الإضافة الجديدة)
+  
   String get currentUserName {
     if (_activeUserPhone == null) return 'مستخدم غير معروف';
     final user = _usersDatabase.firstWhere(
@@ -55,12 +54,10 @@ class SystemProvider extends ChangeNotifier {
     return user['name'] ?? 'مستخدم غير معروف';
   }
 
-  // جلب رقم هاتف المستخدم الذي سجل دخوله الآن (✨ الإضافة الجديدة)
   String get currentUserPhone {
     return _activeUserPhone ?? 'لا يوجد رقم';
   }
 
-  // جلب رصيد المستخدم الذي سجل دخوله الآن
   double get currentUserBalance {
     if (_activeUserPhone == null) return 0.0;
     final user = _usersDatabase.firstWhere(
@@ -70,7 +67,6 @@ class SystemProvider extends ChangeNotifier {
     return user['balance'] ?? 0.0;
   }
 
-  // جلب كروت المستخدم الذي سجل دخوله الآن
   List<String> get userPurchasedCards {
     if (_activeUserPhone == null) return [];
     final user = _usersDatabase.firstWhere(
@@ -117,6 +113,7 @@ class SystemProvider extends ChangeNotifier {
       'balance': 0.0,
       'status': 'نشط',
       'purchasedCards': [], 
+      'isBiometricEnabled': false, // القيمة الافتراضية للبصمة
     });
     // حفظ رقم المستخدم الجديد كـ "مستخدم نشط" ليدخل مباشرة
     _activeUserPhone = phone;
@@ -138,6 +135,7 @@ class SystemProvider extends ChangeNotifier {
         'balance': 0.0,
         'status': 'نشط',
         'purchasedCards': [],
+        'isBiometricEnabled': false,
       });
       notifyListeners();
     }
@@ -161,7 +159,6 @@ class SystemProvider extends ChangeNotifier {
     return false; 
   }
 
-  // وظيفة شراء كرت (تستخدم رقم الهاتف المحفوظ في الذاكرة تلقائياً)
   bool userBuyCard(double price, String cardName) {
     if (_activeUserPhone == null) return false;
 
@@ -182,5 +179,50 @@ class SystemProvider extends ChangeNotifier {
       }
     }
     return false;
+  }
+
+  // ==========================================
+  // 8. إعدادات الأمان والحماية الحقيقية (✨ القسم المفقود لحل الخطأ)
+  // ==========================================
+
+  /// دالة تغيير كلمة المرور الفعلية
+  bool changeUserPassword(String oldPassword, String newPassword) {
+    if (_activeUserPhone == null) return false;
+    
+    for (var user in _usersDatabase) {
+      if (user['phone'] == _activeUserPhone) {
+        // التحقق من أن كلمة المرور القديمة صحيحة قبل تغييرها
+        if (user['password'] == oldPassword) {
+          user['password'] = newPassword; 
+          notifyListeners();
+          return true; // تمت العملية بنجاح
+        }
+      }
+    }
+    return false; // فشلت العملية (كلمة المرور القديمة خاطئة)
+  }
+
+  /// دالة تفعيل أو إلغاء البصمة للمستخدم الحالي
+  void toggleBiometric(bool isEnabled) {
+    if (_activeUserPhone == null) return;
+    
+    for (var user in _usersDatabase) {
+      if (user['phone'] == _activeUserPhone) {
+        user['isBiometricEnabled'] = isEnabled; // حفظ الحالة الجديدة في قاعدة البيانات
+        notifyListeners();
+        break;
+      }
+    }
+  }
+
+  /// قراءة حالة البصمة للمستخدم الحالي (لإظهارها في الشاشة)
+  bool get isBiometricCurrentlyEnabled {
+    if (_activeUserPhone == null) return false;
+    
+    final user = _usersDatabase.firstWhere(
+      (u) => u['phone'] == _activeUserPhone, 
+      orElse: () => {'isBiometricEnabled': false}
+    );
+    return user['isBiometricEnabled'] ?? false;
   }
 }
