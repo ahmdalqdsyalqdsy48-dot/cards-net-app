@@ -11,10 +11,9 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.2
-  provider: ^6.1.2 # 👈 مكتبة العقل (Provider)
-  local_auth: ^2.1.6 # 👈 مكتبة البصمة الحقيقية
-  audioplayers: ^5.2.1 # 👈 مكتبة الأصوات التفاعلية الحقيقية
-  flutter_colorpicker: ^1.1.0 # 👈 الإضافة الجديدة: مكتبة عجلة الألوان الشاملة
+  provider: ^6.1.2 # مكتبة العقل (Provider)
+  local_auth: ^2.1.6 # مكتبة البصمة 
+  flutter_colorpicker: ^1.1.0 # 👈 مكتبة عجلة الألوان الشاملة (ضرورية جداً)
 
 dev_dependencies:
   flutter_test:
@@ -23,4 +22,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  # يمكنك لاحقاً إضافة مسار ملفات الصوت هنا (assets)
