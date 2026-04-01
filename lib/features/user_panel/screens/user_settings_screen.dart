@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // 👈 لمؤثرات الصوت والاهتزاز الحقيقية
+import 'package:flutter/services.dart'; // 👈 لمؤثرات الصوت والاهتزاز الحقيقية (النظام)
 import 'package:flutter/foundation.dart' show kIsWeb; // 👈 لمعرفة هل نحن على الويب
 import 'package:provider/provider.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart'; // 👈 مكتبة عجلة الألوان
 
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_user_drawer.dart';
@@ -25,7 +26,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     Colors.blue, Colors.teal, Colors.green, Colors.orange, Colors.deepPurple, Colors.pink, Colors.redAccent
   ];
 
-  // دالة تشغيل الصوت والاهتزاز (آمنة للويب والهواتف)
+  // دالة تشغيل الصوت والاهتزاز (آمنة للويب والهواتف ومدمجة في النظام)
   void _playFeedback() {
     if (_appSounds) {
       SystemSound.play(SystemSoundType.click);
@@ -46,7 +47,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     final useBiometrics = systemProvider.isBiometricCurrentlyEnabled; 
 
     return Scaffold(
-      // 👈 1. هنا السحر: تغيير خلفية التطبيق بالكامل بناءً على اللون المختار
+      // 👈 هنا السحر: تغيير خلفية التطبيق بالكامل بناءً على اللون المختار
       backgroundColor: isDark ? primaryColor.withOpacity(0.15) : primaryColor.withOpacity(0.05),
       appBar: const CustomHeader(title: 'الإعدادات والمظهر'),
       drawer: CustomUserDrawer(userName: userName, phoneNumber: userPhone),
@@ -56,9 +57,13 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             _buildProfileHeader(primaryColor, userName, userPhone),
-            const SizedBox(height: 25),
+            const SizedBox(height: 20),
 
-            // 👈 4. إرجاع تخصيص المظهر بالكامل
+            // زر التخصيص السحري الشامل
+            _buildCustomizationButton(themeProvider),
+            const SizedBox(height: 15),
+
+            // المظهر والتفضيلات
             _buildSectionTitle('المظهر والتفضيلات 🎨', primaryColor),
             _buildSettingsCard([
               _buildSwitchTile(
@@ -83,12 +88,12 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
               ),
               const Padding(
                 padding: EdgeInsets.only(right: 16, top: 10, bottom: 5),
-                child: Text('تخصيص لون التطبيق الشامل:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                child: Text('الألوان السريعة:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
               ),
               _buildColorPicker(themeProvider),
             ], primaryColor, isDark),
 
-            // 👈 4. إرجاع قسم الأمان كاملاً كما طلبته
+            // الأمان والدخول
             _buildSectionTitle('الأمان والدخول 🛡️', primaryColor),
             _buildSettingsCard([
               _buildListTile(Icons.password, 'إعداد رمز PIN (6 أرقام)', 'للدخول السريع وتأكيد المشتريات', primaryColor, onTap: () {
@@ -100,7 +105,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
                 useBiometrics, 
                 (val) {
                   _playFeedback();
-                  // 👈 3. حل مشكلة البصمة: منعها على الويب برمجياً لتجنب الأخطاء
+                  // منع البصمة على الويب برمجياً لتجنب الأخطاء
                   if (kIsWeb) {
                     _showToast('عذراً، البصمة مدعومة فقط على الهواتف (Android/iOS) وليس على الويب!');
                     return; 
@@ -120,7 +125,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
               }),
             ], primaryColor, isDark),
 
-            // 👈 4. إرجاع الإعدادات المالية
+            // الإعدادات المالية
             _buildSectionTitle('الإعدادات المالية 💳', primaryColor),
             _buildSettingsCard([
               _buildListTile(Icons.security_update_warning, 'حدود التحويل والمشتريات', 'تعيين سقف يومي لحماية رصيدك', primaryColor, onTap: () {
@@ -129,7 +134,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
               }),
             ], primaryColor, isDark),
 
-            // 👈 4. إرجاع الحساب والمعلومات
+            // الحساب والمعلومات
             _buildSectionTitle('الحساب والمعلومات ℹ️', primaryColor),
             _buildSettingsCard([
               _buildListTile(Icons.logout, 'تسجيل الخروج', '', Colors.orange, onTap: () {
@@ -153,26 +158,91 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
   // =========================================================
 
   Widget _buildProfileHeader(Color primaryColor, String name, String phone) {
-    return Row(
-      children: [
-        Stack(
-          alignment: Alignment.bottomRight,
-          children: [
-            CircleAvatar(radius: 35, backgroundColor: primaryColor.withOpacity(0.2), child: Icon(Icons.person, size: 35, color: primaryColor)),
-            Container(padding: const EdgeInsets.all(2), decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle), child: const Icon(Icons.verified, color: Colors.green, size: 18)),
-          ],
-        ),
-        const SizedBox(width: 15),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              Text(phone, style: const TextStyle(color: Colors.grey, fontSize: 14), textDirection: TextDirection.ltr),
-            ],
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [primaryColor, primaryColor.withOpacity(0.5)], begin: Alignment.topRight, end: Alignment.bottomLeft),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: primaryColor.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
+      ),
+      child: Row(
+        children: [
+          const CircleAvatar(radius: 35, backgroundColor: Colors.white24, child: Icon(Icons.person, size: 35, color: Colors.white)),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                Text(phone, style: const TextStyle(color: Colors.white70, fontSize: 15), textDirection: TextDirection.ltr),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // زر التخصيص المتدرج
+  Widget _buildCustomizationButton(ThemeProvider themeProvider) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [Colors.purpleAccent, Colors.pinkAccent]),
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))],
+      ),
+      child: ListTile(
+        leading: Container(
+          width: 35, height: 35,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: SweepGradient(colors: [Colors.red, Colors.yellow, Colors.green, Colors.blue, Colors.purple, Colors.red]),
           ),
         ),
-      ],
+        title: const Text('تخصيص مظهر التطبيق بالكامل', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        subtitle: const Text('اختر أي لون من عجلة الألوان', style: TextStyle(color: Colors.white70, fontSize: 12)),
+        trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 15),
+        onTap: () {
+          _playFeedback();
+          _showColorPickerWheelDialog(themeProvider); 
+        },
+      ),
+    );
+  }
+
+  // نافذة اختيار الألوان (Color Picker)
+  void _showColorPickerWheelDialog(ThemeProvider themeProvider) {
+    Color pickerColor = themeProvider.primaryColor;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('اختر لونك المفضل', textAlign: TextAlign.center),
+        content: SingleChildScrollView(
+          child: ColorPicker(
+            pickerColor: pickerColor,
+            onColorChanged: (Color color) {
+              pickerColor = color;
+            },
+            pickerAreaHeightPercent: 0.8,
+            enableAlpha: false,
+            displayThumbColor: true,
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: themeProvider.primaryColor),
+            onPressed: () {
+              _playFeedback();
+              themeProvider.changeColor(pickerColor);
+              Navigator.pop(context);
+              _showToast('تم تلوين التطبيق بنجاح 🎨');
+            },
+            child: const Text('تطبيق اللون', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -208,11 +278,11 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     );
   }
 
-  // 👈 1. السحر هنا أيضاً: البطاقات تتأثر باللون المختار لتتناسب مع الخلفية
+  // البطاقات تتأثر باللون المختار لتتناسب مع الخلفية
   Widget _buildSettingsCard(List<Widget> children, Color primaryColor, bool isDark) {
     return Card(
       elevation: 0, 
-      color: isDark ? Colors.black45 : Colors.white.withOpacity(0.8),
+      color: isDark ? Colors.black45 : Colors.white.withOpacity(0.9),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(15), 
         side: BorderSide(color: primaryColor.withOpacity(0.3), width: 1.5)
@@ -255,7 +325,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
   }
 
   // =========================================================
-  // النوافذ المنبثقة التفاعلية الذكية (كما طلبت إرجاعها)
+  // النوافذ المنبثقة التفاعلية الذكية (جميعها مربوطة وتعمل)
   // =========================================================
 
   void _showPasswordDialog(SystemProvider systemProvider) {
