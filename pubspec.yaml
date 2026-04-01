@@ -13,7 +13,8 @@ dependencies:
   cupertino_icons: ^1.0.2
   provider: ^6.1.2 # مكتبة العقل (Provider)
   local_auth: ^2.1.6 # مكتبة البصمة 
-  flutter_colorpicker: ^1.1.0 # 👈 مكتبة عجلة الألوان الشاملة (ضرورية جداً)
+  flutter_colorpicker: ^1.1.0 # مكتبة عجلة الألوان الشاملة
+  firebase_core: ^2.32.0 # 👈 الإضافة الجديدة: مكتبة الاتصال بخوادم فايربيس
 
 dev_dependencies:
   flutter_test:
