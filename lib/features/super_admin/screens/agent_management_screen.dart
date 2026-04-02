@@ -24,9 +24,9 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
     final nameController = TextEditingController();
     final phoneController = TextEditingController();
     final networkController = TextEditingController();
-    final locationController = TextEditingController(); // 👈 أضفنا متحكم الموقع
+    final locationController = TextEditingController(); 
     final profitController = TextEditingController();
-    final passwordController = TextEditingController(); // 👈 أضفنا متحكم كلمة المرور
+    final passwordController = TextEditingController(); 
 
     showDialog(
       context: context,
@@ -62,12 +62,10 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                 String name = nameController.text.trim();
 
                 if (name.isNotEmpty && phone.isNotEmpty) {
-                  // إذا ترك كلمة المرور فارغة، نجعلها نفس رقم الهاتف تلقائياً
                   String defaultPassword = passwordController.text.trim().isNotEmpty 
                       ? passwordController.text.trim() 
                       : phone;
 
-                  // 👈 إرسال البيانات الحقيقية للعقل المدبر لحفظها في السحابة
                   provider.addAgent(
                     name: name,
                     phone: phone,
@@ -92,11 +90,17 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
   }
 
   // ==========================================
-  // 2. نافذة تعديل بيانات وكيل حالي (متصلة بالسحابة)
+  // 2. نافذة تعديل بيانات وكيل حالي (شاملة مع تغيير الرقم)
   // ==========================================
   void _showEditAgentDialog(Map<String, dynamic> agent, SystemProvider provider) {
     final nameController = TextEditingController(text: agent['name']);
+    final phoneController = TextEditingController(text: agent['phone']);
+    final networkController = TextEditingController(text: agent['networkName'] ?? '');
+    final locationController = TextEditingController(text: agent['location'] ?? '');
     final profitController = TextEditingController(text: agent['profitMargin'].toString().replaceAll('%', ''));
+    final passwordController = TextEditingController(text: agent['password']);
+
+    final oldPhone = agent['phone']; // 👈 حفظ الرقم القديم للمقارنة والترحيل
 
     showDialog(
       context: context,
@@ -110,28 +114,47 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
               Text('تعديل بيانات الوكيل', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
             ],
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildTextField('الاسم الرباعي', Icons.person, controller: nameController),
-              // رقم الهاتف لا يتعدل لأنه المعرف الرئيسي في قاعدة البيانات
-              _buildTextField('رقم الهاتف (لا يمكن تعديله)', Icons.phone, controller: TextEditingController(text: agent['phone']), isReadOnly: true),
-              _buildTextField('نسبة الربح', Icons.percent, controller: profitController, isNumber: true),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildTextField('الاسم الرباعي', Icons.person, controller: nameController),
+                _buildTextField('رقم الهاتف (الآيدي للحساب)', Icons.phone, controller: phoneController, isNumber: true),
+                _buildTextField('اسم الشبكة', Icons.wifi, controller: networkController),
+                _buildTextField('موقع الشبكة', Icons.location_on, controller: locationController),
+                _buildTextField('نسبة الربح', Icons.percent, controller: profitController, isNumber: true),
+                _buildTextField('كلمة المرور', Icons.lock, controller: passwordController),
+              ],
+            ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-              onPressed: () {
-                // 👈 تحديث البيانات في السحابة
-                provider.updateAgentDetails(
-                  agent['phone'], 
-                  nameController.text.trim(), 
-                  '${profitController.text.trim()}%'
-                );
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث البيانات بنجاح! ✏️'), backgroundColor: Colors.green));
+              onPressed: () async {
+                try {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري التحديث ونقل البيانات إذا لزم الأمر... ⏳')));
+                  
+                  // 👈 هنا تم حل الخطأ: أصبحنا نرسل البيانات مع أسمائها الصحيحة للعقل المدبر
+                  await provider.updateAgentDetails(
+                    oldPhone: oldPhone,
+                    newPhone: phoneController.text.trim(),
+                    newName: nameController.text.trim(),
+                    newNetwork: networkController.text.trim(),
+                    newLocation: locationController.text.trim(),
+                    newProfit: '${profitController.text.trim()}%',
+                    newPassword: passwordController.text.trim(),
+                  );
+                  
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث البيانات بنجاح! ✅'), backgroundColor: Colors.green));
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: ${e.toString().replaceAll('Exception: ', '')}'), backgroundColor: Colors.red));
+                  }
+                }
               },
               child: const Text('حفظ التعديلات', style: TextStyle(color: Colors.white)),
             ),
@@ -166,7 +189,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () {
-                provider.deleteAgent(agent['phone']); // 👈 حذف من فايربيس
+                provider.deleteAgent(agent['phone']); 
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف الوكيل نهائياً 🗑️'), backgroundColor: Colors.red));
               },
@@ -187,10 +210,9 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 👈 قراءة البيانات الحية من السحابة عبر العقل المدبر
     final systemProvider = Provider.of<SystemProvider>(context);
     final adminBalance = systemProvider.adminMainBalance;
-    final realAgentsList = systemProvider.agentsList; // 👈 جلب قائمة الوكلاء الحقيقية
+    final realAgentsList = systemProvider.agentsList; 
 
     // تصفية الوكلاء الحقيقيين بناءً على البحث
     final filteredAgents = realAgentsList.where((agent) => 
@@ -285,7 +307,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                           Text('الهاتف: ${agent['phone']} | العمولة: ${agent['profitMargin'] ?? '0%'}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                                          Text('الرصيد: ${agent['balance'] ?? 0} ريال', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
+                                          Text('الرصيد: ${agent['balance'] ?? 0} ريال | الموقع: ${agent['location'] ?? 'غير محدد'}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
                                         ],
                                       ),
                                     ),
