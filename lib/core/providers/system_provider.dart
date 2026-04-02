@@ -10,7 +10,7 @@ class SystemProvider extends ChangeNotifier {
   int _totalSystemCards = 5000; 
   String? _activeUserPhone; 
   
-  // 👈 الحل الأول: وضعنا بيانات المالك كخط دفاع أول لتجنب تأخير الإنترنت
+  // 👈 وضعنا بيانات المالك كخط دفاع أول لتجنب تأخير الإنترنت
   List<Map<String, dynamic>> _usersDatabase = [
     {
       'id': 'SUPER_ADMIN_01',
@@ -174,21 +174,64 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  // 👈 الإضافة الجديدة 1: دالة تعديل بيانات الوكيل
-  void updateAgentDetails(String phone, String newName, String newProfit) {
-    _db.collection('users').doc(phone).update({
-      'name': newName,
-      'profitMargin': newProfit,
-    });
+  // 👈 دالة التعديل الشاملة (مع دعم تغيير رقم الهاتف ونقل البيانات بأمان)
+  Future<void> updateAgentDetails({
+    required String oldPhone,
+    required String newPhone,
+    required String newName,
+    required String newNetwork,
+    required String newLocation,
+    required String newProfit,
+    required String newPassword,
+  }) async {
+    if (oldPhone == newPhone) {
+      // تعديل عادي دون تغيير المعرف (رقم الهاتف)
+      await _db.collection('users').doc(oldPhone).update({
+        'name': newName,
+        'networkName': newNetwork,
+        'location': newLocation,
+        'profitMargin': newProfit,
+        'password': newPassword,
+      });
+    } else {
+      // عملية ترحيل بيانات كاملة (Migration) لأن الرقم تغير
+      if (checkUserExists(newPhone)) {
+        throw Exception('رقم الهاتف الجديد مستخدم بالفعل لوكيل آخر!');
+      }
+
+      final docSnapshot = await _db.collection('users').doc(oldPhone).get();
+      if (docSnapshot.exists) {
+        Map<String, dynamic> oldData = docSnapshot.data()!;
+
+        // دمج التعديلات الجديدة
+        oldData['phone'] = newPhone;
+        oldData['name'] = newName;
+        oldData['networkName'] = newNetwork;
+        oldData['location'] = newLocation;
+        oldData['profitMargin'] = newProfit;
+        oldData['password'] = newPassword;
+
+        // النقل الآمن عبر حزمة الأوامر (WriteBatch)
+        WriteBatch batch = _db.batch();
+        DocumentReference newDocRef = _db.collection('users').doc(newPhone);
+        DocumentReference oldDocRef = _db.collection('users').doc(oldPhone);
+
+        batch.set(newDocRef, oldData); 
+        batch.delete(oldDocRef);       
+
+        await batch.commit(); 
+        
+        // تحديث المتغير المحلي إذا كان المالك نفسه هو من يغير رقمه
+        _activeUserPhone = _activeUserPhone == oldPhone ? newPhone : _activeUserPhone;
+      }
+    }
   }
 
-  // 👈 الإضافة الجديدة 2: دالة تجميد وتنشيط الوكيل
   void toggleUserStatus(String phone, String currentStatus) {
     String newStatus = currentStatus == 'نشط' ? 'مجمد' : 'نشط';
     _db.collection('users').doc(phone).update({'status': newStatus});
   }
 
-  // 👈 الإضافة الجديدة 3: دالة الحذف للوكيل
   void deleteAgent(String phone) {
     _db.collection('users').doc(phone).delete();
   }
