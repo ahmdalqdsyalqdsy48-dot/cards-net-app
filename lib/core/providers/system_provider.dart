@@ -148,7 +148,6 @@ class SystemProvider extends ChangeNotifier {
     _activeUserPhone = phone;
   }
 
-  // 👈 الحل الثاني: تحديث دالة الوكيل لتقبل الحقول الجديدة
   void addAgent({
     required String name, 
     required String phone, 
@@ -173,6 +172,25 @@ class SystemProvider extends ChangeNotifier {
         'isBiometricEnabled': false,
       });
     }
+  }
+
+  // 👈 الإضافة الجديدة 1: دالة تعديل بيانات الوكيل
+  void updateAgentDetails(String phone, String newName, String newProfit) {
+    _db.collection('users').doc(phone).update({
+      'name': newName,
+      'profitMargin': newProfit,
+    });
+  }
+
+  // 👈 الإضافة الجديدة 2: دالة تجميد وتنشيط الوكيل
+  void toggleUserStatus(String phone, String currentStatus) {
+    String newStatus = currentStatus == 'نشط' ? 'مجمد' : 'نشط';
+    _db.collection('users').doc(phone).update({'status': newStatus});
+  }
+
+  // 👈 الإضافة الجديدة 3: دالة الحذف للوكيل
+  void deleteAgent(String phone) {
+    _db.collection('users').doc(phone).delete();
   }
 
   void addAnnouncement(String newAd) {
