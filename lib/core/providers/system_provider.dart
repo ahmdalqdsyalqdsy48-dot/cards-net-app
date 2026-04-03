@@ -9,9 +9,7 @@ class SystemProvider extends ChangeNotifier {
   double _adminMainBalance = 10000000.0; 
   int _totalSystemCards = 5000; 
   String? _activeUserPhone; 
-  
-  // 👈 إضافة متغير سرعة الشريط الإخباري (القيمة الافتراضية 40.0)
-  double _newsScrollSpeed = 40.0; 
+  double _newsScrollSpeed = 40.0; // سرعة الشريط الإخباري
 
   List<Map<String, dynamic>> _usersDatabase = [
     {
@@ -29,7 +27,6 @@ class SystemProvider extends ChangeNotifier {
   ];
   
   List<String> _announcements = []; 
-  
   List<Map<String, dynamic>> _rechargeRequests = []; 
   List<Map<String, dynamic>> _transactionsLedger = []; 
 
@@ -41,27 +38,26 @@ class SystemProvider extends ChangeNotifier {
   }
 
   void _initDatabaseSync() {
+    // أ. مزامنة الخزينة والإعلانات وسرعة الشريط
     _db.collection('system').doc('main_info').snapshots().listen((snapshot) {
       if (snapshot.exists) {
         final data = snapshot.data()!;
         _adminMainBalance = (data['adminMainBalance'] ?? 10000000.0).toDouble();
         _totalSystemCards = data['totalSystemCards'] ?? 5000;
         _announcements = List<String>.from(data['announcements'] ?? ['أهلاً بك في شبكة كروت نت...']);
-        
-        // 👈 مزامنة سرعة الشريط من السحابة إذا كانت موجودة
         _newsScrollSpeed = (data['newsScrollSpeed'] ?? 40.0).toDouble();
-        
         notifyListeners();
       } else {
         _db.collection('system').doc('main_info').set({
           'adminMainBalance': 10000000.0,
           'totalSystemCards': 5000,
           'announcements': ['أهلاً بك في شبكة كروت نت...'],
-          'newsScrollSpeed': 40.0, // القيمة الافتراضية للسحابة
+          'newsScrollSpeed': 40.0,
         });
       }
     });
 
+    // ب. مزامنة قائمة المستخدمين والوكلاء
     _db.collection('users').snapshots().listen((snapshot) {
       if (snapshot.docs.isNotEmpty) {
         _usersDatabase = snapshot.docs.map((doc) => doc.data()).toList();
@@ -84,6 +80,7 @@ class SystemProvider extends ChangeNotifier {
       notifyListeners();
     });
 
+    // ج. مزامنة طلبات الشحن قيد الانتظار
     _db.collection('recharge_requests')
        .where('status', isEqualTo: 'قيد الانتظار')
        .snapshots().listen((snapshot) {
@@ -91,6 +88,7 @@ class SystemProvider extends ChangeNotifier {
       notifyListeners();
     });
 
+    // د. مزامنة السجل المالي الشامل
     _db.collection('transactions')
        .orderBy('timestamp', descending: true)
        .snapshots().listen((snapshot) {
@@ -100,12 +98,12 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 4. دوال القراءة
+  // 4. دوال القراءة (Getters)
   // ==========================================
   double get adminMainBalance => _adminMainBalance;
   int get totalSystemCards => _totalSystemCards;
   List<String> get announcements => _announcements; 
-  double get newsScrollSpeed => _newsScrollSpeed; // 👈 جالب السرعة الجديد
+  double get newsScrollSpeed => _newsScrollSpeed;
 
   List<Map<String, dynamic>> get agentsList => 
       _usersDatabase.where((user) => user['role'] == 'agent').toList();
@@ -143,14 +141,46 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 5. دوال الإدارة والتحكم 🚀
+  // 5. دوال الإدارة والإضافة (تم التصحيح بـ AWAIT 🛡️)
   // ==========================================
   
-  // 👈 دالة تحديث سرعة الشريط الإخباري في السحابة
+  // 👈 دالة إضافة الوكيل المصححة (تنتظر السيرفر وتفحص الأخطاء)
+  Future<void> addAgent({
+    required String name, 
+    required String phone, 
+    required String password,
+    String? networkName, 
+    String? profitMargin, 
+    String? location,
+  }) async {
+    try {
+      if (!checkUserExists(phone)) {
+        // نستخدم await لضمان أن البيانات حُفظت فعلاً قبل إغلاق النافذة
+        await _db.collection('users').doc(phone).set({
+          'id': 'AGENT_${DateTime.now().millisecondsSinceEpoch}',
+          'name': name,
+          'phone': phone,
+          'password': password,
+          'role': 'agent',
+          'networkName': networkName ?? 'غير محدد',
+          'profitMargin': profitMargin ?? 'غير محدد',
+          'location': location ?? 'غير محدد',
+          'balance': 0.0,
+          'dangerLimit': 0.0, 
+          'status': 'نشط',
+          'purchasedCards': [],
+          'isBiometricEnabled': false,
+        });
+      } else {
+        throw 'هذا الرقم مسجل مسبقاً في النظام!';
+      }
+    } catch (e) {
+      throw 'فشل الحفظ في السحابة: $e';
+    }
+  }
+
   Future<void> updateNewsSpeed(double newSpeed) async {
-    await _db.collection('system').doc('main_info').update({
-      'newsScrollSpeed': newSpeed,
-    });
+    await _db.collection('system').doc('main_info').update({'newsScrollSpeed': newSpeed});
   }
 
   bool checkUserExists(String phone) => _usersDatabase.any((user) => user['phone'] == phone);
@@ -166,49 +196,65 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  void registerNewUser({required String name, required String phone, required String password, required String role}) {
-    _db.collection('users').doc(phone).set({
-      'id': 'USER_${DateTime.now().millisecondsSinceEpoch}',
-      'name': name,
-      'phone': phone,
-      'password': password,
-      'role': role,
-      'balance': 0.0,
-      'dangerLimit': 0.0,
-      'status': 'نشط',
-      'purchasedCards': [], 
-      'isBiometricEnabled': false,
-    });
-    _activeUserPhone = phone;
-  }
+  // ==========================================
+  // 6. العمليات المالية والمركز المالي
+  // ==========================================
 
-  void addAgent({
-    required String name, 
-    required String phone, 
-    required String password,
-    String? networkName, 
-    String? profitMargin, 
-    String? location,
-  }) {
-    if (!checkUserExists(phone)) {
-      _db.collection('users').doc(phone).set({
-        'id': 'AGENT_${DateTime.now().millisecondsSinceEpoch}',
-        'name': name,
-        'phone': phone,
-        'password': password,
-        'role': 'agent',
-        'networkName': networkName ?? 'غير محدد',
-        'profitMargin': profitMargin ?? 'غير محدد',
-        'location': location ?? 'غير محدد',
-        'balance': 0.0,
-        'dangerLimit': 0.0, 
-        'status': 'نشط',
-        'purchasedCards': [],
-        'isBiometricEnabled': false,
+  bool userBuyCard(double price, String cardName) {
+    if (_activeUserPhone == null) return false;
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
+    if (user['balance'] >= price && _totalSystemCards > 0) {
+      _db.collection('system').doc('main_info').update({'totalSystemCards': FieldValue.increment(-1)});
+      _db.collection('users').doc(_activeUserPhone).update({
+        'balance': FieldValue.increment(-price),
+        'purchasedCards': FieldValue.arrayUnion([cardName])
       });
+      return true;
     }
+    return false;
   }
 
+  Future<void> acceptRechargeRequest({
+    required String requestId, 
+    required String agentPhone, 
+    required String agentName, 
+    required double amount
+  }) async {
+    WriteBatch batch = _db.batch();
+    batch.update(_db.collection('users').doc(agentPhone), {'balance': FieldValue.increment(amount)});
+    batch.update(_db.collection('recharge_requests').doc(requestId), {'status': 'مقبول'});
+    batch.set(_db.collection('transactions').doc(), {
+      'agentPhone': agentPhone,
+      'agentName': agentName,
+      'type': 'إيداع حوالة (موافقة إلكترونية)',
+      'amount': amount,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+    await batch.commit(); 
+  }
+
+  Future<void> manualSettlement({
+    required String agentPhone,
+    required String agentName,
+    required double amount, 
+    required String reason,
+  }) async {
+    WriteBatch batch = _db.batch();
+    batch.update(_db.collection('users').doc(agentPhone), {'balance': FieldValue.increment(amount)});
+    batch.set(_db.collection('transactions').doc(), {
+      'agentPhone': agentPhone,
+      'agentName': agentName,
+      'type': amount > 0 ? 'تسوية يدوية (إضافة)' : 'تسوية يدوية (خصم)',
+      'amount': amount,
+      'reason': reason,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+    await batch.commit();
+  }
+
+  // (باقي الدوال: updateAgentDetails, deleteAgent, changeUserPassword, toggleBiometric تبقى كما هي)
+  // ...
+  
   Future<void> updateAgentDetails({
     required String oldPhone,
     required String newPhone,
@@ -227,8 +273,7 @@ class SystemProvider extends ChangeNotifier {
         'password': newPassword,
       });
     } else {
-      if (checkUserExists(newPhone)) throw Exception('رقم الهاتف الجديد مستخدم بالفعل لوكيل آخر!');
-
+      if (checkUserExists(newPhone)) throw Exception('رقم الهاتف الجديد مستخدم بالفعل!');
       final docSnapshot = await _db.collection('users').doc(oldPhone).get();
       if (docSnapshot.exists) {
         Map<String, dynamic> oldData = docSnapshot.data()!;
@@ -238,12 +283,10 @@ class SystemProvider extends ChangeNotifier {
         oldData['location'] = newLocation;
         oldData['profitMargin'] = newProfit;
         oldData['password'] = newPassword;
-
         WriteBatch batch = _db.batch();
         batch.set(_db.collection('users').doc(newPhone), oldData); 
         batch.delete(_db.collection('users').doc(oldPhone));       
         await batch.commit(); 
-        
         _activeUserPhone = _activeUserPhone == oldPhone ? newPhone : _activeUserPhone;
       }
     }
@@ -256,91 +299,6 @@ class SystemProvider extends ChangeNotifier {
 
   void deleteAgent(String phone) => _db.collection('users').doc(phone).delete();
 
-  // ==========================================
-  // 6. العمليات المالية الصارمة
-  // ==========================================
-
-  bool userBuyCard(double price, String cardName) {
-    if (_activeUserPhone == null) return false;
-
-    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
-    if (user['balance'] >= price && _totalSystemCards > 0) {
-      _db.collection('system').doc('main_info').update({
-        'totalSystemCards': FieldValue.increment(-1)
-      });
-      _db.collection('users').doc(_activeUserPhone).update({
-        'balance': FieldValue.increment(-price),
-        'purchasedCards': FieldValue.arrayUnion([cardName])
-      });
-      return true;
-    }
-    return false;
-  }
-
-  Future<void> updateDangerLimit(String phone, double newLimit) async {
-    await _db.collection('users').doc(phone).update({'dangerLimit': newLimit});
-  }
-
-  Future<void> acceptRechargeRequest({
-    required String requestId, 
-    required String agentPhone, 
-    required String agentName, 
-    required double amount
-  }) async {
-    WriteBatch batch = _db.batch();
-
-    DocumentReference agentRef = _db.collection('users').doc(agentPhone);
-    batch.update(agentRef, {'balance': FieldValue.increment(amount)});
-
-    DocumentReference requestRef = _db.collection('recharge_requests').doc(requestId);
-    batch.update(requestRef, {'status': 'مقبول'});
-
-    DocumentReference transactionRef = _db.collection('transactions').doc();
-    batch.set(transactionRef, {
-      'agentPhone': agentPhone,
-      'agentName': agentName,
-      'type': 'إيداع حوالة (موافقة إلكترونية)',
-      'amount': amount,
-      'timestamp': FieldValue.serverTimestamp(),
-    });
-
-    await batch.commit(); 
-  }
-
-  Future<void> rejectRechargeRequest(String requestId, String reason) async {
-    await _db.collection('recharge_requests').doc(requestId).update({
-      'status': 'مرفوض',
-      'rejectReason': reason,
-    });
-  }
-
-  Future<void> manualSettlement({
-    required String agentPhone,
-    required String agentName,
-    required double amount, 
-    required String reason,
-  }) async {
-    WriteBatch batch = _db.batch();
-
-    DocumentReference agentRef = _db.collection('users').doc(agentPhone);
-    batch.update(agentRef, {'balance': FieldValue.increment(amount)});
-
-    DocumentReference transactionRef = _db.collection('transactions').doc();
-    batch.set(transactionRef, {
-      'agentPhone': agentPhone,
-      'agentName': agentName,
-      'type': amount > 0 ? 'تسوية يدوية (إضافة)' : 'تسوية يدوية (خصم)',
-      'amount': amount,
-      'reason': reason,
-      'timestamp': FieldValue.serverTimestamp(),
-    });
-
-    await batch.commit();
-  }
-
-  // ==========================================
-  // 7. إعدادات الأمان
-  // ==========================================
   bool changeUserPassword(String oldPassword, String newPassword) {
     if (_activeUserPhone == null) return false;
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
