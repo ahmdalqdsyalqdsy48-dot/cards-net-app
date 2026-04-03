@@ -15,9 +15,10 @@ dependencies:
   flutter_colorpicker: ^1.1.0 
   firebase_core: ^2.32.0 
   cloud_firestore: ^4.15.8 
-  pdf: ^3.11.0          # 👈 مكتبة رسم الفواتير وملفات الـ PDF
-  printing: ^5.12.0     # 👈 مكتبة الطباعة والتحميل الفعلي في المتصفح
-  intl: ^0.19.0         # 👈 مكتبة ضبط الأوقات والتواريخ المحاسبية
+  pdf: ^3.11.0          
+  printing: ^5.12.0     
+  intl: ^0.19.0         
+  marquee: ^2.2.3       # 👈 الإضافة الجديدة: مكتبة الشريط الإخباري المتحرك
 
 dev_dependencies:
   flutter_test:
