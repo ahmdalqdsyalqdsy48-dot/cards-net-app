@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="/cards-net-app/">
+  <meta charset="UTF-8">
+  <title>NetCardsApp</title>
+
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyDdZzU6VXrmmk9Ul99GTN5RLtza95tLkVE",
+      authDomain: "netcardsapp.firebaseapp.com",
+      projectId: "netcardsapp",
+      storageBucket: "netcardsapp.firebasestorage.app",
+      messagingSenderId: "100057914511",
+      appId: "1:100057914511:web:75b015601ca5cb836724fa",
+      measurementId: "G-4MDY84TCRQ"
+    };
+    firebase.initializeApp(firebaseConfig);
+  </script>
+
+  <script src="flutter.js" defer></script>
+</head>
+<body>
+  <script>
+    window.addEventListener('load', function(ev) {
+      _flutter.loader.loadEntrypoint({
+        serviceWorker: { serviceWorkerVersion: null },
+        onEntrypointLoaded: function(engineInitializer) {
+          engineInitializer.initializeEngine().then(function(appRunner) {
+            appRunner.runApp();
+          });
+        }
+      });
+    });
+  </script>
+</body>
+</html>
