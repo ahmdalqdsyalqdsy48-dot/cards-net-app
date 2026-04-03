@@ -18,7 +18,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
   String _searchQuery = '';
 
   // ==========================================
-  // 1. نافذة إضافة وكيل جديد (متصلة بالسحابة 100%)
+  // 1. نافذة إضافة وكيل جديد (متصلة بالسحابة ومحصنة ضد وهم الكاش)
   // ==========================================
   void _showAddAgentDialog(SystemProvider provider) {
     final nameController = TextEditingController();
@@ -57,7 +57,8 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء', style: TextStyle(color: Colors.red))),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
-              onPressed: () {
+              // 👇 أضفنا async هنا لانتظار رد السيرفر
+              onPressed: () async {
                 String phone = phoneController.text.trim();
                 String name = nameController.text.trim();
 
@@ -66,17 +67,39 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                       ? passwordController.text.trim() 
                       : phone;
 
-                  provider.addAgent(
-                    name: name,
-                    phone: phone,
-                    password: defaultPassword,
-                    networkName: networkController.text.trim(),
-                    profitMargin: profitController.text.trim(),
-                    location: locationController.text.trim(),
-                  );
+                  try {
+                    // رسالة توضح أن التطبيق ينتظر السيرفر
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('جاري الحفظ في السحابة... ⏳'), duration: Duration(seconds: 1))
+                    );
 
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الوكيل بنجاح! ✅'), backgroundColor: Colors.green));
+                    // 👇 أضفنا await لإجبار التطبيق على الانتظار حتى توافق جوجل
+                    await provider.addAgent(
+                      name: name,
+                      phone: phone,
+                      password: defaultPassword,
+                      networkName: networkController.text.trim(),
+                      profitMargin: profitController.text.trim(),
+                      location: locationController.text.trim(),
+                    );
+
+                    // إذا وصلنا لهذا السطر، يعني جوجل وافقت وتم الحفظ حقاً
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الوكيل بنجاح! ✅'), backgroundColor: Colors.green));
+                    }
+                  } catch (e) {
+                    // 🔴 صائد الأخطاء: هنا سيظهر سبب الرفض الحقيقي (مثل Permission Denied)
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('فشل الحفظ: $e', style: const TextStyle(fontWeight: FontWeight.bold)), 
+                          backgroundColor: Colors.red,
+                          duration: const Duration(seconds: 5), // مدة أطول لتقرأ الخطأ
+                        )
+                      );
+                    }
+                  }
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال الاسم ورقم الهاتف على الأقل! ❌'), backgroundColor: Colors.red));
                 }
@@ -100,7 +123,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
     final profitController = TextEditingController(text: agent['profitMargin'].toString().replaceAll('%', ''));
     final passwordController = TextEditingController(text: agent['password']);
 
-    final oldPhone = agent['phone']; // 👈 حفظ الرقم القديم للمقارنة والترحيل
+    final oldPhone = agent['phone']; 
 
     showDialog(
       context: context,
@@ -135,7 +158,6 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                 try {
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري التحديث ونقل البيانات إذا لزم الأمر... ⏳')));
                   
-                  // 👈 هنا تم حل الخطأ: أصبحنا نرسل البيانات مع أسمائها الصحيحة للعقل المدبر
                   await provider.updateAgentDetails(
                     oldPhone: oldPhone,
                     newPhone: phoneController.text.trim(),
