@@ -105,7 +105,7 @@ class SystemProvider extends ChangeNotifier {
   double get adminMainBalance => _adminMainBalance;
   int get totalSystemCards => _totalSystemCards;
   List<String> get announcements => _announcements; 
-  double get newsScrollSpeed => _newsScrollSpeed; // 👈 جالب السرعة الجديد
+  double get newsScrollSpeed => _newsScrollSpeed; 
 
   List<Map<String, dynamic>> get agentsList => 
       _usersDatabase.where((user) => user['role'] == 'agent').toList();
@@ -143,31 +143,43 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 5. دوال الإدارة والتحكم 🚀
+  // 5. دوال الإدارة والتحكم 🚀 (تم الترقية للسحابة)
   // ==========================================
   
-  // 👈 دالة تحديث سرعة الشريط الإخباري في السحابة
   Future<void> updateNewsSpeed(double newSpeed) async {
     await _db.collection('system').doc('main_info').update({
       'newsScrollSpeed': newSpeed,
     });
   }
 
-  bool checkUserExists(String phone) => _usersDatabase.any((user) => user['phone'] == phone);
+  // 👈 1. أصبحت تسأل قاعدة البيانات مباشرة
+  Future<bool> checkUserExists(String phone) async {
+    final doc = await _db.collection('users').doc(phone).get();
+    return doc.exists;
+  }
 
-  Map<String, dynamic>? loginUser(String phone, String password) {
+  // 👈 2. أصبحت تسحب بيانات الدخول من السحابة بدلاً من الذاكرة
+  Future<Map<String, dynamic>?> loginUser(String phone, String password) async {
     try {
-      final user = _usersDatabase.firstWhere((user) => user['phone'] == phone && user['password'] == password);
-      _activeUserPhone = phone;
-      notifyListeners();
-      return user;
+      final doc = await _db.collection('users').doc(phone).get();
+      if (doc.exists) {
+        final userData = doc.data() as Map<String, dynamic>;
+        // التحقق من صحة كلمة المرور
+        if (userData['password'] == password) {
+          _activeUserPhone = phone; // تفعيل الجلسة
+          notifyListeners();
+          return userData;
+        }
+      }
+      return null; 
     } catch (e) {
       return null; 
     }
   }
 
-  void registerNewUser({required String name, required String phone, required String password, required String role}) {
-    _db.collection('users').doc(phone).set({
+  // 👈 3. أصبحت تحفظ المستخدم الجديد في فايربيس فوراً
+  Future<void> registerNewUser({required String name, required String phone, required String password, required String role}) async {
+    await _db.collection('users').doc(phone).set({
       'id': 'USER_${DateTime.now().millisecondsSinceEpoch}',
       'name': name,
       'phone': phone,
@@ -180,9 +192,9 @@ class SystemProvider extends ChangeNotifier {
       'isBiometricEnabled': false,
     });
     _activeUserPhone = phone;
+    notifyListeners();
   }
 
-  // 👇 التعديل الوحيد: أضفت Future و await لكي تضمن وصول البيانات للسحابة
   Future<void> addAgent({
     required String name, 
     required String phone, 
@@ -191,7 +203,9 @@ class SystemProvider extends ChangeNotifier {
     String? profitMargin, 
     String? location,
   }) async {
-    if (!checkUserExists(phone)) {
+    // 👈 انتظار الرد من دالة الفحص المحدثة
+    bool exists = await checkUserExists(phone);
+    if (!exists) {
       await _db.collection('users').doc(phone).set({
         'id': 'AGENT_${DateTime.now().millisecondsSinceEpoch}',
         'name': name,
