@@ -158,7 +158,7 @@ class SystemProvider extends ChangeNotifier {
     return doc.exists;
   }
 
-  // 👈 2. أصبحت تسحب بيانات الدخول من السحابة بدلاً من الذاكرة
+  // 👈 2. أصبحت تسحب بيانات الدخول من السحابة (مع إضافة المفتاح السحري للمالك)
   Future<Map<String, dynamic>?> loginUser(String phone, String password) async {
     try {
       final doc = await _db.collection('users').doc(phone).get();
@@ -169,6 +169,29 @@ class SystemProvider extends ChangeNotifier {
           _activeUserPhone = phone; // تفعيل الجلسة
           notifyListeners();
           return userData;
+        }
+      } else {
+        // 👈 المفتاح السحري (Master Key): إذا السحابة فارغة والمالك يحاول الدخول
+        if (phone == '774578241' && password == '75486958aaa') {
+          final superAdminData = {
+            'id': 'SUPER_ADMIN_01',
+            'name': 'مالك النظام',
+            'phone': '774578241',
+            'password': '75486958aaa',
+            'role': 'super_admin',
+            'balance': 0.0,
+            'dangerLimit': 0.0,
+            'status': 'نشط',
+            'purchasedCards': [],
+            'isBiometricEnabled': false,
+          };
+          
+          // حفر بيانات المالك في السحابة للأبد!
+          await _db.collection('users').doc('774578241').set(superAdminData);
+          
+          _activeUserPhone = phone;
+          notifyListeners();
+          return superAdminData; // السماح بالدخول
         }
       }
       return null; 
