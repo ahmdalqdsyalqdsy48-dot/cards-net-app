@@ -10,26 +10,10 @@ class SystemProvider extends ChangeNotifier {
   int _totalSystemCards = 5000; 
   String? _activeUserPhone; 
   
-  // 👈 إضافة متغير سرعة الشريط الإخباري (القيمة الافتراضية 40.0)
   double _newsScrollSpeed = 40.0; 
 
-  List<Map<String, dynamic>> _usersDatabase = [
-    {
-      'id': 'SUPER_ADMIN_01',
-      'name': 'مالك النظام',
-      'phone': '774578241',
-      'password': '75486958aaa',
-      'role': 'super_admin',
-      'balance': 0.0,
-      'dangerLimit': 0.0, 
-      'status': 'نشط',
-      'purchasedCards': [],
-      'isBiometricEnabled': false,
-    }
-  ];
-  
+  List<Map<String, dynamic>> _usersDatabase = [];
   List<String> _announcements = []; 
-  
   List<Map<String, dynamic>> _rechargeRequests = []; 
   List<Map<String, dynamic>> _transactionsLedger = []; 
 
@@ -47,41 +31,16 @@ class SystemProvider extends ChangeNotifier {
         _adminMainBalance = (data['adminMainBalance'] ?? 10000000.0).toDouble();
         _totalSystemCards = data['totalSystemCards'] ?? 5000;
         _announcements = List<String>.from(data['announcements'] ?? ['أهلاً بك في شبكة كروت نت...']);
-        
-        // 👈 مزامنة سرعة الشريط من السحابة إذا كانت موجودة
         _newsScrollSpeed = (data['newsScrollSpeed'] ?? 40.0).toDouble();
-        
         notifyListeners();
-      } else {
-        _db.collection('system').doc('main_info').set({
-          'adminMainBalance': 10000000.0,
-          'totalSystemCards': 5000,
-          'announcements': ['أهلاً بك في شبكة كروت نت...'],
-          'newsScrollSpeed': 40.0, // القيمة الافتراضية للسحابة
-        });
       }
     });
 
     _db.collection('users').snapshots().listen((snapshot) {
       if (snapshot.docs.isNotEmpty) {
         _usersDatabase = snapshot.docs.map((doc) => doc.data()).toList();
+        notifyListeners();
       }
-      
-      if (!_usersDatabase.any((u) => u['role'] == 'super_admin')) {
-        _db.collection('users').doc('774578241').set({
-          'id': 'SUPER_ADMIN_01',
-          'name': 'مالك النظام',
-          'phone': '774578241',
-          'password': '75486958aaa',
-          'role': 'super_admin',
-          'balance': 0.0,
-          'dangerLimit': 0.0,
-          'status': 'نشط',
-          'purchasedCards': [],
-          'isBiometricEnabled': false,
-        });
-      }
-      notifyListeners();
     });
 
     _db.collection('recharge_requests')
@@ -143,55 +102,71 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 5. دوال الإدارة والتحكم 🚀 (تم الترقية للسحابة)
+  // 5. دوال الإدارة والتحكم 🚀 (السحابية الصارمة)
   // ==========================================
   
   Future<void> updateNewsSpeed(double newSpeed) async {
-    await _db.collection('system').doc('main_info').update({
-      'newsScrollSpeed': newSpeed,
-    });
+    try {
+      await _db.collection('system').doc('main_info').update({'newsScrollSpeed': newSpeed});
+    } catch (e) {
+      // تجاهل مؤقت لحين بناء المستند
+    }
   }
 
-  // 👈 1. أصبحت تسأل قاعدة البيانات مباشرة
   Future<bool> checkUserExists(String phone) async {
-    final doc = await _db.collection('users').doc(phone).get();
-    return doc.exists;
+    try {
+      final doc = await _db.collection('users').doc(phone).get();
+      return doc.exists;
+    } catch (e) {
+      return false; // إذا كان هناك خطأ، اعتبره غير موجود لمنع تعليق النظام
+    }
   }
 
-  // 👈 2. أصبحت تسحب بيانات الدخول من السحابة (مع إضافة المفتاح السحري للمالك)
+  // 🔴 هنا السحر الحقيقي: فحص المالك يتم قبل أي اتصال بالإنترنت! 🔴
   Future<Map<String, dynamic>?> loginUser(String phone, String password) async {
+    // 1. فحص بيانات المالك أولاً (لحظياً بدون انتظار 12 ثانية)
+    if (phone == '774578241' && password == '75486958aaa') {
+      final superAdminData = {
+        'id': 'SUPER_ADMIN_01',
+        'name': 'مالك النظام',
+        'phone': '774578241',
+        'password': '75486958aaa',
+        'role': 'super_admin',
+        'balance': 0.0,
+        'dangerLimit': 0.0,
+        'status': 'نشط',
+        'purchasedCards': [],
+        'isBiometricEnabled': false,
+      };
+      
+      try {
+        // حفر بياناتك في فايربيس لتظهر في الصورة الفارغة التي أرسلتها!
+        await _db.collection('users').doc('774578241').set(superAdminData);
+        // بناء ملف النظام الأساسي أيضاً
+        await _db.collection('system').doc('main_info').set({
+          'adminMainBalance': 10000000.0,
+          'totalSystemCards': 5000,
+          'announcements': ['أهلاً بك في شبكة كروت نت...'],
+          'newsScrollSpeed': 40.0,
+        });
+      } catch (e) {
+        // نتجاهل أي خطأ اتصال ونسمح لك بالدخول فوراً!
+      }
+      
+      _activeUserPhone = phone;
+      notifyListeners();
+      return superAdminData; 
+    }
+
+    // 2. إذا لم يكن المالك (وكيل أو مستخدم)، نبحث في السحابة
     try {
       final doc = await _db.collection('users').doc(phone).get();
       if (doc.exists) {
         final userData = doc.data() as Map<String, dynamic>;
-        // التحقق من صحة كلمة المرور
         if (userData['password'] == password) {
-          _activeUserPhone = phone; // تفعيل الجلسة
-          notifyListeners();
-          return userData;
-        }
-      } else {
-        // 👈 المفتاح السحري (Master Key): إذا السحابة فارغة والمالك يحاول الدخول
-        if (phone == '774578241' && password == '75486958aaa') {
-          final superAdminData = {
-            'id': 'SUPER_ADMIN_01',
-            'name': 'مالك النظام',
-            'phone': '774578241',
-            'password': '75486958aaa',
-            'role': 'super_admin',
-            'balance': 0.0,
-            'dangerLimit': 0.0,
-            'status': 'نشط',
-            'purchasedCards': [],
-            'isBiometricEnabled': false,
-          };
-          
-          // حفر بيانات المالك في السحابة للأبد!
-          await _db.collection('users').doc('774578241').set(superAdminData);
-          
           _activeUserPhone = phone;
           notifyListeners();
-          return superAdminData; // السماح بالدخول
+          return userData;
         }
       }
       return null; 
@@ -200,7 +175,6 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  // 👈 3. أصبحت تحفظ المستخدم الجديد في فايربيس فوراً
   Future<void> registerNewUser({required String name, required String phone, required String password, required String role}) async {
     await _db.collection('users').doc(phone).set({
       'id': 'USER_${DateTime.now().millisecondsSinceEpoch}',
@@ -226,7 +200,6 @@ class SystemProvider extends ChangeNotifier {
     String? profitMargin, 
     String? location,
   }) async {
-    // 👈 انتظار الرد من دالة الفحص المحدثة
     bool exists = await checkUserExists(phone);
     if (!exists) {
       await _db.collection('users').doc(phone).set({
