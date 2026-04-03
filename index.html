@@ -25,9 +25,9 @@
 </head>
 <body>
   <script>
+    // تم التحديث هنا للتخلص من رسائل التحذير القديمة وجعل التحميل أسرع
     window.addEventListener('load', function(ev) {
-      _flutter.loader.loadEntrypoint({
-        serviceWorker: { serviceWorkerVersion: null },
+      _flutter.loader.load({
         onEntrypointLoaded: function(engineInitializer) {
           engineInitializer.initializeEngine().then(function(appRunner) {
             appRunner.runApp();
