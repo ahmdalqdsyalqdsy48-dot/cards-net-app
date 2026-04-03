@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import '../../../core/widgets/custom_header.dart'; // استدعاء الترويسة الموحدة
+import 'package:provider/provider.dart';
+import '../../../core/providers/system_provider.dart';
+import '../../../core/widgets/custom_header.dart'; 
 
 class AgentProfileScreen extends StatefulWidget {
-  final Map<String, dynamic> agentData; // استقبال بيانات الوكيل من الشاشة السابقة
+  final Map<String, dynamic> agentData; 
 
   const AgentProfileScreen({super.key, required this.agentData});
 
@@ -10,59 +12,17 @@ class AgentProfileScreen extends StatefulWidget {
   State<AgentProfileScreen> createState() => _AgentProfileScreenState();
 }
 
-// استخدام SingleTickerProviderStateMixin ضروري جداً لعمل حركات التبويبات (Animations)
 class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-
-  // 1. بيانات المبيعات العامة (تجريبية لعرض التصميم)
-  final Map<String, dynamic> _salesData = {
-    'totalCardsSold': 1250,
-    'totalSalesValue': '1,250,000 ريال',
-    'agentDirectSales': '450,000 ريال',
-    'posTotalSales': '800,000 ريال',
-    'profitRate': '5%',
-    'totalAvailableCards': 3400, 
-  };
-
-  // 2. بيانات الفئات والمخزون للوكيل (تجريبية)
-  final List<Map<String, dynamic>> _categories = [
-    {'name': 'يمن موبايل - فئة 1000', 'available': 1500, 'sold': 450, 'color': Colors.blue},
-    {'name': 'سبأفون - فئة 1000', 'available': 800, 'sold': 300, 'color': Colors.orange},
-    {'name': 'يو (YOU) - فئة 500', 'available': 1100, 'sold': 500, 'color': Colors.green},
-  ];
-
-  // 3. بيانات نقاط البيع (البقالات) المعقدة (تجريبية)
-  final List<Map<String, dynamic>> _posDetails = [
-    {
-      'name': 'بقالة الأمانة',
-      'location': 'شارع جمال',
-      'totalSales': '350,000 ريال',
-      'inventory': [
-        {'cat': 'يمن موبايل 1000', 'available': 200, 'sold': 150},
-        {'cat': 'سبأفون 1000', 'available': 50, 'sold': 80},
-      ]
-    },
-    {
-      'name': 'ميدالية التوفيق',
-      'location': 'الحصب',
-      'totalSales': '450,000 ريال',
-      'inventory': [
-        {'cat': 'يمن موبايل 1000', 'available': 100, 'sold': 220},
-        {'cat': 'يو (YOU) 500', 'available': 300, 'sold': 400},
-      ]
-    },
-  ];
 
   @override
   void initState() {
     super.initState();
-    // تهيئة متحكم التبويبات (3 تبويبات)
     _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
   void dispose() {
-    // تنظيف الذاكرة عند إغلاق الشاشة لتجنب تسريب الذاكرة (Memory Leak)
     _tabController.dispose();
     super.dispose();
   }
@@ -70,10 +30,22 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final provider = Provider.of<SystemProvider>(context);
     
-    // 👈 حماية أمان: جلب أول حرف من الاسم، وإذا كان الاسم فارغاً نضع '?' لتجنب انهيار التطبيق
-    final String agentName = widget.agentData['name'] ?? 'غير معروف';
+    // 👈 السحر الهندسي: جلب بيانات الوكيل "الحية" من العقل المدبر بناءً على رقم هاتفه
+    // إذا لم يجده (في حالة الحذف مثلاً)، سيعرض البيانات القديمة كاحتياط
+    final liveAgent = provider.agentsList.firstWhere(
+      (a) => a['phone'] == widget.agentData['phone'], 
+      orElse: () => widget.agentData
+    );
+
+    final String agentName = liveAgent['name'] ?? 'غير معروف';
     final String nameInitial = agentName.trim().isNotEmpty ? agentName.trim().substring(0, 1) : '?';
+    
+    // استخراج المصفوفات برمجياً (ستكون فارغة حالياً حتى نبرمج تطبيق الوكيل)
+    final List posList = liveAgent['posList'] ?? [];
+    final List inventoryList = liveAgent['inventory'] ?? [];
+    final double balance = double.parse((liveAgent['balance'] ?? 0).toString());
 
     return Scaffold(
       appBar: const CustomHeader(title: 'الملف الشامل للوكيل'),
@@ -82,7 +54,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
         child: Column(
           children: [
             // ==========================================
-            // بطاقة هوية الوكيل العلوية (ثابتة في كل التبويبات)
+            // بطاقة هوية الوكيل العلوية (حية ومباشرة 🔴)
             // ==========================================
             Container(
               padding: const EdgeInsets.all(16),
@@ -103,13 +75,14 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(agentName, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                        Text('${widget.agentData['network']} | الهاتف: ${widget.agentData['phone']}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                        Text('${liveAgent['networkName'] ?? 'بدون شبكة'} | الهاتف: ${liveAgent['phone']}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
                         const SizedBox(height: 5),
                         Row(
                           children: [
                             const Icon(Icons.account_balance_wallet, color: Colors.greenAccent, size: 16),
                             const SizedBox(width: 5),
-                            Text('الرصيد: ${widget.agentData['balance']} ريال', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+                            // الرصيد الحي من السحابة
+                            Text('الرصيد: $balance ريال', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
                           ],
                         ),
                       ],
@@ -118,8 +91,8 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
                   Column(
                     children: [
                       Chip(
-                        label: Text(widget.agentData['status'], style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                        backgroundColor: widget.agentData['status'] == 'نشط' ? Colors.green : Colors.red,
+                        label: Text(liveAgent['status'] ?? 'غير محدد', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                        backgroundColor: liveAgent['status'] == 'نشط' ? Colors.green : Colors.red,
                       ),
                     ],
                   )
@@ -139,9 +112,9 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
                 indicatorColor: Colors.blueAccent,
                 indicatorWeight: 3,
                 tabs: const [
-                  Tab(icon: Icon(Icons.analytics), text: 'مبيعات'),
-                  Tab(icon: Icon(Icons.inventory_2), text: 'مخزون'),
-                  Tab(icon: Icon(Icons.store), text: 'بقالات'),
+                  Tab(icon: Icon(Icons.analytics), text: 'نظرة عامة'),
+                  Tab(icon: Icon(Icons.inventory_2), text: 'المخزون'),
+                  Tab(icon: Icon(Icons.store), text: 'البقالات'),
                 ],
               ),
             ),
@@ -153,9 +126,9 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildSalesOverviewTab(),
-                  _buildInventoryTab(),
-                  _buildPosTab(),
+                  _buildSalesOverviewTab(liveAgent),
+                  _buildInventoryTab(inventoryList),
+                  _buildPosTab(posList),
                 ],
               ),
             ),
@@ -166,9 +139,13 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
   }
 
   // ==========================================
-  // التبويب الأول: المبيعات والنظرة العامة
+  // التبويب الأول: المبيعات والنظرة العامة (مربوط بالوكيل)
   // ==========================================
-  Widget _buildSalesOverviewTab() {
+  Widget _buildSalesOverviewTab(Map<String, dynamic> agent) {
+    // إحصائيات تقريبية تعتمد على بيانات الوكيل
+    final String profitMargin = agent['profitMargin'] ?? '0%';
+    final int totalSales = agent['totalSales'] ?? 0; // سيتم تحديثه لاحقاً عند برمجة المبيعات
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -186,41 +163,42 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('إجمالي المبيعات الدقيقة', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                    const Text('إجمالي الكروت المباعة', style: TextStyle(color: Colors.white70, fontSize: 14)),
                     const SizedBox(height: 5),
-                    Text('${_salesData['totalCardsSold']} كرت', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                    Text('$totalSales كرت', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
                   ],
                 ),
-                const Text('=', style: TextStyle(color: Colors.white54, fontSize: 30)),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    const Text('القيمة المالية', style: TextStyle(color: Colors.white70, fontSize: 14)),
-                    const SizedBox(height: 5),
-                    Text(_salesData['totalSalesValue'], style: const TextStyle(color: Colors.greenAccent, fontSize: 20, fontWeight: FontWeight.bold)),
-                  ],
-                ),
+                const Icon(Icons.stacked_line_chart, color: Colors.white54, size: 40),
               ],
             ),
           ),
           const SizedBox(height: 20),
 
-          const Text('تفصيل مصدر المبيعات:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+          const Text('تفاصيل إضافية:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
           const SizedBox(height: 10),
           Row(
             children: [
-              Expanded(child: _buildStatCard('مبيعات الوكيل', _salesData['agentDirectSales'], Icons.person, Colors.orange)),
+              Expanded(child: _buildStatCard('نسبة عمولة النظام', profitMargin, Icons.percent, Colors.green)),
               const SizedBox(width: 10),
-              Expanded(child: _buildStatCard('نقاط البيع (${_posDetails.length})', _salesData['posTotalSales'], Icons.storefront, Colors.purple)),
+              Expanded(child: _buildStatCard('موقع الشبكة', agent['location'] ?? 'غير محدد', Icons.location_on, Colors.orange)),
             ],
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-               Expanded(child: _buildStatCard('نسبة العمولة', _salesData['profitRate'], Icons.percent, Colors.green)),
-               const SizedBox(width: 10),
-               Expanded(child: _buildStatCard('الكروت المتوفرة', '${_salesData['totalAvailableCards']}', Icons.inventory, Colors.blueGrey)),
-            ],
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.blue.withOpacity(0.3)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.blue),
+                SizedBox(width: 10),
+                Expanded(child: Text('سيتم تفعيل الإحصائيات المالية الدقيقة تلقائياً بمجرد بدء الوكيل في بيع الكروت للمستخدمين.', style: TextStyle(fontSize: 12, color: Colors.blue))),
+              ],
+            ),
           )
         ],
       ),
@@ -228,88 +206,93 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
   }
 
   // ==========================================
-  // التبويب الثاني: المخزون والفئات
+  // التبويب الثاني: المخزون والفئات (مربوط بالسحابة)
   // ==========================================
-  Widget _buildInventoryTab() {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          color: Colors.blueGrey.withOpacity(0.1),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('إجمالي الكروت في جميع الفئات:', style: TextStyle(fontWeight: FontWeight.bold)),
-              Text('${_salesData['totalAvailableCards']} كرت', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 16)),
-            ],
-          ),
+  Widget _buildInventoryTab(List inventoryList) {
+    if (inventoryList.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.inventory_2_outlined, size: 80, color: Colors.grey.shade300),
+            const SizedBox(height: 10),
+            const Text('لم يقم الوكيل برفع أي كروت للشبكة بعد.', style: TextStyle(color: Colors.grey)),
+          ],
         ),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: _categories.length,
-            itemBuilder: (context, index) {
-              final cat = _categories[index];
-              return Card(
-                elevation: 2,
-                margin: const EdgeInsets.only(bottom: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: cat['color'].withOpacity(0.3))),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(cat['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: cat['color'])),
-                          Icon(Icons.category, color: cat['color'].withOpacity(0.5)),
-                        ],
-                      ),
-                      const Divider(),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          Column(
-                            children: [
-                              const Text('المتوفر حالياً', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                              Text('${cat['available']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.green)),
-                            ],
-                          ),
-                          Container(height: 30, width: 1, color: Colors.grey.withOpacity(0.3)),
-                          Column(
-                            children: [
-                              const Text('المباع', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                              Text('${cat['sold']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.orange)),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ==========================================
-  // التبويب الثالث: نقاط البيع (البقالات) المعقدة
-  // ==========================================
-  Widget _buildPosTab() {
-    if (_posDetails.isEmpty) {
-      return const Center(child: Text('لا توجد نقاط بيع (بقالات) تابعة لهذا الوكيل.'));
+      );
     }
 
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: _posDetails.length,
+      itemCount: inventoryList.length,
       itemBuilder: (context, index) {
-        final pos = _posDetails[index];
-        final List inventory = pos['inventory'];
+        final cat = inventoryList[index];
+        return Card(
+          elevation: 2,
+          margin: const EdgeInsets.only(bottom: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(cat['name'] ?? 'فئة غير معروفة', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue)),
+                    const Icon(Icons.category, color: Colors.blue),
+                  ],
+                ),
+                const Divider(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    Column(
+                      children: [
+                        const Text('المتوفر حالياً', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                        Text('${cat['available'] ?? 0}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.green)),
+                      ],
+                    ),
+                    Container(height: 30, width: 1, color: Colors.grey.withOpacity(0.3)),
+                    Column(
+                      children: [
+                        const Text('المباع', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                        Text('${cat['sold'] ?? 0}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.orange)),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ==========================================
+  // التبويب الثالث: نقاط البيع (البقالات) المعقدة (مربوط بالسحابة)
+  // ==========================================
+  Widget _buildPosTab(List posList) {
+    if (posList.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.storefront_outlined, size: 80, color: Colors.grey.shade300),
+            const SizedBox(height: 10),
+            const Text('لم يقم الوكيل بإضافة أي نقاط بيع (بقالات) حتى الآن.', style: TextStyle(color: Colors.grey)),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: posList.length,
+      itemBuilder: (context, index) {
+        final pos = posList[index];
+        final List inventory = pos['inventory'] ?? [];
 
         return Card(
           elevation: 3,
@@ -318,8 +301,8 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
           child: ExpansionTile( 
             iconColor: Colors.blueAccent,
             collapsedIconColor: Colors.grey,
-            title: Text(pos['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            subtitle: Text('الموقع: ${pos['location']} | إجمالي المبيعات: ${pos['totalSales']}', style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
+            title: Text(pos['name'] ?? 'بقالة غير معروفة', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            subtitle: Text('الموقع: ${pos['location'] ?? 'غير محدد'} | المبيعات: ${pos['totalSales'] ?? 0}', style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
             leading: const CircleAvatar(backgroundColor: Colors.blueAccent, child: Icon(Icons.store, color: Colors.white)),
             children: [
               Container(
@@ -333,31 +316,32 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
                   children: [
                     const Text('تفاصيل الفئات المتوفرة في هذه النقطة:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     const SizedBox(height: 10),
-                    // جدول داخلي يعرض بيانات المخزون
-                    Table(
-                      border: TableBorder.all(color: Colors.grey.withOpacity(0.3), borderRadius: BorderRadius.circular(8)),
-                      columnWidths: const {0: FlexColumnWidth(2), 1: FlexColumnWidth(1), 2: FlexColumnWidth(1)},
-                      children: [
-                        TableRow(
-                          decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1)),
-                          children: const [
-                            Padding(padding: EdgeInsets.all(8.0), child: Text('الفئة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                            Padding(padding: EdgeInsets.all(8.0), child: Text('متوفر', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12), textAlign: TextAlign.center)),
-                            Padding(padding: EdgeInsets.all(8.0), child: Text('مباع', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12), textAlign: TextAlign.center)),
-                          ],
-                        ),
-                        // دمج بيانات المخزون داخل الجدول برمجياً (Spread Operator)
-                        ...inventory.map((inv) {
-                          return TableRow(
-                            children: [
-                              Padding(padding: const EdgeInsets.all(8.0), child: Text(inv['cat'], style: const TextStyle(fontSize: 12))),
-                              Padding(padding: const EdgeInsets.all(8.0), child: Text('${inv['available']}', style: const TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
-                              Padding(padding: const EdgeInsets.all(8.0), child: Text('${inv['sold']}', style: const TextStyle(fontSize: 12, color: Colors.orange, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                    if (inventory.isEmpty)
+                      const Text('لا يوجد مخزون مخصص لهذه البقالة.', style: TextStyle(fontSize: 12, color: Colors.grey))
+                    else
+                      Table(
+                        border: TableBorder.all(color: Colors.grey.withOpacity(0.3), borderRadius: BorderRadius.circular(8)),
+                        columnWidths: const {0: FlexColumnWidth(2), 1: FlexColumnWidth(1), 2: FlexColumnWidth(1)},
+                        children: [
+                          TableRow(
+                            decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1)),
+                            children: const [
+                              Padding(padding: EdgeInsets.all(8.0), child: Text('الفئة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              Padding(padding: EdgeInsets.all(8.0), child: Text('متوفر', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12), textAlign: TextAlign.center)),
+                              Padding(padding: EdgeInsets.all(8.0), child: Text('مباع', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12), textAlign: TextAlign.center)),
                             ],
-                          );
-                        }).toList(),
-                      ],
-                    ),
+                          ),
+                          ...inventory.map((inv) {
+                            return TableRow(
+                              children: [
+                                Padding(padding: const EdgeInsets.all(8.0), child: Text(inv['cat'] ?? 'فئة', style: const TextStyle(fontSize: 12))),
+                                Padding(padding: const EdgeInsets.all(8.0), child: Text('${inv['available'] ?? 0}', style: const TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                                Padding(padding: const EdgeInsets.all(8.0), child: Text('${inv['sold'] ?? 0}', style: const TextStyle(fontSize: 12, color: Colors.orange, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                              ],
+                            );
+                          }).toList(),
+                        ],
+                      ),
                   ],
                 ),
               ),
@@ -368,7 +352,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
     );
   }
 
-  // أداة بناء البطاقات الإحصائية الصغيرة بأسلوب نظيف (Clean Code)
+  // أداة بناء البطاقات الإحصائية الصغيرة 
   Widget _buildStatCard(String title, String value, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.all(12),
