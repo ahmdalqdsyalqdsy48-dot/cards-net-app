@@ -4,7 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class SystemProvider extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // المتغيرات الأساسية
   double _adminMainBalance = 10000000.0; 
   int _totalSystemCards = 5000; 
   String? _activeUserPhone; 
@@ -18,7 +17,6 @@ class SystemProvider extends ChangeNotifier {
   SystemProvider() { _initDatabaseSync(); }
 
   void _initDatabaseSync() {
-    // 1. مزامنة النظام (الخزينة + الأخبار)
     _db.collection('system').doc('main_info').snapshots().listen((snapshot) {
       if (snapshot.exists) {
         final data = snapshot.data()!;
@@ -30,13 +28,11 @@ class SystemProvider extends ChangeNotifier {
       }
     });
 
-    // 2. مزامنة المستخدمين
     _db.collection('users').snapshots().listen((snapshot) {
       _usersDatabase = snapshot.docs.map((doc) => doc.data()).toList();
       notifyListeners();
     });
 
-    // 3. مزامنة الطلبات والسجلات
     _db.collection('recharge_requests').where('status', isEqualTo: 'قيد الانتظار').snapshots().listen((snapshot) {
       _rechargeRequests = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
       notifyListeners();
@@ -63,7 +59,8 @@ class SystemProvider extends ChangeNotifier {
   List<String> get userPurchasedCards => List<String>.from(_usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {})['purchasedCards'] ?? []);
   bool get isBiometricCurrentlyEnabled => _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {})['isBiometricEnabled'] ?? false;
 
-  // --- دوال الإدارة والتوثيق ---
+  // --- Functions (تمت إعادتها لنوع bool لتطابق الـ UI) ---
+
   bool checkUserExists(String phone) => _usersDatabase.any((u) => u['phone'] == phone);
 
   Map<String, dynamic>? loginUser(String phone, String password) {
@@ -75,6 +72,31 @@ class SystemProvider extends ChangeNotifier {
     } catch (e) { return null; }
   }
 
+  // تصحيح: إعادة النوع إلى bool ليقبله الـ UI
+  bool changeUserPassword(String oldPassword, String newPassword) {
+    if (_activeUserPhone == null) return false;
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
+    if (user['password'] == oldPassword) {
+      _db.collection('users').doc(_activeUserPhone!).update({'password': newPassword});
+      return true;
+    }
+    return false;
+  }
+
+  // تصحيح: إعادة النوع إلى bool ليقبله الـ UI
+  bool userBuyCard(double price, String cardName) {
+    if (currentUserBalance >= price && totalSystemCards > 0) {
+      _db.collection('system').doc('main_info').update({'totalSystemCards': FieldValue.increment(-1)});
+      _db.collection('users').doc(_activeUserPhone!).update({
+        'balance': FieldValue.increment(-price),
+        'purchasedCards': FieldValue.arrayUnion([cardName])
+      });
+      return true;
+    }
+    return false;
+  }
+
+  // بقية الدوال ستبقى Future لأنها تُستدعى بـ await في شاشات المالك
   Future<void> registerNewUser({required String name, required String phone, required String password, required String role}) async {
     await _db.collection('users').doc(phone).set({
       'id': 'USER_${DateTime.now().millisecondsSinceEpoch}', 'name': name, 'phone': phone,
@@ -82,14 +104,6 @@ class SystemProvider extends ChangeNotifier {
     });
   }
 
-  Future<void> changeUserPassword(String oldPassword, String newPassword) async {
-    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
-    if (user['password'] == oldPassword) {
-      await _db.collection('users').doc(_activeUserPhone!).update({'password': newPassword});
-    } else { throw 'كلمة المرور القديمة خاطئة'; }
-  }
-
-  // --- دوال إدارة الوكلاء (المفقودة التي سببت الخطأ) ---
   Future<void> addAgent({required String name, required String phone, required String password, String? networkName, String? profitMargin, String? location}) async {
     await _db.collection('users').doc(phone).set({
       'id': 'AGENT_${DateTime.now().millisecondsSinceEpoch}', 'name': name, 'phone': phone, 'password': password,
@@ -118,7 +132,6 @@ class SystemProvider extends ChangeNotifier {
     await _db.collection('users').doc(phone).delete();
   }
 
-  // --- دوال العمليات المالية ---
   Future<void> updateDangerLimit(String phone, double newLimit) async {
     await _db.collection('users').doc(phone).update({'dangerLimit': newLimit});
   }
@@ -142,16 +155,6 @@ class SystemProvider extends ChangeNotifier {
     await batch.commit();
   }
 
-  bool userBuyCard(double price, String cardName) {
-    if (currentUserBalance >= price && totalSystemCards > 0) {
-      _db.collection('system').doc('main_info').update({'totalSystemCards': FieldValue.increment(-1)});
-      _db.collection('users').doc(_activeUserPhone!).update({'balance': FieldValue.increment(-price), 'purchasedCards': FieldValue.arrayUnion([cardName])});
-      return true;
-    }
-    return false;
-  }
-
-  // --- الإعدادات ---
   Future<void> updateNewsSpeed(double newSpeed) async {
     await _db.collection('system').doc('main_info').update({'newsScrollSpeed': newSpeed});
   }
