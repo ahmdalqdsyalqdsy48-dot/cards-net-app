@@ -4,18 +4,20 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  # قمنا بتحديد النسخة بدقة لتفعيل المميزات الحديثة
   sdk: '>=2.17.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.2
-  provider: ^6.1.2 # مكتبة العقل (Provider)
-  local_auth: ^2.1.6 # مكتبة البصمة 
-  flutter_colorpicker: ^1.1.0 # مكتبة عجلة الألوان الشاملة
-  firebase_core: ^2.32.0 # 👈 الإضافة الجديدة: مكتبة الاتصال بخوادم فايربيس
-  cloud_firestore: ^4.15.8 # 👈 مكتبة قاعدة البيانات السحابية
+  provider: ^6.1.2 
+  local_auth: ^2.1.6 
+  flutter_colorpicker: ^1.1.0 
+  firebase_core: ^2.32.0 
+  cloud_firestore: ^4.15.8 
+  pdf: ^3.11.0          # 👈 مكتبة رسم الفواتير وملفات الـ PDF
+  printing: ^5.12.0     # 👈 مكتبة الطباعة والتحميل الفعلي في المتصفح
+  intl: ^0.19.0         # 👈 مكتبة ضبط الأوقات والتواريخ المحاسبية
 
 dev_dependencies:
   flutter_test:
