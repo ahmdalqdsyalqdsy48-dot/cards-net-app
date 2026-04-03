@@ -1,32 +1,77 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // 👈 1. استدعاء مكتبة العقل المدبر
-import '../providers/theme_provider.dart'; // 👈 2. استدعاء الذاكرة التي تحفظ الألوان
+import 'package:provider/provider.dart'; 
+import 'package:marquee/marquee.dart'; // 👈 استدعاء مكتبة الحركة
+
+import '../providers/theme_provider.dart'; 
+import '../providers/system_provider.dart'; 
 
 class CustomHeader extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final bool isOnline;
   final int notificationCount;
+  final Function(String)? onSearch; 
 
   const CustomHeader({
     super.key,
     required this.title,
     this.isOnline = true,
-    this.notificationCount = 3,
+    this.notificationCount = 3, 
+    this.onSearch,
   });
 
-  // تحديد ارتفاع الهيدر بدقة (شريط علوي + شريط إخباري + بحث)
   @override
   Size get preferredSize => const Size.fromHeight(125.0); 
 
+  void _showNotifications(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.notifications_active, color: Colors.orange),
+              SizedBox(width: 10),
+              Text('الإشعارات الحديثة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(
+                leading: Icon(Icons.download, color: Colors.blue),
+                title: Text('طلب شحن جديد من "شبكة الصقر"'),
+                subtitle: Text('منذ 5 دقائق'),
+              ),
+              Divider(color: Colors.grey.shade300),
+              const ListTile(
+                leading: Icon(Icons.warning, color: Colors.red),
+                title: Text('رصيد "وكالة النور" وصل لحد الخطر!'),
+                subtitle: Text('منذ ساعة'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // 👇 3. السطر السحري الجديد: قراءة الوضع الليلي من العقل المدبر الخاص بنا
     final themeProvider = Provider.of<ThemeProvider>(context);
+    final systemProvider = Provider.of<SystemProvider>(context); 
     final bool isDark = themeProvider.isDarkMode;
+
+    // تجهيز الشريط الإخباري (دمج الأخبار مع مسافة فاصلة)
+    final String liveNews = systemProvider.announcements.isNotEmpty 
+        ? systemProvider.announcements.join('   🔴   ') 
+        : 'مرحباً بك في نظام كروت نت...';
 
     return AppBar(
       elevation: 2,
-      // توحيد لون الخلفية
       backgroundColor: isDark ? const Color(0xFF121212) : Colors.white,
       iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.blueAccent),
       
@@ -45,7 +90,6 @@ class CustomHeader extends StatelessWidget implements PreferredSizeWidget {
             ),
           ),
           const SizedBox(width: 8),
-          // مؤشر الاتصال (النقطة الملونة)
           Container(
             width: 10,
             height: 10,
@@ -69,16 +113,13 @@ class CustomHeader extends StatelessWidget implements PreferredSizeWidget {
       // السطر الأول (يسار): أدوات التحكم
       // ==========================================
       actions: [
-        // 👇 4. زر الوضع الليلي المحدّث (يعمل الآن بشكل حقيقي!)
         IconButton(
           icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode),
           tooltip: 'تبديل السمة',
           onPressed: () {
-            // نأمر العقل المدبر بعكس الحالة الحالية (إذا كان ليلي يجعله نهاري والعكس)
             themeProvider.toggleTheme(!isDark);
           },
         ),
-        // جرس الإشعارات مع النقطة الحمراء (Badge)
         Padding(
           padding: const EdgeInsets.only(left: 8.0),
           child: Stack(
@@ -87,11 +128,7 @@ class CustomHeader extends StatelessWidget implements PreferredSizeWidget {
               IconButton(
                 icon: Icon(Icons.notifications_active, color: isDark ? Colors.grey.shade300 : themeProvider.primaryColor),
                 tooltip: 'الإشعارات',
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('لديك إشعارات جديدة غير مقروءة!')),
-                  );
-                },
+                onPressed: () => _showNotifications(context), 
               ),
               if (notificationCount > 0)
                 Positioned(
@@ -115,32 +152,40 @@ class CustomHeader extends StatelessWidget implements PreferredSizeWidget {
       ],
 
       // ==========================================
-      // الجزء السفلي المفقود: الشريط الإخباري وشريط البحث
+      // الجزء السفلي: الشريط الإخباري وشريط البحث
       // ==========================================
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(70),
         child: Column(
           children: [
-            // الشريط الإخباري (الأصفر)
+            // 👈 الشريط الإخباري المتحرك الجديد
             Container(
               width: double.infinity,
+              height: 25, // تحديد ارتفاع ثابت ضروري لحركة الـ Marquee
               color: Colors.orange.shade700, 
-              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-              child: const Row(
+              padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+              child: Row(
                 children: [
-                  Icon(Icons.campaign, color: Colors.white, size: 16),
-                  SizedBox(width: 8),
+                  const Icon(Icons.campaign, color: Colors.white, size: 18),
+                  const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      'تم إضافة باقات يمن موبايل. | انتبه لوجود صيانة في نظام الكريمي الليلة',
-                      style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                      overflow: TextOverflow.ellipsis,
+                    child: Marquee(
+                      text: liveNews,
+                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                      scrollAxis: Axis.horizontal,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      blankSpace: 50.0, // المسافة بين نهاية الخبر وبدايته عند التكرار
+                      velocity: systemProvider.newsScrollSpeed, // 👈 السرعة المرتبطة بالعقل المدبر
+                      pauseAfterRound: const Duration(milliseconds: 500), // توقف بسيط قبل إعادة الشريط
+                      startPadding: 10.0,
+                      textDirection: TextDirection.rtl, // 👈 يظهر من اليسار ويختفي في اليمين كما طلبت
                     ),
                   ),
                 ],
               ),
             ),
-            // شريط البحث
+            
+            // شريط البحث الديناميكي
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: Container(
@@ -150,6 +195,7 @@ class CustomHeader extends StatelessWidget implements PreferredSizeWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: TextField(
+                  onChanged: onSearch, 
                   decoration: InputDecoration(
                     hintText: 'ابحث في هذا القسم...',
                     hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 13),
