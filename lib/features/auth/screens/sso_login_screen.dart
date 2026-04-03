@@ -65,10 +65,10 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   }
 
   // ==========================================
-  // 2. العمليات الأساسية المربوطة بالعقل المدبر 🧠
+  // 2. العمليات الأساسية المربوطة بالعقل المدبر 🧠 (تم ربطها بالسحابة)
   // ==========================================
 
-  // دالة تسجيل الدخول (تم الإصلاح لمنع التخطي)
+  // دالة تسجيل الدخول (السحابية)
   Future<void> _processLogin() async {
     FocusScope.of(context).unfocus();
     String phone = phoneController.text.trim();
@@ -80,13 +80,13 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     }
 
     setState(() => isLoading = true);
-    await Future.delayed(const Duration(seconds: 1)); 
-    if (!mounted) return;
-
-    // 👈 هنا السحر: نرسل الجميع للعقل المدبر لكي يحفظ هويتهم في الذاكرة النشطة
-    final systemProvider = Provider.of<SystemProvider>(context, listen: false);
-    final Map<String, dynamic>? userData = systemProvider.loginUser(phone, password);
     
+    final systemProvider = Provider.of<SystemProvider>(context, listen: false);
+    
+    // 👈 هنا السحر: ننتظر رد جوجل مباشرة بدلاً من الذاكرة المحلية
+    final Map<String, dynamic>? userData = await systemProvider.loginUser(phone, password);
+    
+    if (!mounted) return;
     setState(() => isLoading = false);
 
     if (userData != null) {
@@ -106,7 +106,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     }
   }
 
-  // دالة التسجيل الجديد
+  // دالة التسجيل الجديد (السحابية)
   Future<void> _processRegistration() async {
     FocusScope.of(context).unfocus();
     String phone = phoneController.text.trim();
@@ -119,20 +119,25 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     }
 
     setState(() => isLoading = true);
-    await Future.delayed(const Duration(seconds: 1));
+    
+    final systemProvider = Provider.of<SystemProvider>(context, listen: false);
+    
+    // 👈 فحص السحابة للتأكد من عدم تكرار الرقم
+    bool isExist = await systemProvider.checkUserExists(phone);
+
     if (!mounted) return;
 
-    final systemProvider = Provider.of<SystemProvider>(context, listen: false);
-    bool isExist = systemProvider.checkUserExists(phone);
-
-    setState(() => isLoading = false);
-
     if (isExist) {
+      setState(() => isLoading = false);
       _showErrorSnackBar('هذا الرقم مسجل مسبقاً! يرجى تسجيل الدخول.');
       setState(() => isLoginMode = true);
     } else {
-      // العقل المدبر سيقوم بحفظه وتسجيل دخوله فوراً
-      systemProvider.registerNewUser(name: name, phone: phone, password: password, role: 'user');
+      // 👈 انتظار الحفظ في جوجل قبل الدخول
+      await systemProvider.registerNewUser(name: name, phone: phone, password: password, role: 'user');
+      
+      if (!mounted) return;
+      setState(() => isLoading = false);
+
       Provider.of<ThemeProvider>(context, listen: false).setRole('user');
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
       _showSuccessSnackBar('تم التسجيل بنجاح! أهلاً بك.');
@@ -146,8 +151,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       return;
     }
     
-    // ملاحظة: لكي تعمل البصمة بشكل حقيقي مستقبلاً، سنحتاج لحفظ رقم آخر مستخدم 
-    // في ذاكرة الهاتف المحلية (SharedPreferences) وتمريره للعقل المدبر.
     _showErrorSnackBar('قم بتسجيل الدخول برقمك وكلمة المرور أولاً لتفعيل الجلسة.');
   }
 
