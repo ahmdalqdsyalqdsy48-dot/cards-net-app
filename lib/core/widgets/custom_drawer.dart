@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+// 👈 تمت إضافة استدعاء شاشة تسجيل الدخول هنا للطرد الآمن
+import '../../features/auth/screens/sso_login_screen.dart';
+
 // استدعاء جميع الشاشات الـ 12
 import '../../features/super_admin/screens/super_admin_dashboard.dart';
 import '../../features/super_admin/screens/agent_management_screen.dart';
@@ -98,7 +101,6 @@ class _CustomDrawerState extends State<CustomDrawer> {
                   color: Colors.grey.shade100,
                   border: Border.all(color: Colors.blue.shade100, width: 3),
                   boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)],
-                  // تم حل الخطأ هنا (استخدام image بدلاً من backgroundImage)
                   image: hasImage 
                       ? DecorationImage(image: NetworkImage(_currentLocalImageUrl!), fit: BoxFit.cover) 
                       : null,
@@ -170,18 +172,17 @@ class _CustomDrawerState extends State<CustomDrawer> {
                       color: Colors.transparent, // يدعم لون النظام (الوضع الليلي)
                       child: Column(
                         children: [
-                          // الصورة الشخصية (تم تكبيرها بشكل فخم وقابلة للنقر)
+                          // الصورة الشخصية
                           GestureDetector(
                             onTap: () => _showProfileImageActionDialog(context),
                             child: Container(
-                              width: 100, // تكبير الحجم الكلي للحاوية
+                              width: 100,
                               height: 100,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: Colors.blue.withOpacity(0.1),
                                 border: Border.all(color: Theme.of(context).primaryColor.withOpacity(0.3), width: 2),
                                 boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))],
-                                // تم حل الخطأ هنا أيضاً
                                 image: hasImage 
                                     ? DecorationImage(image: NetworkImage(_currentLocalImageUrl!), fit: BoxFit.cover) 
                                     : null,
@@ -191,7 +192,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
                           ),
                           const SizedBox(height: 15),
 
-                          // البطاقة 1: الاسم الرباعي (تصميم محسّن زاهي)
+                          // البطاقة 1: الاسم الرباعي
                           _buildGradientCard(
                             text: widget.userName,
                             icon: Icons.badge,
@@ -212,7 +213,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
                             colors: [Colors.orange.shade800, Colors.orange.shade500],
                           ),
 
-                          // البطاقة 4: الرصيد (مع ميزة النقر للإخفاء/الإظهار)
+                          // البطاقة 4: الرصيد
                           GestureDetector(
                             onTap: () {
                               setState(() {
@@ -264,7 +265,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
             ),
             
             // ==========================================
-            // 3. الفوتر (تسجيل الخروج - يبقى ثابتاً في الأسفل)
+            // 3. الفوتر (تسجيل الخروج - تم تطويره أمنياً 🛡️)
             // ==========================================
             const Divider(height: 1),
             ListTile(
@@ -272,7 +273,14 @@ class _CustomDrawerState extends State<CustomDrawer> {
               leading: const Icon(Icons.logout, color: Colors.red, size: 20),
               title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
               onTap: () {
-                 Navigator.of(context).popUntil((route) => route.isFirst);
+                 // 1. إغلاق الدرج الجانبي أولاً
+                 Navigator.pop(context);
+                 // 2. الانتقال لشاشة الدخول وتدمير جميع الشاشات السابقة لضمان الأمان
+                 Navigator.pushAndRemoveUntil(
+                   context,
+                   MaterialPageRoute(builder: (context) => const SSOLoginScreen()),
+                   (route) => false, // false تعني مسح كل السجل السابق
+                 );
               },
             ),
           ],
