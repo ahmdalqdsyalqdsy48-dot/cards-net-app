@@ -5,12 +5,11 @@ class SystemProvider extends ChangeNotifier {
   // 1. الاتصال المباشر بقاعدة بيانات جوجل
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // 2. المتغيرات المحلية (نستخدمها لسرعة عرض الواجهة دون تأخير)
+  // 2. المتغيرات المحلية 
   double _adminMainBalance = 10000000.0; 
   int _totalSystemCards = 5000; 
   String? _activeUserPhone; 
   
-  // 👈 وضعنا بيانات المالك كخط دفاع أول لتجنب تأخير الإنترنت
   List<Map<String, dynamic>> _usersDatabase = [
     {
       'id': 'SUPER_ADMIN_01',
@@ -19,6 +18,7 @@ class SystemProvider extends ChangeNotifier {
       'password': '75486958aaa',
       'role': 'super_admin',
       'balance': 0.0,
+      'dangerLimit': 0.0, // 👈 إضافة حد الخطر الافتراضي
       'status': 'نشط',
       'purchasedCards': [],
       'isBiometricEnabled': false,
@@ -26,6 +26,10 @@ class SystemProvider extends ChangeNotifier {
   ];
   
   List<String> _announcements = []; 
+  
+  // 👈 القوائم المالية الجديدة
+  List<Map<String, dynamic>> _rechargeRequests = []; 
+  List<Map<String, dynamic>> _transactionsLedger = []; 
 
   // ==========================================
   // 3. تهيئة النظام (الاستماع للسحابة لحظة بلحظة)
@@ -35,7 +39,7 @@ class SystemProvider extends ChangeNotifier {
   }
 
   void _initDatabaseSync() {
-    // أ. الاستماع لملف "الخزينة المركزية والإعلانات"
+    // أ. الاستماع لملف الخزينة
     _db.collection('system').doc('main_info').snapshots().listen((snapshot) {
       if (snapshot.exists) {
         final data = snapshot.data()!;
@@ -52,7 +56,7 @@ class SystemProvider extends ChangeNotifier {
       }
     });
 
-    // ب. الاستماع لقائمة "المستخدمين" 
+    // ب. الاستماع لقائمة المستخدمين
     _db.collection('users').snapshots().listen((snapshot) {
       if (snapshot.docs.isNotEmpty) {
         _usersDatabase = snapshot.docs.map((doc) => doc.data()).toList();
@@ -66,11 +70,28 @@ class SystemProvider extends ChangeNotifier {
           'password': '75486958aaa',
           'role': 'super_admin',
           'balance': 0.0,
+          'dangerLimit': 0.0,
           'status': 'نشط',
           'purchasedCards': [],
           'isBiometricEnabled': false,
         });
       }
+      notifyListeners();
+    });
+
+    // ج. الاستماع لطلبات الشحن (التي حالتها 'قيد الانتظار' فقط لتخفيف الضغط)
+    _db.collection('recharge_requests')
+       .where('status', isEqualTo: 'قيد الانتظار')
+       .snapshots().listen((snapshot) {
+      _rechargeRequests = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
+      notifyListeners();
+    });
+
+    // د. الاستماع للسجل المالي الشامل (مترتبة من الأحدث للأقدم)
+    _db.collection('transactions')
+       .orderBy('timestamp', descending: true)
+       .snapshots().listen((snapshot) {
+      _transactionsLedger = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
       notifyListeners();
     });
   }
@@ -88,6 +109,9 @@ class SystemProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get usersList => 
       _usersDatabase.where((user) => user['role'] == 'user').toList();
 
+  List<Map<String, dynamic>> get pendingRechargeRequests => _rechargeRequests;
+  List<Map<String, dynamic>> get transactionsLedger => _transactionsLedger;
+
   String get currentUserName {
     if (_activeUserPhone == null) return 'مستخدم غير معروف';
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'name': 'مستخدم غير معروف'});
@@ -96,31 +120,10 @@ class SystemProvider extends ChangeNotifier {
 
   String get currentUserPhone => _activeUserPhone ?? 'لا يوجد رقم';
 
-  double get currentUserBalance {
-    if (_activeUserPhone == null) return 0.0;
-    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'balance': 0.0});
-    return user['balance'] ?? 0.0;
-  }
-
-  List<String> get userPurchasedCards {
-    if (_activeUserPhone == null) return [];
-    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'purchasedCards': <String>[]});
-    return List<String>.from(user['purchasedCards'] ?? []);
-  }
-
-  bool get isBiometricCurrentlyEnabled {
-    if (_activeUserPhone == null) return false;
-    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'isBiometricEnabled': false});
-    return user['isBiometricEnabled'] ?? false;
-  }
-
   // ==========================================
-  // 5. دوال الإضافة والتعديل 🚀
+  // 5. دوال الإضافة والتعديل 
   // ==========================================
-
-  bool checkUserExists(String phone) {
-    return _usersDatabase.any((user) => user['phone'] == phone);
-  }
+  bool checkUserExists(String phone) => _usersDatabase.any((user) => user['phone'] == phone);
 
   Map<String, dynamic>? loginUser(String phone, String password) {
     try {
@@ -141,6 +144,7 @@ class SystemProvider extends ChangeNotifier {
       'password': password,
       'role': role,
       'balance': 0.0,
+      'dangerLimit': 0.0,
       'status': 'نشط',
       'purchasedCards': [], 
       'isBiometricEnabled': false,
@@ -167,6 +171,7 @@ class SystemProvider extends ChangeNotifier {
         'profitMargin': profitMargin ?? 'غير محدد',
         'location': location ?? 'غير محدد',
         'balance': 0.0,
+        'dangerLimit': 0.0, // 👈 حد الخطر للوكيل الجديد
         'status': 'نشط',
         'purchasedCards': [],
         'isBiometricEnabled': false,
@@ -174,7 +179,6 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  // 👈 دالة التعديل الشاملة (مع دعم تغيير رقم الهاتف ونقل البيانات بأمان)
   Future<void> updateAgentDetails({
     required String oldPhone,
     required String newPhone,
@@ -185,7 +189,6 @@ class SystemProvider extends ChangeNotifier {
     required String newPassword,
   }) async {
     if (oldPhone == newPhone) {
-      // تعديل عادي دون تغيير المعرف (رقم الهاتف)
       await _db.collection('users').doc(oldPhone).update({
         'name': newName,
         'networkName': newNetwork,
@@ -194,16 +197,11 @@ class SystemProvider extends ChangeNotifier {
         'password': newPassword,
       });
     } else {
-      // عملية ترحيل بيانات كاملة (Migration) لأن الرقم تغير
-      if (checkUserExists(newPhone)) {
-        throw Exception('رقم الهاتف الجديد مستخدم بالفعل لوكيل آخر!');
-      }
+      if (checkUserExists(newPhone)) throw Exception('رقم الهاتف الجديد مستخدم بالفعل لوكيل آخر!');
 
       final docSnapshot = await _db.collection('users').doc(oldPhone).get();
       if (docSnapshot.exists) {
         Map<String, dynamic> oldData = docSnapshot.data()!;
-
-        // دمج التعديلات الجديدة
         oldData['phone'] = newPhone;
         oldData['name'] = newName;
         oldData['networkName'] = newNetwork;
@@ -211,17 +209,11 @@ class SystemProvider extends ChangeNotifier {
         oldData['profitMargin'] = newProfit;
         oldData['password'] = newPassword;
 
-        // النقل الآمن عبر حزمة الأوامر (WriteBatch)
         WriteBatch batch = _db.batch();
-        DocumentReference newDocRef = _db.collection('users').doc(newPhone);
-        DocumentReference oldDocRef = _db.collection('users').doc(oldPhone);
-
-        batch.set(newDocRef, oldData); 
-        batch.delete(oldDocRef);       
-
+        batch.set(_db.collection('users').doc(newPhone), oldData); 
+        batch.delete(_db.collection('users').doc(oldPhone));       
         await batch.commit(); 
         
-        // تحديث المتغير المحلي إذا كان المالك نفسه هو من يغير رقمه
         _activeUserPhone = _activeUserPhone == oldPhone ? newPhone : _activeUserPhone;
       }
     }
@@ -232,57 +224,87 @@ class SystemProvider extends ChangeNotifier {
     _db.collection('users').doc(phone).update({'status': newStatus});
   }
 
-  void deleteAgent(String phone) {
-    _db.collection('users').doc(phone).delete();
+  void deleteAgent(String phone) => _db.collection('users').doc(phone).delete();
+
+  // ==========================================
+  // 6. العمليات المالية الصارمة (المركز المالي) 💸
+  // ==========================================
+
+  // أ. تحديث حد الخطر للوكيل
+  Future<void> updateDangerLimit(String phone, double newLimit) async {
+    await _db.collection('users').doc(phone).update({'dangerLimit': newLimit});
   }
 
-  void addAnnouncement(String newAd) {
-    _db.collection('system').doc('main_info').update({
-      'announcements': FieldValue.arrayUnion([newAd]) 
+  // ب. قبول طلب الشحن (عملية Batch صارمة)
+  Future<void> acceptRechargeRequest({
+    required String requestId, 
+    required String agentPhone, 
+    required String agentName, 
+    required double amount
+  }) async {
+    WriteBatch batch = _db.batch();
+
+    // 1. إضافة الرصيد لمحفظة الوكيل
+    DocumentReference agentRef = _db.collection('users').doc(agentPhone);
+    batch.update(agentRef, {'balance': FieldValue.increment(amount)});
+
+    // 2. تحديث حالة الطلب إلى مقبول
+    DocumentReference requestRef = _db.collection('recharge_requests').doc(requestId);
+    batch.update(requestRef, {'status': 'مقبول'});
+
+    // 3. تسجيل العملية في السجل الشامل
+    DocumentReference transactionRef = _db.collection('transactions').doc();
+    batch.set(transactionRef, {
+      'agentPhone': agentPhone,
+      'agentName': agentName,
+      'type': 'إيداع حوالة (موافقة إلكترونية)',
+      'amount': amount,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+    await batch.commit(); // تنفيذ جميع الأوامر أو التراجع عنها معاً
+  }
+
+  // ج. رفض طلب الشحن
+  Future<void> rejectRechargeRequest(String requestId, String reason) async {
+    await _db.collection('recharge_requests').doc(requestId).update({
+      'status': 'مرفوض',
+      'rejectReason': reason,
     });
   }
 
-  // ==========================================
-  // 6. العمليات المالية 
-  // ==========================================
+  // د. التسوية اليدوية (خصم أو إضافة)
+  Future<void> manualSettlement({
+    required String agentPhone,
+    required String agentName,
+    required double amount, // قيمة موجبة للإضافة، وسالبة للخصم
+    required String reason,
+  }) async {
+    WriteBatch batch = _db.batch();
 
-  bool transferFromAdminToAgent(String agentPhone, double amount) {
-    if (_adminMainBalance >= amount) {
-      _db.collection('system').doc('main_info').update({
-        'adminMainBalance': FieldValue.increment(-amount)
-      });
-      _db.collection('users').doc(agentPhone).update({
-        'balance': FieldValue.increment(amount)
-      });
-      return true; 
-    }
-    return false; 
-  }
+    // 1. تحديث المحفظة
+    DocumentReference agentRef = _db.collection('users').doc(agentPhone);
+    batch.update(agentRef, {'balance': FieldValue.increment(amount)});
 
-  bool userBuyCard(double price, String cardName) {
-    if (_activeUserPhone == null) return false;
+    // 2. تسجيل العملية في السجل مع السبب
+    DocumentReference transactionRef = _db.collection('transactions').doc();
+    batch.set(transactionRef, {
+      'agentPhone': agentPhone,
+      'agentName': agentName,
+      'type': amount > 0 ? 'تسوية يدوية (إضافة)' : 'تسوية يدوية (خصم)',
+      'amount': amount,
+      'reason': reason,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
 
-    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
-    if (user['balance'] >= price && _totalSystemCards > 0) {
-      _db.collection('system').doc('main_info').update({
-        'totalSystemCards': FieldValue.increment(-1)
-      });
-      _db.collection('users').doc(_activeUserPhone).update({
-        'balance': FieldValue.increment(-price),
-        'purchasedCards': FieldValue.arrayUnion([cardName])
-      });
-      return true;
-    }
-    return false;
+    await batch.commit();
   }
 
   // ==========================================
   // 7. إعدادات الأمان
   // ==========================================
-
   bool changeUserPassword(String oldPassword, String newPassword) {
     if (_activeUserPhone == null) return false;
-    
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
     if (user['password'] == oldPassword) {
       _db.collection('users').doc(_activeUserPhone).update({'password': newPassword});
