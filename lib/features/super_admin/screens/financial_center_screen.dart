@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart'; // 👈 لضبط التواريخ
+import 'package:intl/intl.dart' hide TextDirection; // 👈 حجبنا اتجاه النص لمنع التضارب مع فلاتر
 import 'package:pdf/pdf.dart'; // 👈 محرك الـ PDF
 import 'package:pdf/widgets.dart' as pw; // 👈 أدوات رسم الـ PDF
 import 'package:printing/printing.dart'; // 👈 للطباعة والتحميل من المتصفح
