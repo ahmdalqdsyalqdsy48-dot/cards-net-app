@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // 👈 استدعاء مكتبة العقل المدبر
+import 'package:provider/provider.dart';
 
-import '../../../core/providers/system_provider.dart'; // 👈 استدعاء الخادم المحلي للرصيد
+import '../../../core/providers/system_provider.dart';
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart';
 
-// 👈 استدعاء جميع الشاشات التي قمنا ببرمجتها لربطها بالبطاقات
 import 'financial_center_screen.dart';
 import 'staff_support_screen.dart';
 import 'reports_screen.dart';
 import 'agent_management_screen.dart';
 import 'sms_gateway_screen.dart';
-import 'settings_screen.dart'; // 👈 تم إعادة الاستدعاء ليتطابق مع اسم الملف الفعلي لديك
+import 'settings_screen.dart';
 
 class SuperAdminDashboard extends StatefulWidget {
   const SuperAdminDashboard({super.key});
@@ -21,11 +20,10 @@ class SuperAdminDashboard extends StatefulWidget {
 }
 
 class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
-  // متغير لحفظ النطاق الزمني المختار من التقويم
   DateTimeRange? _selectedDateRange;
 
   // ==========================================
-  // دالة فتح التقويم الحقيقي (Date Range Picker) 📅
+  // دالة فتح التقويم الحقيقي 📅
   // ==========================================
   Future<void> _selectDateRange() async {
     final DateTimeRange? picked = await showDateRangePicker(
@@ -54,14 +52,10 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     }
   }
 
-  // دالة مساعدة لتنسيق التاريخ بشكل جميل
   String _formatDate(DateTime date) {
     return '${date.year}/${date.month}/${date.day}';
   }
 
-  // ==========================================
-  // دالة الانتقال بين الشاشات الفعلية 🚀
-  // ==========================================
   void _navigateTo(Widget screen) {
     Navigator.push(
       context,
@@ -73,16 +67,38 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    // 👈 جلب الأرباح الحقيقية للنظام من العقل المدبر
+    // ==========================================
+    // استدعاء البيانات الحية من العقل المدبر 🧠
+    // ==========================================
     final systemProvider = Provider.of<SystemProvider>(context);
+    
+    // بيانات المالك للقائمة الجانبية
     final adminBalance = systemProvider.adminMainBalance;
+    final userName = systemProvider.currentUserName;
+    final userPhone = systemProvider.currentUserPhone;
+
+    // حسابات البطاقات الديناميكية
+    final totalCards = systemProvider.totalSystemCards;
+    
+    // حساب طلبات الشحن
+    final pendingRequests = systemProvider.pendingRechargeRequests;
+    final pendingCount = pendingRequests.length;
+    final double pendingTotal = pendingRequests.fold(0.0, (sum, req) => sum + ((req['amount'] ?? 0.0) as num).toDouble());
+
+    // حساب الوكلاء في خطر (الرصيد أقل من أو يساوي حد الخطر)
+    final agentsInDanger = systemProvider.agentsList.where((agent) {
+      double balance = ((agent['balance'] ?? 0.0) as num).toDouble();
+      double dangerLimit = ((agent['dangerLimit'] ?? 0.0) as num).toDouble();
+      return balance <= dangerLimit;
+    }).length;
 
     return Scaffold(
       appBar: const CustomHeader(title: 'غرفة العمليات المركزية'),
       
+      // 👈 تم ربط القائمة الجانبية ببيانات المالك الحقيقية
       drawer: CustomDrawer(
-        userName: 'مالك النظام',
-        phoneNumber: '774578241',
+        userName: userName,
+        phoneNumber: userPhone,
         role: 'مالك النظام (Super Admin)',
         balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
       ),
@@ -137,7 +153,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
             const SizedBox(height: 10),
 
             // ==========================================
-            // شبكة البطاقات الـ 8 
+            // شبكة البطاقات (تم دمج الأرقام الحية) 🔥
             // ==========================================
             Expanded(
               child: GridView.count(
@@ -149,61 +165,72 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                 children: [
                   _buildDashboardCard(
                     title: 'مبيعات اليوم',
-                    value: '1,250,000',
+                    value: '1,250,000', // ثابت مؤقتاً
                     subValue: '+ أرباح: 45,000',
                     icon: Icons.monetization_on,
                     color: Colors.green,
                     onTap: () => _navigateTo(const FinancialCenterScreen()),
                   ),
+                  
+                  // 👈 بطاقة طلبات الشحن الديناميكية
                   _buildDashboardCard(
                     title: 'طلبات شحن معلقة',
-                    value: '3 طلبات',
-                    subValue: 'بإجمالي: 85,000 ريال',
+                    value: '$pendingCount طلبات',
+                    subValue: pendingCount > 0 ? 'بإجمالي: ${pendingTotal.toStringAsFixed(0)} ريال' : 'لا توجد طلبات جديدة',
                     icon: Icons.download,
-                    color: Colors.redAccent,
-                    isAlert: true,
+                    color: pendingCount > 0 ? Colors.redAccent : Colors.grey,
+                    isAlert: pendingCount > 0,
                     onTap: () => _navigateTo(const FinancialCenterScreen()),
                   ),
+                  
+                  // 👈 بطاقة رادار الخطر الديناميكية
                   _buildDashboardCard(
                     title: 'رادار الخطر',
-                    value: '2 وكلاء',
-                    subValue: 'محافظهم توشك على النفاذ',
+                    value: '$agentsInDanger وكلاء',
+                    subValue: agentsInDanger > 0 ? 'تجاوزوا حد الخطر المسموح!' : 'جميع الوكلاء في أمان',
                     icon: Icons.warning_amber_rounded,
-                    color: Colors.orange,
-                    onTap: () => _navigateTo(const FinancialCenterScreen()),
+                    color: agentsInDanger > 0 ? Colors.orange : Colors.grey,
+                    isAlert: agentsInDanger > 0,
+                    onTap: () => _navigateTo(const AgentManagementScreen()),
                   ),
+                  
                   _buildDashboardCard(
                     title: 'تذاكر الدعم',
-                    value: '5 مفتوحة',
+                    value: '5 مفتوحة', // ثابت مؤقتاً
                     subValue: '2 منها أولوية قصوى',
                     icon: Icons.support_agent,
                     color: Colors.blue,
                     onTap: () => _navigateTo(const StaffSupportScreen()),
                   ),
+                  
+                  // 👈 بطاقة المخزون الكلي الديناميكية
                   _buildDashboardCard(
                     title: 'إجمالي المخزون',
-                    value: '8.5 مليون',
-                    subValue: 'إجمالي قيمة الكروت',
+                    value: '$totalCards كرت',
+                    subValue: 'كروت متوفرة بالنظام',
                     icon: Icons.inventory_2,
                     color: Colors.teal,
                     onTap: () => _navigateTo(const ReportsScreen()),
                   ),
+                  
                   _buildDashboardCard(
                     title: 'الوكيل الأنشط',
-                    value: 'شبكة الصقر',
+                    value: 'شبكة الصقر', // ثابت مؤقتاً
                     subValue: 'مبيعات: 450 كرت اليوم',
                     icon: Icons.star,
                     color: Colors.amber.shade600,
                     onTap: () => _navigateTo(const AgentManagementScreen()),
                   ),
+                  
                   _buildDashboardCard(
                     title: 'رصيد الـ SMS',
-                    value: '4,500',
+                    value: '4,500', // ثابت مؤقتاً
                     subValue: 'رسالة متبقية',
                     icon: Icons.sms,
                     color: Colors.purple,
                     onTap: () => _navigateTo(const SmsGatewayScreen()),
                   ),
+                  
                   _buildDashboardCard(
                     title: 'إعدادات النظام',
                     value: 'تحكم كامل',
