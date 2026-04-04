@@ -19,7 +19,7 @@ class SystemProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _auditLogs = []; 
 
   // ==========================================
-  // 🆕 متغيرات النسخ الاحتياطي السحابي
+  // 🆕 متغيرات النسخ الاحتياطي والحسابات البنكية
   // ==========================================
   bool _isAutoBackupEnabled = true;
   String _backupFrequency = 'يومياً';
@@ -28,6 +28,9 @@ class SystemProvider extends ChangeNotifier {
   bool _isDriveLinked = false;
   bool _isDropboxLinked = false;
   List<Map<String, dynamic>> _backupsList = [];
+  
+  // 👈 قائمة الحسابات البنكية السحابية
+  List<Map<String, dynamic>> _bankAccounts = [];
 
   // ==========================================
   // 3. تهيئة النظام (الاستماع للسحابة لحظة بلحظة)
@@ -77,7 +80,6 @@ class SystemProvider extends ChangeNotifier {
       notifyListeners();
     });
 
-    // 🆕 الاستماع لإعدادات النسخ الاحتياطي
     _db.collection('system').doc('backup_settings').snapshots().listen((snapshot) {
       if (snapshot.exists) {
         final data = snapshot.data()!;
@@ -89,7 +91,6 @@ class SystemProvider extends ChangeNotifier {
         _isDropboxLinked = data['isDropboxLinked'] ?? false;
         notifyListeners();
       } else {
-        // إنشاء الإعدادات الافتراضية إذا لم تكن موجودة
         _db.collection('system').doc('backup_settings').set({
           'isAutoBackupEnabled': true,
           'backupFrequency': 'يومياً',
@@ -101,9 +102,14 @@ class SystemProvider extends ChangeNotifier {
       }
     });
 
-    // 🆕 الاستماع للنسخ الاحتياطية المأخوذة
     _db.collection('backups').orderBy('timestamp', descending: true).snapshots().listen((snapshot) {
       _backupsList = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
+      notifyListeners();
+    });
+
+    // 🆕 الاستماع للحسابات البنكية (مرتبة حسب حقل "order")
+    _db.collection('bank_accounts').orderBy('order').snapshots().listen((snapshot) {
+      _bankAccounts = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
       notifyListeners();
     });
   }
@@ -126,7 +132,6 @@ class SystemProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get transactionsLedger => _transactionsLedger;
   List<Map<String, dynamic>> get auditLogs => _auditLogs;
 
-  // 🆕 دوال قراءة النسخ الاحتياطي
   bool get isAutoBackupEnabled => _isAutoBackupEnabled;
   String get backupFrequency => _backupFrequency;
   String get backupTime => _backupTime;
@@ -134,6 +139,9 @@ class SystemProvider extends ChangeNotifier {
   bool get isDriveLinked => _isDriveLinked;
   bool get isDropboxLinked => _isDropboxLinked;
   List<Map<String, dynamic>> get backupsList => _backupsList;
+  
+  // 👈 قراءة الحسابات البنكية السحابية
+  List<Map<String, dynamic>> get bankAccounts => _bankAccounts;
 
   String get currentUserName {
     if (_activeUserPhone == null) return 'مستخدم غير معروف';
@@ -443,10 +451,6 @@ class SystemProvider extends ChangeNotifier {
     _db.collection('users').doc(_activeUserPhone).update({'isBiometricEnabled': isEnabled});
   }
 
-  // ==========================================
-  // 🆕 دوال إدارة النسخ الاحتياطي
-  // ==========================================
-  
   Future<void> updateAutoBackupSettings(bool isEnabled, String freq, String time, String email) async {
     await _db.collection('system').doc('backup_settings').update({
       'isAutoBackupEnabled': isEnabled,
@@ -492,5 +496,69 @@ class SystemProvider extends ChangeNotifier {
     } else {
       logAction(action: 'استعادة النظام (فاشلة)', details: 'محاولة فاشلة لاستعادة النظام - إدخال رمز PIN غير صحيح', severity: 'critical');
     }
+  }
+
+  // ==========================================
+  // 🆕 دوال إدارة الحسابات البنكية
+  // ==========================================
+
+  Future<void> addBankAccount(String bankName, String accNumber, String beneficiary) async {
+    // نعطي الحساب ترتيباً يجعله في نهاية القائمة دائماً
+    int newOrder = _bankAccounts.length;
+    
+    await _db.collection('bank_accounts').add({
+      'bankName': bankName,
+      'accountNumber': accNumber,
+      'beneficiary': beneficiary.isNotEmpty ? beneficiary : 'غير محدد',
+      'status': 'نشط',
+      'hasQR': false, // حالياً بدون صورة، ويمكن تطويرها لاحقاً
+      'order': newOrder,
+    });
+    
+    logAction(action: 'إضافة حساب بنكي', details: 'تم إضافة حساب $bankName برقم $accNumber', severity: 'medium');
+  }
+
+  Future<void> updateBankAccount(String docId, String bankName, String accNumber, String beneficiary) async {
+    await _db.collection('bank_accounts').doc(docId).update({
+      'bankName': bankName,
+      'accountNumber': accNumber,
+      'beneficiary': beneficiary,
+    });
+    logAction(action: 'تعديل حساب بنكي', details: 'تم تعديل بيانات الحساب البنكي $bankName', severity: 'medium');
+  }
+
+  Future<void> toggleBankAccountStatus(String docId, String currentStatus) async {
+    String newStatus = currentStatus == 'نشط' ? 'موقوف' : 'نشط';
+    await _db.collection('bank_accounts').doc(docId).update({'status': newStatus});
+    logAction(action: 'تغيير حالة حساب بنكي', details: 'تم $newStatus حساب بنكي', severity: 'medium');
+  }
+
+  Future<void> deleteBankAccount(String docId) async {
+    await _db.collection('bank_accounts').doc(docId).delete();
+    logAction(action: 'حذف حساب بنكي', details: 'تم حذف حساب بنكي من النظام', severity: 'critical');
+  }
+
+  // دالة ذكية لحفظ الترتيب الجديد عند استخدام (السحب والإفلات)
+  Future<void> reorderBankAccounts(int oldIndex, int newIndex) async {
+    if (oldIndex < newIndex) {
+      newIndex -= 1;
+    }
+    
+    // إنشاء نسخة محلية لنقوم بترتيبها أولاً
+    final item = _bankAccounts.removeAt(oldIndex);
+    _bankAccounts.insert(newIndex, item);
+    
+    // تحديث الواجهة فوراً لكي لا يشعر المستخدم ببطء
+    notifyListeners();
+
+    // إرسال الترتيب الجديد للسحابة باستخدام Batch لضمان سرعة التنفيذ وعدم استهلاك العمليات
+    WriteBatch batch = _db.batch();
+    for (int i = 0; i < _bankAccounts.length; i++) {
+      DocumentReference ref = _db.collection('bank_accounts').doc(_bankAccounts[i]['docId']);
+      batch.update(ref, {'order': i});
+    }
+    
+    await batch.commit();
+    logAction(action: 'إعادة ترتيب الحسابات', details: 'تم تغيير ترتيب ظهور الحسابات البنكية للوكلاء', severity: 'normal');
   }
 }
