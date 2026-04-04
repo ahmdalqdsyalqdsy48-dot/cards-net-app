@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // 👈 استدعاء مكتبة الحافظة (لخاصية النسخ السريع)
+import 'package:flutter/services.dart'; 
 import 'package:provider/provider.dart'; 
 
 import '../../../core/providers/system_provider.dart'; 
@@ -16,7 +16,7 @@ class BankAccountsScreen extends StatefulWidget {
 class _BankAccountsScreenState extends State<BankAccountsScreen> {
   
   // ==========================================
-  // 1. نافذة إضافة حساب بنكي جديد ➕ (مربوطة بالسحابة)
+  // 1. نافذة إضافة حساب بنكي جديد ➕
   // ==========================================
   void _showAddAccountDialog(SystemProvider provider) {
     final bankNameController = TextEditingController();
@@ -45,7 +45,6 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
                 _buildTextField('ملاحظات التحويل (اختياري)', Icons.notes),
                 const SizedBox(height: 10),
                 
-                // زر رفع الباركود QR
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(15),
@@ -80,14 +79,23 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
             ElevatedButton(
               onPressed: () {
                 if (bankNameController.text.isNotEmpty && accountNumberController.text.isNotEmpty) {
-                  // 👈 إرسال البيانات للعقل المدبر ليحفظها في السحابة
+                  // 1. التقاط المنسق قبل إغلاق النافذة
+                  final messenger = ScaffoldMessenger.of(context);
+                  
+                  // 2. إرسال أمر الحفظ في الخلفية ومراقبة الأخطاء بصمت
                   provider.addBankAccount(
                     bankNameController.text,
                     accountNumberController.text,
                     beneficiaryController.text,
-                  );
+                  ).catchError((error) {
+                    messenger.showSnackBar(SnackBar(content: Text('فشل الحفظ ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red, duration: const Duration(seconds: 6)));
+                  });
+
+                  // 3. إغلاق النافذة فوراً لسرعة الاستخدام
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الحساب للسحابة بنجاح ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                  
+                  // 4. إظهار إشعار التحميل السريع
+                  messenger.showSnackBar(const SnackBar(content: Text('جاري الحفظ في السحابة... ☁️', textDirection: TextDirection.rtl), backgroundColor: Colors.blueGrey, duration: Duration(seconds: 2)));
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال اسم البنك ورقم الحساب على الأقل ❌', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
                 }
@@ -101,7 +109,7 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
   }
 
   // ==========================================
-  // 2. نافذة تعديل حساب موجود ✏️ (مربوطة بالسحابة)
+  // 2. نافذة تعديل حساب موجود ✏️
   // ==========================================
   void _showEditAccountDialog(SystemProvider provider, Map<String, dynamic> account) {
     final bankNameController = TextEditingController(text: account['bankName']);
@@ -135,15 +143,19 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
               onPressed: () {
-                // 👈 إرسال التعديل للعقل المدبر
+                final messenger = ScaffoldMessenger.of(context);
+                
                 provider.updateBankAccount(
                   account['docId'],
                   bankNameController.text,
                   accountNumberController.text,
                   beneficiaryController.text,
-                );
+                ).catchError((error) {
+                  messenger.showSnackBar(SnackBar(content: Text('فشل التعديل ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red, duration: const Duration(seconds: 6)));
+                });
+
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تعديل الحساب بنجاح ✏️', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                messenger.showSnackBar(const SnackBar(content: Text('جاري تطبيق التعديلات... ☁️', textDirection: TextDirection.rtl), backgroundColor: Colors.orange, duration: Duration(seconds: 2)));
               },
               child: const Text('حفظ التعديلات', style: TextStyle(color: Colors.white)),
             ),
@@ -154,13 +166,20 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
   }
 
   // ==========================================
-  // 3. دوال التحكم (حذف، تغيير حالة، نسخ سريع)
+  // 3. دوال التحكم (تغيير حالة، حذف، نسخ)
   // ==========================================
   void _toggleAccountStatus(SystemProvider provider, Map<String, dynamic> account) {
-    provider.toggleBankAccountStatus(account['docId'], account['status']);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(account['status'] == 'موقوف' ? 'تم تفعيل الحساب وسيظهر للوكلاء ▶️' : 'تم إيقاف الحساب وإخفاؤه عن الوكلاء ⏸️', textDirection: TextDirection.rtl),
-      backgroundColor: account['status'] == 'موقوف' ? Colors.green : Colors.orange,
+    final messenger = ScaffoldMessenger.of(context);
+    
+    provider.toggleBankAccountStatus(account['docId'], account['status']).catchError((error) {
+      messenger.showSnackBar(SnackBar(content: Text('فشل تغيير الحالة ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+    });
+    
+    // إشعار فوري
+    messenger.showSnackBar(SnackBar(
+      content: Text(account['status'] == 'موقوف' ? 'جاري التفعيل... ▶️' : 'جاري الإيقاف... ⏸️', textDirection: TextDirection.rtl),
+      backgroundColor: Colors.blueGrey,
+      duration: const Duration(seconds: 1),
     ));
   }
 
@@ -177,9 +196,14 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () {
-                provider.deleteBankAccount(docId); // 👈 حذف سحابي
+                final messenger = ScaffoldMessenger.of(context);
+                
+                provider.deleteBankAccount(docId).catchError((error) {
+                  messenger.showSnackBar(SnackBar(content: Text('فشل الحذف ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                });
+                
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف الحساب نهائياً 🗑️', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                messenger.showSnackBar(const SnackBar(content: Text('جاري الحذف من السيرفر... 🗑️', textDirection: TextDirection.rtl), backgroundColor: Colors.red, duration: Duration(seconds: 2)));
               },
               child: const Text('نعم، احذف الحساب', style: TextStyle(color: Colors.white)),
             ),
@@ -189,7 +213,7 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
     );
   }
 
-  // 🎁 دالة النسخ السريع لمشاركة الحساب بسهولة
+  // 🎁 دالة النسخ السريع
   void _copyAccountDetails(Map<String, dynamic> account) {
     String data = '''
 🏦 ${account['bankName']}
@@ -197,15 +221,14 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
 👤 باسم: ${account['beneficiary']}
 ''';
     Clipboard.setData(ClipboardData(text: data));
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم نسخ بيانات الحساب بنجاح، جاهزة للإرسال! 📋', textDirection: TextDirection.rtl), backgroundColor: Colors.blueGrey));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم نسخ بيانات الحساب بنجاح، جاهزة للإرسال! 📋', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
   }
 
   @override
   Widget build(BuildContext context) {
-    // 👈 قراءة البيانات الحية من العقل المدبر
     final systemProvider = Provider.of<SystemProvider>(context);
     final adminBalance = systemProvider.adminMainBalance;
-    final bankAccounts = systemProvider.bankAccounts; // 👈 جلب الحسابات السحابية
+    final bankAccounts = systemProvider.bankAccounts; 
 
     return Scaffold(
       appBar: const CustomHeader(title: 'الحسابات البنكية'),
@@ -219,14 +242,13 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // === زر الإضافة العلوي ===
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton.icon(
-                  onPressed: () => _showAddAccountDialog(systemProvider), // 👈 تمرير الـ Provider
+                  onPressed: () => _showAddAccountDialog(systemProvider), 
                   icon: const Icon(Icons.add_card, color: Colors.white),
                   label: const Text('إضافة حساب بنكي جديد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                   style: ElevatedButton.styleFrom(
@@ -237,7 +259,6 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
               ),
             ),
 
-            // رسالة إرشادية
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               color: Colors.yellow.shade50,
@@ -250,7 +271,7 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
               ),
             ),
 
-            // === قائمة الحسابات السحابية (ReorderableListView) ===
+            // قائمة الحسابات السحابية
             Expanded(
               child: bankAccounts.isEmpty
                   ? const Center(child: Text('لا توجد حسابات مضافة حالياً. اضغط على الزر أعلاه لإضافة حساب.', style: TextStyle(color: Colors.grey)))
@@ -258,15 +279,18 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
                       padding: const EdgeInsets.all(16),
                       itemCount: bankAccounts.length,
                       onReorder: (oldIndex, newIndex) {
-                        // 👈 إرسال الترتيب الجديد للسحابة
-                        systemProvider.reorderBankAccounts(oldIndex, newIndex);
+                        final messenger = ScaffoldMessenger.of(context);
+                        // إرسال الترتيب الجديد ومراقبة الفشل
+                        systemProvider.reorderBankAccounts(oldIndex, newIndex).catchError((error) {
+                          messenger.showSnackBar(SnackBar(content: Text('فشل المزامنة ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                        });
                       },
                       itemBuilder: (context, index) {
                         final account = bankAccounts[index];
                         final isActive = account['status'] == 'نشط';
 
                         return Card(
-                          key: ValueKey(account['docId']), // 👈 المفتاح السحابي
+                          key: ValueKey(account['docId']),
                           elevation: 2,
                           margin: const EdgeInsets.only(bottom: 12),
                           shape: RoundedRectangleBorder(
@@ -318,9 +342,7 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
                                     Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        // 🎁 زر النسخ السريع
                                         _buildSmallButton(Icons.copy, 'نسخ البيانات', Colors.blueGrey, () => _copyAccountDetails(account)),
-                                        // أزرار التحكم السحابية
                                         _buildSmallButton(Icons.edit, 'تعديل', Colors.orange, () => _showEditAccountDialog(systemProvider, account)),
                                         _buildSmallButton(
                                           isActive ? Icons.visibility_off : Icons.visibility,
@@ -346,9 +368,6 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
     );
   }
 
-  // ==========================================
-  // دوال مساعدة للتصميم
-  // ==========================================
   Widget _buildTextField(String label, IconData icon, {TextEditingController? controller, bool isNumber = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
