@@ -102,29 +102,30 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 5. دوال الإدارة والتحكم 🚀 (السحابية الصارمة)
+  // 5. دوال الإدارة والتحكم 🚀
   // ==========================================
   
   Future<void> updateNewsSpeed(double newSpeed) async {
     try {
       await _db.collection('system').doc('main_info').update({'newsScrollSpeed': newSpeed});
     } catch (e) {
-      // تجاهل مؤقت لحين بناء المستند
+      // تجاهل
     }
   }
 
   Future<bool> checkUserExists(String phone) async {
     try {
-      final doc = await _db.collection('users').doc(phone).get();
+      final doc = await _db.collection('users').doc(phone).get().timeout(const Duration(seconds: 5));
       return doc.exists;
     } catch (e) {
-      return false; // إذا كان هناك خطأ، اعتبره غير موجود لمنع تعليق النظام
+      return false; // نعتبره غير موجود في حالة الخطأ أو ضعف الإنترنت
     }
   }
 
-  // 🔴 هنا السحر الحقيقي: فحص المالك يتم قبل أي اتصال بالإنترنت! 🔴
+  // 🔴 الدالة المحسنة: الدخول الفوري للمالك بدون انتظار (Fire and Forget)
   Future<Map<String, dynamic>?> loginUser(String phone, String password) async {
-    // 1. فحص بيانات المالك أولاً (لحظياً بدون انتظار 12 ثانية)
+    
+    // 1. فحص بيانات المالك أولاً (دخول لحظي)
     if (phone == '774578241' && password == '75486958aaa') {
       final superAdminData = {
         'id': 'SUPER_ADMIN_01',
@@ -139,28 +140,27 @@ class SystemProvider extends ChangeNotifier {
         'isBiometricEnabled': false,
       };
       
+      // إرسال البيانات للسحابة في الخلفية (تم إزالة await لمنع التعليق)
       try {
-        // حفر بياناتك في فايربيس لتظهر في الصورة الفارغة التي أرسلتها!
-        await _db.collection('users').doc('774578241').set(superAdminData);
-        // بناء ملف النظام الأساسي أيضاً
-        await _db.collection('system').doc('main_info').set({
+        _db.collection('users').doc('774578241').set(superAdminData);
+        _db.collection('system').doc('main_info').set({
           'adminMainBalance': 10000000.0,
           'totalSystemCards': 5000,
           'announcements': ['أهلاً بك في شبكة كروت نت...'],
           'newsScrollSpeed': 40.0,
         });
       } catch (e) {
-        // نتجاهل أي خطأ اتصال ونسمح لك بالدخول فوراً!
+        // تجاهل الأخطاء الصامتة
       }
       
       _activeUserPhone = phone;
       notifyListeners();
-      return superAdminData; 
+      return superAdminData; // الدخول يتم في كسر من الثانية!
     }
 
-    // 2. إذا لم يكن المالك (وكيل أو مستخدم)، نبحث في السحابة
+    // 2. للوكلاء والمستخدمين: جلب البيانات من السحابة مع صمام أمان زمني (Timeout)
     try {
-      final doc = await _db.collection('users').doc(phone).get();
+      final doc = await _db.collection('users').doc(phone).get().timeout(const Duration(seconds: 7));
       if (doc.exists) {
         final userData = doc.data() as Map<String, dynamic>;
         if (userData['password'] == password) {
@@ -171,7 +171,7 @@ class SystemProvider extends ChangeNotifier {
       }
       return null; 
     } catch (e) {
-      return null; 
+      return null; // يتوقف بعد 7 ثوانٍ ويعطي خطأ بدلاً من التعليق
     }
   }
 
