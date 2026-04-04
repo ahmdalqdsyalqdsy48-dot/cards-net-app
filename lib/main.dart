@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart'; // 👈 1. استدعاء مكتبة فايربيس
+import 'package:cloud_firestore/cloud_firestore.dart'; // 👈 🆕 استدعاء مكتبة فايرستور للتحكم في الإعدادات
 
 // استدعاء العقول (Providers) التي أنشأناها
 import 'core/providers/theme_provider.dart';
@@ -24,6 +25,9 @@ void main() async {
       appId: "1:504008355647:web:c236e55cd00d7c5c8d6d8a",
     ),
   );
+
+  // 🚨 5. السطر السحري والأهم: إيقاف الحفظ الوهمي (الذاكرة المؤقتة) لكشف أي خطأ سحابي فوراً 🚨
+  FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: false);
 
   runApp(
     MultiProvider(
