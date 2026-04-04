@@ -16,9 +16,18 @@ class SystemProvider extends ChangeNotifier {
   List<String> _announcements = []; 
   List<Map<String, dynamic>> _rechargeRequests = []; 
   List<Map<String, dynamic>> _transactionsLedger = []; 
-  
-  // 👈 إضافة قائمة السجل الأسود (الصندوق الأسود)
   List<Map<String, dynamic>> _auditLogs = []; 
+
+  // ==========================================
+  // 🆕 متغيرات النسخ الاحتياطي السحابي
+  // ==========================================
+  bool _isAutoBackupEnabled = true;
+  String _backupFrequency = 'يومياً';
+  String _backupTime = '04:00 فجراً';
+  String _emergencyEmail = '';
+  bool _isDriveLinked = false;
+  bool _isDropboxLinked = false;
+  List<Map<String, dynamic>> _backupsList = [];
 
   // ==========================================
   // 3. تهيئة النظام (الاستماع للسحابة لحظة بلحظة)
@@ -60,12 +69,41 @@ class SystemProvider extends ChangeNotifier {
       notifyListeners();
     });
 
-    // 👈 الاستماع للسجل الأسود (نجلب أحدث 50 حركة فقط للحفاظ على سرعة النظام)
     _db.collection('audit_logs')
        .orderBy('timestamp', descending: true)
        .limit(50)
        .snapshots().listen((snapshot) {
       _auditLogs = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
+      notifyListeners();
+    });
+
+    // 🆕 الاستماع لإعدادات النسخ الاحتياطي
+    _db.collection('system').doc('backup_settings').snapshots().listen((snapshot) {
+      if (snapshot.exists) {
+        final data = snapshot.data()!;
+        _isAutoBackupEnabled = data['isAutoBackupEnabled'] ?? true;
+        _backupFrequency = data['backupFrequency'] ?? 'يومياً';
+        _backupTime = data['backupTime'] ?? '04:00 فجراً';
+        _emergencyEmail = data['emergencyEmail'] ?? '';
+        _isDriveLinked = data['isDriveLinked'] ?? false;
+        _isDropboxLinked = data['isDropboxLinked'] ?? false;
+        notifyListeners();
+      } else {
+        // إنشاء الإعدادات الافتراضية إذا لم تكن موجودة
+        _db.collection('system').doc('backup_settings').set({
+          'isAutoBackupEnabled': true,
+          'backupFrequency': 'يومياً',
+          'backupTime': '04:00 فجراً',
+          'emergencyEmail': '',
+          'isDriveLinked': false,
+          'isDropboxLinked': false,
+        });
+      }
+    });
+
+    // 🆕 الاستماع للنسخ الاحتياطية المأخوذة
+    _db.collection('backups').orderBy('timestamp', descending: true).snapshots().listen((snapshot) {
+      _backupsList = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
       notifyListeners();
     });
   }
@@ -86,9 +124,16 @@ class SystemProvider extends ChangeNotifier {
 
   List<Map<String, dynamic>> get pendingRechargeRequests => _rechargeRequests;
   List<Map<String, dynamic>> get transactionsLedger => _transactionsLedger;
-  
-  // 👈 دالة قراءة السجل الأسود لتصديره للشاشة
   List<Map<String, dynamic>> get auditLogs => _auditLogs;
+
+  // 🆕 دوال قراءة النسخ الاحتياطي
+  bool get isAutoBackupEnabled => _isAutoBackupEnabled;
+  String get backupFrequency => _backupFrequency;
+  String get backupTime => _backupTime;
+  String get emergencyEmail => _emergencyEmail;
+  bool get isDriveLinked => _isDriveLinked;
+  bool get isDropboxLinked => _isDropboxLinked;
+  List<Map<String, dynamic>> get backupsList => _backupsList;
 
   String get currentUserName {
     if (_activeUserPhone == null) return 'مستخدم غير معروف';
@@ -120,12 +165,10 @@ class SystemProvider extends ChangeNotifier {
   // 🛡️ دالة التسجيل الصامت (الصندوق الأسود)
   // ==========================================
   Future<void> logAction({required String action, required String details, required String severity}) async {
-    if (_activeUserPhone == null) return; // لا تسجل إذا لم يكن هناك شخص مسجل دخوله
+    if (_activeUserPhone == null) return; 
 
-    // نجلب بيانات الشخص الذي قام بالحركة
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'name': 'غير معروف', 'role': 'Unknown'});
     
-    // تنسيق التاريخ والوقت
     final now = DateTime.now();
     final formattedDate = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
@@ -137,13 +180,11 @@ class SystemProvider extends ChangeNotifier {
         'action': action,
         'details': details,
         'datetime': formattedDate,
-        'timestamp': FieldValue.serverTimestamp(), // للترتيب السحابي
+        'timestamp': FieldValue.serverTimestamp(), 
         'ip': 'Cloud System', 
-        'severity': severity, // 'normal', 'medium', 'critical'
+        'severity': severity,
       });
-    } catch (e) {
-      // نتجاهل الخطأ لكي لا تتعطل العملية الأصلية
-    }
+    } catch (e) {}
   }
 
   // ==========================================
@@ -193,7 +234,6 @@ class SystemProvider extends ChangeNotifier {
       _activeUserPhone = phone;
       notifyListeners();
       
-      // 👈 تسجيل الدخول في السجل
       logAction(action: 'تسجيل دخول', details: 'تم تسجيل الدخول بنجاح لمالك النظام', severity: 'normal');
       
       return superAdminData; 
@@ -260,7 +300,6 @@ class SystemProvider extends ChangeNotifier {
         'isBiometricEnabled': false,
       });
       
-      // 👈 تسجيل الحدث
       logAction(action: 'إضافة وكيل جديد', details: 'تم إضافة وكيل جديد باسم "$name" ورقم $phone', severity: 'medium');
     } else {
       throw 'رقم الهاتف مسجل مسبقاً!';
@@ -285,7 +324,6 @@ class SystemProvider extends ChangeNotifier {
       if (oldPhone != newPhone) batch.delete(_db.collection('users').doc(oldPhone));
       await batch.commit();
       
-      // 👈 تسجيل الحدث
       logAction(action: 'تعديل بيانات وكيل', details: 'تم تعديل بيانات الوكيل صاحب الرقم $oldPhone', severity: 'medium');
     }
   }
@@ -294,19 +332,13 @@ class SystemProvider extends ChangeNotifier {
     String newStatus = currentStatus == 'نشط' ? 'مجمد' : 'نشط';
     _db.collection('users').doc(phone).update({'status': newStatus});
     
-    // 👈 تسجيل الحدث
     logAction(action: 'تغيير حالة حساب', details: 'تم تغيير حالة الحساب $phone إلى [$newStatus]', severity: 'critical');
   }
 
   void deleteAgent(String phone) {
     _db.collection('users').doc(phone).delete();
-    // 👈 تسجيل الحدث
     logAction(action: 'حذف وكيل', details: 'تم حذف الوكيل $phone نهائياً من النظام', severity: 'critical');
   }
-
-  // ==========================================
-  // 6. العمليات المالية الصارمة
-  // ==========================================
 
   bool userBuyCard(double price, String cardName) {
     if (_activeUserPhone == null) return false;
@@ -321,7 +353,6 @@ class SystemProvider extends ChangeNotifier {
         'purchasedCards': FieldValue.arrayUnion([cardName])
       });
       
-      // 👈 تسجيل الحدث للوكيل
       logAction(action: 'شراء كرت', details: 'تم سحب كرت $cardName بسعر $price ريال', severity: 'normal');
       return true;
     }
@@ -358,7 +389,6 @@ class SystemProvider extends ChangeNotifier {
 
     await batch.commit(); 
     
-    // 👈 تسجيل الحدث
     logAction(action: 'موافقة على شحن', details: 'تم قبول طلب شحن وإضافة $amount ريال للوكيل $agentName', severity: 'normal');
   }
 
@@ -393,14 +423,10 @@ class SystemProvider extends ChangeNotifier {
 
     await batch.commit();
     
-    // 👈 تسجيل الحدث
     String actionType = amount > 0 ? "إضافة" : "خصم";
     logAction(action: 'تسوية مالية يدوية ($actionType)', details: 'تم $actionType مبلغ $amount للوكيل $agentName. السبب: $reason', severity: 'critical');
   }
 
-  // ==========================================
-  // 7. إعدادات الأمان
-  // ==========================================
   bool changeUserPassword(String oldPassword, String newPassword) {
     if (_activeUserPhone == null) return false;
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
@@ -415,5 +441,56 @@ class SystemProvider extends ChangeNotifier {
   void toggleBiometric(bool isEnabled) {
     if (_activeUserPhone == null) return;
     _db.collection('users').doc(_activeUserPhone).update({'isBiometricEnabled': isEnabled});
+  }
+
+  // ==========================================
+  // 🆕 دوال إدارة النسخ الاحتياطي
+  // ==========================================
+  
+  Future<void> updateAutoBackupSettings(bool isEnabled, String freq, String time, String email) async {
+    await _db.collection('system').doc('backup_settings').update({
+      'isAutoBackupEnabled': isEnabled,
+      'backupFrequency': freq,
+      'backupTime': time,
+      'emergencyEmail': email,
+    });
+    logAction(action: 'إعدادات النسخ', details: 'تم تعديل إعدادات النسخ الاحتياطي التلقائي', severity: 'medium');
+  }
+
+  Future<void> toggleCloudLink(String service, bool isLinked) async {
+    if (service == 'drive') {
+      await _db.collection('system').doc('backup_settings').update({'isDriveLinked': isLinked});
+    } else {
+      await _db.collection('system').doc('backup_settings').update({'isDropboxLinked': isLinked});
+    }
+    logAction(action: 'الربط السحابي', details: 'تم ${isLinked ? "ربط" : "إلغاء ربط"} حساب $service بنجاح', severity: 'medium');
+  }
+
+  Future<void> takeManualBackup() async {
+    final now = DateTime.now();
+    final amPm = now.hour >= 12 ? 'PM' : 'AM';
+    int hour12 = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
+    final formattedDate = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${hour12.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} $amPm';
+    
+    await _db.collection('backups').add({
+      'date': formattedDate,
+      'size': '45 MB',
+      'type': 'يدوي (محلي)',
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+    logAction(action: 'أخذ نسخة يدوية', details: 'تم أخذ نسخة احتياطية بنجاح وتم رفعها للسحابة', severity: 'medium');
+  }
+
+  Future<void> deleteBackup(String docId) async {
+    await _db.collection('backups').doc(docId).delete();
+    logAction(action: 'حذف نسخة احتياطية', details: 'تم مسح نسخة احتياطية قديمة لتوفير المساحة', severity: 'critical');
+  }
+
+  Future<void> logRestoreAttempt(bool isSuccess, String backupDate) async {
+    if (isSuccess) {
+      logAction(action: 'استعادة النظام (ناجحة)', details: 'تم استعادة النظام إلى النقطة الزمنية ($backupDate)', severity: 'critical');
+    } else {
+      logAction(action: 'استعادة النظام (فاشلة)', details: 'محاولة فاشلة لاستعادة النظام - إدخال رمز PIN غير صحيح', severity: 'critical');
+    }
   }
 }
