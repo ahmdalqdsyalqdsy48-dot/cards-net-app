@@ -16,6 +16,9 @@ class SystemProvider extends ChangeNotifier {
   List<String> _announcements = []; 
   List<Map<String, dynamic>> _rechargeRequests = []; 
   List<Map<String, dynamic>> _transactionsLedger = []; 
+  
+  // 👈 إضافة قائمة السجل الأسود (الصندوق الأسود)
+  List<Map<String, dynamic>> _auditLogs = []; 
 
   // ==========================================
   // 3. تهيئة النظام (الاستماع للسحابة لحظة بلحظة)
@@ -56,6 +59,15 @@ class SystemProvider extends ChangeNotifier {
       _transactionsLedger = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
       notifyListeners();
     });
+
+    // 👈 الاستماع للسجل الأسود (نجلب أحدث 50 حركة فقط للحفاظ على سرعة النظام)
+    _db.collection('audit_logs')
+       .orderBy('timestamp', descending: true)
+       .limit(50)
+       .snapshots().listen((snapshot) {
+      _auditLogs = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
+      notifyListeners();
+    });
   }
 
   // ==========================================
@@ -74,6 +86,9 @@ class SystemProvider extends ChangeNotifier {
 
   List<Map<String, dynamic>> get pendingRechargeRequests => _rechargeRequests;
   List<Map<String, dynamic>> get transactionsLedger => _transactionsLedger;
+  
+  // 👈 دالة قراءة السجل الأسود لتصديره للشاشة
+  List<Map<String, dynamic>> get auditLogs => _auditLogs;
 
   String get currentUserName {
     if (_activeUserPhone == null) return 'مستخدم غير معروف';
@@ -102,15 +117,43 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
+  // 🛡️ دالة التسجيل الصامت (الصندوق الأسود)
+  // ==========================================
+  Future<void> logAction({required String action, required String details, required String severity}) async {
+    if (_activeUserPhone == null) return; // لا تسجل إذا لم يكن هناك شخص مسجل دخوله
+
+    // نجلب بيانات الشخص الذي قام بالحركة
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'name': 'غير معروف', 'role': 'Unknown'});
+    
+    // تنسيق التاريخ والوقت
+    final now = DateTime.now();
+    final formattedDate = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+
+    try {
+      await _db.collection('audit_logs').add({
+        'name': user['name'] ?? 'غير معروف',
+        'phone': _activeUserPhone,
+        'role': user['role'] ?? 'Unknown',
+        'action': action,
+        'details': details,
+        'datetime': formattedDate,
+        'timestamp': FieldValue.serverTimestamp(), // للترتيب السحابي
+        'ip': 'Cloud System', 
+        'severity': severity, // 'normal', 'medium', 'critical'
+      });
+    } catch (e) {
+      // نتجاهل الخطأ لكي لا تتعطل العملية الأصلية
+    }
+  }
+
+  // ==========================================
   // 5. دوال الإدارة والتحكم 🚀
   // ==========================================
   
   Future<void> updateNewsSpeed(double newSpeed) async {
     try {
       await _db.collection('system').doc('main_info').update({'newsScrollSpeed': newSpeed});
-    } catch (e) {
-      // تجاهل
-    }
+    } catch (e) {}
   }
 
   Future<bool> checkUserExists(String phone) async {
@@ -118,14 +161,11 @@ class SystemProvider extends ChangeNotifier {
       final doc = await _db.collection('users').doc(phone).get().timeout(const Duration(seconds: 5));
       return doc.exists;
     } catch (e) {
-      return false; // نعتبره غير موجود في حالة الخطأ أو ضعف الإنترنت
+      return false; 
     }
   }
 
-  // 🔴 الدالة المحسنة: الدخول الفوري للمالك بدون انتظار (Fire and Forget)
   Future<Map<String, dynamic>?> loginUser(String phone, String password) async {
-    
-    // 1. فحص بيانات المالك أولاً (دخول لحظي)
     if (phone == '774578241' && password == '75486958aaa') {
       final superAdminData = {
         'id': 'SUPER_ADMIN_01',
@@ -140,7 +180,6 @@ class SystemProvider extends ChangeNotifier {
         'isBiometricEnabled': false,
       };
       
-      // إرسال البيانات للسحابة في الخلفية (تم إزالة await لمنع التعليق)
       try {
         _db.collection('users').doc('774578241').set(superAdminData);
         _db.collection('system').doc('main_info').set({
@@ -149,16 +188,17 @@ class SystemProvider extends ChangeNotifier {
           'announcements': ['أهلاً بك في شبكة كروت نت...'],
           'newsScrollSpeed': 40.0,
         });
-      } catch (e) {
-        // تجاهل الأخطاء الصامتة
-      }
+      } catch (e) {}
       
       _activeUserPhone = phone;
       notifyListeners();
-      return superAdminData; // الدخول يتم في كسر من الثانية!
+      
+      // 👈 تسجيل الدخول في السجل
+      logAction(action: 'تسجيل دخول', details: 'تم تسجيل الدخول بنجاح لمالك النظام', severity: 'normal');
+      
+      return superAdminData; 
     }
 
-    // 2. للوكلاء والمستخدمين: جلب البيانات من السحابة مع صمام أمان زمني (Timeout)
     try {
       final doc = await _db.collection('users').doc(phone).get().timeout(const Duration(seconds: 7));
       if (doc.exists) {
@@ -166,12 +206,14 @@ class SystemProvider extends ChangeNotifier {
         if (userData['password'] == password) {
           _activeUserPhone = phone;
           notifyListeners();
+          
+          logAction(action: 'تسجيل دخول', details: 'تم تسجيل الدخول بواسطة: ${userData['name']}', severity: 'normal');
           return userData;
         }
       }
       return null; 
     } catch (e) {
-      return null; // يتوقف بعد 7 ثوانٍ ويعطي خطأ بدلاً من التعليق
+      return null; 
     }
   }
 
@@ -217,6 +259,9 @@ class SystemProvider extends ChangeNotifier {
         'purchasedCards': [],
         'isBiometricEnabled': false,
       });
+      
+      // 👈 تسجيل الحدث
+      logAction(action: 'إضافة وكيل جديد', details: 'تم إضافة وكيل جديد باسم "$name" ورقم $phone', severity: 'medium');
     } else {
       throw 'رقم الهاتف مسجل مسبقاً!';
     }
@@ -239,15 +284,25 @@ class SystemProvider extends ChangeNotifier {
       batch.set(_db.collection('users').doc(newPhone), data);
       if (oldPhone != newPhone) batch.delete(_db.collection('users').doc(oldPhone));
       await batch.commit();
+      
+      // 👈 تسجيل الحدث
+      logAction(action: 'تعديل بيانات وكيل', details: 'تم تعديل بيانات الوكيل صاحب الرقم $oldPhone', severity: 'medium');
     }
   }
 
   void toggleUserStatus(String phone, String currentStatus) {
     String newStatus = currentStatus == 'نشط' ? 'مجمد' : 'نشط';
     _db.collection('users').doc(phone).update({'status': newStatus});
+    
+    // 👈 تسجيل الحدث
+    logAction(action: 'تغيير حالة حساب', details: 'تم تغيير حالة الحساب $phone إلى [$newStatus]', severity: 'critical');
   }
 
-  void deleteAgent(String phone) => _db.collection('users').doc(phone).delete();
+  void deleteAgent(String phone) {
+    _db.collection('users').doc(phone).delete();
+    // 👈 تسجيل الحدث
+    logAction(action: 'حذف وكيل', details: 'تم حذف الوكيل $phone نهائياً من النظام', severity: 'critical');
+  }
 
   // ==========================================
   // 6. العمليات المالية الصارمة
@@ -265,6 +320,9 @@ class SystemProvider extends ChangeNotifier {
         'balance': FieldValue.increment(-price),
         'purchasedCards': FieldValue.arrayUnion([cardName])
       });
+      
+      // 👈 تسجيل الحدث للوكيل
+      logAction(action: 'شراء كرت', details: 'تم سحب كرت $cardName بسعر $price ريال', severity: 'normal');
       return true;
     }
     return false;
@@ -272,6 +330,7 @@ class SystemProvider extends ChangeNotifier {
 
   Future<void> updateDangerLimit(String phone, double newLimit) async {
     await _db.collection('users').doc(phone).update({'dangerLimit': newLimit});
+    logAction(action: 'تعديل حد الخطر', details: 'تم تعديل حد الخطر للرقم $phone ليصبح $newLimit ريال', severity: 'medium');
   }
 
   Future<void> acceptRechargeRequest({
@@ -298,6 +357,9 @@ class SystemProvider extends ChangeNotifier {
     });
 
     await batch.commit(); 
+    
+    // 👈 تسجيل الحدث
+    logAction(action: 'موافقة على شحن', details: 'تم قبول طلب شحن وإضافة $amount ريال للوكيل $agentName', severity: 'normal');
   }
 
   Future<void> rejectRechargeRequest(String requestId, String reason) async {
@@ -305,6 +367,7 @@ class SystemProvider extends ChangeNotifier {
       'status': 'مرفوض',
       'rejectReason': reason,
     });
+    logAction(action: 'رفض طلب شحن', details: 'تم رفض طلب شحن. السبب: $reason', severity: 'medium');
   }
 
   Future<void> manualSettlement({
@@ -329,6 +392,10 @@ class SystemProvider extends ChangeNotifier {
     });
 
     await batch.commit();
+    
+    // 👈 تسجيل الحدث
+    String actionType = amount > 0 ? "إضافة" : "خصم";
+    logAction(action: 'تسوية مالية يدوية ($actionType)', details: 'تم $actionType مبلغ $amount للوكيل $agentName. السبب: $reason', severity: 'critical');
   }
 
   // ==========================================
@@ -339,6 +406,7 @@ class SystemProvider extends ChangeNotifier {
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
     if (user['password'] == oldPassword) {
       _db.collection('users').doc(_activeUserPhone).update({'password': newPassword});
+      logAction(action: 'تغيير كلمة المرور', details: 'تم تغيير كلمة المرور بنجاح', severity: 'medium');
       return true; 
     }
     return false; 
