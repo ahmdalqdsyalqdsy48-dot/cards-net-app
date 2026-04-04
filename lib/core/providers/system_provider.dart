@@ -196,13 +196,15 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 5. دوال الإدارة والتحكم 🚀
+  // 5. دوال الإدارة والتحكم السحابية المضمونة 🚀
   // ==========================================
   
   Future<void> updateNewsSpeed(double newSpeed) async {
     try {
       await _db.collection('system').doc('main_info').update({'newsScrollSpeed': newSpeed});
-    } catch (e) {}
+    } catch (e) {
+      throw 'خطأ في تحديث السرعة: $e';
+    }
   }
 
   Future<bool> checkUserExists(String phone) async {
@@ -266,20 +268,25 @@ class SystemProvider extends ChangeNotifier {
   }
 
   Future<void> registerNewUser({required String name, required String phone, required String password, required String role}) async {
-    await _db.collection('users').doc(phone).set({
-      'id': 'USER_${DateTime.now().millisecondsSinceEpoch}',
-      'name': name,
-      'phone': phone,
-      'password': password,
-      'role': role,
-      'balance': 0.0,
-      'dangerLimit': 0.0,
-      'status': 'نشط',
-      'purchasedCards': [], 
-      'isBiometricEnabled': false,
-    });
-    _activeUserPhone = phone;
-    notifyListeners();
+    try {
+      await _db.collection('users').doc(phone).set({
+        'id': 'USER_${DateTime.now().millisecondsSinceEpoch}',
+        'name': name,
+        'phone': phone,
+        'password': password,
+        'role': role,
+        'balance': 0.0,
+        'dangerLimit': 0.0,
+        'status': 'نشط',
+        'purchasedCards': [], 
+        'isBiometricEnabled': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      _activeUserPhone = phone;
+      notifyListeners();
+    } catch (e) {
+      throw 'فشل تسجيل المستخدم: $e';
+    }
   }
 
   Future<void> addAgent({
@@ -290,27 +297,33 @@ class SystemProvider extends ChangeNotifier {
     String? profitMargin, 
     String? location,
   }) async {
-    bool exists = await checkUserExists(phone);
-    if (!exists) {
-      await _db.collection('users').doc(phone).set({
-        'id': 'AGENT_${DateTime.now().millisecondsSinceEpoch}',
-        'name': name,
-        'phone': phone,
-        'password': password,
-        'role': 'agent',
-        'networkName': networkName ?? 'غير محدد',
-        'profitMargin': profitMargin ?? 'غير محدد',
-        'location': location ?? 'غير محدد',
-        'balance': 0.0,
-        'dangerLimit': 0.0, 
-        'status': 'نشط',
-        'purchasedCards': [],
-        'isBiometricEnabled': false,
-      });
-      
-      logAction(action: 'إضافة وكيل جديد', details: 'تم إضافة وكيل جديد باسم "$name" ورقم $phone', severity: 'medium');
-    } else {
-      throw 'رقم الهاتف مسجل مسبقاً!';
+    try {
+      bool exists = await checkUserExists(phone);
+      if (!exists) {
+        await _db.collection('users').doc(phone).set({
+          'id': 'AGENT_${DateTime.now().millisecondsSinceEpoch}',
+          'name': name,
+          'phone': phone,
+          'password': password,
+          'role': 'agent',
+          'networkName': networkName ?? 'غير محدد',
+          'profitMargin': profitMargin ?? 'غير محدد',
+          'location': location ?? 'غير محدد',
+          'balance': 0.0,
+          'dangerLimit': 0.0, 
+          'status': 'نشط',
+          'purchasedCards': [],
+          'isBiometricEnabled': false,
+          'createdAt': FieldValue.serverTimestamp(), // 👈 توثيق وقت الإنشاء
+        });
+        
+        logAction(action: 'إضافة وكيل جديد', details: 'تم إضافة وكيل جديد باسم "$name" ورقم $phone', severity: 'medium');
+      } else {
+        throw 'رقم الهاتف مسجل مسبقاً في النظام!';
+      }
+    } catch (e) {
+      // قذف الخطأ للشاشة
+      throw 'حدث خطأ أثناء إضافة الوكيل السحابية: $e';
     }
   }
 
@@ -323,29 +336,40 @@ class SystemProvider extends ChangeNotifier {
     required String newProfit,
     required String newPassword,
   }) async {
-    final doc = await _db.collection('users').doc(oldPhone).get();
-    if (doc.exists) {
-      Map<String, dynamic> data = doc.data()!;
-      data.addAll({'phone': newPhone, 'name': newName, 'networkName': newNetwork, 'location': newLocation, 'profitMargin': newProfit, 'password': newPassword});
-      WriteBatch batch = _db.batch();
-      batch.set(_db.collection('users').doc(newPhone), data);
-      if (oldPhone != newPhone) batch.delete(_db.collection('users').doc(oldPhone));
-      await batch.commit();
-      
-      logAction(action: 'تعديل بيانات وكيل', details: 'تم تعديل بيانات الوكيل صاحب الرقم $oldPhone', severity: 'medium');
+    try {
+      final doc = await _db.collection('users').doc(oldPhone).get();
+      if (doc.exists) {
+        Map<String, dynamic> data = doc.data()!;
+        data.addAll({'phone': newPhone, 'name': newName, 'networkName': newNetwork, 'location': newLocation, 'profitMargin': newProfit, 'password': newPassword});
+        WriteBatch batch = _db.batch();
+        batch.set(_db.collection('users').doc(newPhone), data);
+        if (oldPhone != newPhone) batch.delete(_db.collection('users').doc(oldPhone));
+        await batch.commit();
+        
+        logAction(action: 'تعديل بيانات وكيل', details: 'تم تعديل بيانات الوكيل صاحب الرقم $oldPhone', severity: 'medium');
+      }
+    } catch (e) {
+      throw 'فشل تعديل بيانات الوكيل: $e';
     }
   }
 
   void toggleUserStatus(String phone, String currentStatus) {
-    String newStatus = currentStatus == 'نشط' ? 'مجمد' : 'نشط';
-    _db.collection('users').doc(phone).update({'status': newStatus});
-    
-    logAction(action: 'تغيير حالة حساب', details: 'تم تغيير حالة الحساب $phone إلى [$newStatus]', severity: 'critical');
+    try {
+      String newStatus = currentStatus == 'نشط' ? 'مجمد' : 'نشط';
+      _db.collection('users').doc(phone).update({'status': newStatus});
+      logAction(action: 'تغيير حالة حساب', details: 'تم تغيير حالة الحساب $phone إلى [$newStatus]', severity: 'critical');
+    } catch (e) {
+      debugPrint('Error: $e');
+    }
   }
 
   void deleteAgent(String phone) {
-    _db.collection('users').doc(phone).delete();
-    logAction(action: 'حذف وكيل', details: 'تم حذف الوكيل $phone نهائياً من النظام', severity: 'critical');
+    try {
+      _db.collection('users').doc(phone).delete();
+      logAction(action: 'حذف وكيل', details: 'تم حذف الوكيل $phone نهائياً من النظام', severity: 'critical');
+    } catch (e) {
+      debugPrint('Error: $e');
+    }
   }
 
   bool userBuyCard(double price, String cardName) {
@@ -378,26 +402,29 @@ class SystemProvider extends ChangeNotifier {
     required String agentName, 
     required double amount
   }) async {
-    WriteBatch batch = _db.batch();
+    try {
+      WriteBatch batch = _db.batch();
 
-    DocumentReference agentRef = _db.collection('users').doc(agentPhone);
-    batch.update(agentRef, {'balance': FieldValue.increment(amount)});
+      DocumentReference agentRef = _db.collection('users').doc(agentPhone);
+      batch.update(agentRef, {'balance': FieldValue.increment(amount)});
 
-    DocumentReference requestRef = _db.collection('recharge_requests').doc(requestId);
-    batch.update(requestRef, {'status': 'مقبول'});
+      DocumentReference requestRef = _db.collection('recharge_requests').doc(requestId);
+      batch.update(requestRef, {'status': 'مقبول'});
 
-    DocumentReference transactionRef = _db.collection('transactions').doc();
-    batch.set(transactionRef, {
-      'agentPhone': agentPhone,
-      'agentName': agentName,
-      'type': 'إيداع حوالة (موافقة إلكترونية)',
-      'amount': amount,
-      'timestamp': FieldValue.serverTimestamp(),
-    });
+      DocumentReference transactionRef = _db.collection('transactions').doc();
+      batch.set(transactionRef, {
+        'agentPhone': agentPhone,
+        'agentName': agentName,
+        'type': 'إيداع حوالة (موافقة إلكترونية)',
+        'amount': amount,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
 
-    await batch.commit(); 
-    
-    logAction(action: 'موافقة على شحن', details: 'تم قبول طلب شحن وإضافة $amount ريال للوكيل $agentName', severity: 'normal');
+      await batch.commit(); 
+      logAction(action: 'موافقة على شحن', details: 'تم قبول طلب شحن وإضافة $amount ريال للوكيل $agentName', severity: 'normal');
+    } catch (e) {
+      throw 'فشل في قبول الشحن: $e';
+    }
   }
 
   Future<void> rejectRechargeRequest(String requestId, String reason) async {
@@ -414,25 +441,29 @@ class SystemProvider extends ChangeNotifier {
     required double amount, 
     required String reason,
   }) async {
-    WriteBatch batch = _db.batch();
+    try {
+      WriteBatch batch = _db.batch();
 
-    DocumentReference agentRef = _db.collection('users').doc(agentPhone);
-    batch.update(agentRef, {'balance': FieldValue.increment(amount)});
+      DocumentReference agentRef = _db.collection('users').doc(agentPhone);
+      batch.update(agentRef, {'balance': FieldValue.increment(amount)});
 
-    DocumentReference transactionRef = _db.collection('transactions').doc();
-    batch.set(transactionRef, {
-      'agentPhone': agentPhone,
-      'agentName': agentName,
-      'type': amount > 0 ? 'تسوية يدوية (إضافة)' : 'تسوية يدوية (خصم)',
-      'amount': amount,
-      'reason': reason,
-      'timestamp': FieldValue.serverTimestamp(),
-    });
+      DocumentReference transactionRef = _db.collection('transactions').doc();
+      batch.set(transactionRef, {
+        'agentPhone': agentPhone,
+        'agentName': agentName,
+        'type': amount > 0 ? 'تسوية يدوية (إضافة)' : 'تسوية يدوية (خصم)',
+        'amount': amount,
+        'reason': reason,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
 
-    await batch.commit();
-    
-    String actionType = amount > 0 ? "إضافة" : "خصم";
-    logAction(action: 'تسوية مالية يدوية ($actionType)', details: 'تم $actionType مبلغ $amount للوكيل $agentName. السبب: $reason', severity: 'critical');
+      await batch.commit();
+      
+      String actionType = amount > 0 ? "إضافة" : "خصم";
+      logAction(action: 'تسوية مالية يدوية ($actionType)', details: 'تم $actionType مبلغ $amount للوكيل $agentName. السبب: $reason', severity: 'critical');
+    } catch (e) {
+      throw 'فشل التسوية اليدوية: $e';
+    }
   }
 
   bool changeUserPassword(String oldPassword, String newPassword) {
@@ -499,66 +530,84 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 🆕 دوال إدارة الحسابات البنكية
+  // 🆕 دوال إدارة الحسابات البنكية المضمونة
   // ==========================================
 
   Future<void> addBankAccount(String bankName, String accNumber, String beneficiary) async {
-    // نعطي الحساب ترتيباً يجعله في نهاية القائمة دائماً
-    int newOrder = _bankAccounts.length;
-    
-    await _db.collection('bank_accounts').add({
-      'bankName': bankName,
-      'accountNumber': accNumber,
-      'beneficiary': beneficiary.isNotEmpty ? beneficiary : 'غير محدد',
-      'status': 'نشط',
-      'hasQR': false, // حالياً بدون صورة، ويمكن تطويرها لاحقاً
-      'order': newOrder,
-    });
-    
-    logAction(action: 'إضافة حساب بنكي', details: 'تم إضافة حساب $bankName برقم $accNumber', severity: 'medium');
+    try {
+      int newOrder = _bankAccounts.length;
+      
+      await _db.collection('bank_accounts').add({
+        'bankName': bankName,
+        'accountNumber': accNumber,
+        'beneficiary': beneficiary.isNotEmpty ? beneficiary : 'غير محدد',
+        'status': 'نشط',
+        'hasQR': false, 
+        'order': newOrder,
+        'createdAt': FieldValue.serverTimestamp(), // 👈 توثيق وقت الإنشاء
+      });
+      
+      logAction(action: 'إضافة حساب بنكي', details: 'تم إضافة حساب $bankName برقم $accNumber', severity: 'medium');
+    } catch (e) {
+      // 👈 قذف الخطأ لكي تلتقطه الشاشة إذا فشل الحفظ
+      throw 'حدث خطأ أثناء حفظ الحساب السحابي: $e';
+    }
   }
 
   Future<void> updateBankAccount(String docId, String bankName, String accNumber, String beneficiary) async {
-    await _db.collection('bank_accounts').doc(docId).update({
-      'bankName': bankName,
-      'accountNumber': accNumber,
-      'beneficiary': beneficiary,
-    });
-    logAction(action: 'تعديل حساب بنكي', details: 'تم تعديل بيانات الحساب البنكي $bankName', severity: 'medium');
+    try {
+      await _db.collection('bank_accounts').doc(docId).update({
+        'bankName': bankName,
+        'accountNumber': accNumber,
+        'beneficiary': beneficiary,
+      });
+      logAction(action: 'تعديل حساب بنكي', details: 'تم تعديل بيانات الحساب البنكي $bankName', severity: 'medium');
+    } catch (e) {
+      throw 'حدث خطأ أثناء تعديل الحساب: $e';
+    }
   }
 
   Future<void> toggleBankAccountStatus(String docId, String currentStatus) async {
-    String newStatus = currentStatus == 'نشط' ? 'موقوف' : 'نشط';
-    await _db.collection('bank_accounts').doc(docId).update({'status': newStatus});
-    logAction(action: 'تغيير حالة حساب بنكي', details: 'تم $newStatus حساب بنكي', severity: 'medium');
+    try {
+      String newStatus = currentStatus == 'نشط' ? 'موقوف' : 'نشط';
+      await _db.collection('bank_accounts').doc(docId).update({'status': newStatus});
+      logAction(action: 'تغيير حالة حساب بنكي', details: 'تم $newStatus حساب بنكي', severity: 'medium');
+    } catch (e) {
+      throw 'حدث خطأ أثناء تغيير حالة الحساب: $e';
+    }
   }
 
   Future<void> deleteBankAccount(String docId) async {
-    await _db.collection('bank_accounts').doc(docId).delete();
-    logAction(action: 'حذف حساب بنكي', details: 'تم حذف حساب بنكي من النظام', severity: 'critical');
+    try {
+      await _db.collection('bank_accounts').doc(docId).delete();
+      logAction(action: 'حذف حساب بنكي', details: 'تم حذف حساب بنكي من النظام', severity: 'critical');
+    } catch (e) {
+      throw 'حدث خطأ أثناء محاولة حذف الحساب: $e';
+    }
   }
 
-  // دالة ذكية لحفظ الترتيب الجديد عند استخدام (السحب والإفلات)
   Future<void> reorderBankAccounts(int oldIndex, int newIndex) async {
-    if (oldIndex < newIndex) {
-      newIndex -= 1;
-    }
-    
-    // إنشاء نسخة محلية لنقوم بترتيبها أولاً
-    final item = _bankAccounts.removeAt(oldIndex);
-    _bankAccounts.insert(newIndex, item);
-    
-    // تحديث الواجهة فوراً لكي لا يشعر المستخدم ببطء
-    notifyListeners();
+    try {
+      if (oldIndex < newIndex) {
+        newIndex -= 1;
+      }
+      
+      // التحديث المحلي الفوري لسرعة الاستجابة
+      final item = _bankAccounts.removeAt(oldIndex);
+      _bankAccounts.insert(newIndex, item);
+      notifyListeners();
 
-    // إرسال الترتيب الجديد للسحابة باستخدام Batch لضمان سرعة التنفيذ وعدم استهلاك العمليات
-    WriteBatch batch = _db.batch();
-    for (int i = 0; i < _bankAccounts.length; i++) {
-      DocumentReference ref = _db.collection('bank_accounts').doc(_bankAccounts[i]['docId']);
-      batch.update(ref, {'order': i});
+      // الإرسال السحابي
+      WriteBatch batch = _db.batch();
+      for (int i = 0; i < _bankAccounts.length; i++) {
+        DocumentReference ref = _db.collection('bank_accounts').doc(_bankAccounts[i]['docId']);
+        batch.update(ref, {'order': i});
+      }
+      
+      await batch.commit();
+      logAction(action: 'إعادة ترتيب الحسابات', details: 'تم تغيير ترتيب ظهور الحسابات البنكية للوكلاء', severity: 'normal');
+    } catch (e) {
+      throw 'حدث خطأ في مزامنة الترتيب السحابي: $e';
     }
-    
-    await batch.commit();
-    logAction(action: 'إعادة ترتيب الحسابات', details: 'تم تغيير ترتيب ظهور الحسابات البنكية للوكلاء', severity: 'normal');
   }
 }
