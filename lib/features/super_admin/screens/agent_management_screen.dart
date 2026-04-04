@@ -18,7 +18,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
   String _searchQuery = '';
 
   // ==========================================
-  // 1. نافذة إضافة وكيل جديد (متصلة بالسحابة ومحصنة ضد وهم الكاش)
+  // 1. نافذة إضافة وكيل جديد (استجابة فورية + حفظ في الخلفية)
   // ==========================================
   void _showAddAgentDialog(SystemProvider provider) {
     final nameController = TextEditingController();
@@ -57,8 +57,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء', style: TextStyle(color: Colors.red))),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
-              // 👇 أضفنا async هنا لانتظار رد السيرفر
-              onPressed: () async {
+              onPressed: () {
                 String phone = phoneController.text.trim();
                 String name = nameController.text.trim();
 
@@ -67,41 +66,29 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                       ? passwordController.text.trim() 
                       : phone;
 
-                  try {
-                    // رسالة توضح أن التطبيق ينتظر السيرفر
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('جاري الحفظ في السحابة... ⏳'), duration: Duration(seconds: 1))
-                    );
+                  final messenger = ScaffoldMessenger.of(context);
 
-                    // 👇 أضفنا await لإجبار التطبيق على الانتظار حتى توافق جوجل
-                    await provider.addAgent(
-                      name: name,
-                      phone: phone,
-                      password: defaultPassword,
-                      networkName: networkController.text.trim(),
-                      profitMargin: profitController.text.trim(),
-                      location: locationController.text.trim(),
-                    );
+                  // 1. إرسال الأوامر للسحابة في الخلفية واصطياد الأخطاء إن وجدت
+                  provider.addAgent(
+                    name: name,
+                    phone: phone,
+                    password: defaultPassword,
+                    networkName: networkController.text.trim(),
+                    profitMargin: profitController.text.trim(),
+                    location: locationController.text.trim(),
+                  ).catchError((error) {
+                    messenger.showSnackBar(SnackBar(content: Text('فشل الحفظ ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red, duration: const Duration(seconds: 6)));
+                  });
 
-                    // إذا وصلنا لهذا السطر، يعني جوجل وافقت وتم الحفظ حقاً
-                    if (context.mounted) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الوكيل بنجاح! ✅'), backgroundColor: Colors.green));
-                    }
-                  } catch (e) {
-                    // 🔴 صائد الأخطاء: هنا سيظهر سبب الرفض الحقيقي (مثل Permission Denied)
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('فشل الحفظ: $e', style: const TextStyle(fontWeight: FontWeight.bold)), 
-                          backgroundColor: Colors.red,
-                          duration: const Duration(seconds: 5), // مدة أطول لتقرأ الخطأ
-                        )
-                      );
-                    }
-                  }
+                  // 2. إغلاق النافذة فوراً لسرعة الاستخدام
+                  Navigator.pop(context);
+
+                  // 3. إظهار إشعار التحميل في الخلفية
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('جاري إنشاء حساب الوكيل السحابي... ☁️', textDirection: TextDirection.rtl), backgroundColor: Colors.blueGrey, duration: Duration(seconds: 2))
+                  );
                 } else {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال الاسم ورقم الهاتف على الأقل! ❌'), backgroundColor: Colors.red));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال الاسم ورقم الهاتف على الأقل! ❌', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
                 }
               },
               child: const Text('حفظ واعتماد الوكيل', style: TextStyle(color: Colors.white)),
@@ -113,7 +100,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
   }
 
   // ==========================================
-  // 2. نافذة تعديل بيانات وكيل حالي (شاملة مع تغيير الرقم)
+  // 2. نافذة تعديل بيانات وكيل حالي (استجابة فورية)
   // ==========================================
   void _showEditAgentDialog(Map<String, dynamic> agent, SystemProvider provider) {
     final nameController = TextEditingController(text: agent['name']);
@@ -154,29 +141,23 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-              onPressed: () async {
-                try {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري التحديث ونقل البيانات إذا لزم الأمر... ⏳')));
-                  
-                  await provider.updateAgentDetails(
-                    oldPhone: oldPhone,
-                    newPhone: phoneController.text.trim(),
-                    newName: nameController.text.trim(),
-                    newNetwork: networkController.text.trim(),
-                    newLocation: locationController.text.trim(),
-                    newProfit: '${profitController.text.trim()}%',
-                    newPassword: passwordController.text.trim(),
-                  );
-                  
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث البيانات بنجاح! ✅'), backgroundColor: Colors.green));
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: ${e.toString().replaceAll('Exception: ', '')}'), backgroundColor: Colors.red));
-                  }
-                }
+              onPressed: () {
+                final messenger = ScaffoldMessenger.of(context);
+
+                provider.updateAgentDetails(
+                  oldPhone: oldPhone,
+                  newPhone: phoneController.text.trim(),
+                  newName: nameController.text.trim(),
+                  newNetwork: networkController.text.trim(),
+                  newLocation: locationController.text.trim(),
+                  newProfit: '${profitController.text.trim()}%',
+                  newPassword: passwordController.text.trim(),
+                ).catchError((error) {
+                  messenger.showSnackBar(SnackBar(content: Text('فشل التعديل ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red, duration: const Duration(seconds: 6)));
+                });
+
+                Navigator.pop(context);
+                messenger.showSnackBar(const SnackBar(content: Text('جاري تطبيق التعديلات السحابية... ☁️', textDirection: TextDirection.rtl), backgroundColor: Colors.orange, duration: Duration(seconds: 2)));
               },
               child: const Text('حفظ التعديلات', style: TextStyle(color: Colors.white)),
             ),
@@ -187,15 +168,22 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
   }
 
   // ==========================================
-  // 3. دوال التجميد والحذف (متصلة بالسحابة)
+  // 3. دوال التجميد والحذف (مربوطة بالخلفية)
   // ==========================================
   void _toggleFreeze(Map<String, dynamic> agent, SystemProvider provider) {
-    provider.toggleUserStatus(agent['phone'], agent['status']);
+    final messenger = ScaffoldMessenger.of(context);
     bool isGoingToFreeze = agent['status'] == 'نشط';
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(isGoingToFreeze ? 'تم تجميد الوكيل بنجاح ⏸️' : 'تم تنشيط الوكيل بنجاح ▶️'), 
-      backgroundColor: isGoingToFreeze ? Colors.orange : Colors.green
-    ));
+
+    try {
+      provider.toggleUserStatus(agent['phone'], agent['status']);
+      messenger.showSnackBar(SnackBar(
+        content: Text(isGoingToFreeze ? 'جاري تجميد الوكيل... ⏸️' : 'جاري تنشيط الوكيل... ▶️', textDirection: TextDirection.rtl), 
+        backgroundColor: Colors.blueGrey,
+        duration: const Duration(seconds: 1)
+      ));
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text('فشل تغيير الحالة ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+    }
   }
 
   void _deleteAgent(Map<String, dynamic> agent, SystemProvider provider) {
@@ -211,9 +199,16 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () {
-                provider.deleteAgent(agent['phone']); 
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف الوكيل نهائياً 🗑️'), backgroundColor: Colors.red));
+                final messenger = ScaffoldMessenger.of(context);
+                
+                try {
+                  provider.deleteAgent(agent['phone']); 
+                  Navigator.pop(context);
+                  messenger.showSnackBar(const SnackBar(content: Text('جاري الحذف النهائي من السيرفر... 🗑️', textDirection: TextDirection.rtl), backgroundColor: Colors.red, duration: Duration(seconds: 2)));
+                } catch (error) {
+                  Navigator.pop(context);
+                  messenger.showSnackBar(SnackBar(content: Text('فشل الحذف ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                }
               },
               child: const Text('نعم، احذف الوكيل', style: TextStyle(color: Colors.white)),
             ),
@@ -256,9 +251,6 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // ==========================================
-            // شريط الإضافة والبحث
-            // ==========================================
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -277,7 +269,6 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                     ),
                   ),
                   const SizedBox(height: 15),
-                  // محرك البحث
                   TextField(
                     onChanged: (value) => setState(() => _searchQuery = value),
                     decoration: InputDecoration(
@@ -293,9 +284,6 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
               ),
             ),
 
-            // ==========================================
-            // جدول المراقبة الرئيسي (مربوط بالسحابة)
-            // ==========================================
             Expanded(
               child: filteredAgents.isEmpty
                   ? const Center(child: Text('لا يوجد وكلاء مطابقين للبحث أو لم يتم إضافة وكلاء بعد.', style: TextStyle(color: Colors.grey)))
@@ -367,9 +355,6 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
     );
   }
 
-  // ==========================================
-  // أدوات مساعدة للتصميم
-  // ==========================================
   Widget _buildTextField(String label, IconData icon, {TextEditingController? controller, bool isNumber = false, bool isReadOnly = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
