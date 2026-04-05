@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // 👈 1. استدعاء مكتبة العقل المدبر
+import 'package:provider/provider.dart';
 
-import '../../../core/providers/system_provider.dart'; // 👈 2. استدعاء الخادم المحلي الشامل
+import '../../../core/providers/system_provider.dart'; 
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart';
 
@@ -13,19 +13,16 @@ class SubscriptionsScreen extends StatefulWidget {
 }
 
 class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
-  // قاعدة بيانات تجريبية لاشتراكات الوكلاء مع حالاتهم المختلفة (قابلة للتعديل)
-  final List<Map<String, dynamic>> _subscriptions = [
-    {'name': 'أحمد القدسي', 'plan': 'باقة 5% (مفتوح)', 'expiry': '2026-04-10', 'status': 'نشط', 'color': Colors.blue},
-    {'name': 'محمد علي', 'plan': 'فترة مجانية (14 يوم)', 'expiry': '2026-03-28', 'status': 'فترة مجانية', 'color': Colors.green},
-    {'name': 'شبكة العالمية', 'plan': 'باقة 7% (3 نقاط)', 'expiry': '2026-03-25', 'status': 'إنذار', 'color': Colors.orange},
-    {'name': 'وكالة النور', 'plan': 'باقة 5% (مفتوح)', 'expiry': '2026-03-01', 'status': 'مجمد', 'color': Colors.red},
-  ];
 
   // ==========================================
-  // 1. نافذة إنشاء خطة / اشتراك جديد ➕
+  // 1. نافذة إنشاء خطة / اشتراك جديد ➕ (مربوطة بالسحابة)
   // ==========================================
-  void _showCreatePlanDialog() {
-    int targetingFilter = 1; // 1: الكل, 2: محدد, 3: وكيل واحد
+  void _showCreatePlanDialog(SystemProvider provider) {
+    int targetingFilter = 1; // 1: الكل, 2: وكيل محدد
+    
+    final planNameController = TextEditingController();
+    final durationController = TextEditingController();
+    final phoneController = TextEditingController(); // للوكيل المحدد
 
     showDialog(
       context: context,
@@ -37,7 +34,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
               children: [
                 Icon(Icons.add_box, color: Colors.blue),
                 SizedBox(width: 8),
-                Text('إنشاء خطة / اشتراك جديد', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text('إنشاء وتطبيق خطة جديدة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               ],
             ),
             content: SingleChildScrollView(
@@ -45,32 +42,25 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildTextField('نسبة ربح النظام (مثلاً 5% أو 7%)', Icons.percent),
-                  _buildTextField('مدة الخطة (بالأشهر)', Icons.calendar_today, isNumber: true),
-                  _buildTextField('الحد الأقصى لنقاط البيع (أو اترك فارغ للمفتوح)', Icons.storefront, isNumber: true),
+                  _buildTextField('اسم الخطة (مثال: باقة 5% مفتوح)', Icons.star, controller: planNameController),
+                  _buildTextField('مدة الخطة (بالأشهر)', Icons.calendar_today, isNumber: true, controller: durationController),
                   
                   const Divider(),
-                  const Text('فلاتر الاستهداف (التخصيص المتقدم):', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('الاستهداف والتطبيق السحابي:', style: TextStyle(fontWeight: FontWeight.bold)),
                   RadioListTile(
-                    title: const Text('تطبيق على جميع الوكلاء'),
+                    title: const Text('تطبيق على جميع الوكلاء (دفعة واحدة)'),
                     value: 1,
                     groupValue: targetingFilter,
                     onChanged: (val) => setStateDialog(() => targetingFilter = val as int),
                   ),
                   RadioListTile(
-                    title: const Text('تطبيق على وكلاء محددين'),
+                    title: const Text('تطبيق على وكيل محدد فقط'),
                     value: 2,
                     groupValue: targetingFilter,
                     onChanged: (val) => setStateDialog(() => targetingFilter = val as int),
                   ),
-                  RadioListTile(
-                    title: const Text('تخصيص لوكيل واحد فقط'),
-                    value: 3,
-                    groupValue: targetingFilter,
-                    onChanged: (val) => setStateDialog(() => targetingFilter = val as int),
-                  ),
-                  if (targetingFilter == 3)
-                    _buildTextField('ابحث عن اسم الوكيل...', Icons.search),
+                  if (targetingFilter == 2)
+                    _buildTextField('رقم هاتف الوكيل المستهدف', Icons.phone, isNumber: true, controller: phoneController),
                 ],
               ),
             ),
@@ -78,10 +68,35 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
               TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء', style: TextStyle(color: Colors.red))),
               ElevatedButton(
                 onPressed: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال الخطة للروبوت الآلي لتطبيقها بنجاح 🚀', textDirection: TextDirection.rtl), backgroundColor: Colors.blue));
+                  if (planNameController.text.isNotEmpty && durationController.text.isNotEmpty) {
+                    if (targetingFilter == 2 && phoneController.text.isEmpty) {
+                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال رقم الوكيل المستهدف ❌', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                       return;
+                    }
+
+                    final messenger = ScaffoldMessenger.of(context);
+                    int months = int.tryParse(durationController.text) ?? 1;
+
+                    // 1. إرسال الأوامر للسحابة (بدون تعطيل الشاشة)
+                    provider.applySubscriptionPlan(
+                      targetingFilter: targetingFilter,
+                      planName: planNameController.text,
+                      durationMonths: months,
+                      targetAgentPhone: phoneController.text,
+                    ).catchError((error) {
+                      messenger.showSnackBar(SnackBar(content: Text('فشل التطبيق ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                    });
+
+                    // 2. إغلاق النافذة فوراً
+                    Navigator.pop(context);
+                    
+                    // 3. إشعار النجاح المبدئي
+                    messenger.showSnackBar(const SnackBar(content: Text('تم إرسال الخطة للروبوت الآلي لتطبيقها سحابياً 🚀', textDirection: TextDirection.rtl), backgroundColor: Colors.blueGrey));
+                  } else {
+                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى تعبئة الحقول الأساسية ❌', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                  }
                 },
-                child: const Text('حفظ واعتماد الخطة'),
+                child: const Text('اعتماد وتطبيق الخطة'),
               ),
             ],
           ),
@@ -91,9 +106,13 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   }
 
   // ==========================================
-  // 2. نافذة إنشاء كوبون ترويجي 🎟️
+  // 2. نافذة إنشاء كوبون ترويجي ذكي 🎟️
   // ==========================================
-  void _showCreateCouponDialog() {
+  void _showCreateCouponDialog(SystemProvider provider) {
+    final codeController = TextEditingController();
+    final discountController = TextEditingController();
+    final maxUsesController = TextEditingController();
+
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -103,24 +122,38 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
             children: [
               Icon(Icons.local_offer, color: Colors.green),
               SizedBox(width: 8),
-              Text('توليد كوبون ترويجي', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              Text('توليد كوبون ذكي', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildTextField('كود الكوبون (مثال: YEMEN2026)', Icons.local_offer),
-              _buildTextField('نسبة الخصم أو المدة المجانية', Icons.discount),
+              _buildTextField('كود الكوبون (مثال: YEMEN2026)', Icons.local_offer, controller: codeController),
+              _buildTextField('تفاصيل الخصم (مثال: شهر مجاني)', Icons.discount, controller: discountController),
+              _buildTextField('الحد الأقصى لعدد الاستخدامات (مثال: 50)', Icons.group, isNumber: true, controller: maxUsesController),
             ],
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
             ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم توليد الكوبون وحفظه في النظام ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
-              }, 
               style: ElevatedButton.styleFrom(backgroundColor: Colors.green), 
+              onPressed: () {
+                if (codeController.text.isNotEmpty && maxUsesController.text.isNotEmpty) {
+                  final messenger = ScaffoldMessenger.of(context);
+                  int maxUses = int.tryParse(maxUsesController.text) ?? 10;
+
+                  provider.createSmartCoupon(
+                    code: codeController.text,
+                    discountDetails: discountController.text,
+                    maxUses: maxUses,
+                  ).catchError((error) {
+                    messenger.showSnackBar(SnackBar(content: Text('فشل توليد الكوبون ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                  });
+
+                  Navigator.pop(context);
+                  messenger.showSnackBar(const SnackBar(content: Text('جاري زرع الكوبون في السحابة... ☁️🎟️', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                }
+              }, 
               child: const Text('توليد الكوبون', style: TextStyle(color: Colors.white))
             ),
           ],
@@ -130,9 +163,11 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   }
 
   // ==========================================
-  // 3. نافذة تعديل الفترة المجانية / خطة الوكيل ⏳
+  // 3. نافذة تعديل فترة السماح / الانتهاء ⏳
   // ==========================================
-  void _showEditPlanDialog(String agentName) {
+  void _showEditGracePeriodDialog(String agentName, String agentPhone, SystemProvider provider) {
+    final dateController = TextEditingController();
+
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -142,18 +177,25 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('بمجرد الحفظ، سيصل إشعار فوري للوكيل وسيتبرمج الرادار للعد التنازلي.', style: TextStyle(fontSize: 12, color: Colors.grey, height: 1.5)),
+              const Text('بمجرد الحفظ، سيتم تعديل تاريخ الانتهاء وتحويل الوكيل لحالة (إنذار).', style: TextStyle(fontSize: 12, color: Colors.grey, height: 1.5)),
               const SizedBox(height: 15),
-              _buildTextField('تاريخ البداية (YYYY-MM-DD)', Icons.play_circle_outline),
-              _buildTextField('تاريخ النهاية بدقة (YYYY-MM-DD)', Icons.stop_circle_outlined),
+              _buildTextField('تاريخ الانتهاء الجديد (YYYY-MM-DD)', Icons.stop_circle_outlined, controller: dateController),
             ],
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
             ElevatedButton(
               onPressed: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث فترة السماح بنجاح ⏱️', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                if (dateController.text.isNotEmpty) {
+                  final messenger = ScaffoldMessenger.of(context);
+                  
+                  provider.updateAgentGracePeriod(agentPhone, dateController.text).catchError((error) {
+                    messenger.showSnackBar(SnackBar(content: Text('فشل التعديل ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                  });
+
+                  Navigator.pop(context);
+                  messenger.showSnackBar(const SnackBar(content: Text('تم إرسال إحداثيات الرادار للسحابة ⏱️', textDirection: TextDirection.rtl), backgroundColor: Colors.blueGrey));
+                }
               }, 
               child: const Text('تحديث العداد')
             ),
@@ -164,33 +206,35 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   }
 
   // ==========================================
-  // 4. نافذة سجل الخطط التاريخي 📜
+  // 4. نافذة السجل التاريخي الحقيقي 📜
   // ==========================================
-  void _showHistoryLog(String agentName) {
+  void _showHistoryLog(String agentName, String agentPhone, SystemProvider provider) {
+    // فلترة السجل الخاص بهذا الوكيل فقط
+    final agentLogs = provider.auditLogs.where((log) => log['targetPhone'] == agentPhone || log['phone'] == agentPhone).toList();
+
     showDialog(
       context: context,
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          title: Text('السجل التاريخي لخطط: $agentName', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          title: Text('السجل التاريخي لـ: $agentName', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           content: SizedBox(
             width: double.maxFinite,
-            child: ListView(
-              shrinkWrap: true,
-              children: const [
-                ListTile(
-                  leading: Icon(Icons.history, color: Colors.grey),
-                  title: Text('باقة 5% (مفتوح)'),
-                  subtitle: Text('من: 01-01-2026 | إلى: الآن\nبواسطة: مالك النظام'),
-                ),
-                Divider(),
-                ListTile(
-                  leading: Icon(Icons.history, color: Colors.grey),
-                  title: Text('فترة مجانية تجريبية'),
-                  subtitle: Text('من: 15-12-2025 | إلى: 31-12-2025\nبواسطة: كوبون YEMEN2026'),
-                ),
-              ],
-            ),
+            child: agentLogs.isEmpty
+                ? const Center(child: Text('لا توجد سجلات تاريخية لهذا الوكيل بعد.', style: TextStyle(color: Colors.grey)))
+                : ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: agentLogs.length,
+                    separatorBuilder: (_, __) => const Divider(),
+                    itemBuilder: (context, index) {
+                      final log = agentLogs[index];
+                      return ListTile(
+                        leading: const Icon(Icons.history, color: Colors.blueGrey),
+                        title: Text(log['action'] ?? 'إجراء مجهول', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        subtitle: Text('${log['details']}\nالتاريخ: ${log['datetime']}', style: const TextStyle(fontSize: 12)),
+                      );
+                    },
+                  ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
@@ -203,35 +247,33 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   // ==========================================
   // إيقاف واستئناف الخطة ⏸️ ▶️
   // ==========================================
-  void _togglePausePlan(int index) {
-    setState(() {
-      if (_subscriptions[index]['status'] == 'موقوف مؤقتاً') {
-        _subscriptions[index]['status'] = 'نشط';
-        _subscriptions[index]['color'] = Colors.blue;
-      } else {
-        _subscriptions[index]['status'] = 'موقوف مؤقتاً';
-        _subscriptions[index]['color'] = Colors.grey;
-      }
+  void _togglePausePlan(String agentPhone, String currentStatus, SystemProvider provider) {
+    final messenger = ScaffoldMessenger.of(context);
+    
+    provider.toggleSubscriptionStatus(agentPhone, currentStatus).catchError((error) {
+      messenger.showSnackBar(SnackBar(content: Text('فشل الإجراء ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
     });
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(_subscriptions[index]['status'] == 'نشط' ? 'تم استئناف الخطة بنجاح ▶️' : 'تم إيقاف الخطة مؤقتاً ⏸️', textDirection: TextDirection.rtl),
-      backgroundColor: _subscriptions[index]['status'] == 'نشط' ? Colors.green : Colors.orange,
+
+    messenger.showSnackBar(SnackBar(
+      content: Text(currentStatus == 'موقوف مؤقتاً' ? 'جاري استئناف الخطة... ▶️' : 'جاري إيقاف الخطة... ⏸️', textDirection: TextDirection.rtl),
+      backgroundColor: Colors.blueGrey,
+      duration: const Duration(seconds: 1),
     ));
   }
 
   @override
   Widget build(BuildContext context) {
-    // 👈 3. الاتصال بالعقل المدبر لقراءة الأرباح الحقيقية
     final systemProvider = Provider.of<SystemProvider>(context);
     final adminBalance = systemProvider.adminMainBalance;
+    final agents = systemProvider.agentsList; // 👈 جلب الوكلاء الفعليين
+    final stats = systemProvider.subscriptionStats; // 👈 إحصائيات الرادار
 
     return Scaffold(
-      appBar: const CustomHeader(title: 'إدارة الاشتراكات'),
+      appBar: const CustomHeader(title: 'إدارة الاشتراكات والخطط'),
       
-      // 👈 تمرير الرصيد المتغير للـ Drawer وتجنب الـ const
       drawer: CustomDrawer(
-        userName: 'مالك النظام',
-        phoneNumber: '774578241',
+        userName: systemProvider.currentUserName,
+        phoneNumber: systemProvider.currentUserPhone,
         role: 'مالك النظام (Super Admin)',
         balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
       ),
@@ -240,17 +282,37 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // === أدوات التخصيص العلوية ===
+            // === 💡 1. شريط إحصائيات الرادار (Dashboard) ===
+            Container(
+              margin: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).brightness == Brightness.dark ? Colors.black26 : Colors.white,
+                borderRadius: BorderRadius.circular(15),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildStatItem('نشط', stats['active'].toString(), Colors.green),
+                  _buildStatItem('إنذار', stats['expiringSoon'].toString(), Colors.orange),
+                  _buildStatItem('موقوف/مجمد', stats['frozen'].toString(), Colors.red),
+                  _buildStatItem('الأرباح المتوقعة', '${stats['expectedRevenue']} ريال', Colors.blue),
+                ],
+              ),
+            ),
+
+            // === 2. أدوات التخصيص العلوية ===
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: Row(
                 children: [
                   Expanded(
                     flex: 2,
                     child: ElevatedButton.icon(
-                      onPressed: _showCreatePlanDialog,
+                      onPressed: () => _showCreatePlanDialog(systemProvider),
                       icon: const Icon(Icons.add, color: Colors.white),
-                      label: const Text('إنشاء خطة / اشتراك', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                      label: const Text('تطبيق خطة / اشتراك', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, padding: const EdgeInsets.symmetric(vertical: 12)),
                     ),
                   ),
@@ -258,85 +320,80 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                   Expanded(
                     flex: 1,
                     child: ElevatedButton.icon(
-                      onPressed: _showCreateCouponDialog,
+                      onPressed: () => _showCreateCouponDialog(systemProvider),
                       icon: const Icon(Icons.local_offer, color: Colors.white),
-                      label: const Text('كوبون', style: TextStyle(color: Colors.white, fontSize: 13)),
+                      label: const Text('توليد كوبون', style: TextStyle(color: Colors.white, fontSize: 13)),
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, padding: const EdgeInsets.symmetric(vertical: 12)),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // زر إعدادات الرادار
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.grey.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.settings_suggest, color: Colors.blueAccent),
-                      tooltip: 'إعدادات الرادار الآلي وفترة السماح',
-                      onPressed: () {
-                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('نافذة إعدادات فترة السماح (Grace Period) ستتوفر قريباً.', textDirection: TextDirection.rtl)));
-                      },
                     ),
                   ),
                 ],
               ),
             ),
 
-            // === جدول المراقبة الرئيسي ===
+            // === 3. جدول المراقبة الرئيسي الحقيقي ===
             Expanded(
-              child: ListView.builder(
-                itemCount: _subscriptions.length,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemBuilder: (context, index) {
-                  final sub = _subscriptions[index];
-                  final isPaused = sub['status'] == 'موقوف مؤقتاً';
+              child: agents.isEmpty
+                  ? const Center(child: Text('لا يوجد وكلاء في النظام حالياً.', style: TextStyle(color: Colors.grey)))
+                  : ListView.builder(
+                      itemCount: agents.length,
+                      padding: const EdgeInsets.all(16),
+                      itemBuilder: (context, index) {
+                        final agent = agents[index];
+                        final subStatus = agent['subStatus'] ?? 'غير محدد';
+                        final isPaused = subStatus == 'موقوف مؤقتاً' || subStatus == 'مجمد';
+                        
+                        // تحديد لون الحالة
+                        Color statusColor = Colors.grey;
+                        if (subStatus == 'نشط' || subStatus == 'فترة مجانية') statusColor = Colors.green;
+                        if (subStatus == 'إنذار') statusColor = Colors.orange;
+                        if (subStatus == 'موقوف مؤقتاً' || subStatus == 'مجمد') statusColor = Colors.red;
 
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 15),
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: sub['color'].withOpacity(0.5))),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(sub['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(color: sub['color'], borderRadius: BorderRadius.circular(20)),
-                                child: Text(sub['status'], style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                              ),
-                            ],
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 15),
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: statusColor.withOpacity(0.5))),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(agent['name'] ?? 'مجهول', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(color: statusColor, borderRadius: BorderRadius.circular(20)),
+                                      child: Text(subStatus, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 5),
+                                Text('الهاتف: ${agent['phone']} | الشبكة: ${agent['networkName']}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                                Text('الخطة الحالية: ${agent['subPlan'] ?? 'افتراضية'}', style: const TextStyle(color: Colors.blueGrey, fontSize: 14)),
+                                Text('تاريخ الانتهاء: ${agent['subExpiry'] ?? 'غير محدد'}', style: TextStyle(color: statusColor == Colors.orange ? Colors.orange : Colors.grey, fontWeight: FontWeight.bold, fontSize: 14)),
+                                
+                                const Divider(),
+                                // === أزرار التحكم الفردية ===
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                  children: [
+                                    _buildActionButton(Icons.edit_calendar, 'تعديل فترة السماح', Colors.blue, () => _showEditGracePeriodDialog(agent['name'], agent['phone'], systemProvider)),
+                                    _buildActionButton(
+                                      isPaused ? Icons.play_arrow : Icons.pause_circle_outline,
+                                      isPaused ? 'استئناف' : 'إيقاف مؤقت',
+                                      isPaused ? Colors.green : Colors.deepOrange,
+                                      () => _togglePausePlan(agent['phone'], subStatus, systemProvider),
+                                    ),
+                                    _buildActionButton(Icons.history_edu, 'السجل التاريخي', Colors.blueGrey, () => _showHistoryLog(agent['name'], agent['phone'], systemProvider)),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 5),
-                          Text('الخطة الحالية: ${sub['plan']}', style: const TextStyle(color: Colors.grey, fontSize: 14)),
-                          Text('تاريخ الانتهاء: ${sub['expiry']}', style: TextStyle(color: sub['color'] == Colors.orange ? Colors.orange : Colors.grey, fontWeight: FontWeight.bold, fontSize: 14)),
-                          
-                          const Divider(),
-                          // === أزرار التحكم الفردية ===
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              _buildActionButton(Icons.hourglass_bottom, 'تعديل المدة', Colors.blue, () => _showEditPlanDialog(sub['name'])),
-                              _buildActionButton(
-                                isPaused ? Icons.play_arrow : Icons.pause_circle_outline,
-                                isPaused ? 'استئناف' : 'إيقاف مؤقت',
-                                isPaused ? Colors.green : Colors.deepOrange,
-                                () => _togglePausePlan(index),
-                              ),
-                              _buildActionButton(Icons.history_edu, 'السجل التاريخي', Colors.blueGrey, () => _showHistoryLog(sub['name'])),
-                            ],
-                          ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
             ),
           ],
         ),
@@ -344,11 +401,23 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     );
   }
 
+  // أداة بناء إحصائيات الرادار
+  Widget _buildStatItem(String label, String value, Color color) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: color)),
+        Text(label, style: const TextStyle(fontSize: 11, color: Colors.blueGrey)),
+      ],
+    );
+  }
+
   // أداة بناء حقول الإدخال
-  Widget _buildTextField(String label, IconData icon, {bool isNumber = false}) {
+  Widget _buildTextField(String label, IconData icon, {bool isNumber = false, TextEditingController? controller}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: TextField(
+        controller: controller,
         keyboardType: isNumber ? TextInputType.number : TextInputType.text,
         decoration: InputDecoration(
           labelText: label,
