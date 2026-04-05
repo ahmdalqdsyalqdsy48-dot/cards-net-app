@@ -18,9 +18,7 @@ class SystemProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _transactionsLedger = []; 
   List<Map<String, dynamic>> _auditLogs = []; 
 
-  // ==========================================
   // متغيرات النسخ الاحتياطي والحسابات البنكية
-  // ==========================================
   bool _isAutoBackupEnabled = true;
   String _backupFrequency = 'يومياً';
   String _backupTime = '04:00 فجراً';
@@ -30,9 +28,7 @@ class SystemProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _backupsList = [];
   List<Map<String, dynamic>> _bankAccounts = [];
 
-  // ==========================================
-  // 🆕 متغيرات الكوبونات والاشتراكات
-  // ==========================================
+  // متغيرات الكوبونات
   List<Map<String, dynamic>> _coupons = [];
 
   // ==========================================
@@ -115,7 +111,6 @@ class SystemProvider extends ChangeNotifier {
       notifyListeners();
     });
 
-    // 👈 🆕 الاستماع للكوبونات الترويجية
     _db.collection('coupons').orderBy('createdAt', descending: true).snapshots().listen((snapshot) {
       _coupons = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
       notifyListeners();
@@ -148,11 +143,8 @@ class SystemProvider extends ChangeNotifier {
   bool get isDropboxLinked => _isDropboxLinked;
   List<Map<String, dynamic>> get backupsList => _backupsList;
   List<Map<String, dynamic>> get bankAccounts => _bankAccounts;
-  
-  // قراءة الكوبونات
   List<Map<String, dynamic>> get coupons => _coupons;
 
-  // 👈 🆕 دالة ديناميكية لحساب إحصائيات الرادار (Dashboard)
   Map<String, dynamic> get subscriptionStats {
     int active = 0;
     int expiringSoon = 0;
@@ -169,7 +161,6 @@ class SystemProvider extends ChangeNotifier {
       }
     }
 
-    // تقدير الأرباح (مثال: كل وكيل نشط يدفع 3000 ريال شهرياً)
     double expectedRevenue = active * 3000.0;
 
     return {
@@ -228,7 +219,7 @@ class SystemProvider extends ChangeNotifier {
         'timestamp': FieldValue.serverTimestamp(), 
         'ip': 'Cloud System', 
         'severity': severity,
-        'targetPhone': targetPhone, // 👈 لتسهيل فلترة سجل وكيل معين لاحقاً
+        'targetPhone': targetPhone, 
       });
     } catch (e) {}
   }
@@ -338,7 +329,6 @@ class SystemProvider extends ChangeNotifier {
     try {
       bool exists = await checkUserExists(phone);
       if (!exists) {
-        // حساب تاريخ انتهاء افتراضي (بعد شهر من الآن) للوكلاء الجدد
         final DateTime nextMonth = DateTime.now().add(const Duration(days: 30));
         final String expiryDate = '${nextMonth.year}-${nextMonth.month.toString().padLeft(2, '0')}-${nextMonth.day.toString().padLeft(2, '0')}';
 
@@ -354,9 +344,9 @@ class SystemProvider extends ChangeNotifier {
           'balance': 0.0,
           'dangerLimit': 0.0, 
           'status': 'نشط',
-          'subPlan': 'باقة افتراضية', // 👈 حقل الاشتراك الجديد
-          'subStatus': 'نشط',       // 👈 حالة الاشتراك
-          'subExpiry': expiryDate,  // 👈 تاريخ الانتهاء
+          'subPlan': 'باقة افتراضية', 
+          'subStatus': 'نشط',       
+          'subExpiry': expiryDate,  
           'purchasedCards': [],
           'isBiometricEnabled': false,
           'createdAt': FieldValue.serverTimestamp(),
@@ -511,12 +501,10 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 🆕 دوال الاشتراكات والكوبونات (العمليات الجراحية)
+  // دوال الاشتراكات والكوبونات 
   // ==========================================
-
-  // 1. تطبيق خطة اشتراك جديدة على الوكلاء
   Future<void> applySubscriptionPlan({
-    required int targetingFilter, // 1: الكل, 2: وكيل محدد
+    required int targetingFilter, 
     required String planName,
     required int durationMonths,
     String? targetAgentPhone,
@@ -524,12 +512,10 @@ class SystemProvider extends ChangeNotifier {
     try {
       WriteBatch batch = _db.batch();
       
-      // حساب تاريخ الانتهاء الجديد
       final DateTime newExpiry = DateTime.now().add(Duration(days: durationMonths * 30));
       final String formattedExpiry = '${newExpiry.year}-${newExpiry.month.toString().padLeft(2, '0')}-${newExpiry.day.toString().padLeft(2, '0')}';
 
       if (targetingFilter == 1) {
-        // تطبيق على كل الوكلاء
         for (var agent in agentsList) {
           DocumentReference ref = _db.collection('users').doc(agent['phone']);
           batch.update(ref, {
@@ -540,7 +526,6 @@ class SystemProvider extends ChangeNotifier {
         }
         logAction(action: 'تطبيق خطة شاملة', details: 'تم تطبيق خطة [$planName] على جميع الوكلاء', severity: 'critical');
       } else if (targetingFilter == 2 && targetAgentPhone != null) {
-        // تطبيق على وكيل واحد
         DocumentReference ref = _db.collection('users').doc(targetAgentPhone);
         batch.update(ref, {
           'subPlan': planName,
@@ -556,14 +541,12 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  // 2. توليد كوبون ذكي
   Future<void> createSmartCoupon({
     required String code,
     required String discountDetails,
     required int maxUses,
   }) async {
     try {
-      // التحقق من عدم تكرار الكود
       final existing = await _db.collection('coupons').where('code', isEqualTo: code).get();
       if (existing.docs.isNotEmpty) throw 'كود الكوبون مستخدم مسبقاً!';
 
@@ -581,12 +564,11 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  // 3. تحديث فترة السماح (الرادار) لوكيل
   Future<void> updateAgentGracePeriod(String agentPhone, String newExpiryDate) async {
     try {
       await _db.collection('users').doc(agentPhone).update({
         'subExpiry': newExpiryDate,
-        'subStatus': 'إنذار', // تحويله لفترة سماح/إنذار
+        'subStatus': 'إنذار', 
       });
       logAction(action: 'تعديل فترة السماح', details: 'تم تعديل تاريخ الانتهاء للرقم $agentPhone إلى $newExpiryDate', severity: 'medium', targetPhone: agentPhone);
     } catch (e) {
@@ -594,7 +576,6 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  // 4. إيقاف / استئناف خطة الوكيل
   Future<void> toggleSubscriptionStatus(String agentPhone, String currentStatus) async {
     try {
       String newStatus = currentStatus == 'موقوف مؤقتاً' ? 'نشط' : 'موقوف مؤقتاً';
@@ -602,6 +583,150 @@ class SystemProvider extends ChangeNotifier {
       logAction(action: 'تغيير حالة الاشتراك', details: 'تغيرت خطة الوكيل $agentPhone إلى [$newStatus]', severity: 'critical', targetPhone: agentPhone);
     } catch (e) {
       throw 'فشل تغيير حالة الخطة: $e';
+    }
+  }
+
+  // ==========================================
+  // دوال إعدادات المستخدم والنسخ الاحتياطي (المستعادة)
+  // ==========================================
+  bool changeUserPassword(String oldPassword, String newPassword) {
+    if (_activeUserPhone == null) return false;
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
+    if (user['password'] == oldPassword) {
+      _db.collection('users').doc(_activeUserPhone).update({'password': newPassword});
+      logAction(action: 'تغيير كلمة المرور', details: 'تم تغيير كلمة المرور بنجاح', severity: 'medium');
+      return true; 
+    }
+    return false; 
+  }
+
+  void toggleBiometric(bool isEnabled) {
+    if (_activeUserPhone == null) return;
+    _db.collection('users').doc(_activeUserPhone).update({'isBiometricEnabled': isEnabled});
+  }
+
+  Future<void> updateAutoBackupSettings(bool isEnabled, String freq, String time, String email) async {
+    await _db.collection('system').doc('backup_settings').update({
+      'isAutoBackupEnabled': isEnabled,
+      'backupFrequency': freq,
+      'backupTime': time,
+      'emergencyEmail': email,
+    });
+    logAction(action: 'إعدادات النسخ', details: 'تم تعديل إعدادات النسخ الاحتياطي التلقائي', severity: 'medium');
+  }
+
+  Future<void> toggleCloudLink(String service, bool isLinked) async {
+    if (service == 'drive') {
+      await _db.collection('system').doc('backup_settings').update({'isDriveLinked': isLinked});
+    } else {
+      await _db.collection('system').doc('backup_settings').update({'isDropboxLinked': isLinked});
+    }
+    logAction(action: 'الربط السحابي', details: 'تم ${isLinked ? "ربط" : "إلغاء ربط"} حساب $service بنجاح', severity: 'medium');
+  }
+
+  Future<void> takeManualBackup() async {
+    final now = DateTime.now();
+    final amPm = now.hour >= 12 ? 'PM' : 'AM';
+    int hour12 = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
+    final formattedDate = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${hour12.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} $amPm';
+    
+    await _db.collection('backups').add({
+      'date': formattedDate,
+      'size': '45 MB',
+      'type': 'يدوي (محلي)',
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+    logAction(action: 'أخذ نسخة يدوية', details: 'تم أخذ نسخة احتياطية بنجاح وتم رفعها للسحابة', severity: 'medium');
+  }
+
+  Future<void> deleteBackup(String docId) async {
+    await _db.collection('backups').doc(docId).delete();
+    logAction(action: 'حذف نسخة احتياطية', details: 'تم مسح نسخة احتياطية قديمة لتوفير المساحة', severity: 'critical');
+  }
+
+  Future<void> logRestoreAttempt(bool isSuccess, String backupDate) async {
+    if (isSuccess) {
+      logAction(action: 'استعادة النظام (ناجحة)', details: 'تم استعادة النظام إلى النقطة الزمنية ($backupDate)', severity: 'critical');
+    } else {
+      logAction(action: 'استعادة النظام (فاشلة)', details: 'محاولة فاشلة لاستعادة النظام - إدخال رمز PIN غير صحيح', severity: 'critical');
+    }
+  }
+
+  // ==========================================
+  // دوال إدارة الحسابات البنكية المضمونة (المستعادة)
+  // ==========================================
+  Future<void> addBankAccount(String bankName, String accNumber, String beneficiary) async {
+    try {
+      int newOrder = _bankAccounts.length;
+      
+      await _db.collection('bank_accounts').add({
+        'bankName': bankName,
+        'accountNumber': accNumber,
+        'beneficiary': beneficiary.isNotEmpty ? beneficiary : 'غير محدد',
+        'status': 'نشط',
+        'hasQR': false, 
+        'order': newOrder,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      
+      logAction(action: 'إضافة حساب بنكي', details: 'تم إضافة حساب $bankName برقم $accNumber', severity: 'medium');
+    } catch (e) {
+      throw 'حدث خطأ أثناء حفظ الحساب السحابي: $e';
+    }
+  }
+
+  Future<void> updateBankAccount(String docId, String bankName, String accNumber, String beneficiary) async {
+    try {
+      await _db.collection('bank_accounts').doc(docId).update({
+        'bankName': bankName,
+        'accountNumber': accNumber,
+        'beneficiary': beneficiary,
+      });
+      logAction(action: 'تعديل حساب بنكي', details: 'تم تعديل بيانات الحساب البنكي $bankName', severity: 'medium');
+    } catch (e) {
+      throw 'حدث خطأ أثناء تعديل الحساب: $e';
+    }
+  }
+
+  Future<void> toggleBankAccountStatus(String docId, String currentStatus) async {
+    try {
+      String newStatus = currentStatus == 'نشط' ? 'موقوف' : 'نشط';
+      await _db.collection('bank_accounts').doc(docId).update({'status': newStatus});
+      logAction(action: 'تغيير حالة حساب بنكي', details: 'تم $newStatus حساب بنكي', severity: 'medium');
+    } catch (e) {
+      throw 'حدث خطأ أثناء تغيير حالة الحساب: $e';
+    }
+  }
+
+  Future<void> deleteBankAccount(String docId) async {
+    try {
+      await _db.collection('bank_accounts').doc(docId).delete();
+      logAction(action: 'حذف حساب بنكي', details: 'تم حذف حساب بنكي من النظام', severity: 'critical');
+    } catch (e) {
+      throw 'حدث خطأ أثناء محاولة حذف الحساب: $e';
+    }
+  }
+
+  Future<void> reorderBankAccounts(int oldIndex, int newIndex) async {
+    try {
+      if (oldIndex < newIndex) {
+        newIndex -= 1;
+      }
+      
+      final item = _bankAccounts.removeAt(oldIndex);
+      _bankAccounts.insert(newIndex, item);
+      notifyListeners();
+
+      WriteBatch batch = _db.batch();
+      for (int i = 0; i < _bankAccounts.length; i++) {
+        DocumentReference ref = _db.collection('bank_accounts').doc(_bankAccounts[i]['docId']);
+        batch.update(ref, {'order': i});
+      }
+      
+      await batch.commit();
+      logAction(action: 'إعادة ترتيب الحسابات', details: 'تم تغيير ترتيب ظهور الحسابات البنكية للوكلاء', severity: 'normal');
+    } catch (e) {
+      throw 'حدث خطأ في مزامنة الترتيب السحابي: $e';
     }
   }
 }
