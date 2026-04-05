@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:math'; // 👈 لتوليد الكوبونات العشوائية
+import 'dart:math';
 
 import '../../../core/providers/system_provider.dart'; 
 import '../../../core/widgets/custom_drawer.dart';
@@ -14,15 +14,15 @@ class SubscriptionsScreen extends StatefulWidget {
 }
 
 class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
-  // متغير الفلترة السريعة
   String _selectedFilter = 'الكل'; 
 
   // ==========================================
-  // 1. نافذة تطبيق خطة / اشتراك جديد
+  // 1. تطبيق خطة / اشتراك (الآن بحقل السعر الحقيقي 💰)
   // ==========================================
   void _showCreatePlanDialog(SystemProvider provider) {
     int targetingFilter = 1; 
     final planNameController = TextEditingController();
+    final planPriceController = TextEditingController(); // 👈 حقل السعر الحقيقي
     final durationController = TextEditingController();
     final phoneController = TextEditingController(); 
 
@@ -45,6 +45,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildTextField('اسم الخطة (مثال: باقة 5%)', Icons.star, controller: planNameController),
+                  _buildTextField('قيمة الباقة بالريال (لحساب الأرباح)', Icons.monetization_on, isNumber: true, controller: planPriceController), // 👈
                   _buildTextField('المدة (بالأشهر)', Icons.calendar_today, isNumber: true, controller: durationController),
                   const Divider(),
                   const Text('الاستهداف السحابي:', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -69,13 +70,15 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
               TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء', style: TextStyle(color: Colors.red))),
               ElevatedButton(
                 onPressed: () {
-                  if (planNameController.text.isNotEmpty && durationController.text.isNotEmpty) {
+                  if (planNameController.text.isNotEmpty && durationController.text.isNotEmpty && planPriceController.text.isNotEmpty) {
                     final messenger = ScaffoldMessenger.of(context);
                     int months = int.tryParse(durationController.text) ?? 1;
+                    double price = double.tryParse(planPriceController.text) ?? 0.0; // 👈 استخراج السعر
 
                     provider.applySubscriptionPlan(
                       targetingFilter: targetingFilter,
                       planName: planNameController.text,
+                      planPrice: price, // 👈 إرسال السعر للسحابة
                       durationMonths: months,
                       targetAgentPhone: phoneController.text,
                     ).catchError((e) => messenger.showSnackBar(SnackBar(content: Text('خطأ: $e'))));
@@ -94,7 +97,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   }
 
   // ==========================================
-  // 2. نافذة الكوبونات (توليد ذكي + إدارة) 🎟️
+  // 2. نافذة الكوبونات (مكتملة ومربوطة بالإرسال الحقيقي 🎟️)
   // ==========================================
   void _showCouponsManagerDialog(SystemProvider provider) {
     showDialog(
@@ -142,13 +145,12 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     );
   }
 
-  // تبويب 1: توليد الكوبون
   Widget _buildCreateCouponTab(SystemProvider provider, BuildContext parentContext) {
     final codeController = TextEditingController();
     final discountValueController = TextEditingController();
     final maxUsesController = TextEditingController();
     String discountType = 'تمديد أيام مجانية';
-    String sendMethod = 'الكل (تطبيق + SMS)';
+    String sendMethod = 'إرسال إشعار داخل التطبيق 📱';
 
     return StatefulBuilder(
       builder: (context, setStateTab) => SingleChildScrollView(
@@ -197,16 +199,20 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                 onPressed: () {
                   if (codeController.text.isNotEmpty && discountValueController.text.isNotEmpty && maxUsesController.text.isNotEmpty) {
                     final messenger = ScaffoldMessenger.of(parentContext);
+                    
+                    // 👈 إرسال البيانات المكتملة للسحابة مع طريقة الإرسال
                     provider.createSmartCoupon(
                       code: codeController.text,
                       discountDetails: '$discountType: ${discountValueController.text}',
                       maxUses: int.parse(maxUsesController.text),
+                      sendMethod: sendMethod, 
                     );
+
                     Navigator.pop(parentContext);
-                    messenger.showSnackBar(SnackBar(content: Text('تم توليد الكوبون وإرساله عبر: $sendMethod ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                    messenger.showSnackBar(SnackBar(content: Text('تم توليد الكوبون وتسجيل أمر الإرسال ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
                   }
                 },
-                child: const Text('توليد وحفظ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                child: const Text('توليد وحفظ وإرسال', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -215,41 +221,44 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     );
   }
 
-  // تبويب 2: إدارة الكوبونات
   Widget _buildActiveCouponsTab(SystemProvider provider) {
     final coupons = provider.coupons;
-    if (coupons.isEmpty) return const Center(child: Text('لا توجد كوبونات نشطة', style: TextStyle(color: Colors.grey)));
+    if (coupons.isEmpty) return const Center(child: Text('لا توجد كوبونات', style: TextStyle(color: Colors.grey)));
 
     return ListView.builder(
       itemCount: coupons.length,
       itemBuilder: (context, index) {
         final coupon = coupons[index];
         final isActive = coupon['isActive'] ?? false;
+        
         return ListTile(
           leading: Icon(isActive ? Icons.local_offer : Icons.block, color: isActive ? Colors.green : Colors.red),
           title: Text(coupon['code'], style: const TextStyle(fontWeight: FontWeight.bold)),
           subtitle: Text('${coupon['discountDetails']}\nالاستخدام: ${coupon['usedCount']} / ${coupon['maxUses']}'),
-          trailing: isActive ? IconButton(
-            icon: const Icon(Icons.power_settings_new, color: Colors.red),
-            tooltip: 'إعدام الكوبون',
-            onPressed: () {
-              // الدالة تحتاج لإضافتها في العقل المدبر لاحقاً للإيقاف اليدوي
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سيتم إضافة دالة الإعدام في التحديث القادم')));
-            },
-          ) : const Text('منتهي', style: TextStyle(color: Colors.red)),
+          trailing: isActive 
+            ? IconButton(
+                icon: const Icon(Icons.power_settings_new, color: Colors.red),
+                tooltip: 'إعدام الكوبون فوراً',
+                onPressed: () {
+                  // 👈 دالة الإعدام الحقيقية تعمل الآن
+                  provider.deactivateCoupon(coupon['docId'], coupon['code']);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إيقاف الكوبون بنجاح 🚫', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                },
+              ) 
+            : const Text('منتهي', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
         );
       },
     );
   }
 
   // ==========================================
-  // 3. نافذة تعديل فترة السماح (بالتقويم الذكي 📅)
+  // 3. نافذة تعديل فترة السماح (بالتقويم 📅)
   // ==========================================
   Future<void> _showEditGracePeriodDialog(String agentName, String agentPhone, SystemProvider provider) async {
     DateTime? pickedDate = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
-      firstDate: DateTime.now().subtract(const Duration(days: 30)), // يسمح بتواريخ سابقة قليلاً
+      firstDate: DateTime.now().subtract(const Duration(days: 30)), 
       lastDate: DateTime(2030),
       builder: (context, child) {
         return Theme(
@@ -262,10 +271,9 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     );
 
     if (pickedDate != null) {
-      // تنسيق التاريخ
       String formattedDate = '${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}';
-      
       final messenger = ScaffoldMessenger.of(context);
+      
       provider.updateAgentGracePeriod(agentPhone, formattedDate).catchError((error) {
         messenger.showSnackBar(SnackBar(content: Text('فشل التعديل ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
       });
@@ -275,7 +283,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   }
 
   // ==========================================
-  // 4. نافذة السجل التاريخي (Timeline UI 📜)
+  // 4. نافذة السجل التاريخي الحقيقي 📜
   // ==========================================
   void _showHistoryLog(String agentName, String agentPhone, SystemProvider provider) {
     final agentLogs = provider.auditLogs.where((log) => log['targetPhone'] == agentPhone || log['phone'] == agentPhone).toList();
@@ -295,7 +303,6 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                     itemCount: agentLogs.length,
                     itemBuilder: (context, index) {
                       final log = agentLogs[index];
-                      // تحديد لون النقطة بناء على نوع العملية
                       Color dotColor = Colors.blue;
                       if (log['action'].toString().contains('تجميد') || log['action'].toString().contains('حذف')) dotColor = Colors.red;
                       if (log['action'].toString().contains('تطبيق') || log['action'].toString().contains('تجديد')) dotColor = Colors.green;
@@ -304,19 +311,14 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                       return Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // رسم الخط الزمني
                           Column(
                             children: [
-                              Container(
-                                width: 15, height: 15,
-                                decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)),
-                              ),
+                              Container(width: 15, height: 15, decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2))),
                               if (index != agentLogs.length - 1)
                                 Container(width: 2, height: 50, color: Colors.grey.withOpacity(0.3)),
                             ],
                           ),
                           const SizedBox(width: 10),
-                          // محتوى البطاقة
                           Expanded(
                             child: Padding(
                               padding: const EdgeInsets.only(bottom: 15.0),
@@ -341,18 +343,12 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     );
   }
 
-  // ==========================================
-  // إيقاف واستئناف الخطة ⏸️ ▶️
-  // ==========================================
   void _togglePausePlan(String agentPhone, String currentStatus, SystemProvider provider) {
     final messenger = ScaffoldMessenger.of(context);
     provider.toggleSubscriptionStatus(agentPhone, currentStatus).catchError((error) {
       messenger.showSnackBar(SnackBar(content: Text('خطأ: $error', textDirection: TextDirection.rtl)));
     });
-    messenger.showSnackBar(SnackBar(
-      content: Text(currentStatus == 'موقوف مؤقتاً' ? 'جاري الاستئناف... ▶️' : 'جاري الإيقاف... ⏸️', textDirection: TextDirection.rtl),
-      backgroundColor: Colors.blueGrey, duration: const Duration(seconds: 1),
-    ));
+    messenger.showSnackBar(SnackBar(content: Text(currentStatus == 'موقوف مؤقتاً' ? 'جاري الاستئناف... ▶️' : 'جاري الإيقاف... ⏸️', textDirection: TextDirection.rtl), backgroundColor: Colors.blueGrey, duration: const Duration(seconds: 1)));
   }
 
   @override
@@ -360,7 +356,6 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     final systemProvider = Provider.of<SystemProvider>(context);
     final stats = systemProvider.subscriptionStats; 
     
-    // 👈 تطبيق الفلترة السريعة على قائمة الوكلاء
     List<Map<String, dynamic>> displayedAgents = systemProvider.agentsList.where((agent) {
       String status = agent['subStatus'] ?? 'نشط';
       if (_selectedFilter == 'الكل') return true;
@@ -382,7 +377,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // === 1. شريط إحصائيات الرادار (Dashboard) ===
+            // === 1. شريط إحصائيات الرادار (مربوط بالأرباح الحقيقية) ===
             Container(
               margin: const EdgeInsets.all(12),
               padding: const EdgeInsets.all(12),
@@ -397,12 +392,11 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                   _buildStatItem('نشط', stats['active'].toString(), Colors.green),
                   _buildStatItem('إنذار', stats['expiringSoon'].toString(), Colors.orange),
                   _buildStatItem('موقوف', stats['frozen'].toString(), Colors.red),
-                  _buildStatItem('متوقع', '${stats['expectedRevenue']} ر.ي', Colors.blue),
+                  _buildStatItem('متوقع', '${stats['expectedRevenue']} ر.ي', Colors.blue), // 👈 رقم حقيقي
                 ],
               ),
             ),
 
-            // === 2. أزرار التحكم العلوية ===
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Row(
@@ -430,7 +424,6 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
               ),
             ),
 
-            // === 3. شريط الفلترة السريعة (Quick Filters) ===
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -451,7 +444,6 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
               ),
             ),
 
-            // === 4. جدول المراقبة (قائمة الوكلاء) ===
             Expanded(
               child: displayedAgents.isEmpty
                   ? Center(child: Text('لا يوجد وكلاء في قسم "$_selectedFilter"', style: const TextStyle(color: Colors.grey)))
@@ -460,7 +452,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
                       itemBuilder: (context, index) {
                         final agent = displayedAgents[index];
-                        final subStatus = agent['subStatus'] ?? 'غير محدد';
+                        final subStatus = agent['subStatus'] ?? 'نشط';
                         final isPaused = subStatus == 'موقوف مؤقتاً' || subStatus == 'مجمد';
                         
                         Color statusColor = Colors.grey;
