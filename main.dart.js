@@ -10029,7 +10029,7 @@ A.eN(p,$.jB(),!0)
 q=A.b5u(new A.hG(p))
 o=q.gbM()
 q=q.gbM().gxQ()
-o.sxQ(new A.Br(!1,q.b,q.c,q.d,!1))
+o.sxQ(new A.Br(!0,q.b,q.c,-1,!1))
 q=A.bjW(B.b_z,A.b([A.b4m(new A.aZ7(),t.eC),A.b4m(new A.aZ8(),t.F)],t.Ds))
 if($.ah==null)A.b97()
 o=$.ah
@@ -60505,7 +60505,7 @@ return r},
 j(a,b){var s
 if(b==null)return!1
 s=!1
-if(b instanceof A.Br)if(A.x(b)===A.x(this))s=b.a==this.a
+if(b instanceof A.Br)if(A.x(b)===A.x(this))if(b.a==this.a)s=b.d==this.d
 return s},
 gu(a){var s=this
 return A.Z(A.x(s),s.a,s.b,s.c,s.d,!1,B.c,B.c,B.c,B.c,B.c,B.c,B.c,B.c,B.c,B.c,B.c,B.c,B.c,B.c)},
@@ -60545,7 +60545,9 @@ gxQ(){return B.wj},
 sxQ(a){var s,r=a.a,q=r==null||!r,p=v.G
 if(q)s=p.firebase_firestore.memoryLocalCache(null)
 else{q=p.firebase_firestore
-s=q.persistentLocalCache(t.SF.a({cacheSizeBytes:null}))}this.d=t.SF.a({ignoreUndefinedProperties:!1,localCache:s})}}
+p=a.d
+if(p==null)p=null
+s=q.persistentLocalCache(t.SF.a({cacheSizeBytes:p}))}this.d=t.SF.a({ignoreUndefinedProperties:!1,localCache:s})}}
 A.TY.prototype={
 gf8(){return this.y.a.path},
 cL(a){var s=v.G,r=this.y.a
@@ -134464,7 +134466,7 @@ B.a3t=new A.u_(1,"low")
 B.eC=new A.u_(2,"medium")
 B.tz=new A.u_(3,"high")
 B.tA=new A.Gs(null)
-B.a3u=new A.zj("AIzaSyBV60g3WTr8Kf8wD0bSN2P-8aKn3efqYXk","1:504008355647:web:c236e55cd00d7c5c8d6d8a","504008355647","cards-net-app","cards-net-app.firebaseapp.com",null,"cards-net-app.firebasestorage.app",null,null,null,null,null,null,null)
+B.a3u=new A.zj("AIzaSyDdZzU6VXrmmk9Ul99GTN5RLtza95tLkVE","1:100057914511:web:75b015601ca5cb836724fa","100057914511","netcardsapp","netcardsapp.firebaseapp.com",null,"netcardsapp.firebasestorage.app","G-4MDY84TCRQ",null,null,null,null,null,null)
 B.a3v=new A.Vp(B.az,B.az)
 B.pf=new A.dC(0,0)
 B.a3w=new A.Vq(B.pf,B.pf)
