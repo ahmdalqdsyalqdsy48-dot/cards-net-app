@@ -19,7 +19,7 @@ class SystemProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _auditLogs = []; 
 
   // ==========================================
-  // 🆕 متغيرات النسخ الاحتياطي والحسابات البنكية
+  // متغيرات النسخ الاحتياطي والحسابات البنكية
   // ==========================================
   bool _isAutoBackupEnabled = true;
   String _backupFrequency = 'يومياً';
@@ -28,9 +28,12 @@ class SystemProvider extends ChangeNotifier {
   bool _isDriveLinked = false;
   bool _isDropboxLinked = false;
   List<Map<String, dynamic>> _backupsList = [];
-  
-  // 👈 قائمة الحسابات البنكية السحابية
   List<Map<String, dynamic>> _bankAccounts = [];
+
+  // ==========================================
+  // 🆕 متغيرات الكوبونات والاشتراكات
+  // ==========================================
+  List<Map<String, dynamic>> _coupons = [];
 
   // ==========================================
   // 3. تهيئة النظام (الاستماع للسحابة لحظة بلحظة)
@@ -107,15 +110,20 @@ class SystemProvider extends ChangeNotifier {
       notifyListeners();
     });
 
-    // 🆕 الاستماع للحسابات البنكية (مرتبة حسب حقل "order")
     _db.collection('bank_accounts').orderBy('order').snapshots().listen((snapshot) {
       _bankAccounts = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
+      notifyListeners();
+    });
+
+    // 👈 🆕 الاستماع للكوبونات الترويجية
+    _db.collection('coupons').orderBy('createdAt', descending: true).snapshots().listen((snapshot) {
+      _coupons = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
       notifyListeners();
     });
   }
 
   // ==========================================
-  // 4. دوال القراءة
+  // 4. دوال القراءة والإحصائيات
   // ==========================================
   double get adminMainBalance => _adminMainBalance;
   int get totalSystemCards => _totalSystemCards;
@@ -139,9 +147,38 @@ class SystemProvider extends ChangeNotifier {
   bool get isDriveLinked => _isDriveLinked;
   bool get isDropboxLinked => _isDropboxLinked;
   List<Map<String, dynamic>> get backupsList => _backupsList;
-  
-  // 👈 قراءة الحسابات البنكية السحابية
   List<Map<String, dynamic>> get bankAccounts => _bankAccounts;
+  
+  // قراءة الكوبونات
+  List<Map<String, dynamic>> get coupons => _coupons;
+
+  // 👈 🆕 دالة ديناميكية لحساب إحصائيات الرادار (Dashboard)
+  Map<String, dynamic> get subscriptionStats {
+    int active = 0;
+    int expiringSoon = 0;
+    int frozen = 0;
+
+    for (var agent in agentsList) {
+      String status = agent['subStatus'] ?? 'نشط';
+      if (status == 'نشط' || status == 'فترة مجانية') {
+        active++;
+      } else if (status == 'إنذار') {
+        expiringSoon++;
+      } else if (status == 'مجمد' || status == 'موقوف مؤقتاً') {
+        frozen++;
+      }
+    }
+
+    // تقدير الأرباح (مثال: كل وكيل نشط يدفع 3000 ريال شهرياً)
+    double expectedRevenue = active * 3000.0;
+
+    return {
+      'active': active,
+      'expiringSoon': expiringSoon,
+      'frozen': frozen,
+      'expectedRevenue': expectedRevenue,
+    };
+  }
 
   String get currentUserName {
     if (_activeUserPhone == null) return 'مستخدم غير معروف';
@@ -172,7 +209,7 @@ class SystemProvider extends ChangeNotifier {
   // ==========================================
   // 🛡️ دالة التسجيل الصامت (الصندوق الأسود)
   // ==========================================
-  Future<void> logAction({required String action, required String details, required String severity}) async {
+  Future<void> logAction({required String action, required String details, required String severity, String? targetPhone}) async {
     if (_activeUserPhone == null) return; 
 
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'name': 'غير معروف', 'role': 'Unknown'});
@@ -191,12 +228,13 @@ class SystemProvider extends ChangeNotifier {
         'timestamp': FieldValue.serverTimestamp(), 
         'ip': 'Cloud System', 
         'severity': severity,
+        'targetPhone': targetPhone, // 👈 لتسهيل فلترة سجل وكيل معين لاحقاً
       });
     } catch (e) {}
   }
 
   // ==========================================
-  // 5. دوال الإدارة والتحكم السحابية المضمونة 🚀
+  // 5. دوال الإدارة والتحكم السحابية
   // ==========================================
   
   Future<void> updateNewsSpeed(double newSpeed) async {
@@ -300,6 +338,10 @@ class SystemProvider extends ChangeNotifier {
     try {
       bool exists = await checkUserExists(phone);
       if (!exists) {
+        // حساب تاريخ انتهاء افتراضي (بعد شهر من الآن) للوكلاء الجدد
+        final DateTime nextMonth = DateTime.now().add(const Duration(days: 30));
+        final String expiryDate = '${nextMonth.year}-${nextMonth.month.toString().padLeft(2, '0')}-${nextMonth.day.toString().padLeft(2, '0')}';
+
         await _db.collection('users').doc(phone).set({
           'id': 'AGENT_${DateTime.now().millisecondsSinceEpoch}',
           'name': name,
@@ -312,9 +354,12 @@ class SystemProvider extends ChangeNotifier {
           'balance': 0.0,
           'dangerLimit': 0.0, 
           'status': 'نشط',
+          'subPlan': 'باقة افتراضية', // 👈 حقل الاشتراك الجديد
+          'subStatus': 'نشط',       // 👈 حالة الاشتراك
+          'subExpiry': expiryDate,  // 👈 تاريخ الانتهاء
           'purchasedCards': [],
           'isBiometricEnabled': false,
-          'createdAt': FieldValue.serverTimestamp(), // 👈 توثيق وقت الإنشاء
+          'createdAt': FieldValue.serverTimestamp(),
         });
         
         logAction(action: 'إضافة وكيل جديد', details: 'تم إضافة وكيل جديد باسم "$name" ورقم $phone', severity: 'medium');
@@ -322,7 +367,6 @@ class SystemProvider extends ChangeNotifier {
         throw 'رقم الهاتف مسجل مسبقاً في النظام!';
       }
     } catch (e) {
-      // قذف الخطأ للشاشة
       throw 'حدث خطأ أثناء إضافة الوكيل السحابية: $e';
     }
   }
@@ -357,7 +401,7 @@ class SystemProvider extends ChangeNotifier {
     try {
       String newStatus = currentStatus == 'نشط' ? 'مجمد' : 'نشط';
       _db.collection('users').doc(phone).update({'status': newStatus});
-      logAction(action: 'تغيير حالة حساب', details: 'تم تغيير حالة الحساب $phone إلى [$newStatus]', severity: 'critical');
+      logAction(action: 'تغيير حالة حساب', details: 'تم تغيير حالة الحساب $phone إلى [$newStatus]', severity: 'critical', targetPhone: phone);
     } catch (e) {
       debugPrint('Error: $e');
     }
@@ -466,148 +510,98 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  bool changeUserPassword(String oldPassword, String newPassword) {
-    if (_activeUserPhone == null) return false;
-    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
-    if (user['password'] == oldPassword) {
-      _db.collection('users').doc(_activeUserPhone).update({'password': newPassword});
-      logAction(action: 'تغيير كلمة المرور', details: 'تم تغيير كلمة المرور بنجاح', severity: 'medium');
-      return true; 
-    }
-    return false; 
-  }
-
-  void toggleBiometric(bool isEnabled) {
-    if (_activeUserPhone == null) return;
-    _db.collection('users').doc(_activeUserPhone).update({'isBiometricEnabled': isEnabled});
-  }
-
-  Future<void> updateAutoBackupSettings(bool isEnabled, String freq, String time, String email) async {
-    await _db.collection('system').doc('backup_settings').update({
-      'isAutoBackupEnabled': isEnabled,
-      'backupFrequency': freq,
-      'backupTime': time,
-      'emergencyEmail': email,
-    });
-    logAction(action: 'إعدادات النسخ', details: 'تم تعديل إعدادات النسخ الاحتياطي التلقائي', severity: 'medium');
-  }
-
-  Future<void> toggleCloudLink(String service, bool isLinked) async {
-    if (service == 'drive') {
-      await _db.collection('system').doc('backup_settings').update({'isDriveLinked': isLinked});
-    } else {
-      await _db.collection('system').doc('backup_settings').update({'isDropboxLinked': isLinked});
-    }
-    logAction(action: 'الربط السحابي', details: 'تم ${isLinked ? "ربط" : "إلغاء ربط"} حساب $service بنجاح', severity: 'medium');
-  }
-
-  Future<void> takeManualBackup() async {
-    final now = DateTime.now();
-    final amPm = now.hour >= 12 ? 'PM' : 'AM';
-    int hour12 = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
-    final formattedDate = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${hour12.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} $amPm';
-    
-    await _db.collection('backups').add({
-      'date': formattedDate,
-      'size': '45 MB',
-      'type': 'يدوي (محلي)',
-      'timestamp': FieldValue.serverTimestamp(),
-    });
-    logAction(action: 'أخذ نسخة يدوية', details: 'تم أخذ نسخة احتياطية بنجاح وتم رفعها للسحابة', severity: 'medium');
-  }
-
-  Future<void> deleteBackup(String docId) async {
-    await _db.collection('backups').doc(docId).delete();
-    logAction(action: 'حذف نسخة احتياطية', details: 'تم مسح نسخة احتياطية قديمة لتوفير المساحة', severity: 'critical');
-  }
-
-  Future<void> logRestoreAttempt(bool isSuccess, String backupDate) async {
-    if (isSuccess) {
-      logAction(action: 'استعادة النظام (ناجحة)', details: 'تم استعادة النظام إلى النقطة الزمنية ($backupDate)', severity: 'critical');
-    } else {
-      logAction(action: 'استعادة النظام (فاشلة)', details: 'محاولة فاشلة لاستعادة النظام - إدخال رمز PIN غير صحيح', severity: 'critical');
-    }
-  }
-
   // ==========================================
-  // 🆕 دوال إدارة الحسابات البنكية المضمونة
+  // 🆕 دوال الاشتراكات والكوبونات (العمليات الجراحية)
   // ==========================================
 
-  Future<void> addBankAccount(String bankName, String accNumber, String beneficiary) async {
+  // 1. تطبيق خطة اشتراك جديدة على الوكلاء
+  Future<void> applySubscriptionPlan({
+    required int targetingFilter, // 1: الكل, 2: وكيل محدد
+    required String planName,
+    required int durationMonths,
+    String? targetAgentPhone,
+  }) async {
     try {
-      int newOrder = _bankAccounts.length;
-      
-      await _db.collection('bank_accounts').add({
-        'bankName': bankName,
-        'accountNumber': accNumber,
-        'beneficiary': beneficiary.isNotEmpty ? beneficiary : 'غير محدد',
-        'status': 'نشط',
-        'hasQR': false, 
-        'order': newOrder,
-        'createdAt': FieldValue.serverTimestamp(), // 👈 توثيق وقت الإنشاء
-      });
-      
-      logAction(action: 'إضافة حساب بنكي', details: 'تم إضافة حساب $bankName برقم $accNumber', severity: 'medium');
-    } catch (e) {
-      // 👈 قذف الخطأ لكي تلتقطه الشاشة إذا فشل الحفظ
-      throw 'حدث خطأ أثناء حفظ الحساب السحابي: $e';
-    }
-  }
-
-  Future<void> updateBankAccount(String docId, String bankName, String accNumber, String beneficiary) async {
-    try {
-      await _db.collection('bank_accounts').doc(docId).update({
-        'bankName': bankName,
-        'accountNumber': accNumber,
-        'beneficiary': beneficiary,
-      });
-      logAction(action: 'تعديل حساب بنكي', details: 'تم تعديل بيانات الحساب البنكي $bankName', severity: 'medium');
-    } catch (e) {
-      throw 'حدث خطأ أثناء تعديل الحساب: $e';
-    }
-  }
-
-  Future<void> toggleBankAccountStatus(String docId, String currentStatus) async {
-    try {
-      String newStatus = currentStatus == 'نشط' ? 'موقوف' : 'نشط';
-      await _db.collection('bank_accounts').doc(docId).update({'status': newStatus});
-      logAction(action: 'تغيير حالة حساب بنكي', details: 'تم $newStatus حساب بنكي', severity: 'medium');
-    } catch (e) {
-      throw 'حدث خطأ أثناء تغيير حالة الحساب: $e';
-    }
-  }
-
-  Future<void> deleteBankAccount(String docId) async {
-    try {
-      await _db.collection('bank_accounts').doc(docId).delete();
-      logAction(action: 'حذف حساب بنكي', details: 'تم حذف حساب بنكي من النظام', severity: 'critical');
-    } catch (e) {
-      throw 'حدث خطأ أثناء محاولة حذف الحساب: $e';
-    }
-  }
-
-  Future<void> reorderBankAccounts(int oldIndex, int newIndex) async {
-    try {
-      if (oldIndex < newIndex) {
-        newIndex -= 1;
-      }
-      
-      // التحديث المحلي الفوري لسرعة الاستجابة
-      final item = _bankAccounts.removeAt(oldIndex);
-      _bankAccounts.insert(newIndex, item);
-      notifyListeners();
-
-      // الإرسال السحابي
       WriteBatch batch = _db.batch();
-      for (int i = 0; i < _bankAccounts.length; i++) {
-        DocumentReference ref = _db.collection('bank_accounts').doc(_bankAccounts[i]['docId']);
-        batch.update(ref, {'order': i});
-      }
       
+      // حساب تاريخ الانتهاء الجديد
+      final DateTime newExpiry = DateTime.now().add(Duration(days: durationMonths * 30));
+      final String formattedExpiry = '${newExpiry.year}-${newExpiry.month.toString().padLeft(2, '0')}-${newExpiry.day.toString().padLeft(2, '0')}';
+
+      if (targetingFilter == 1) {
+        // تطبيق على كل الوكلاء
+        for (var agent in agentsList) {
+          DocumentReference ref = _db.collection('users').doc(agent['phone']);
+          batch.update(ref, {
+            'subPlan': planName,
+            'subExpiry': formattedExpiry,
+            'subStatus': 'نشط',
+          });
+        }
+        logAction(action: 'تطبيق خطة شاملة', details: 'تم تطبيق خطة [$planName] على جميع الوكلاء', severity: 'critical');
+      } else if (targetingFilter == 2 && targetAgentPhone != null) {
+        // تطبيق على وكيل واحد
+        DocumentReference ref = _db.collection('users').doc(targetAgentPhone);
+        batch.update(ref, {
+          'subPlan': planName,
+          'subExpiry': formattedExpiry,
+          'subStatus': 'نشط',
+        });
+        logAction(action: 'تطبيق خطة مخصصة', details: 'تم تطبيق خطة [$planName] للوكيل $targetAgentPhone', severity: 'medium', targetPhone: targetAgentPhone);
+      }
+
       await batch.commit();
-      logAction(action: 'إعادة ترتيب الحسابات', details: 'تم تغيير ترتيب ظهور الحسابات البنكية للوكلاء', severity: 'normal');
     } catch (e) {
-      throw 'حدث خطأ في مزامنة الترتيب السحابي: $e';
+      throw 'حدث خطأ أثناء اعتماد الخطة: $e';
+    }
+  }
+
+  // 2. توليد كوبون ذكي
+  Future<void> createSmartCoupon({
+    required String code,
+    required String discountDetails,
+    required int maxUses,
+  }) async {
+    try {
+      // التحقق من عدم تكرار الكود
+      final existing = await _db.collection('coupons').where('code', isEqualTo: code).get();
+      if (existing.docs.isNotEmpty) throw 'كود الكوبون مستخدم مسبقاً!';
+
+      await _db.collection('coupons').add({
+        'code': code.toUpperCase(),
+        'discountDetails': discountDetails,
+        'maxUses': maxUses,
+        'usedCount': 0,
+        'isActive': true,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      logAction(action: 'إنشاء كوبون', details: 'تم إنشاء كوبون ترويجي [$code]', severity: 'medium');
+    } catch (e) {
+      throw 'فشل إنشاء الكوبون: $e';
+    }
+  }
+
+  // 3. تحديث فترة السماح (الرادار) لوكيل
+  Future<void> updateAgentGracePeriod(String agentPhone, String newExpiryDate) async {
+    try {
+      await _db.collection('users').doc(agentPhone).update({
+        'subExpiry': newExpiryDate,
+        'subStatus': 'إنذار', // تحويله لفترة سماح/إنذار
+      });
+      logAction(action: 'تعديل فترة السماح', details: 'تم تعديل تاريخ الانتهاء للرقم $agentPhone إلى $newExpiryDate', severity: 'medium', targetPhone: agentPhone);
+    } catch (e) {
+      throw 'فشل تحديث فترة السماح: $e';
+    }
+  }
+
+  // 4. إيقاف / استئناف خطة الوكيل
+  Future<void> toggleSubscriptionStatus(String agentPhone, String currentStatus) async {
+    try {
+      String newStatus = currentStatus == 'موقوف مؤقتاً' ? 'نشط' : 'موقوف مؤقتاً';
+      await _db.collection('users').doc(agentPhone).update({'subStatus': newStatus});
+      logAction(action: 'تغيير حالة الاشتراك', details: 'تغيرت خطة الوكيل $agentPhone إلى [$newStatus]', severity: 'critical', targetPhone: agentPhone);
+    } catch (e) {
+      throw 'فشل تغيير حالة الخطة: $e';
     }
   }
 }
