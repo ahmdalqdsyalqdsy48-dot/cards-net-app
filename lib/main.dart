@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart'; // 👈 1. استدعاء مكتبة فايربيس
-import 'package:cloud_firestore/cloud_firestore.dart'; // 👈 🆕 استدعاء مكتبة فايرستور للتحكم في الإعدادات
+import 'package:cloud_firestore/cloud_firestore.dart'; // 👈 🆕 استدعاء مكتبة فايرستور
 
 // استدعاء العقول (Providers) التي أنشأناها
 import 'core/providers/theme_provider.dart';
@@ -9,25 +9,30 @@ import 'core/providers/system_provider.dart';
 
 import 'features/auth/screens/sso_login_screen.dart';
 
-// 👇 2. أضفنا كلمة async لكي ننتظر اتصال فايربيس قبل رسم الشاشات
 void main() async {
-  // 3. هذا السطر ضروري جداً لتهيئة محرك فلاتر قبل الاتصال بالإنترنت
+  // هذا السطر ضروري جداً لتهيئة محرك فلاتر قبل الاتصال بالإنترنت
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 4. 👈 كود الاتصال السحري بمشروعك الحقيقي على الإنترنت باستخدام مفاتيحك
+  // 👈 1. المفاتيح الجديدة والصحيحة 100% للتطبيق المربوط بالاستضافة
   await Firebase.initializeApp(
     options: const FirebaseOptions(
-      apiKey: "AIzaSyBV60g3WTr8Kf8wD0bSN2P-8aKn3efqYXk",
-      authDomain: "cards-net-app.firebaseapp.com",
-      projectId: "cards-net-app",
-      storageBucket: "cards-net-app.firebasestorage.app",
-      messagingSenderId: "504008355647",
-      appId: "1:504008355647:web:c236e55cd00d7c5c8d6d8a",
+      apiKey: "AIzaSyDdZzU6VXrmmk9Ul99GTN5RLtza95tLkVE",
+      authDomain: "netcardsapp.firebaseapp.com",
+      projectId: "netcardsapp",
+      storageBucket: "netcardsapp.firebasestorage.app",
+      messagingSenderId: "100057914511",
+      appId: "1:100057914511:web:75b015601ca5cb836724fa",
+      measurementId: "G-4MDY84TCRQ", // إضافة معرف التتبع (اختياري ومفيد)
     ),
   );
 
-  // 🚨 5. السطر السحري والأهم: إيقاف الحفظ الوهمي (الذاكرة المؤقتة) لكشف أي خطأ سحابي فوراً 🚨
-  FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: false);
+  // 🚨 2. تفعيل الذاكرة الفولاذية (IndexedDB) للمتصفح 🚨
+  // هذا الكود يضمن حفظ البيانات في القرص الصلب للمتصفح فوراً قبل إرسالها لجوجل
+  // مما يحميك من ضياع البيانات عند عمل Refresh (تحديث الصفحة)
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true,
+    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+  );
 
   runApp(
     MultiProvider(
