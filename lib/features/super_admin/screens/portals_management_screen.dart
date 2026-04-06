@@ -263,7 +263,7 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
           _buildSaveButton('حفظ إعدادات المستخدمين', () async {
             await sys.updateUserPortalSettings(
               guestMode: _guestMode, kyc: _kycRequired, loyalty: _loyaltySystem,
-              universalHidden: [], // يمكن إضافتها لاحقاً بنفس طريقة الوكلاء
+              universalHidden: [], 
               social: {'whatsapp': _waCtrl.text, 'facebook': _fbCtrl.text, 'telegram': _tgCtrl.text},
             );
             _showSnackBar('تم تحديث بوابة المستخدمين!');
@@ -277,10 +277,11 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   // أدوات مساعدة (Helpers)
   // ==========================================
   
+  // 👈 هذا هو السطر الذي كان به الخطأ المطبعي وتم إصلاحه (child بدلاً من return)
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      return Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueGrey));
+      child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueGrey)),
     );
   }
 
