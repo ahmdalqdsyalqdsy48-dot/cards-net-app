@@ -1,28 +1,45 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // 👈 استدعاء مكتبة الحفظ المحلي
+import 'package:shared_preferences/shared_preferences.dart'; 
 
 class ThemeProvider extends ChangeNotifier {
   // ==========================================
   // 1. تحديد من هو المستخدم الحالي
   // ==========================================
   String _currentRole = 'super_admin'; 
-  late SharedPreferences _prefs; // 👈 متغير الذاكرة المحلية
+  late SharedPreferences _prefs; 
   bool _isInitialized = false;
 
-  // 👈 (جديد) اللون الافتراضي الموحد لجميع المستخدمين عند الدخول لأول مرة
-  static const Color _defaultAppColor = Color(0xFF1565C0); // أزرق أنيق
+  // اللون الافتراضي الموحد لجميع المستخدمين عند الدخول لأول مرة
+  static const Color _defaultAppColor = Color(0xFF1565C0); 
+  
+  // 👈 (جديد) إعدادات الخط الافتراضية
+  static const String _defaultFontFamily = 'System'; // الخط الافتراضي للنظام
+  static const double _defaultFontSizeScale = 1.0; // الحجم الطبيعي 100%
 
   // ==========================================
   // 2. الخزانة المخصصة الافتراضية (Role Themes)
   // ==========================================
-  // 👈 (تحديث) تم توحيد اللون الافتراضي للجميع
   final Map<String, Map<String, dynamic>> _roleThemes = {
-    'super_admin': {'isDark': false, 'color': _defaultAppColor},
-    'agent':       {'isDark': false, 'color': _defaultAppColor},
-    'user':        {'isDark': false, 'color': _defaultAppColor},
+    'super_admin': {
+      'isDark': false, 
+      'color': _defaultAppColor, 
+      'fontFamily': _defaultFontFamily, 
+      'fontSizeScale': _defaultFontSizeScale
+    },
+    'agent': {
+      'isDark': false, 
+      'color': _defaultAppColor, 
+      'fontFamily': _defaultFontFamily, 
+      'fontSizeScale': _defaultFontSizeScale
+    },
+    'user': {
+      'isDark': false, 
+      'color': _defaultAppColor, 
+      'fontFamily': _defaultFontFamily, 
+      'fontSizeScale': _defaultFontSizeScale
+    },
   };
 
-  // 👈 عند تشغيل التطبيق، قم بقراءة الذاكرة فوراً
   ThemeProvider() {
     _loadPreferences();
   }
@@ -34,12 +51,16 @@ class ThemeProvider extends ChangeNotifier {
     _prefs = await SharedPreferences.getInstance();
     
     for (String role in _roleThemes.keys) {
-      // البحث في الهاتف عن إعدادات سابقة لهذا الدور
       bool? savedIsDark = _prefs.getBool('${role}_isDark');
       int? savedColorValue = _prefs.getInt('${role}_color');
+      // 👈 جلب إعدادات الخطوط من الذاكرة
+      String? savedFontFamily = _prefs.getString('${role}_fontFamily');
+      double? savedFontSizeScale = _prefs.getDouble('${role}_fontSizeScale');
 
       if (savedIsDark != null) _roleThemes[role]!['isDark'] = savedIsDark;
       if (savedColorValue != null) _roleThemes[role]!['color'] = Color(savedColorValue);
+      if (savedFontFamily != null) _roleThemes[role]!['fontFamily'] = savedFontFamily;
+      if (savedFontSizeScale != null) _roleThemes[role]!['fontSizeScale'] = savedFontSizeScale;
     }
     _isInitialized = true;
     notifyListeners();
@@ -50,11 +71,14 @@ class ThemeProvider extends ChangeNotifier {
   // ==========================================
   bool get isDarkMode => _roleThemes[_currentRole]!['isDark'];
   Color get primaryColor => _roleThemes[_currentRole]!['color'];
+  
+  // 👈 (جديد) قراءة الخطوط
+  String get fontFamily => _roleThemes[_currentRole]!['fontFamily'];
+  double get fontSizeScale => _roleThemes[_currentRole]!['fontSizeScale'];
+  
   String get currentRole => _currentRole;
   bool get isInitialized => _isInitialized;
 
-  // 💡 🆕 دالة الذكاء اللوني (Contrast AI) - (محدثة لزيادة الوضوح):
-  // إذا كان اللون المختار فاتحاً (مثل الأبيض)، سيكون النص أسوداً داكناً جداً.
   Color get adaptiveTextColor {
     return primaryColor.computeLuminance() > 0.45 ? Colors.black87 : Colors.white;
   }
@@ -71,20 +95,34 @@ class ThemeProvider extends ChangeNotifier {
 
   void toggleTheme(bool isDark) {
     _roleThemes[_currentRole]!['isDark'] = isDark;
-    // 👈 حفظ التعديل في هاتف المستخدم فوراً
     _prefs.setBool('${_currentRole}_isDark', isDark);
     notifyListeners(); 
   }
 
   void changeColor(Color color) {
     _roleThemes[_currentRole]!['color'] = color;
-    // 👈 حفظ رقم اللون في هاتف المستخدم فوراً
     _prefs.setInt('${_currentRole}_color', color.value);
     notifyListeners(); 
   }
 
-  // 👈 (جديد) دالة استعادة اللون الافتراضي
+  // 👈 (جديد) تغيير نوع الخط
+  void changeFontFamily(String font) {
+    _roleThemes[_currentRole]!['fontFamily'] = font;
+    _prefs.setString('${_currentRole}_fontFamily', font);
+    notifyListeners();
+  }
+
+  // 👈 (جديد) تغيير حجم الخط
+  void changeFontSizeScale(double scale) {
+    _roleThemes[_currentRole]!['fontSizeScale'] = scale;
+    _prefs.setDouble('${_currentRole}_fontSizeScale', scale);
+    notifyListeners();
+  }
+
+  // 👈 استعادة المظهر الافتراضي بالكامل (لون + خطوط)
   void resetToDefault() {
     changeColor(_defaultAppColor);
+    changeFontFamily(_defaultFontFamily);
+    changeFontSizeScale(_defaultFontSizeScale);
   }
 }
