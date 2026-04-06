@@ -1,60 +1,82 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // 👈 1. استدعاء مكتبة الحفظ المحلي
 
-// الكلاس ThemeProvider يمثل الآن "الخزانة الذكية" التي تحفظ شكل التطبيق لكل دور بشكل منفصل
-// نستخدم ChangeNotifier لكي نتمكن من إشعار الشاشات بأي تغيير يحدث
 class ThemeProvider extends ChangeNotifier {
   // ==========================================
   // 1. تحديد من هو المستخدم الحالي
   // ==========================================
-  // افتراضياً نجعله المالك، ولكن سنقوم بتغييره برمجياً عند تسجيل الدخول
   String _currentRole = 'super_admin'; 
+  late SharedPreferences _prefs; // 👈 متغير الذاكرة المحلية
+  bool _isInitialized = false;
 
   // ==========================================
-  // 2. الخزانة المخصصة (Role Themes)
+  // 2. الخزانة المخصصة الافتراضية (Role Themes)
   // ==========================================
-  // نحفظ هنا إعدادات كل لوحة بشكل منفصل تماماً (كل دور له درج خاص به)
   final Map<String, Map<String, dynamic>> _roleThemes = {
-    'super_admin': {'isDark': false, 'color': Colors.blue},        // مظهر المالك
-    'agent':       {'isDark': false, 'color': Colors.teal},        // مظهر الوكيل
-    'user':        {'isDark': false, 'color': Colors.deepOrange},  // مظهر المستخدم النهائي
+    'super_admin': {'isDark': false, 'color': Colors.blue},
+    'agent':       {'isDark': false, 'color': Colors.teal},
+    'user':        {'isDark': false, 'color': Colors.deepOrange},
   };
+
+  // 👈 عند تشغيل التطبيق، قم بقراءة الذاكرة فوراً
+  ThemeProvider() {
+    _loadPreferences();
+  }
+
+  // ==========================================
+  // ⚙️ هندسة الذاكرة المحلية (جلب وحفظ)
+  // ==========================================
+  Future<void> _loadPreferences() async {
+    _prefs = await SharedPreferences.getInstance();
+    
+    for (String role in _roleThemes.keys) {
+      // البحث في الهاتف عن إعدادات سابقة لهذا الدور
+      bool? savedIsDark = _prefs.getBool('${role}_isDark');
+      int? savedColorValue = _prefs.getInt('${role}_color');
+
+      if (savedIsDark != null) _roleThemes[role]!['isDark'] = savedIsDark;
+      if (savedColorValue != null) _roleThemes[role]!['color'] = Color(savedColorValue);
+    }
+    _isInitialized = true;
+    notifyListeners();
+  }
 
   // ==========================================
   // 3. دوال القراءة (Getters) 
   // ==========================================
-  // هذه الدوال تسمح للشاشات بمعرفة الحالة الحالية للمستخدم النشط فقط
-  
-  // هل الوضع الليلي مفعل للمستخدم الحالي؟
   bool get isDarkMode => _roleThemes[_currentRole]!['isDark'];
-  
-  // ما هو اللون الأساسي للمستخدم الحالي؟
   Color get primaryColor => _roleThemes[_currentRole]!['color'];
-
-  // معرفة الدور الحالي (تفيدنا في البرمجة لاحقاً لمعرفة من يتصفح التطبيق)
   String get currentRole => _currentRole;
+  bool get isInitialized => _isInitialized;
+
+  // 💡 🆕 دالة الذكاء اللوني (Contrast AI):
+  // هذه الدالة تفحص لون الخلفية (primaryColor) بنسبة 100%
+  // إذا كان اللون ساطعاً (مثل الأصفر) تعطينا نصاً أسود. وإذا كان مظلماً (مثل الكحلي) تعطينا نصاً أبيض.
+  Color get adaptiveTextColor {
+    return primaryColor.computeLuminance() > 0.5 ? Colors.black : Colors.white;
+  }
 
   // ==========================================
   // 4. دوال التعديل والكتابة (Setters)
   // ==========================================
-
-  /// هذه الدالة سحرية: نستدعيها عند (تسجيل الدخول) لنخبر النظام من هو المستخدم
-  /// لكي يقوم بفتح الدرج الصحيح وجلب ألوانه الخاصة
   void setRole(String role) {
     if (_roleThemes.containsKey(role)) {
       _currentRole = role;
-      notifyListeners(); // إشعار الشاشات لتطبيق مظهر هذا الدور فوراً
+      notifyListeners(); 
     }
   }
 
-  /// دالة لتفعيل أو تعطيل الوضع الليلي (تؤثر على درج المستخدم الحالي فقط)
   void toggleTheme(bool isDark) {
     _roleThemes[_currentRole]!['isDark'] = isDark;
-    notifyListeners(); // "لقد تغير الوضع، يرجى تحديث الشاشات فوراً!"
+    // 👈 حفظ التعديل في هاتف المستخدم فوراً
+    _prefs.setBool('${_currentRole}_isDark', isDark);
+    notifyListeners(); 
   }
 
-  /// دالة لتغيير اللون الأساسي (تؤثر على درج المستخدم الحالي فقط)
   void changeColor(Color color) {
     _roleThemes[_currentRole]!['color'] = color;
-    notifyListeners(); // إشعار التطبيق لتحديث كل الأزرار باللون الجديد
+    // 👈 حفظ رقم اللون في هاتف المستخدم فوراً
+    _prefs.setInt('${_currentRole}_color', color.value);
+    notifyListeners(); 
   }
 }
