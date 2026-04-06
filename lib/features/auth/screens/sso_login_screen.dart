@@ -31,25 +31,45 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   bool obscurePassword = true; 
   bool rememberMe = false; 
 
-  // متغيرات الإعلانات
+  // متغيرات الإعلانات/الصور
   final PageController _pageController = PageController();
   Timer? _carouselTimer;
   int _currentPage = 0;
-  final List<Color> _adColors = [Colors.blue.shade800, Colors.deepPurple, Colors.teal];
+  
+  // ألوان احتياطية في حال لم يرفع المالك صوراً حقيقية بعد
+  final List<Color> _fallbackAdColors = [Colors.blue.shade800, Colors.deepPurple, Colors.teal];
 
   final LocalAuthentication auth = LocalAuthentication();
 
   @override
   void initState() {
     super.initState();
-    _carouselTimer = Timer.periodic(const Duration(seconds: 5), (Timer timer) {
-      if (_currentPage < _adColors.length - 1) {
-        _currentPage++;
-      } else {
-        _currentPage = 0;
-      }
-      if (_pageController.hasClients) {
-        _pageController.animateToPage(_currentPage, duration: const Duration(milliseconds: 500), curve: Curves.easeInOut);
+    // تأخير تشغيل السلايدر حتى يتم تحميل البيانات من Provider
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startDynamicCarousel();
+    });
+  }
+
+  void _startDynamicCarousel() {
+    final systemProvider = Provider.of<SystemProvider>(context, listen: false);
+    // قراءة المدة الزمنية لتغير الصور من السيرفر (بالثواني)
+    int interval = systemProvider.carouselIntervalSeconds > 0 ? systemProvider.carouselIntervalSeconds : 5;
+
+    _carouselTimer = Timer.periodic(Duration(seconds: interval), (Timer timer) {
+      // نحدد عدد العناصر بناءً على الصور المرفوعة أو الألوان الاحتياطية
+      int itemCount = systemProvider.loginCarouselImages.isNotEmpty 
+          ? systemProvider.loginCarouselImages.length 
+          : _fallbackAdColors.length;
+
+      if (itemCount > 0) {
+        if (_currentPage < itemCount - 1) {
+          _currentPage++;
+        } else {
+          _currentPage = 0;
+        }
+        if (_pageController.hasClients) {
+          _pageController.animateToPage(_currentPage, duration: const Duration(milliseconds: 500), curve: Curves.easeInOut);
+        }
       }
     });
   }
@@ -65,10 +85,8 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   }
 
   // ==========================================
-  // 2. العمليات الأساسية المربوطة بالعقل المدبر 🧠 (تم ربطها بالسحابة)
+  // 2. العمليات الأساسية المربوطة بالعقل المدبر
   // ==========================================
-
-  // دالة تسجيل الدخول (السحابية)
   Future<void> _processLogin() async {
     FocusScope.of(context).unfocus();
     String phone = phoneController.text.trim();
@@ -80,10 +98,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     }
 
     setState(() => isLoading = true);
-    
     final systemProvider = Provider.of<SystemProvider>(context, listen: false);
-    
-    // 👈 هنا السحر: ننتظر رد جوجل مباشرة بدلاً من الذاكرة المحلية
     final Map<String, dynamic>? userData = await systemProvider.loginUser(phone, password);
     
     if (!mounted) return;
@@ -93,7 +108,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       String userRole = userData['role']; 
       Provider.of<ThemeProvider>(context, listen: false).setRole(userRole);
       
-      // التوجيه الذكي حسب الصلاحية
       if (userRole == 'super_admin') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SuperAdminDashboard()));
       } else if (userRole == 'agent') {
@@ -106,7 +120,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     }
   }
 
-  // دالة التسجيل الجديد (السحابية)
   Future<void> _processRegistration() async {
     FocusScope.of(context).unfocus();
     String phone = phoneController.text.trim();
@@ -119,10 +132,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     }
 
     setState(() => isLoading = true);
-    
     final systemProvider = Provider.of<SystemProvider>(context, listen: false);
-    
-    // 👈 فحص السحابة للتأكد من عدم تكرار الرقم
     bool isExist = await systemProvider.checkUserExists(phone);
 
     if (!mounted) return;
@@ -132,9 +142,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       _showErrorSnackBar('هذا الرقم مسجل مسبقاً! يرجى تسجيل الدخول.');
       setState(() => isLoginMode = true);
     } else {
-      // 👈 انتظار الحفظ في جوجل قبل الدخول
       await systemProvider.registerNewUser(name: name, phone: phone, password: password, role: 'user');
-      
       if (!mounted) return;
       setState(() => isLoading = false);
 
@@ -144,39 +152,25 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     }
   }
 
-  // دالة البصمة
   Future<void> _authenticateWithBiometrics() async {
     if (kIsWeb) {
       _showErrorSnackBar('عذراً، الدخول بالبصمة يعمل فقط على تطبيقات الهواتف (Android/iOS) وليس المتصفح.');
       return;
     }
-    
     _showErrorSnackBar('قم بتسجيل الدخول برقمك وكلمة المرور أولاً لتفعيل الجلسة.');
   }
 
   void _showForgotPasswordDialog() {
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('استعادة كلمة المرور', textDirection: TextDirection.rtl),
-          content: TextField(
-            keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(labelText: 'أدخل رقم هاتفك المسجل', prefixIcon: Icon(Icons.phone)),
-            textDirection: TextDirection.rtl,
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _showSuccessSnackBar('تم إرسال رمز الاستعادة (OTP) إلى رقمك.');
-              },
-              child: const Text('إرسال الرمز'),
-            ),
-          ],
-        );
-      },
+      builder: (context) => AlertDialog(
+        title: const Text('استعادة كلمة المرور', textDirection: TextDirection.rtl),
+        content: const TextField(keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: 'أدخل رقم هاتفك المسجل', prefixIcon: Icon(Icons.phone)), textDirection: TextDirection.rtl),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+          ElevatedButton(onPressed: () { Navigator.pop(context); _showSuccessSnackBar('تم إرسال رمز الاستعادة (OTP) إلى رقمك.'); }, child: const Text('إرسال الرمز')),
+        ],
+      ),
     );
   }
 
@@ -189,37 +183,74 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   }
 
   // ==========================================
-  // 3. بناء الواجهة
+  // 3. بناء الواجهة (بالترتيب المطلوب)
   // ==========================================
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // 👈 استدعاء SystemProvider لقراءة الإعدادات المخصصة من الخادم
+    final systemProvider = Provider.of<SystemProvider>(context);
+    
+    // جلب قائمة الصور والرسالة الترحيبية من الخادم
+    final List<String> carouselImages = systemProvider.loginCarouselImages;
+    final String welcomeMessage = systemProvider.loginWelcomeMessage.isNotEmpty 
+        ? systemProvider.loginWelcomeMessage 
+        : 'أهلاً بك في نظام كروت نت - أسرع شبكة لبيع الكروت والخدمات...';
+
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
           child: Column(
             children: [
               if (isLoginMode) ...[
+                // 1. الترتيب الأول: الصور المتغيرة (Slider)
                 SizedBox(
                   height: MediaQuery.of(context).size.height * 0.2,
                   child: PageView.builder(
                     controller: _pageController,
-                    itemCount: _adColors.length,
-                    itemBuilder: (context, index) => Container(
-                      color: _adColors[index],
-                      child: Center(child: Text('إعلان ترويجي للمالك رقم ${index + 1}', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold))),
-                    ),
+                    itemCount: carouselImages.isNotEmpty ? carouselImages.length : _fallbackAdColors.length,
+                    itemBuilder: (context, index) {
+                      if (carouselImages.isNotEmpty) {
+                        // إذا كانت هناك صور مرفوعة من المالك
+                        return Image.network(carouselImages[index], fit: BoxFit.cover);
+                      } else {
+                        // ألوان احتياطية في حال عدم وجود صور
+                        return Container(
+                          color: _fallbackAdColors[index],
+                          child: Center(child: Text('صورة إعلانية ${index + 1}', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold))),
+                        );
+                      }
+                    },
                   ),
                 ),
+                
+                // 2. الترتيب الثاني: شريط الرسالة الترحيبية المتحركة
                 Container(
                   width: double.infinity, height: 35, color: Colors.amber.withOpacity(0.3),
-                  child: const _CustomMarquee(text: 'أهلاً بك في شبكة كروت نت - أسرع شبكة لبيع الكروت والخدمات...'),
+                  child: _CustomMarquee(text: welcomeMessage), // 👈 يقرأ الرسالة الحقيقية
                 ),
+                
                 const SizedBox(height: 20),
+                
+                // 3. الترتيب الثالث: اسم التطبيق أو الشعار
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.wifi_tethering, size: 40, color: Colors.blueAccent),
+                    SizedBox(width: 10),
+                    Text('شبكة كروت نت', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                  ],
+                ),
+                const SizedBox(height: 30),
               ] else ...[
                 const SizedBox(height: 50),
+                const Center(child: Icon(Icons.wifi_tethering, size: 60, color: Colors.blueAccent)),
+                const SizedBox(height: 10),
+                const Text('إنشاء حساب جديد', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                const SizedBox(height: 30),
               ],
 
+              // 4. بقية التفاصيل: حقول الإدخال
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: Directionality(
@@ -227,11 +258,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Icon(Icons.wifi_tethering, size: 60, color: Colors.blueAccent),
-                      const SizedBox(height: 10),
-                      Text(isLoginMode ? 'تسجيل الدخول' : 'إنشاء حساب جديد', textAlign: TextAlign.center, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-                      const SizedBox(height: 30),
-
                       if (!isLoginMode) ...[
                         TextField(
                           controller: nameController,
@@ -256,9 +282,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                           suffixIcon: IconButton(
                             icon: Icon(obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.grey),
                             onPressed: () {
-                              setState(() {
-                                obscurePassword = !obscurePassword; 
-                              });
+                              setState(() { obscurePassword = !obscurePassword; });
                             },
                           ),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
