@@ -10,7 +10,7 @@ class SystemProvider extends ChangeNotifier {
   double _newsScrollSpeed = 40.0; 
 
   // ==========================================
-  // 🆕 1. متغيرات النظام الجديدة (صيانة، سياسات، وشاشة الدخول)
+  // ⚙️ 1. إعدادات النظام الأساسية
   // ==========================================
   bool _isMaintenanceMode = false;
   bool _isForcedUpdate = false;
@@ -20,10 +20,39 @@ class SystemProvider extends ChangeNotifier {
   String _termsAndConditions = '';
   String _supportNumbers = '';
 
-  // إعدادات شاشة الدخول الديناميكية
+  // ==========================================
+  // 🚪 2. إعدادات بوابة تسجيل الدخول (Public Portal)
+  // ==========================================
+  String _appName = 'كروت نت';
+  String _appLogoUrl = '';
+  int _loginBgColor = 0xFFFFFFFF; 
   List<String> _loginCarouselImages = [];
   String _loginWelcomeMessage = 'مرحباً بك في نظام كروت نت';
   int _carouselIntervalSeconds = 5;
+  String _marqueeDirection = 'rtl'; 
+  int _marqueeTextColor = 0xFFFFFFFF;
+  int _marqueeBgColor = 0x4DFFC107; 
+  double _marqueeFontSize = 14.0;
+
+  // ==========================================
+  // 💼 3. إعدادات بوابة الوكلاء (Agents Portal)
+  // ==========================================
+  List<String> _agentUniversalHiddenSections = [];
+  List<Map<String, dynamic>> _agentBanners = [];
+  Map<String, dynamic> _agentEmergencyAlert = {'isActive': false, 'text': '', 'targetType': 'all', 'targetPhones': []};
+  bool _hideProfitEnabled = false;
+  bool _leaderboardEnabled = false;
+  bool _forceAgentTheme = false;
+
+  // ==========================================
+  // 👥 4. إعدادات بوابة المستخدمين (Users Portal)
+  // ==========================================
+  List<String> _userUniversalHiddenSections = [];
+  bool _guestModeEnabled = false;
+  bool _kycRequired = false;
+  Map<String, dynamic> _userPromoPopup = {'isActive': false, 'imageUrl': '', 'targetType': 'all', 'targetPhones': []};
+  Map<String, dynamic> _socialLinks = {'whatsapp': '', 'facebook': '', 'telegram': ''};
+  bool _loyaltySystemEnabled = false;
 
   // الأخبار الموجهة
   List<Map<String, dynamic>> _targetedNews = []; 
@@ -57,7 +86,7 @@ class SystemProvider extends ChangeNotifier {
         _announcements = List<String>.from(data['announcements'] ?? ['أهلاً بك في شبكة كروت نت...']);
         _newsScrollSpeed = (data['newsScrollSpeed'] ?? 40.0).toDouble();
         
-        // 👈 قراءة المتغيرات الجديدة من السيرفر
+        // إعدادات الصيانة والسياسات
         _isMaintenanceMode = data['isMaintenanceMode'] ?? false;
         _isForcedUpdate = data['isForcedUpdate'] ?? false;
         _showNewsBar = data['showNewsBar'] ?? true;
@@ -65,14 +94,36 @@ class SystemProvider extends ChangeNotifier {
         _minimumChargeLimit = data['minimumChargeLimit'] ?? '1000';
         _termsAndConditions = data['termsAndConditions'] ?? '';
         _supportNumbers = data['supportNumbers'] ?? '';
+
+        // إعدادات شاشة الدخول المتقدمة
+        _appName = data['appName'] ?? 'كروت نت';
+        _appLogoUrl = data['appLogoUrl'] ?? '';
+        _loginBgColor = data['loginBgColor'] ?? 0xFFFFFFFF;
         _loginCarouselImages = List<String>.from(data['loginCarouselImages'] ?? []);
         _loginWelcomeMessage = data['loginWelcomeMessage'] ?? 'مرحباً بك في نظام كروت نت';
         _carouselIntervalSeconds = data['carouselIntervalSeconds'] ?? 5;
+        _marqueeDirection = data['marqueeDirection'] ?? 'rtl';
+        _marqueeTextColor = data['marqueeTextColor'] ?? 0xFFFFFFFF;
+        _marqueeBgColor = data['marqueeBgColor'] ?? 0x4DFFC107;
+        _marqueeFontSize = (data['marqueeFontSize'] ?? 14.0).toDouble();
+
+        // إعدادات بوابات الوكلاء والمستخدمين
+        _agentUniversalHiddenSections = List<String>.from(data['agentUniversalHiddenSections'] ?? []);
+        _userUniversalHiddenSections = List<String>.from(data['userUniversalHiddenSections'] ?? []);
+        _hideProfitEnabled = data['hideProfitEnabled'] ?? false;
+        _leaderboardEnabled = data['leaderboardEnabled'] ?? false;
+        _forceAgentTheme = data['forceAgentTheme'] ?? false;
         
-        // قراءة قائمة الأخبار الموجهة
-        if (data['targetedNews'] != null) {
-          _targetedNews = List<Map<String, dynamic>>.from(data['targetedNews']);
-        }
+        _guestModeEnabled = data['guestModeEnabled'] ?? false;
+        _kycRequired = data['kycRequired'] ?? false;
+        _loyaltySystemEnabled = data['loyaltySystemEnabled'] ?? false;
+        
+        if (data['socialLinks'] != null) _socialLinks = Map<String, dynamic>.from(data['socialLinks']);
+        if (data['agentEmergencyAlert'] != null) _agentEmergencyAlert = Map<String, dynamic>.from(data['agentEmergencyAlert']);
+        if (data['userPromoPopup'] != null) _userPromoPopup = Map<String, dynamic>.from(data['userPromoPopup']);
+        if (data['agentBanners'] != null) _agentBanners = List<Map<String, dynamic>>.from(data['agentBanners']);
+        if (data['targetedNews'] != null) _targetedNews = List<Map<String, dynamic>>.from(data['targetedNews']);
+        
         notifyListeners();
       }
     });
@@ -150,14 +201,13 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 4. دوال القراءة والإحصائيات
+  // 🔍 دوال القراءة (Getters) 
   // ==========================================
   double get adminMainBalance => _adminMainBalance;
   int get totalSystemCards => _totalSystemCards;
   List<String> get announcements => _announcements; 
   double get newsScrollSpeed => _newsScrollSpeed; 
 
-  // دوال قراءة المتغيرات الجديدة
   bool get isMaintenanceMode => _isMaintenanceMode;
   bool get isForcedUpdate => _isForcedUpdate;
   bool get showNewsBar => _showNewsBar;
@@ -165,9 +215,32 @@ class SystemProvider extends ChangeNotifier {
   String get minimumChargeLimit => _minimumChargeLimit;
   String get termsAndConditions => _termsAndConditions;
   String get supportNumbers => _supportNumbers;
+  
+  String get appName => _appName;
+  String get appLogoUrl => _appLogoUrl;
+  int get loginBgColor => _loginBgColor;
   List<String> get loginCarouselImages => _loginCarouselImages;
   String get loginWelcomeMessage => _loginWelcomeMessage;
   int get carouselIntervalSeconds => _carouselIntervalSeconds;
+  String get marqueeDirection => _marqueeDirection;
+  int get marqueeTextColor => _marqueeTextColor;
+  int get marqueeBgColor => _marqueeBgColor;
+  double get marqueeFontSize => _marqueeFontSize;
+
+  List<String> get agentUniversalHiddenSections => _agentUniversalHiddenSections;
+  List<Map<String, dynamic>> get agentBanners => _agentBanners;
+  Map<String, dynamic> get agentEmergencyAlert => _agentEmergencyAlert;
+  bool get hideProfitEnabled => _hideProfitEnabled;
+  bool get leaderboardEnabled => _leaderboardEnabled;
+  bool get forceAgentTheme => _forceAgentTheme;
+
+  List<String> get userUniversalHiddenSections => _userUniversalHiddenSections;
+  bool get guestModeEnabled => _guestModeEnabled;
+  bool get kycRequired => _kycRequired;
+  Map<String, dynamic> get userPromoPopup => _userPromoPopup;
+  Map<String, dynamic> get socialLinks => _socialLinks;
+  bool get loyaltySystemEnabled => _loyaltySystemEnabled;
+
   List<Map<String, dynamic>> get targetedNews => _targetedNews;
 
   List<Map<String, dynamic>> get agentsList => _usersDatabase.where((user) => user['role'] == 'agent').toList();
@@ -210,11 +283,10 @@ class SystemProvider extends ChangeNotifier {
 
   String get currentUserPhone => _activeUserPhone ?? 'لا يوجد رقم';
 
-  // 👈 دالة لجلب رمز PIN الخاص بالمستخدم النشط
   String get currentUserPin {
     if (_activeUserPhone == null) return '';
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'pin': ''});
-    return user['pin'] ?? '123456'; // افتراضي إذا لم يتم تعيينه
+    return user['pin'] ?? '123456'; 
   }
 
   double get currentUserBalance {
@@ -227,6 +299,16 @@ class SystemProvider extends ChangeNotifier {
     if (_activeUserPhone == null) return [];
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'purchasedCards': <String>[]});
     return List<String>.from(user['purchasedCards'] ?? []);
+  }
+
+  // دالة الإخفاء المدمجة للمستخدم
+  List<String> get currentUserHiddenSections {
+    if (_activeUserPhone == null) return [];
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'role': 'user', 'hiddenSections': <String>[]});
+    List<String> personalHidden = List<String>.from(user['hiddenSections'] ?? []);
+    List<String> universalHidden = user['role'] == 'agent' ? _agentUniversalHiddenSections : _userUniversalHiddenSections;
+    
+    return {...personalHidden, ...universalHidden}.toList();
   }
 
   bool get isBiometricCurrentlyEnabled {
@@ -251,59 +333,88 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 5. دوال الإدارة والتحكم السحابية
+  // 🚀 5. دوال الإدارة والتحكم (محرك الاستهداف والبوابات)
   // ==========================================
   
-  // 🆕 دوال تحديث الإعدادات (نظام الصيانة والسياسات والأخبار)
-  Future<void> updateSystemStatusSettings({required bool maintenance, required bool forcedUpdate, required bool showNews}) async {
+  Future<void> updateAdvancedLoginSettings({
+    required String name, required String logoUrl, required int bgColor,
+    required List<String> images, required String welcomeMsg, required int intervalSeconds,
+    required String marqueeDir, required int marqueeTextCol, required int marqueeBgCol, required double marqueeFont
+  }) async {
     await _db.collection('system').doc('main_info').update({
-      'isMaintenanceMode': maintenance,
-      'isForcedUpdate': forcedUpdate,
-      'showNewsBar': showNews,
+      'appName': name, 'appLogoUrl': logoUrl, 'loginBgColor': bgColor,
+      'loginCarouselImages': images, 'loginWelcomeMessage': welcomeMsg, 'carouselIntervalSeconds': intervalSeconds,
+      'marqueeDirection': marqueeDir, 'marqueeTextColor': marqueeTextCol, 'marqueeBgColor': marqueeBgCol, 'marqueeFontSize': marqueeFont
     });
-    logAction(action: 'تحديث حالة النظام', details: 'تحديث إعدادات الصيانة والأخبار', severity: 'critical');
+    logAction(action: 'تحديث بوابة الدخول', details: 'تحديث المظهر واسم التطبيق', severity: 'critical');
+  }
+
+  Future<void> updateAgentPortalSettings({required bool hideProfit, required bool leaderboard, required bool forceTheme, required List<String> universalHidden}) async {
+    await _db.collection('system').doc('main_info').update({
+      'hideProfitEnabled': hideProfit, 'leaderboardEnabled': leaderboard, 'forceAgentTheme': forceTheme,
+      'agentUniversalHiddenSections': universalHidden
+    });
+    logAction(action: 'تحديث بوابة الوكلاء', details: 'تم تعديل سياسات لوحة الوكلاء', severity: 'medium');
+  }
+
+  Future<void> updateUserPortalSettings({required bool guestMode, required bool kyc, required bool loyalty, required List<String> universalHidden, required Map<String, dynamic> social}) async {
+    await _db.collection('system').doc('main_info').update({
+      'guestModeEnabled': guestMode, 'kycRequired': kyc, 'loyaltySystemEnabled': loyalty,
+      'userUniversalHiddenSections': universalHidden, 'socialLinks': social
+    });
+    logAction(action: 'تحديث بوابة المستخدمين', details: 'تم تعديل سياسات لوحة المستخدمين', severity: 'medium');
+  }
+
+  Future<void> toggleSectionForSpecificUsers({required String sectionId, required List<String> targetPhones, required bool hide}) async {
+    WriteBatch batch = _db.batch();
+    for (String phone in targetPhones) {
+      DocumentReference ref = _db.collection('users').doc(phone);
+      if (hide) {
+        batch.update(ref, {'hiddenSections': FieldValue.arrayUnion([sectionId])});
+      } else {
+        batch.update(ref, {'hiddenSections': FieldValue.arrayRemove([sectionId])});
+      }
+    }
+    await batch.commit();
+    logAction(action: 'استهداف الأقسام', details: 'تم ${hide ? "إخفاء" : "إظهار"} قسم $sectionId لعدد ${targetPhones.length} مستخدم', severity: 'critical');
+  }
+
+  Future<void> postTargetedBanner({required String imageUrl, required String targetType, required List<String> targetPhones}) async {
+    final newBanner = {'id': DateTime.now().millisecondsSinceEpoch.toString(), 'imageUrl': imageUrl, 'targetType': targetType, 'targetPhones': targetPhones};
+    await _db.collection('system').doc('main_info').update({
+      'agentBanners': FieldValue.arrayUnion([newBanner])
+    });
+    logAction(action: 'إعلان موجه', details: 'تم نشر بانر إعلاني بنظام الاستهداف: $targetType', severity: 'normal');
+  }
+
+  Future<void> setEmergencyAlert({required bool isActive, required String text, required String targetType, required List<String> targetPhones}) async {
+    await _db.collection('system').doc('main_info').update({
+      'agentEmergencyAlert': {'isActive': isActive, 'text': text, 'targetType': targetType, 'targetPhones': targetPhones}
+    });
+    logAction(action: 'تنبيه طوارئ', details: 'حالة الطوارئ: $isActive | الاستهداف: $targetType', severity: 'critical');
+  }
+
+  Future<void> updateSystemStatusSettings({required bool maintenance, required bool forcedUpdate, required bool showNews}) async {
+    await _db.collection('system').doc('main_info').update({'isMaintenanceMode': maintenance, 'isForcedUpdate': forcedUpdate, 'showNewsBar': showNews});
   }
 
   Future<void> updatePoliciesSettings({required String terms, required String support, required String minCharge, required bool autoRounding}) async {
-    await _db.collection('system').doc('main_info').update({
-      'termsAndConditions': terms,
-      'supportNumbers': support,
-      'minimumChargeLimit': minCharge,
-      'isCurrencyAutoRounding': autoRounding,
-    });
-    logAction(action: 'تحديث السياسات', details: 'تم تعديل الشروط وحدود الشحن', severity: 'medium');
+    await _db.collection('system').doc('main_info').update({'termsAndConditions': terms, 'supportNumbers': support, 'minimumChargeLimit': minCharge, 'isCurrencyAutoRounding': autoRounding});
   }
 
-  Future<void> updateLoginScreenSettings({required List<String> images, required String welcomeMsg, required int intervalSeconds}) async {
-    await _db.collection('system').doc('main_info').update({
-      'loginCarouselImages': images,
-      'loginWelcomeMessage': welcomeMsg,
-      'carouselIntervalSeconds': intervalSeconds,
-    });
-    logAction(action: 'تحديث واجهة الدخول', details: 'تم تغيير الصور والرسالة الترحيبية', severity: 'normal');
-  }
-
-  // إضافة خبر موجه (Targeted News)
   Future<void> addTargetedNews({required String text, required String targetRole}) async {
     final newNews = {'id': DateTime.now().millisecondsSinceEpoch.toString(), 'text': text, 'target': targetRole};
-    await _db.collection('system').doc('main_info').update({
-      'targetedNews': FieldValue.arrayUnion([newNews])
-    });
-    logAction(action: 'خبر عاجل', details: 'نشر خبر جديد للفئة: $targetRole', severity: 'normal');
+    await _db.collection('system').doc('main_info').update({'targetedNews': FieldValue.arrayUnion([newNews])});
   }
 
   Future<void> removeTargetedNews(Map<String, dynamic> newsItem) async {
-    await _db.collection('system').doc('main_info').update({
-      'targetedNews': FieldValue.arrayRemove([newsItem])
-    });
+    await _db.collection('system').doc('main_info').update({'targetedNews': FieldValue.arrayRemove([newsItem])});
   }
 
-  // 🆕 دوال تحديث الملف الشخصي والأمان
   Future<bool> changeUserName(String newName) async {
     if (_activeUserPhone == null) return false;
     try {
       await _db.collection('users').doc(_activeUserPhone).update({'name': newName});
-      logAction(action: 'تغيير الاسم', details: 'تم تغيير الاسم الشخصي إلى $newName', severity: 'normal');
       return true;
     } catch (e) { return false; }
   }
@@ -312,11 +423,14 @@ class SystemProvider extends ChangeNotifier {
     if (_activeUserPhone == null) return false;
     if (currentUserPin == oldPin) {
       await _db.collection('users').doc(_activeUserPhone).update({'pin': newPin});
-      logAction(action: 'تغيير PIN', details: 'تم تغيير رمز الحماية السريع', severity: 'medium');
       return true; 
     }
     return false; 
   }
+
+  // ==========================================
+  // 👥 6. دوال إدارة الحسابات والمصادقة
+  // ==========================================
 
   Future<void> updateNewsSpeed(double newSpeed) async { await _db.collection('system').doc('main_info').update({'newsScrollSpeed': newSpeed}); }
 
@@ -332,19 +446,16 @@ class SystemProvider extends ChangeNotifier {
       final superAdminData = {
         'id': 'SUPER_ADMIN_01', 'name': 'مالك النظام', 'phone': '774578241', 'password': '75486958aaa',
         'role': 'super_admin', 'balance': 0.0, 'dangerLimit': 0.0, 'status': 'نشط',
-        'pin': '123456', // 👈 إضافة PIN افتراضي للمالك
-        'purchasedCards': [], 'isBiometricEnabled': false,
+        'pin': '123456', 'purchasedCards': [], 'isBiometricEnabled': false, 'hiddenSections': [], 
       };
       try {
         _db.collection('users').doc('774578241').set(superAdminData, SetOptions(merge: true));
         _db.collection('system').doc('main_info').set({
           'adminMainBalance': 10000000.0, 'totalSystemCards': 5000,
-          'announcements': ['أهلاً بك في شبكة كروت نت...'], 'newsScrollSpeed': 40.0,
         }, SetOptions(merge: true));
       } catch (e) {}
       _activeUserPhone = phone;
       notifyListeners();
-      logAction(action: 'تسجيل دخول', details: 'تم تسجيل الدخول بنجاح لمالك النظام', severity: 'normal');
       return superAdminData; 
     }
     try {
@@ -367,8 +478,8 @@ class SystemProvider extends ChangeNotifier {
       await _db.collection('users').doc(phone).set({
         'id': 'USER_${DateTime.now().millisecondsSinceEpoch}', 'name': name, 'phone': phone, 'password': password,
         'role': role, 'balance': 0.0, 'dangerLimit': 0.0, 'status': 'نشط', 'purchasedCards': [], 
-        'pin': '123456', // 👈 إضافة PIN افتراضي
-        'isBiometricEnabled': false, 'createdAt': FieldValue.serverTimestamp(),
+        'pin': '123456', 'isBiometricEnabled': false, 'createdAt': FieldValue.serverTimestamp(),
+        'hiddenSections': [], 
       });
       _activeUserPhone = phone;
       notifyListeners();
@@ -386,13 +497,13 @@ class SystemProvider extends ChangeNotifier {
           'id': 'AGENT_${DateTime.now().millisecondsSinceEpoch}', 'name': name, 'phone': phone, 'password': password,
           'role': 'agent', 'networkName': networkName ?? 'غير محدد', 'profitMargin': profitMargin ?? 'غير محدد',
           'location': location ?? 'غير محدد', 'balance': 0.0, 'dangerLimit': 0.0, 'status': 'نشط',
-          'pin': '123456', // 👈 إضافة PIN افتراضي
-          'subPlan': 'باقة افتراضية', 'subPrice': 0.0, 'subStatus': 'نشط', 'subExpiry': expiryDate,  
+          'pin': '123456', 'subPlan': 'باقة افتراضية', 'subPrice': 0.0, 'subStatus': 'نشط', 'subExpiry': expiryDate,  
           'purchasedCards': [], 'isBiometricEnabled': false, 'createdAt': FieldValue.serverTimestamp(),
+          'hiddenSections': [], 
         });
         logAction(action: 'إضافة وكيل جديد', details: 'تم إضافة وكيل جديد باسم "$name" ورقم $phone', severity: 'medium');
       } else { throw 'رقم الهاتف مسجل مسبقاً في النظام!'; }
-    } catch (e) { throw 'حدث خطأ أثناء إضافة الوكيل السحابية: $e'; }
+    } catch (e) { throw 'حدث خطأ: $e'; }
   }
 
   Future<void> updateAgentDetails({required String oldPhone, required String newPhone, required String newName, required String newNetwork, required String newLocation, required String newProfit, required String newPassword}) async {
@@ -405,7 +516,6 @@ class SystemProvider extends ChangeNotifier {
         batch.set(_db.collection('users').doc(newPhone), data);
         if (oldPhone != newPhone) batch.delete(_db.collection('users').doc(oldPhone));
         await batch.commit();
-        logAction(action: 'تعديل بيانات وكيل', details: 'تم تعديل بيانات الوكيل صاحب الرقم $oldPhone', severity: 'medium');
       }
     } catch (e) { throw 'فشل تعديل بيانات الوكيل: $e'; }
   }
@@ -414,15 +524,13 @@ class SystemProvider extends ChangeNotifier {
     try {
       String newStatus = currentStatus == 'نشط' ? 'مجمد' : 'نشط';
       _db.collection('users').doc(phone).update({'status': newStatus});
-      logAction(action: 'تغيير حالة حساب', details: 'تم تغيير حالة الحساب $phone إلى [$newStatus]', severity: 'critical', targetPhone: phone);
-    } catch (e) { debugPrint('Error: $e'); }
+    } catch (e) {}
   }
 
   void deleteAgent(String phone) {
     try {
       _db.collection('users').doc(phone).delete();
-      logAction(action: 'حذف وكيل', details: 'تم حذف الوكيل $phone نهائياً من النظام', severity: 'critical');
-    } catch (e) { debugPrint('Error: $e'); }
+    } catch (e) {}
   }
 
   bool userBuyCard(double price, String cardName) {
@@ -431,7 +539,6 @@ class SystemProvider extends ChangeNotifier {
     if (user['balance'] >= price && _totalSystemCards > 0) {
       _db.collection('system').doc('main_info').update({'totalSystemCards': FieldValue.increment(-1)});
       _db.collection('users').doc(_activeUserPhone).update({'balance': FieldValue.increment(-price), 'purchasedCards': FieldValue.arrayUnion([cardName])});
-      logAction(action: 'شراء كرت', details: 'تم سحب كرت $cardName بسعر $price ريال', severity: 'normal');
       return true;
     }
     return false;
@@ -439,7 +546,6 @@ class SystemProvider extends ChangeNotifier {
 
   Future<void> updateDangerLimit(String phone, double newLimit) async {
     await _db.collection('users').doc(phone).update({'dangerLimit': newLimit});
-    logAction(action: 'تعديل حد الخطر', details: 'تم تعديل حد الخطر للرقم $phone ليصبح $newLimit ريال', severity: 'medium');
   }
 
   Future<void> acceptRechargeRequest({required String requestId, required String agentPhone, required String agentName, required double amount}) async {
@@ -452,13 +558,11 @@ class SystemProvider extends ChangeNotifier {
       DocumentReference transactionRef = _db.collection('transactions').doc();
       batch.set(transactionRef, {'agentPhone': agentPhone, 'agentName': agentName, 'type': 'إيداع حوالة', 'amount': amount, 'timestamp': FieldValue.serverTimestamp()});
       await batch.commit(); 
-      logAction(action: 'موافقة شحن', details: 'تم قبول طلب شحن للوكيل $agentName', severity: 'normal');
     } catch (e) { throw 'فشل في قبول الشحن: $e'; }
   }
 
   Future<void> rejectRechargeRequest(String requestId, String reason) async {
     await _db.collection('recharge_requests').doc(requestId).update({'status': 'مرفوض', 'rejectReason': reason});
-    logAction(action: 'رفض شحن', details: 'رفض طلب شحن. السبب: $reason', severity: 'medium');
   }
 
   Future<void> manualSettlement({required String agentPhone, required String agentName, required double amount, required String reason}) async {
@@ -469,10 +573,12 @@ class SystemProvider extends ChangeNotifier {
       DocumentReference transactionRef = _db.collection('transactions').doc();
       batch.set(transactionRef, {'agentPhone': agentPhone, 'agentName': agentName, 'type': amount > 0 ? 'تسوية يدوية (إضافة)' : 'تسوية يدوية (خصم)', 'amount': amount, 'reason': reason, 'timestamp': FieldValue.serverTimestamp()});
       await batch.commit();
-      String actionType = amount > 0 ? "إضافة" : "خصم";
-      logAction(action: 'تسوية يدوية ($actionType)', details: 'تم $actionType مبلغ $amount للوكيل $agentName', severity: 'critical');
     } catch (e) { throw 'فشل التسوية اليدوية: $e'; }
   }
+
+  // ==========================================
+  // 🏷️ 7. دوال الاشتراكات والكوبونات 
+  // ==========================================
 
   Future<void> applySubscriptionPlan({required int targetingFilter, required String planName, required double planPrice, required int durationMonths, String? targetAgentPhone}) async {
     try {
@@ -485,14 +591,12 @@ class SystemProvider extends ChangeNotifier {
           DocumentReference ref = _db.collection('users').doc(agent['phone']);
           batch.update(ref, {'subPlan': planName, 'subPrice': planPrice, 'subExpiry': formattedExpiry, 'subStatus': 'نشط'});
         }
-        logAction(action: 'تطبيق خطة شاملة', details: 'تطبيق خطة [$planName] بـ $planPrice ريال على الجميع', severity: 'critical');
       } else if (targetingFilter == 2 && targetAgentPhone != null) {
         DocumentReference ref = _db.collection('users').doc(targetAgentPhone);
         batch.update(ref, {'subPlan': planName, 'subPrice': planPrice, 'subExpiry': formattedExpiry, 'subStatus': 'نشط'});
-        logAction(action: 'تطبيق خطة مخصصة', details: 'تطبيق خطة [$planName] للوكيل $targetAgentPhone', severity: 'medium', targetPhone: targetAgentPhone);
       }
       await batch.commit();
-    } catch (e) { throw 'حدث خطأ أثناء اعتماد الخطة: $e'; }
+    } catch (e) { throw 'حدث خطأ: $e'; }
   }
 
   Future<void> createSmartCoupon({required String code, required String discountDetails, required int maxUses, required String sendMethod}) async {
@@ -509,22 +613,18 @@ class SystemProvider extends ChangeNotifier {
          'type': sendMethod, 'content': 'تم إصدار كوبون جديد: $code بخصم $discountDetails',
          'target': 'all_agents', 'timestamp': FieldValue.serverTimestamp(), 'status': 'sent'
       });
-
-      logAction(action: 'إنشاء كوبون', details: 'توليد كوبون [$code] وإرساله عبر $sendMethod', severity: 'medium');
     } catch (e) { throw 'فشل إنشاء الكوبون: $e'; }
   }
 
   Future<void> deactivateCoupon(String docId, String code) async {
     try {
       await _db.collection('coupons').doc(docId).update({'isActive': false});
-      logAction(action: 'إعدام كوبون', details: 'تم إيقاف الكوبون [$code] يدوياً', severity: 'critical');
     } catch (e) { throw 'فشل إيقاف الكوبون: $e'; }
   }
 
   Future<void> updateAgentGracePeriod(String agentPhone, String newExpiryDate) async {
     try {
       await _db.collection('users').doc(agentPhone).update({'subExpiry': newExpiryDate, 'subStatus': 'إنذار'});
-      logAction(action: 'تعديل فترة السماح', details: 'تمديد تاريخ الانتهاء للرقم $agentPhone إلى $newExpiryDate', severity: 'medium', targetPhone: agentPhone);
     } catch (e) { throw 'فشل التحديث: $e'; }
   }
 
@@ -532,16 +632,18 @@ class SystemProvider extends ChangeNotifier {
     try {
       String newStatus = currentStatus == 'موقوف مؤقتاً' ? 'نشط' : 'موقوف مؤقتاً';
       await _db.collection('users').doc(agentPhone).update({'subStatus': newStatus});
-      logAction(action: 'تغيير حالة الاشتراك', details: 'تغيرت خطة الوكيل $agentPhone إلى [$newStatus]', severity: 'critical', targetPhone: agentPhone);
     } catch (e) { throw 'فشل التغيير: $e'; }
   }
+
+  // ==========================================
+  // 🏦 8. الحسابات البنكية والنسخ الاحتياطي
+  // ==========================================
 
   bool changeUserPassword(String oldPassword, String newPassword) {
     if (_activeUserPhone == null) return false;
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
     if (user['password'] == oldPassword) {
       _db.collection('users').doc(_activeUserPhone).update({'password': newPassword});
-      logAction(action: 'تغيير كلمة المرور', details: 'تم تغيير كلمة المرور بنجاح', severity: 'medium');
       return true; 
     }
     return false; 
@@ -550,7 +652,6 @@ class SystemProvider extends ChangeNotifier {
   void toggleBiometric(bool isEnabled) {
     if (_activeUserPhone == null) return;
     _db.collection('users').doc(_activeUserPhone).update({'isBiometricEnabled': isEnabled});
-    logAction(action: 'إعدادات البصمة', details: 'تم ${isEnabled ? "تفعيل" : "إلغاء"} الدخول بالبصمة', severity: 'normal');
   }
 
   Future<void> updateAutoBackupSettings(bool isEnabled, String freq, String time, String email) async {
