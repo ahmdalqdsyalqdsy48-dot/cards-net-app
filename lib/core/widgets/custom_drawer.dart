@@ -18,6 +18,8 @@ import '../../features/super_admin/screens/audit_log_screen.dart';
 import '../../features/super_admin/screens/banners_screen.dart';
 import '../../features/super_admin/screens/sms_gateway_screen.dart';
 import '../../features/super_admin/screens/backup_screen.dart';
+// 👈 استدعاء شاشة بوابات النظام الجديدة
+import '../../features/super_admin/screens/portals_management_screen.dart';
 
 class CustomDrawer extends StatefulWidget {
   final String userName;
@@ -167,7 +169,6 @@ class _CustomDrawerState extends State<CustomDrawer> {
                           ),
                           const SizedBox(height: 15),
                           
-                          // 👈 أرجعنا الألوان البارزة للبطاقات لكي لا تذوب مع لون الواجهة
                           _buildGradientCard(text: widget.userName, icon: Icons.badge, colors: [Colors.blue.shade800, Colors.blue.shade500]),
                           _buildGradientCard(text: widget.phoneNumber, icon: Icons.phone, colors: [Colors.teal.shade800, Colors.teal.shade500]),
                           _buildGradientCard(text: widget.role, icon: Icons.admin_panel_settings, colors: [Colors.orange.shade800, Colors.orange.shade500]),
@@ -188,7 +189,6 @@ class _CustomDrawerState extends State<CustomDrawer> {
                     ),
                   ),
                   
-                  // 👈 أرجعنا الألوان الأصلية للأيقونات مع تمريرها للدالة الجديدة
                   _buildDrawerItem(context, 'الرئيسية (غرفة العمليات)', Icons.dashboard, Colors.blue, const SuperAdminDashboard()),
                   _buildDrawerItem(context, 'إدارة الوكلاء', Icons.people_alt, Colors.purple, const AgentManagementScreen()),
                   _buildDrawerItem(context, 'إدارة الاشتراكات', Icons.event_available, Colors.teal, const SubscriptionsScreen()),
@@ -203,6 +203,8 @@ class _CustomDrawerState extends State<CustomDrawer> {
                   Divider(color: themeProvider.adaptiveTextColor.withOpacity(0.2)),
                   Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الإدارة والتسويق', style: TextStyle(color: themeProvider.adaptiveTextColor.withOpacity(0.7), fontSize: 12, fontWeight: FontWeight.bold))),
                   
+                  // 👈 إضافة زر إدارة بوابات النظام هنا
+                  _buildDrawerItem(context, 'إدارة بوابات النظام', Icons.important_devices, Colors.deepPurple, const PortalsManagementScreen()),
                   _buildDrawerItem(context, 'إدارة الموظفين والدعم', Icons.support_agent, Colors.brown, const StaffSupportScreen()),
                   _buildDrawerItem(context, 'الإعلانات والبنرات', Icons.campaign, Colors.deepOrange, const BannersScreen()),
                   _buildDrawerItem(context, 'بوابة رسائل SMS', Icons.sms, Colors.blueAccent, const SmsGatewayScreen()),
@@ -233,11 +235,9 @@ class _CustomDrawerState extends State<CustomDrawer> {
     );
   }
 
-  // 👈 دالة بناء الأزرار المحدثة: تستقبل اللون، وتضع الأيقونة في صندوق أنيق وواضح
   Widget _buildDrawerItem(BuildContext context, String title, IconData icon, Color iconColor, Widget targetScreen) {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     
-    // تصميم خلفية الأيقونة لتبرز دائماً (أبيض شفاف إذا كان اللون المختار غامق، وأسود شفاف إذا كان فاتح)
     final boxColor = themeProvider.primaryColor.computeLuminance() > 0.45 
         ? Colors.black.withOpacity(0.05) 
         : Colors.white.withOpacity(0.9);
@@ -255,7 +255,6 @@ class _CustomDrawerState extends State<CustomDrawer> {
     );
   }
 
-  // 👈 جعلنا البطاقات واضحة دائماً بنص أبيض لأن ألوانها الأصلية متدرجة وداكنة
   Widget _buildGradientCard({required String text, required IconData icon, required List<Color> colors, IconData? trailingIcon}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8), 
