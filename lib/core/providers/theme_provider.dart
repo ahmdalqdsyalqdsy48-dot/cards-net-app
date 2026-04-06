@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // 👈 1. استدعاء مكتبة الحفظ المحلي
+import 'package:shared_preferences/shared_preferences.dart'; // 👈 استدعاء مكتبة الحفظ المحلي
 
 class ThemeProvider extends ChangeNotifier {
   // ==========================================
@@ -9,13 +9,17 @@ class ThemeProvider extends ChangeNotifier {
   late SharedPreferences _prefs; // 👈 متغير الذاكرة المحلية
   bool _isInitialized = false;
 
+  // 👈 (جديد) اللون الافتراضي الموحد لجميع المستخدمين عند الدخول لأول مرة
+  static const Color _defaultAppColor = Color(0xFF1565C0); // أزرق أنيق
+
   // ==========================================
   // 2. الخزانة المخصصة الافتراضية (Role Themes)
   // ==========================================
+  // 👈 (تحديث) تم توحيد اللون الافتراضي للجميع
   final Map<String, Map<String, dynamic>> _roleThemes = {
-    'super_admin': {'isDark': false, 'color': Colors.blue},
-    'agent':       {'isDark': false, 'color': Colors.teal},
-    'user':        {'isDark': false, 'color': Colors.deepOrange},
+    'super_admin': {'isDark': false, 'color': _defaultAppColor},
+    'agent':       {'isDark': false, 'color': _defaultAppColor},
+    'user':        {'isDark': false, 'color': _defaultAppColor},
   };
 
   // 👈 عند تشغيل التطبيق، قم بقراءة الذاكرة فوراً
@@ -49,11 +53,10 @@ class ThemeProvider extends ChangeNotifier {
   String get currentRole => _currentRole;
   bool get isInitialized => _isInitialized;
 
-  // 💡 🆕 دالة الذكاء اللوني (Contrast AI):
-  // هذه الدالة تفحص لون الخلفية (primaryColor) بنسبة 100%
-  // إذا كان اللون ساطعاً (مثل الأصفر) تعطينا نصاً أسود. وإذا كان مظلماً (مثل الكحلي) تعطينا نصاً أبيض.
+  // 💡 🆕 دالة الذكاء اللوني (Contrast AI) - (محدثة لزيادة الوضوح):
+  // إذا كان اللون المختار فاتحاً (مثل الأبيض)، سيكون النص أسوداً داكناً جداً.
   Color get adaptiveTextColor {
-    return primaryColor.computeLuminance() > 0.5 ? Colors.black : Colors.white;
+    return primaryColor.computeLuminance() > 0.45 ? Colors.black87 : Colors.white;
   }
 
   // ==========================================
@@ -78,5 +81,10 @@ class ThemeProvider extends ChangeNotifier {
     // 👈 حفظ رقم اللون في هاتف المستخدم فوراً
     _prefs.setInt('${_currentRole}_color', color.value);
     notifyListeners(); 
+  }
+
+  // 👈 (جديد) دالة استعادة اللون الافتراضي
+  void resetToDefault() {
+    changeColor(_defaultAppColor);
   }
 }
