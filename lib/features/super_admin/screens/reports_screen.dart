@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
-import 'package:intl/intl.dart'; // 👈 لمعالجة التواريخ بدقة
+// 👈 هنا الحل السحري: إخفاء TextDirection الخاص بمكتبة intl لمنع التعارض
+import 'package:intl/intl.dart' hide TextDirection; 
 
 import '../../../core/providers/system_provider.dart'; 
 import '../../../core/widgets/custom_drawer.dart';
@@ -62,7 +63,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return data;
   }
 
-  // دالة لحساب إجمالي المبالغ في البيانات المفلترة حالياً
   double _calculateTotalAmount(List<Map<String, dynamic>> filteredData) {
     double total = 0.0;
     for (var tx in filteredData) {
@@ -143,7 +143,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ElevatedButton(
                 onPressed: () async {
                   if (emailController.text.isNotEmpty && emailController.text.contains('@')) {
-                    // تسجيل الجدولة بشكل حقيقي في قاعدة البيانات
                     await sys.logAction(
                       action: 'جدولة تقرير', 
                       details: 'تمت جدولة تقرير ($scheduleType) للبريد: ${emailController.text}', 
@@ -171,15 +170,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final adminBalance = sys.adminMainBalance;
     final totalCards = sys.totalSystemCards;
 
-    // جلب البيانات المفلترة للواجهة
     final filteredData = _getFilteredData(sys);
     final currentTotalAmount = _calculateTotalAmount(filteredData);
 
-    // تجهيز قائمة الوكلاء للقائمة المنسدلة (ديناميكياً من قاعدة البيانات)
     List<String> agentNames = ['الكل'];
     agentNames.addAll(sys.agentsList.map((a) => a['name'].toString()).toSet().toList());
 
-    // التأكد من أن الوكيل المحدد موجود في القائمة، وإلا إرجاعه لـ "الكل"
     if (!agentNames.contains(_selectedAgent)) {
       _selectedAgent = 'الكل';
     }
@@ -193,7 +189,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
         balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
       ),
       
-      // الشريط السفلي الثابت (يقرأ بيانات حقيقية الآن)
       bottomNavigationBar: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -229,7 +224,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // === 1. أزرار التصدير والأتمتة العلوية ===
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               color: Theme.of(context).brightness == Brightness.dark ? Colors.black12 : Colors.blue.shade50,
@@ -242,7 +236,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا توجد بيانات لتصديرها!'), backgroundColor: Colors.orange));
                         return;
                       }
-                      // محاكاة تجهيز ملف CSV حقيقي
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم تجميع ${filteredData.length} سجل. (التصدير للملفات يتطلب حزمة PathProvider لاحقاً)', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
                     }),
                     const SizedBox(width: 8),
@@ -256,7 +249,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ),
             ),
 
-            // === 2. أدوات الفلترة الذكية (الحقيقية) ===
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Card(
@@ -292,7 +284,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           Expanded(
                             flex: 1,
                             child: ElevatedButton.icon(
-                              onPressed: _pickDateRange, // 👈 فتح التقويم الحقيقي
+                              onPressed: _pickDateRange, 
                               icon: const Icon(Icons.date_range, size: 16),
                               label: const Text('المدة', style: TextStyle(fontSize: 12)),
                               style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
@@ -300,7 +292,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           ),
                         ],
                       ),
-                      // عرض التاريخ المحدد
                       if (_selectedDateRange != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 8.0),
@@ -315,7 +306,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ),
             ),
 
-            // === 3. زر التبديل (بيانات / رسوم بيانية) ===
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Row(
@@ -333,7 +323,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
             const SizedBox(height: 10),
 
-            // === 4. منطقة العرض (الجدول أو الرسم البياني) ===
             Expanded(
               child: filteredData.isEmpty 
                 ? const Center(child: Text('لا توجد بيانات مطابقة لهذه الفلاتر 📭', style: TextStyle(color: Colors.grey)))
@@ -345,7 +334,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  // أداة بناء الجدول (يقرأ بيانات حقيقية)
   Widget _buildTableView(List<Map<String, dynamic>> data) {
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -357,7 +345,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
           dateStr = DateFormat('yyyy-MM-dd HH:mm').format((row['timestamp'] as Timestamp).toDate());
         }
         
-        // تحديد اللون حسب نوع العملية (خصم أحمر، إيداع أخضر)
         bool isPositive = row['type'] == 'إيداع حوالة' || (row['type'].toString().contains('إضافة'));
         Color amountColor = isPositive ? Colors.green : Colors.red;
         String sign = isPositive ? '+' : '-';
@@ -378,9 +365,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  // أداة بناء الرسم البياني (ديناميكي وعلمي 100%)
   Widget _buildChartView(List<Map<String, dynamic>> data) {
-    // 1. تجميع البيانات (حساب إجمالي المبالغ لكل وكيل)
     Map<String, double> agentTotals = {};
     for (var tx in data) {
       String name = tx['agentName'] ?? 'مجهول';
@@ -388,13 +373,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
       agentTotals[name] = (agentTotals[name] ?? 0.0) + amount;
     }
 
-    // 2. ترتيب الوكلاء تنازلياً وأخذ أعلى 4 فقط ليناسب الشاشة
     var sortedAgents = agentTotals.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
     var topAgents = sortedAgents.take(4).toList();
 
-    // 3. إيجاد أعلى قيمة لضبط مقياس الرسم البياني (Scale)
     double maxAmount = topAgents.isNotEmpty ? topAgents.first.value : 1.0;
-    if (maxAmount == 0) maxAmount = 1.0; // تفادي القسمة على صفر
+    if (maxAmount == 0) maxAmount = 1.0; 
 
     List<Color> barColors = [Colors.blue, Colors.orange, Colors.green, Colors.purple];
 
@@ -418,9 +401,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   children: topAgents.asMap().entries.map((entry) {
                     int index = entry.key;
                     var agentData = entry.value;
-                    // حساب ارتفاع العمود نسبة لأعلى مبلغ (بحد أقصى 150 بكسل)
                     double barHeight = (agentData.value / maxAmount) * 150.0;
-                    if (barHeight < 10) barHeight = 10; // حد أدنى للرؤية
+                    if (barHeight < 10) barHeight = 10; 
                     
                     return _buildBar(agentData.key, barHeight, barColors[index % barColors.length], agentData.value);
                   }).toList(),
@@ -435,11 +417,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  // أداة بناء الأعمدة الديناميكية
   Widget _buildBar(String label, double height, Color color, double amount) {
-    // اختصار الاسم إذا كان طويلاً
     String shortLabel = label.length > 8 ? '${label.substring(0, 8)}..' : label;
-    
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
@@ -460,7 +439,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  // أداة أزرار التصدير
   Widget _buildExportBtn(IconData icon, String label, Color color, VoidCallback onTap) {
     return ElevatedButton.icon(
       onPressed: onTap,
