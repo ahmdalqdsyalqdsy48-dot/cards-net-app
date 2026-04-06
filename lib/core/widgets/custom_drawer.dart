@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart'; // 👈 استدعاء مكتبة دائرة الألوان
 
-// 👈 تمت إضافة استدعاء شاشة تسجيل الدخول هنا للطرد الآمن
+// 👈 استدعاء العقل المدبر للألوان
+import '../providers/theme_provider.dart';
+
 import '../../features/auth/screens/sso_login_screen.dart';
 
-// استدعاء جميع الشاشات الـ 12
 import '../../features/super_admin/screens/super_admin_dashboard.dart';
 import '../../features/super_admin/screens/agent_management_screen.dart';
 import '../../features/super_admin/screens/financial_center_screen.dart';
@@ -22,7 +25,6 @@ class CustomDrawer extends StatefulWidget {
   final String phoneNumber;
   final String role;
   final String balanceOrPoints;
-  // profileImageUrl ستكون متغيرة (Stateful) لمحاكاة الحذف والإضافة
   final String? profileImageUrl;
 
   const CustomDrawer({
@@ -39,26 +41,23 @@ class CustomDrawer extends StatefulWidget {
 }
 
 class _CustomDrawerState extends State<CustomDrawer> {
-  // متغيرات محلية لمحاكاة الحالة (Dummy State)
   bool _isBalanceHidden = false;
-  String? _currentLocalImageUrl; // لمحاكاة تغيير الصورة محلياً
+  String? _currentLocalImageUrl;
 
   @override
   void initState() {
     super.initState();
-    // تعيين الصورة القادمة من الخارج كصورة أولية
     _currentLocalImageUrl = widget.profileImageUrl;
   }
 
   void _navigateTo(BuildContext context, Widget screen) {
-    Navigator.pop(context); // إغلاق الدرج الجانبي
+    Navigator.pop(context);
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (context) => screen),
     );
   }
 
-  // دالة مساعدة لإظهار رسائل الشفافية البرمجية
   void _showCandorSnackBar(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -77,11 +76,53 @@ class _CustomDrawerState extends State<CustomDrawer> {
   }
 
   // ==========================================
-  // نافذة إدارة الصورة الشخصية (Add/Change/Delete Dummy logic)
+  // 🎨 نافذة دائرة الألوان المتقدمة
   // ==========================================
+  void _showColorPickerDialog(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    Color pickerColor = themeProvider.primaryColor;
+
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('تخصيص مظهر التطبيق', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: ColorPicker(
+              pickerColor: pickerColor,
+              onColorChanged: (Color color) {
+                pickerColor = color;
+              },
+              pickerAreaHeightPercent: 0.8,
+              enableAlpha: false, // لا نريد ألوان شفافة للخلفية
+              displayThumbColor: true,
+              paletteType: PaletteType.hsvWithHue,
+              labelTypes: const [], 
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إلغاء', style: TextStyle(color: Colors.red)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+              onPressed: () {
+                // 👈 الحفظ في العقل المدبر وذاكرة الهاتف
+                themeProvider.changeColor(pickerColor);
+                Navigator.pop(context);
+              },
+              child: const Text('اعتماد اللون', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showProfileImageActionDialog(BuildContext context) {
     bool hasImage = _currentLocalImageUrl != null;
-
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -92,27 +133,18 @@ class _CustomDrawerState extends State<CustomDrawer> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // عرض الصورة بحجم كبير جداً داخل النافذة
               Container(
-                width: 150,
-                height: 150,
+                width: 150, height: 150,
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.grey.shade100,
-                  border: Border.all(color: Colors.blue.shade100, width: 3),
+                  shape: BoxShape.circle, color: Colors.grey.shade100, border: Border.all(color: Colors.blue.shade100, width: 3),
                   boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)],
-                  image: hasImage 
-                      ? DecorationImage(image: NetworkImage(_currentLocalImageUrl!), fit: BoxFit.cover) 
-                      : null,
+                  image: hasImage ? DecorationImage(image: NetworkImage(_currentLocalImageUrl!), fit: BoxFit.cover) : null,
                 ),
                 child: !hasImage ? const Icon(Icons.person, size: 100, color: Colors.blueGrey) : null,
               ),
               const SizedBox(height: 25),
-              
               const Text('💡 هذه الوظيفة تتطلب ربطاً حقيقياً بالسيرفر وصلاحيات الهاتف. حالياً نقوم بمحاكاة التصميم فقط.', style: TextStyle(fontSize: 12, color: Colors.orange)),
               const SizedBox(height: 15),
-
-              // زري الإضافة/التغيير والحذف
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
@@ -125,12 +157,10 @@ class _CustomDrawerState extends State<CustomDrawer> {
                     label: Text(hasImage ? 'تغيير' : 'إضافة صورة', style: const TextStyle(color: Colors.white)),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade600),
                   ),
-                  if (hasImage) // يظهر الحذف فقط إذا كانت هناك صورة
+                  if (hasImage) 
                     ElevatedButton.icon(
                       onPressed: () {
-                        setState(() {
-                          _currentLocalImageUrl = null; // محاكاة الحذف محلياً
-                        });
+                        setState(() { _currentLocalImageUrl = null; });
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف الصورة (محلياً) بنجاح.'), backgroundColor: Colors.red));
                       },
@@ -150,137 +180,105 @@ class _CustomDrawerState extends State<CustomDrawer> {
   @override
   Widget build(BuildContext context) {
     bool hasImage = _currentLocalImageUrl != null;
+    final themeProvider = Provider.of<ThemeProvider>(context); // 👈 للوصول إلى ألوان النظام الذكية
 
     return Drawer(
+      // 👈 لجعل الدرج متوافقاً مع لون الواجهة
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // ==========================================
-            // القائمة الجانبية (كل المحتوى متحرك داخل ListView)
-            // ==========================================
             Expanded(
               child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
-                  // 1. الهيدر العلوي (أصبح متحركاً داخل الـ ListView)
                   SafeArea(
                     bottom: false,
                     child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-                      color: Colors.transparent, // يدعم لون النظام (الوضع الليلي)
+                      width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+                      color: Colors.transparent,
                       child: Column(
                         children: [
-                          // الصورة الشخصية
                           GestureDetector(
                             onTap: () => _showProfileImageActionDialog(context),
                             child: Container(
-                              width: 100,
-                              height: 100,
+                              width: 100, height: 100,
                               decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.blue.withOpacity(0.1),
-                                border: Border.all(color: Theme.of(context).primaryColor.withOpacity(0.3), width: 2),
+                                shape: BoxShape.circle, color: themeProvider.primaryColor.withOpacity(0.1),
+                                border: Border.all(color: themeProvider.primaryColor.withOpacity(0.3), width: 2),
                                 boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))],
-                                image: hasImage 
-                                    ? DecorationImage(image: NetworkImage(_currentLocalImageUrl!), fit: BoxFit.cover) 
-                                    : null,
+                                image: hasImage ? DecorationImage(image: NetworkImage(_currentLocalImageUrl!), fit: BoxFit.cover) : null,
                               ),
-                              child: !hasImage ? Icon(Icons.person, size: 60, color: Theme.of(context).primaryColor.withOpacity(0.7)) : null,
+                              child: !hasImage ? Icon(Icons.person, size: 60, color: themeProvider.primaryColor.withOpacity(0.7)) : null,
                             ),
                           ),
                           const SizedBox(height: 15),
-
-                          // البطاقة 1: الاسم الرباعي
-                          _buildGradientCard(
-                            text: widget.userName,
-                            icon: Icons.badge,
-                            colors: [Colors.blue.shade800, Colors.blue.shade500],
-                          ),
-
-                          // البطاقة 2: رقم الهاتف
-                          _buildGradientCard(
-                            text: widget.phoneNumber,
-                            icon: Icons.phone,
-                            colors: [Colors.teal.shade800, Colors.teal.shade500],
-                          ),
-
-                          // البطاقة 3: الدور
-                          _buildGradientCard(
-                            text: widget.role,
-                            icon: Icons.admin_panel_settings,
-                            colors: [Colors.orange.shade800, Colors.orange.shade500],
-                          ),
-
-                          // البطاقة 4: الرصيد
+                          _buildGradientCard(text: widget.userName, icon: Icons.badge, colors: [themeProvider.primaryColor, themeProvider.primaryColor.withOpacity(0.7)]),
+                          _buildGradientCard(text: widget.phoneNumber, icon: Icons.phone, colors: [themeProvider.primaryColor.withOpacity(0.9), themeProvider.primaryColor.withOpacity(0.6)]),
+                          _buildGradientCard(text: widget.role, icon: Icons.admin_panel_settings, colors: [themeProvider.primaryColor.withOpacity(0.8), themeProvider.primaryColor.withOpacity(0.5)]),
                           GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _isBalanceHidden = !_isBalanceHidden;
-                              });
-                            },
+                            onTap: () => setState(() => _isBalanceHidden = !_isBalanceHidden),
                             child: _buildGradientCard(
                               text: _isBalanceHidden ? '******' : widget.balanceOrPoints,
                               icon: Icons.account_balance_wallet,
-                              colors: [Colors.purple.shade800, Colors.purple.shade500],
+                              colors: [themeProvider.primaryColor.withOpacity(0.7), themeProvider.primaryColor.withOpacity(0.4)],
                               trailingIcon: _isBalanceHidden ? Icons.visibility_off : Icons.visibility,
                             ),
                           ),
-                          
                           const SizedBox(height: 10),
-                          const Divider(height: 1),
+                          Divider(height: 1, color: themeProvider.adaptiveTextColor.withOpacity(0.2)),
                         ],
                       ),
                     ),
                   ),
+                  _buildDrawerItem(context, 'الرئيسية (غرفة العمليات)', Icons.dashboard, const SuperAdminDashboard()),
+                  _buildDrawerItem(context, 'إدارة الوكلاء', Icons.people_alt, const AgentManagementScreen()),
+                  _buildDrawerItem(context, 'إدارة الاشتراكات', Icons.event_available, const SubscriptionsScreen()),
+                  
+                  Divider(color: themeProvider.adaptiveTextColor.withOpacity(0.2)),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('المالية والمحاسبة', style: TextStyle(color: themeProvider.adaptiveTextColor.withOpacity(0.6), fontSize: 12, fontWeight: FontWeight.bold))),
+                  
+                  _buildDrawerItem(context, 'المركز المالي والمحافظ', Icons.account_balance_wallet, const FinancialCenterScreen()),
+                  _buildDrawerItem(context, 'الحسابات البنكية', Icons.account_balance, const BankAccountsScreen()),
+                  _buildDrawerItem(context, 'التقارير الشاملة', Icons.analytics, const ReportsScreen()),
+                  
+                  Divider(color: themeProvider.adaptiveTextColor.withOpacity(0.2)),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الإدارة والتسويق', style: TextStyle(color: themeProvider.adaptiveTextColor.withOpacity(0.6), fontSize: 12, fontWeight: FontWeight.bold))),
+                  
+                  _buildDrawerItem(context, 'إدارة الموظفين والدعم', Icons.support_agent, const StaffSupportScreen()),
+                  _buildDrawerItem(context, 'الإعلانات والبنرات', Icons.campaign, const BannersScreen()),
+                  _buildDrawerItem(context, 'بوابة رسائل SMS', Icons.sms, const SmsGatewayScreen()),
+                  
+                  Divider(color: themeProvider.adaptiveTextColor.withOpacity(0.2)),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الأمان والنظام', style: TextStyle(color: themeProvider.adaptiveTextColor.withOpacity(0.6), fontSize: 12, fontWeight: FontWeight.bold))),
+                  
+                  _buildDrawerItem(context, 'السجل الأسود للنشاط', Icons.security, const AuditLogScreen()),
+                  _buildDrawerItem(context, 'الإعدادات العامة', Icons.settings, const GlobalSettingsScreen()),
+                  _buildDrawerItem(context, 'النسخ الاحتياطي', Icons.save, const BackupScreen()),
 
-                  // 2. أزرار الانتقال (الروابط للشاشات الـ 12)
-                  _buildDrawerItem(context, 'الرئيسية (غرفة العمليات)', Icons.dashboard, Colors.blue, const SuperAdminDashboard()),
-                  _buildDrawerItem(context, 'إدارة الوكلاء', Icons.people_alt, Colors.purple, const AgentManagementScreen()),
-                  _buildDrawerItem(context, 'إدارة الاشتراكات', Icons.event_available, Colors.teal, const SubscriptionsScreen()),
-                  
-                  const Divider(),
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('المالية والمحاسبة', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
-                  
-                  _buildDrawerItem(context, 'المركز المالي والمحافظ', Icons.account_balance_wallet, Colors.green, const FinancialCenterScreen()),
-                  _buildDrawerItem(context, 'الحسابات البنكية', Icons.account_balance, Colors.indigo, const BankAccountsScreen()),
-                  _buildDrawerItem(context, 'التقارير الشاملة', Icons.analytics, Colors.orange, const ReportsScreen()),
-                  
-                  const Divider(),
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الإدارة والتسويق', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
-                  
-                  _buildDrawerItem(context, 'إدارة الموظفين والدعم', Icons.support_agent, Colors.brown, const StaffSupportScreen()),
-                  _buildDrawerItem(context, 'الإعلانات والبنرات', Icons.campaign, Colors.deepOrange, const BannersScreen()),
-                  _buildDrawerItem(context, 'بوابة رسائل SMS', Icons.sms, Colors.blueAccent, const SmsGatewayScreen()),
-                  
-                  const Divider(),
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الأمان والنظام', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
-                  
-                  _buildDrawerItem(context, 'السجل الأسود للنشاط', Icons.security, Colors.red, const AuditLogScreen()),
-                  _buildDrawerItem(context, 'الإعدادات العامة', Icons.settings, Colors.blueGrey, const GlobalSettingsScreen()),
-                  _buildDrawerItem(context, 'النسخ الاحتياطي', Icons.save, Colors.black87, const BackupScreen()),
+                  // 👈 زر تخصيص المظهر الجديد (Color Picker)
+                  ListTile(
+                    dense: true, visualDensity: VisualDensity.compact,
+                    leading: Icon(Icons.palette, color: themeProvider.adaptiveTextColor, size: 20),
+                    title: Text('تخصيص المظهر والألوان', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: themeProvider.adaptiveTextColor)),
+                    onTap: () {
+                      Navigator.pop(context); // إغلاق الدرج أولاً
+                      _showColorPickerDialog(context); // فتح دائرة الألوان
+                    },
+                  ),
                 ],
               ),
             ),
             
-            // ==========================================
-            // 3. الفوتر (تسجيل الخروج - تم تطويره أمنياً 🛡️)
-            // ==========================================
-            const Divider(height: 1),
+            Divider(height: 1, color: themeProvider.adaptiveTextColor.withOpacity(0.2)),
             ListTile(
               dense: true,
               leading: const Icon(Icons.logout, color: Colors.red, size: 20),
               title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
               onTap: () {
-                 // 1. إغلاق الدرج الجانبي أولاً
                  Navigator.pop(context);
-                 // 2. الانتقال لشاشة الدخول وتدمير جميع الشاشات السابقة لضمان الأمان
-                 Navigator.pushAndRemoveUntil(
-                   context,
-                   MaterialPageRoute(builder: (context) => const SSOLoginScreen()),
-                   (route) => false, // false تعني مسح كل السجل السابق
-                 );
+                 Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const SSOLoginScreen()), (route) => false);
               },
             ),
           ],
@@ -289,46 +287,36 @@ class _CustomDrawerState extends State<CustomDrawer> {
     );
   }
 
-  // أداة مساعدة لبناء البطاقات المتدرجة الأنيقة الفخمة (Premium Gradient Cards)
+  // 👈 قمت بتعديل أيقونات وألوان العناصر لتأخذ لون الواجهة الذكي بدلاً من الألوان الثابتة القديمة
+  Widget _buildDrawerItem(BuildContext context, String title, IconData icon, Widget targetScreen) {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    return ListTile(
+      dense: true, visualDensity: VisualDensity.compact,
+      leading: Icon(icon, color: themeProvider.adaptiveTextColor.withOpacity(0.8), size: 20),
+      title: Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: themeProvider.adaptiveTextColor)),
+      trailing: Icon(Icons.arrow_forward_ios, size: 11, color: themeProvider.adaptiveTextColor.withOpacity(0.5)),
+      onTap: () => _navigateTo(context, targetScreen),
+    );
+  }
+
   Widget _buildGradientCard({required String text, required IconData icon, required List<Color> colors, IconData? trailingIcon}) {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     return Container(
       margin: const EdgeInsets.only(bottom: 8), 
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: colors,
-          begin: Alignment.topRight, 
-          end: Alignment.bottomLeft,
-        ),
+        gradient: LinearGradient(colors: colors, begin: Alignment.topRight, end: Alignment.bottomLeft),
         borderRadius: BorderRadius.circular(10), 
         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))], 
       ),
       child: Row(
         children: [
-          Icon(icon, color: Colors.white, size: 18),
+          Icon(icon, color: themeProvider.adaptiveTextColor, size: 18),
           const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          if (trailingIcon != null) Icon(trailingIcon, color: Colors.white70, size: 17),
+          Expanded(child: Text(text, style: TextStyle(color: themeProvider.adaptiveTextColor, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5), overflow: TextOverflow.ellipsis)),
+          if (trailingIcon != null) Icon(trailingIcon, color: themeProvider.adaptiveTextColor.withOpacity(0.7), size: 17),
         ],
       ),
-    );
-  }
-
-  // أداة مساعدة لبناء أزرار القائمة السفلية
-  Widget _buildDrawerItem(BuildContext context, String title, IconData icon, Color iconColor, Widget targetScreen) {
-    return ListTile(
-      dense: true,
-      visualDensity: VisualDensity.compact,
-      leading: Icon(icon, color: iconColor, size: 20),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 11, color: Colors.grey),
-      onTap: () => _navigateTo(context, targetScreen),
     );
   }
 }
