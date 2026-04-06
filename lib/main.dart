@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'core/providers/theme_provider.dart';
 import 'core/providers/system_provider.dart'; 
-import 'core/providers/ui_provider.dart'; // 👈 1. استدعاء העقل المدبر للواجهة
+import 'core/providers/ui_provider.dart'; 
 
 import 'features/auth/screens/sso_login_screen.dart';
 
@@ -34,11 +34,9 @@ void main() async {
       providers: [
         ChangeNotifierProvider(create: (context) => ThemeProvider()),
         ChangeNotifierProvider(create: (context) => SystemProvider()), 
-        // 👈 2. تسجيل UiProvider وربطه بـ SystemProvider لمعرفة المستخدم الحالي
         ChangeNotifierProxyProvider<SystemProvider, UiProvider>(
           create: (context) => UiProvider(null),
           update: (context, systemProvider, previous) => UiProvider(
-            // نمرر رقم هاتف المستخدم لكي يجلب إشعاراته هو فقط
             systemProvider.currentUserPhone == 'لا يوجد رقم' ? null : systemProvider.currentUserPhone
           ),
         ),
@@ -53,6 +51,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 👈 استدعاء العقل المدبر للألوان
     final themeProvider = Provider.of<ThemeProvider>(context);
 
     return MaterialApp(
@@ -61,9 +60,31 @@ class MyApp extends StatelessWidget {
       
       themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
       
+      // ==========================================
+      // ☀️ الوضع النهاري (الذكي 100%)
+      // ==========================================
       theme: ThemeData(
         primaryColor: themeProvider.primaryColor,
-        scaffoldBackgroundColor: themeProvider.primaryColor.withOpacity(0.05),
+        // 👈 1. جعلنا لون الخلفية 100% هو اللون الذي اختاره المستخدم
+        scaffoldBackgroundColor: themeProvider.primaryColor, 
+        
+        // 👈 2. الذكاء اللوني: إجبار النصوص على (أبيض/أسود) لتكون مقروءة دائماً
+        textTheme: TextTheme(
+          bodyLarge: TextStyle(color: themeProvider.adaptiveTextColor),
+          bodyMedium: TextStyle(color: themeProvider.adaptiveTextColor),
+          titleLarge: TextStyle(color: themeProvider.adaptiveTextColor),
+        ),
+        
+        // 👈 3. جعل الأيقونات أيضاً تتبع نفس الذكاء اللوني
+        iconTheme: IconThemeData(color: themeProvider.adaptiveTextColor),
+        
+        // 👈 4. الهيدر (الشريط العلوي) يتناغم مع الخلفية
+        appBarTheme: AppBarTheme(
+          backgroundColor: themeProvider.primaryColor,
+          foregroundColor: themeProvider.adaptiveTextColor, 
+          elevation: 0, // إزالة الظل ليندمج مع الخلفية
+        ),
+
         colorScheme: ColorScheme.fromSeed(
           seedColor: themeProvider.primaryColor,
           brightness: Brightness.light,
@@ -71,11 +92,29 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       
+      // ==========================================
+      // 🌙 الوضع الليلي (المريح للعين)
+      // ==========================================
       darkTheme: ThemeData(
         primaryColor: themeProvider.primaryColor,
+        // في الوضع الليلي ندمج اللون المختار بنسبة 20% فقط مع الأسود لكي لا يؤذي العين
         scaffoldBackgroundColor: Color.alphaBlend(
-          themeProvider.primaryColor.withOpacity(0.1), 
+          themeProvider.primaryColor.withOpacity(0.2), 
           const Color(0xFF121212),
+        ),
+        textTheme: const TextTheme(
+          bodyLarge: TextStyle(color: Colors.white),
+          bodyMedium: TextStyle(color: Colors.white),
+          titleLarge: TextStyle(color: Colors.white),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white),
+        appBarTheme: AppBarTheme(
+          backgroundColor: Color.alphaBlend(
+            themeProvider.primaryColor.withOpacity(0.2), 
+            const Color(0xFF121212),
+          ),
+          foregroundColor: Colors.white,
+          elevation: 0,
         ),
         colorScheme: ColorScheme.fromSeed(
           seedColor: themeProvider.primaryColor,
