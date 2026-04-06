@@ -4,7 +4,7 @@ import 'package:marquee/marquee.dart';
 
 import '../providers/theme_provider.dart'; 
 import '../providers/system_provider.dart'; 
-import '../providers/ui_provider.dart'; // 👈 استدعاء العقل المدبر الجديد
+import '../providers/ui_provider.dart'; 
 
 class CustomHeader extends StatefulWidget implements PreferredSizeWidget {
   final String title;
@@ -76,12 +76,19 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
     final bool hasNotifications = uiProvider.hasNewNotifications; 
     final String liveNews = systemProvider.announcements.isNotEmpty ? systemProvider.announcements.join('   🔴   ') : 'مرحباً بك في نظام كروت نت...';
 
+    // 👈 1. اللون الذكي: الهيدر يأخذ لون الواجهة، والأيقونات تأخذ لوناً يتناغم معه
+    final Color headerColor = isDark ? const Color(0xFF121212) : themeProvider.primaryColor;
+    final Color iconTextColor = isDark ? Colors.white : themeProvider.adaptiveTextColor;
+
     return AppBar(
-      elevation: 2, backgroundColor: isDark ? const Color(0xFF121212) : Colors.white, iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.blueAccent),
+      elevation: 0, // 👈 2. إزالة الظل ليندمج الهيدر مع خلفية الشاشة
+      backgroundColor: headerColor, 
+      iconTheme: IconThemeData(color: iconTextColor), // 👈 3. الأيقونات تتكيف ذكياً
+      
       title: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(widget.title, style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.blue.shade900, fontSize: 16)),
+          Text(widget.title, style: TextStyle(fontWeight: FontWeight.bold, color: iconTextColor, fontSize: 16)),
           const SizedBox(width: 8),
           Container(width: 10, height: 10, decoration: BoxDecoration(shape: BoxShape.circle, color: isOnline ? Colors.greenAccent.shade400 : Colors.redAccent, boxShadow: [BoxShadow(color: isOnline ? Colors.green.withOpacity(0.5) : Colors.red.withOpacity(0.5), blurRadius: 6, spreadRadius: 1)])),
         ],
@@ -94,7 +101,7 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
           child: Stack(
             alignment: Alignment.center,
             children: [
-              IconButton(icon: Icon(Icons.notifications_active, color: isDark ? Colors.grey.shade300 : themeProvider.primaryColor), tooltip: 'الإشعارات', onPressed: () => _showNotifications(context, uiProvider)),
+              IconButton(icon: const Icon(Icons.notifications_active), color: iconTextColor, tooltip: 'الإشعارات', onPressed: () => _showNotifications(context, uiProvider)),
               if (hasNotifications)
                 Positioned(right: 8, top: 10, child: ScaleTransition(scale: _pulseAnimation, child: Container(width: 10, height: 10, decoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 1.5))))),
             ],
@@ -117,10 +124,18 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: Container(
-                height: 35, decoration: BoxDecoration(color: isDark ? Colors.grey.shade800 : Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
+                height: 35, 
+                decoration: BoxDecoration(color: isDark ? Colors.grey.shade800 : Colors.white.withOpacity(0.9), borderRadius: BorderRadius.circular(8)),
                 child: TextField(
-                  onChanged: (value) => uiProvider.updateSearchQuery(value), 
-                  decoration: InputDecoration(hintText: 'ابحث في النظام...', hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 13), prefixIcon: Icon(Icons.search, color: themeProvider.primaryColor, size: 20), border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(vertical: 8)),
+                  onChanged: (value) => uiProvider.updateSearchQuery(value), // 👈 يرسل كلمة البحث للعقل المدبر
+                  style: const TextStyle(color: Colors.black87), // نص البحث دائماً أسود ليكون واضحاً في المربع الأبيض
+                  decoration: const InputDecoration(
+                    hintText: 'ابحث في النظام...', 
+                    hintStyle: TextStyle(color: Colors.grey, fontSize: 13), 
+                    prefixIcon: Icon(Icons.search, color: Colors.grey, size: 20), 
+                    border: InputBorder.none, 
+                    contentPadding: EdgeInsets.symmetric(vertical: 8)
+                  ),
                 ),
               ),
             ),
