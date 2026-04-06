@@ -51,21 +51,17 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     
-    // جلب البيانات الحالية من الخادم عند فتح الشاشة
     final sys = Provider.of<SystemProvider>(context, listen: false);
     
-    // تهيئة متغيرات الدخول
     _appNameCtrl = TextEditingController(text: sys.appName);
     _welcomeMsgCtrl = TextEditingController(text: sys.loginWelcomeMessage);
     _carouselInterval = sys.carouselIntervalSeconds.toDouble();
 
-    // تهيئة متغيرات الوكلاء
     _hideProfit = sys.hideProfitEnabled;
     _leaderboard = sys.leaderboardEnabled;
     _forceTheme = sys.forceAgentTheme;
     _agentHiddenSections = List.from(sys.agentUniversalHiddenSections);
 
-    // تهيئة متغيرات المستخدمين
     _guestMode = sys.guestModeEnabled;
     _kycRequired = sys.kycRequired;
     _loyaltySystem = sys.loyaltySystemEnabled;
@@ -87,7 +83,7 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
 
   void _showSnackBar(String msg, {bool isSuccess = true}) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: isSuccess ? Colors.green : Colors.red),
+      SnackBar(content: Text(msg, textDirection: TextDirection.rtl), backgroundColor: isSuccess ? Colors.green : Colors.red),
     );
   }
 
@@ -131,9 +127,6 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     );
   }
 
-  // ==========================================
-  // 1. تبويب بوابة الدخول
-  // ==========================================
   Widget _buildLoginPortalTab(SystemProvider sys) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -180,9 +173,6 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     );
   }
 
-  // ==========================================
-  // 2. تبويب بوابة الوكلاء
-  // ==========================================
   Widget _buildAgentPortalTab(SystemProvider sys) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -197,14 +187,14 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
                 return CheckboxListTile(
                   title: Text(_availableAgentSections[key]!),
                   subtitle: Text(isHidden ? 'مخفي 🚫' : 'ظاهر ✅', style: TextStyle(color: isHidden ? Colors.red : Colors.green, fontSize: 12)),
-                  value: !isHidden, // إذا كان true يعني ظاهر
+                  value: !isHidden, 
                   activeColor: Colors.green,
                   onChanged: (val) {
                     setState(() {
                       if (val == true) {
-                        _agentHiddenSections.remove(key); // إظهار
+                        _agentHiddenSections.remove(key); 
                       } else {
-                        _agentHiddenSections.add(key); // إخفاء
+                        _agentHiddenSections.add(key); 
                       }
                     });
                   },
@@ -239,9 +229,6 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     );
   }
 
-  // ==========================================
-  // 3. تبويب بوابة المستخدمين
-  // ==========================================
   Widget _buildUserPortalTab(SystemProvider sys) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -273,11 +260,7 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     );
   }
 
-  // ==========================================
-  // أدوات مساعدة (Helpers)
-  // ==========================================
-  
-  // 👈 هذا هو السطر الذي كان به الخطأ المطبعي وتم إصلاحه (child بدلاً من return)
+  // 👈 هنا تم إصلاح الخطأ المزعج بالكامل (child)
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -310,11 +293,10 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     );
   }
 
-  // نافذة الاستهداف (لإرسال بانر أو تنبيه لأشخاص محددين)
   void _showTargetingDialog(SystemProvider sys, String type) {
-    String targetType = 'all'; // all, specific
+    String targetType = 'all'; 
     TextEditingController targetPhonesCtrl = TextEditingController();
-    TextEditingController contentCtrl = TextEditingController(); // سواء رابط صورة أو نص رسالة
+    TextEditingController contentCtrl = TextEditingController(); 
 
     showDialog(
       context: context,
@@ -355,6 +337,7 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
                   } else {
                     await sys.setEmergencyAlert(isActive: true, text: contentCtrl.text, targetType: targetType, targetPhones: phones);
                   }
+                  if (!context.mounted) return;
                   Navigator.pop(context);
                   _showSnackBar('تم الإرسال بنجاح!');
                 },
