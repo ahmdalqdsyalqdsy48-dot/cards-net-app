@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_colorpicker/flutter_colorpicker.dart'; // 👈 استدعاء مكتبة دائرة الألوان
 
 // 👈 استدعاء العقل المدبر للألوان
 import '../providers/theme_provider.dart';
@@ -75,52 +74,6 @@ class _CustomDrawerState extends State<CustomDrawer> {
     );
   }
 
-  // ==========================================
-  // 🎨 نافذة دائرة الألوان المتقدمة
-  // ==========================================
-  void _showColorPickerDialog(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
-    Color pickerColor = themeProvider.primaryColor;
-
-    showDialog(
-      context: context,
-      builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: const Text('تخصيص مظهر التطبيق', style: TextStyle(fontWeight: FontWeight.bold)),
-          content: SingleChildScrollView(
-            child: ColorPicker(
-              pickerColor: pickerColor,
-              onColorChanged: (Color color) {
-                pickerColor = color;
-              },
-              pickerAreaHeightPercent: 0.8,
-              enableAlpha: false, // لا نريد ألوان شفافة للخلفية
-              displayThumbColor: true,
-              paletteType: PaletteType.hsvWithHue,
-              labelTypes: const [], 
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('إلغاء', style: TextStyle(color: Colors.red)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-              onPressed: () {
-                // 👈 الحفظ في العقل المدبر وذاكرة الهاتف
-                themeProvider.changeColor(pickerColor);
-                Navigator.pop(context);
-              },
-              child: const Text('اعتماد اللون', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   void _showProfileImageActionDialog(BuildContext context) {
     bool hasImage = _currentLocalImageUrl != null;
     showDialog(
@@ -180,10 +133,9 @@ class _CustomDrawerState extends State<CustomDrawer> {
   @override
   Widget build(BuildContext context) {
     bool hasImage = _currentLocalImageUrl != null;
-    final themeProvider = Provider.of<ThemeProvider>(context); // 👈 للوصول إلى ألوان النظام الذكية
+    final themeProvider = Provider.of<ThemeProvider>(context); 
 
     return Drawer(
-      // 👈 لجعل الدرج متوافقاً مع لون الواجهة
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       child: Directionality(
         textDirection: TextDirection.rtl,
@@ -214,15 +166,18 @@ class _CustomDrawerState extends State<CustomDrawer> {
                             ),
                           ),
                           const SizedBox(height: 15),
-                          _buildGradientCard(text: widget.userName, icon: Icons.badge, colors: [themeProvider.primaryColor, themeProvider.primaryColor.withOpacity(0.7)]),
-                          _buildGradientCard(text: widget.phoneNumber, icon: Icons.phone, colors: [themeProvider.primaryColor.withOpacity(0.9), themeProvider.primaryColor.withOpacity(0.6)]),
-                          _buildGradientCard(text: widget.role, icon: Icons.admin_panel_settings, colors: [themeProvider.primaryColor.withOpacity(0.8), themeProvider.primaryColor.withOpacity(0.5)]),
+                          
+                          // 👈 أرجعنا الألوان البارزة للبطاقات لكي لا تذوب مع لون الواجهة
+                          _buildGradientCard(text: widget.userName, icon: Icons.badge, colors: [Colors.blue.shade800, Colors.blue.shade500]),
+                          _buildGradientCard(text: widget.phoneNumber, icon: Icons.phone, colors: [Colors.teal.shade800, Colors.teal.shade500]),
+                          _buildGradientCard(text: widget.role, icon: Icons.admin_panel_settings, colors: [Colors.orange.shade800, Colors.orange.shade500]),
+                          
                           GestureDetector(
                             onTap: () => setState(() => _isBalanceHidden = !_isBalanceHidden),
                             child: _buildGradientCard(
                               text: _isBalanceHidden ? '******' : widget.balanceOrPoints,
                               icon: Icons.account_balance_wallet,
-                              colors: [themeProvider.primaryColor.withOpacity(0.7), themeProvider.primaryColor.withOpacity(0.4)],
+                              colors: [Colors.purple.shade800, Colors.purple.shade500],
                               trailingIcon: _isBalanceHidden ? Icons.visibility_off : Icons.visibility,
                             ),
                           ),
@@ -232,41 +187,32 @@ class _CustomDrawerState extends State<CustomDrawer> {
                       ),
                     ),
                   ),
-                  _buildDrawerItem(context, 'الرئيسية (غرفة العمليات)', Icons.dashboard, const SuperAdminDashboard()),
-                  _buildDrawerItem(context, 'إدارة الوكلاء', Icons.people_alt, const AgentManagementScreen()),
-                  _buildDrawerItem(context, 'إدارة الاشتراكات', Icons.event_available, const SubscriptionsScreen()),
+                  
+                  // 👈 أرجعنا الألوان الأصلية للأيقونات مع تمريرها للدالة الجديدة
+                  _buildDrawerItem(context, 'الرئيسية (غرفة العمليات)', Icons.dashboard, Colors.blue, const SuperAdminDashboard()),
+                  _buildDrawerItem(context, 'إدارة الوكلاء', Icons.people_alt, Colors.purple, const AgentManagementScreen()),
+                  _buildDrawerItem(context, 'إدارة الاشتراكات', Icons.event_available, Colors.teal, const SubscriptionsScreen()),
                   
                   Divider(color: themeProvider.adaptiveTextColor.withOpacity(0.2)),
-                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('المالية والمحاسبة', style: TextStyle(color: themeProvider.adaptiveTextColor.withOpacity(0.6), fontSize: 12, fontWeight: FontWeight.bold))),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('المالية والمحاسبة', style: TextStyle(color: themeProvider.adaptiveTextColor.withOpacity(0.7), fontSize: 12, fontWeight: FontWeight.bold))),
                   
-                  _buildDrawerItem(context, 'المركز المالي والمحافظ', Icons.account_balance_wallet, const FinancialCenterScreen()),
-                  _buildDrawerItem(context, 'الحسابات البنكية', Icons.account_balance, const BankAccountsScreen()),
-                  _buildDrawerItem(context, 'التقارير الشاملة', Icons.analytics, const ReportsScreen()),
-                  
-                  Divider(color: themeProvider.adaptiveTextColor.withOpacity(0.2)),
-                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الإدارة والتسويق', style: TextStyle(color: themeProvider.adaptiveTextColor.withOpacity(0.6), fontSize: 12, fontWeight: FontWeight.bold))),
-                  
-                  _buildDrawerItem(context, 'إدارة الموظفين والدعم', Icons.support_agent, const StaffSupportScreen()),
-                  _buildDrawerItem(context, 'الإعلانات والبنرات', Icons.campaign, const BannersScreen()),
-                  _buildDrawerItem(context, 'بوابة رسائل SMS', Icons.sms, const SmsGatewayScreen()),
+                  _buildDrawerItem(context, 'المركز المالي والمحافظ', Icons.account_balance_wallet, Colors.green, const FinancialCenterScreen()),
+                  _buildDrawerItem(context, 'الحسابات البنكية', Icons.account_balance, Colors.indigo, const BankAccountsScreen()),
+                  _buildDrawerItem(context, 'التقارير الشاملة', Icons.analytics, Colors.orange, const ReportsScreen()),
                   
                   Divider(color: themeProvider.adaptiveTextColor.withOpacity(0.2)),
-                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الأمان والنظام', style: TextStyle(color: themeProvider.adaptiveTextColor.withOpacity(0.6), fontSize: 12, fontWeight: FontWeight.bold))),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الإدارة والتسويق', style: TextStyle(color: themeProvider.adaptiveTextColor.withOpacity(0.7), fontSize: 12, fontWeight: FontWeight.bold))),
                   
-                  _buildDrawerItem(context, 'السجل الأسود للنشاط', Icons.security, const AuditLogScreen()),
-                  _buildDrawerItem(context, 'الإعدادات العامة', Icons.settings, const GlobalSettingsScreen()),
-                  _buildDrawerItem(context, 'النسخ الاحتياطي', Icons.save, const BackupScreen()),
-
-                  // 👈 زر تخصيص المظهر الجديد (Color Picker)
-                  ListTile(
-                    dense: true, visualDensity: VisualDensity.compact,
-                    leading: Icon(Icons.palette, color: themeProvider.adaptiveTextColor, size: 20),
-                    title: Text('تخصيص المظهر والألوان', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: themeProvider.adaptiveTextColor)),
-                    onTap: () {
-                      Navigator.pop(context); // إغلاق الدرج أولاً
-                      _showColorPickerDialog(context); // فتح دائرة الألوان
-                    },
-                  ),
+                  _buildDrawerItem(context, 'إدارة الموظفين والدعم', Icons.support_agent, Colors.brown, const StaffSupportScreen()),
+                  _buildDrawerItem(context, 'الإعلانات والبنرات', Icons.campaign, Colors.deepOrange, const BannersScreen()),
+                  _buildDrawerItem(context, 'بوابة رسائل SMS', Icons.sms, Colors.blueAccent, const SmsGatewayScreen()),
+                  
+                  Divider(color: themeProvider.adaptiveTextColor.withOpacity(0.2)),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الأمان والنظام', style: TextStyle(color: themeProvider.adaptiveTextColor.withOpacity(0.7), fontSize: 12, fontWeight: FontWeight.bold))),
+                  
+                  _buildDrawerItem(context, 'السجل الأسود للنشاط', Icons.security, Colors.red, const AuditLogScreen()),
+                  _buildDrawerItem(context, 'الإعدادات العامة', Icons.settings, Colors.blueGrey, const GlobalSettingsScreen()),
+                  _buildDrawerItem(context, 'النسخ الاحتياطي', Icons.save, Colors.black87, const BackupScreen()),
                 ],
               ),
             ),
@@ -287,20 +233,30 @@ class _CustomDrawerState extends State<CustomDrawer> {
     );
   }
 
-  // 👈 قمت بتعديل أيقونات وألوان العناصر لتأخذ لون الواجهة الذكي بدلاً من الألوان الثابتة القديمة
-  Widget _buildDrawerItem(BuildContext context, String title, IconData icon, Widget targetScreen) {
+  // 👈 دالة بناء الأزرار المحدثة: تستقبل اللون، وتضع الأيقونة في صندوق أنيق وواضح
+  Widget _buildDrawerItem(BuildContext context, String title, IconData icon, Color iconColor, Widget targetScreen) {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    
+    // تصميم خلفية الأيقونة لتبرز دائماً (أبيض شفاف إذا كان اللون المختار غامق، وأسود شفاف إذا كان فاتح)
+    final boxColor = themeProvider.primaryColor.computeLuminance() > 0.45 
+        ? Colors.black.withOpacity(0.05) 
+        : Colors.white.withOpacity(0.9);
+
     return ListTile(
       dense: true, visualDensity: VisualDensity.compact,
-      leading: Icon(icon, color: themeProvider.adaptiveTextColor.withOpacity(0.8), size: 20),
+      leading: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(color: boxColor, borderRadius: BorderRadius.circular(8)),
+        child: Icon(icon, color: iconColor, size: 18),
+      ),
       title: Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: themeProvider.adaptiveTextColor)),
       trailing: Icon(Icons.arrow_forward_ios, size: 11, color: themeProvider.adaptiveTextColor.withOpacity(0.5)),
       onTap: () => _navigateTo(context, targetScreen),
     );
   }
 
+  // 👈 جعلنا البطاقات واضحة دائماً بنص أبيض لأن ألوانها الأصلية متدرجة وداكنة
   Widget _buildGradientCard({required String text, required IconData icon, required List<Color> colors, IconData? trailingIcon}) {
-    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     return Container(
       margin: const EdgeInsets.only(bottom: 8), 
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -311,10 +267,10 @@ class _CustomDrawerState extends State<CustomDrawer> {
       ),
       child: Row(
         children: [
-          Icon(icon, color: themeProvider.adaptiveTextColor, size: 18),
+          Icon(icon, color: Colors.white, size: 18),
           const SizedBox(width: 10),
-          Expanded(child: Text(text, style: TextStyle(color: themeProvider.adaptiveTextColor, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5), overflow: TextOverflow.ellipsis)),
-          if (trailingIcon != null) Icon(trailingIcon, color: themeProvider.adaptiveTextColor.withOpacity(0.7), size: 17),
+          Expanded(child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5), overflow: TextOverflow.ellipsis)),
+          if (trailingIcon != null) Icon(trailingIcon, color: Colors.white70, size: 17),
         ],
       ),
     );
