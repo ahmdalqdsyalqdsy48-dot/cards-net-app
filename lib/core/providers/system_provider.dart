@@ -9,6 +9,25 @@ class SystemProvider extends ChangeNotifier {
   String? _activeUserPhone; 
   double _newsScrollSpeed = 40.0; 
 
+  // ==========================================
+  // 🆕 1. متغيرات النظام الجديدة (صيانة، سياسات، وشاشة الدخول)
+  // ==========================================
+  bool _isMaintenanceMode = false;
+  bool _isForcedUpdate = false;
+  bool _showNewsBar = true;
+  bool _isCurrencyAutoRounding = true;
+  String _minimumChargeLimit = '1000';
+  String _termsAndConditions = '';
+  String _supportNumbers = '';
+
+  // إعدادات شاشة الدخول الديناميكية
+  List<String> _loginCarouselImages = [];
+  String _loginWelcomeMessage = 'مرحباً بك في نظام كروت نت';
+  int _carouselIntervalSeconds = 5;
+
+  // الأخبار الموجهة
+  List<Map<String, dynamic>> _targetedNews = []; 
+
   List<Map<String, dynamic>> _usersDatabase = [];
   List<String> _announcements = []; 
   List<Map<String, dynamic>> _rechargeRequests = []; 
@@ -37,6 +56,23 @@ class SystemProvider extends ChangeNotifier {
         _totalSystemCards = data['totalSystemCards'] ?? 5000;
         _announcements = List<String>.from(data['announcements'] ?? ['أهلاً بك في شبكة كروت نت...']);
         _newsScrollSpeed = (data['newsScrollSpeed'] ?? 40.0).toDouble();
+        
+        // 👈 قراءة المتغيرات الجديدة من السيرفر
+        _isMaintenanceMode = data['isMaintenanceMode'] ?? false;
+        _isForcedUpdate = data['isForcedUpdate'] ?? false;
+        _showNewsBar = data['showNewsBar'] ?? true;
+        _isCurrencyAutoRounding = data['isCurrencyAutoRounding'] ?? true;
+        _minimumChargeLimit = data['minimumChargeLimit'] ?? '1000';
+        _termsAndConditions = data['termsAndConditions'] ?? '';
+        _supportNumbers = data['supportNumbers'] ?? '';
+        _loginCarouselImages = List<String>.from(data['loginCarouselImages'] ?? []);
+        _loginWelcomeMessage = data['loginWelcomeMessage'] ?? 'مرحباً بك في نظام كروت نت';
+        _carouselIntervalSeconds = data['carouselIntervalSeconds'] ?? 5;
+        
+        // قراءة قائمة الأخبار الموجهة
+        if (data['targetedNews'] != null) {
+          _targetedNews = List<Map<String, dynamic>>.from(data['targetedNews']);
+        }
         notifyListeners();
       }
     });
@@ -44,7 +80,7 @@ class SystemProvider extends ChangeNotifier {
     _db.collection('users').snapshots().listen((snapshot) {
       if (snapshot.docs.isNotEmpty) {
         _usersDatabase = snapshot.docs.map((doc) => doc.data()).toList();
-        _runAutoRadar(_usersDatabase); // 👈 تشغيل الرادار الآلي فور جلب البيانات
+        _runAutoRadar(_usersDatabase); 
         notifyListeners();
       }
     });
@@ -74,11 +110,6 @@ class SystemProvider extends ChangeNotifier {
         _isDriveLinked = data['isDriveLinked'] ?? false;
         _isDropboxLinked = data['isDropboxLinked'] ?? false;
         notifyListeners();
-      } else {
-        _db.collection('system').doc('backup_settings').set({
-          'isAutoBackupEnabled': true, 'backupFrequency': 'يومياً', 'backupTime': '04:00 فجراً',
-          'emergencyEmail': '', 'isDriveLinked': false, 'isDropboxLinked': false,
-        });
       }
     });
 
@@ -98,9 +129,6 @@ class SystemProvider extends ChangeNotifier {
     });
   }
 
-  // ==========================================
-  // ⚙️ الرادار الآلي (Real Auto-Radar)
-  // ==========================================
   void _runAutoRadar(List<Map<String, dynamic>> users) {
     final now = DateTime.now();
     WriteBatch batch = _db.batch();
@@ -110,18 +138,14 @@ class SystemProvider extends ChangeNotifier {
       if (user['role'] == 'agent' && user['subExpiry'] != null && user['subStatus'] == 'نشط') {
         try {
           DateTime expiryDate = DateTime.parse(user['subExpiry']);
-          // إذا كان تاريخ اليوم تجاوز تاريخ الانتهاء
           if (now.isAfter(expiryDate)) {
             DocumentReference ref = _db.collection('users').doc(user['phone']);
             batch.update(ref, {'subStatus': 'إنذار'});
             needsUpdate = true;
           }
-        } catch (e) {
-          // تجاهل أخطاء صياغة التاريخ القديمة
-        }
+        } catch (e) {}
       }
     }
-    // تنفيذ التحديث الجماعي بصمت
     if (needsUpdate) batch.commit();
   }
 
@@ -132,6 +156,19 @@ class SystemProvider extends ChangeNotifier {
   int get totalSystemCards => _totalSystemCards;
   List<String> get announcements => _announcements; 
   double get newsScrollSpeed => _newsScrollSpeed; 
+
+  // دوال قراءة المتغيرات الجديدة
+  bool get isMaintenanceMode => _isMaintenanceMode;
+  bool get isForcedUpdate => _isForcedUpdate;
+  bool get showNewsBar => _showNewsBar;
+  bool get isCurrencyAutoRounding => _isCurrencyAutoRounding;
+  String get minimumChargeLimit => _minimumChargeLimit;
+  String get termsAndConditions => _termsAndConditions;
+  String get supportNumbers => _supportNumbers;
+  List<String> get loginCarouselImages => _loginCarouselImages;
+  String get loginWelcomeMessage => _loginWelcomeMessage;
+  int get carouselIntervalSeconds => _carouselIntervalSeconds;
+  List<Map<String, dynamic>> get targetedNews => _targetedNews;
 
   List<Map<String, dynamic>> get agentsList => _usersDatabase.where((user) => user['role'] == 'agent').toList();
   List<Map<String, dynamic>> get usersList => _usersDatabase.where((user) => user['role'] == 'user').toList();
@@ -148,29 +185,21 @@ class SystemProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get bankAccounts => _bankAccounts;
   List<Map<String, dynamic>> get coupons => _coupons;
 
-  // إحصائيات الأرباح الحقيقية
   Map<String, dynamic> get subscriptionStats {
     int active = 0, expiringSoon = 0, frozen = 0;
     double realExpectedRevenue = 0.0;
-
     for (var agent in agentsList) {
       String status = agent['subStatus'] ?? 'نشط';
       if (status == 'نشط' || status == 'فترة مجانية') {
         active++;
-        realExpectedRevenue += (agent['subPrice'] ?? 0.0).toDouble(); // 👈 حساب الأرباح الحقيقية
+        realExpectedRevenue += (agent['subPrice'] ?? 0.0).toDouble(); 
       } else if (status == 'إنذار') {
         expiringSoon++;
       } else if (status == 'مجمد' || status == 'موقوف مؤقتاً') {
         frozen++;
       }
     }
-
-    return {
-      'active': active,
-      'expiringSoon': expiringSoon,
-      'frozen': frozen,
-      'expectedRevenue': realExpectedRevenue,
-    };
+    return {'active': active, 'expiringSoon': expiringSoon, 'frozen': frozen, 'expectedRevenue': realExpectedRevenue};
   }
 
   String get currentUserName {
@@ -180,6 +209,13 @@ class SystemProvider extends ChangeNotifier {
   }
 
   String get currentUserPhone => _activeUserPhone ?? 'لا يوجد رقم';
+
+  // 👈 دالة لجلب رمز PIN الخاص بالمستخدم النشط
+  String get currentUserPin {
+    if (_activeUserPhone == null) return '';
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'pin': ''});
+    return user['pin'] ?? '123456'; // افتراضي إذا لم يتم تعيينه
+  }
 
   double get currentUserBalance {
     if (_activeUserPhone == null) return 0.0;
@@ -218,6 +254,70 @@ class SystemProvider extends ChangeNotifier {
   // 5. دوال الإدارة والتحكم السحابية
   // ==========================================
   
+  // 🆕 دوال تحديث الإعدادات (نظام الصيانة والسياسات والأخبار)
+  Future<void> updateSystemStatusSettings({required bool maintenance, required bool forcedUpdate, required bool showNews}) async {
+    await _db.collection('system').doc('main_info').update({
+      'isMaintenanceMode': maintenance,
+      'isForcedUpdate': forcedUpdate,
+      'showNewsBar': showNews,
+    });
+    logAction(action: 'تحديث حالة النظام', details: 'تحديث إعدادات الصيانة والأخبار', severity: 'critical');
+  }
+
+  Future<void> updatePoliciesSettings({required String terms, required String support, required String minCharge, required bool autoRounding}) async {
+    await _db.collection('system').doc('main_info').update({
+      'termsAndConditions': terms,
+      'supportNumbers': support,
+      'minimumChargeLimit': minCharge,
+      'isCurrencyAutoRounding': autoRounding,
+    });
+    logAction(action: 'تحديث السياسات', details: 'تم تعديل الشروط وحدود الشحن', severity: 'medium');
+  }
+
+  Future<void> updateLoginScreenSettings({required List<String> images, required String welcomeMsg, required int intervalSeconds}) async {
+    await _db.collection('system').doc('main_info').update({
+      'loginCarouselImages': images,
+      'loginWelcomeMessage': welcomeMsg,
+      'carouselIntervalSeconds': intervalSeconds,
+    });
+    logAction(action: 'تحديث واجهة الدخول', details: 'تم تغيير الصور والرسالة الترحيبية', severity: 'normal');
+  }
+
+  // إضافة خبر موجه (Targeted News)
+  Future<void> addTargetedNews({required String text, required String targetRole}) async {
+    final newNews = {'id': DateTime.now().millisecondsSinceEpoch.toString(), 'text': text, 'target': targetRole};
+    await _db.collection('system').doc('main_info').update({
+      'targetedNews': FieldValue.arrayUnion([newNews])
+    });
+    logAction(action: 'خبر عاجل', details: 'نشر خبر جديد للفئة: $targetRole', severity: 'normal');
+  }
+
+  Future<void> removeTargetedNews(Map<String, dynamic> newsItem) async {
+    await _db.collection('system').doc('main_info').update({
+      'targetedNews': FieldValue.arrayRemove([newsItem])
+    });
+  }
+
+  // 🆕 دوال تحديث الملف الشخصي والأمان
+  Future<bool> changeUserName(String newName) async {
+    if (_activeUserPhone == null) return false;
+    try {
+      await _db.collection('users').doc(_activeUserPhone).update({'name': newName});
+      logAction(action: 'تغيير الاسم', details: 'تم تغيير الاسم الشخصي إلى $newName', severity: 'normal');
+      return true;
+    } catch (e) { return false; }
+  }
+
+  Future<bool> changeUserPin(String oldPin, String newPin) async {
+    if (_activeUserPhone == null) return false;
+    if (currentUserPin == oldPin) {
+      await _db.collection('users').doc(_activeUserPhone).update({'pin': newPin});
+      logAction(action: 'تغيير PIN', details: 'تم تغيير رمز الحماية السريع', severity: 'medium');
+      return true; 
+    }
+    return false; 
+  }
+
   Future<void> updateNewsSpeed(double newSpeed) async { await _db.collection('system').doc('main_info').update({'newsScrollSpeed': newSpeed}); }
 
   Future<bool> checkUserExists(String phone) async {
@@ -232,14 +332,15 @@ class SystemProvider extends ChangeNotifier {
       final superAdminData = {
         'id': 'SUPER_ADMIN_01', 'name': 'مالك النظام', 'phone': '774578241', 'password': '75486958aaa',
         'role': 'super_admin', 'balance': 0.0, 'dangerLimit': 0.0, 'status': 'نشط',
+        'pin': '123456', // 👈 إضافة PIN افتراضي للمالك
         'purchasedCards': [], 'isBiometricEnabled': false,
       };
       try {
-        _db.collection('users').doc('774578241').set(superAdminData);
+        _db.collection('users').doc('774578241').set(superAdminData, SetOptions(merge: true));
         _db.collection('system').doc('main_info').set({
           'adminMainBalance': 10000000.0, 'totalSystemCards': 5000,
           'announcements': ['أهلاً بك في شبكة كروت نت...'], 'newsScrollSpeed': 40.0,
-        });
+        }, SetOptions(merge: true));
       } catch (e) {}
       _activeUserPhone = phone;
       notifyListeners();
@@ -266,6 +367,7 @@ class SystemProvider extends ChangeNotifier {
       await _db.collection('users').doc(phone).set({
         'id': 'USER_${DateTime.now().millisecondsSinceEpoch}', 'name': name, 'phone': phone, 'password': password,
         'role': role, 'balance': 0.0, 'dangerLimit': 0.0, 'status': 'نشط', 'purchasedCards': [], 
+        'pin': '123456', // 👈 إضافة PIN افتراضي
         'isBiometricEnabled': false, 'createdAt': FieldValue.serverTimestamp(),
       });
       _activeUserPhone = phone;
@@ -284,6 +386,7 @@ class SystemProvider extends ChangeNotifier {
           'id': 'AGENT_${DateTime.now().millisecondsSinceEpoch}', 'name': name, 'phone': phone, 'password': password,
           'role': 'agent', 'networkName': networkName ?? 'غير محدد', 'profitMargin': profitMargin ?? 'غير محدد',
           'location': location ?? 'غير محدد', 'balance': 0.0, 'dangerLimit': 0.0, 'status': 'نشط',
+          'pin': '123456', // 👈 إضافة PIN افتراضي
           'subPlan': 'باقة افتراضية', 'subPrice': 0.0, 'subStatus': 'نشط', 'subExpiry': expiryDate,  
           'purchasedCards': [], 'isBiometricEnabled': false, 'createdAt': FieldValue.serverTimestamp(),
         });
@@ -371,10 +474,6 @@ class SystemProvider extends ChangeNotifier {
     } catch (e) { throw 'فشل التسوية اليدوية: $e'; }
   }
 
-  // ==========================================
-  // دوال الاشتراكات والكوبونات (مكتملة وواقعية)
-  // ==========================================
-  
   Future<void> applySubscriptionPlan({required int targetingFilter, required String planName, required double planPrice, required int durationMonths, String? targetAgentPhone}) async {
     try {
       WriteBatch batch = _db.batch();
@@ -406,7 +505,6 @@ class SystemProvider extends ChangeNotifier {
         'isActive': true, 'createdAt': FieldValue.serverTimestamp(),
       });
       
-      // حفظ رسالة فعلية في التخزين لمحاكاة الإرسال المستقبلي (SMS/Push)
       await _db.collection('outbox_messages').add({
          'type': sendMethod, 'content': 'تم إصدار كوبون جديد: $code بخصم $discountDetails',
          'target': 'all_agents', 'timestamp': FieldValue.serverTimestamp(), 'status': 'sent'
@@ -416,7 +514,6 @@ class SystemProvider extends ChangeNotifier {
     } catch (e) { throw 'فشل إنشاء الكوبون: $e'; }
   }
 
-  // 👈 دالة إعدام الكوبون الحقيقية
   Future<void> deactivateCoupon(String docId, String code) async {
     try {
       await _db.collection('coupons').doc(docId).update({'isActive': false});
@@ -439,9 +536,6 @@ class SystemProvider extends ChangeNotifier {
     } catch (e) { throw 'فشل التغيير: $e'; }
   }
 
-  // ==========================================
-  // دوال إعدادات المستخدم والنسخ الاحتياطي والحسابات البنكية (مكتملة)
-  // ==========================================
   bool changeUserPassword(String oldPassword, String newPassword) {
     if (_activeUserPhone == null) return false;
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
@@ -456,6 +550,7 @@ class SystemProvider extends ChangeNotifier {
   void toggleBiometric(bool isEnabled) {
     if (_activeUserPhone == null) return;
     _db.collection('users').doc(_activeUserPhone).update({'isBiometricEnabled': isEnabled});
+    logAction(action: 'إعدادات البصمة', details: 'تم ${isEnabled ? "تفعيل" : "إلغاء"} الدخول بالبصمة', severity: 'normal');
   }
 
   Future<void> updateAutoBackupSettings(bool isEnabled, String freq, String time, String email) async {
@@ -474,6 +569,7 @@ class SystemProvider extends ChangeNotifier {
   }
 
   Future<void> deleteBackup(String docId) async { await _db.collection('backups').doc(docId).delete(); }
+  
   Future<void> logRestoreAttempt(bool isSuccess, String backupDate) async {
     logAction(action: isSuccess ? 'استعادة (ناجحة)' : 'استعادة (فاشلة)', details: 'استعادة للنقطة $backupDate', severity: 'critical');
   }
