@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/providers/system_provider.dart';
 import '../../../core/widgets/custom_header.dart';
+// 👈 1. تمت إضافة استدعاء القائمة الجانبية هنا
+import '../../../core/widgets/custom_drawer.dart';
 
 class PortalsManagementScreen extends StatefulWidget {
   const PortalsManagementScreen({super.key});
@@ -93,6 +95,15 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
 
     return Scaffold(
       appBar: const CustomHeader(title: 'إدارة بوابات النظام 🌐'),
+      
+      // 👈 2. هنا الحل السحري: إضافة القائمة الجانبية للـ Scaffold لكي يظهر زر الـ Menu
+      drawer: CustomDrawer(
+        userName: sys.currentUserName,
+        phoneNumber: sys.currentUserPhone,
+        role: 'مالك النظام (Super Admin)',
+        balanceOrPoints: 'أرباح النظام: ${sys.adminMainBalance.toStringAsFixed(0)} ريال',
+      ),
+
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
@@ -260,7 +271,6 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     );
   }
 
-  // 👈 هنا تم إصلاح الخطأ المزعج بالكامل (child)
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
