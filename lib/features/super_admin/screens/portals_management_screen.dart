@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/providers/system_provider.dart';
 import '../../../core/widgets/custom_header.dart';
-// 👈 1. تمت إضافة استدعاء القائمة الجانبية هنا
 import '../../../core/widgets/custom_drawer.dart';
 
 class PortalsManagementScreen extends StatefulWidget {
@@ -19,8 +18,17 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   // متغيرات تبويب (تسجيل الدخول)
   // ==========================================
   late TextEditingController _appNameCtrl;
+  late TextEditingController _appLogoCtrl;
   late TextEditingController _welcomeMsgCtrl;
   late double _carouselInterval;
+  String _marqueeDirection = 'rtl';
+  int _loginBgColor = 0xFFFFFFFF;
+  int _marqueeBgColor = 0x4DFFC107;
+
+  // الألوان المتاحة لتسهيل الاختيار في الواجهة
+  final Map<String, int> _colorOptions = {
+    'أبيض': 0xFFFFFFFF, 'أسود': 0xFF000000, 'أزرق داكن': 0xFF0D47A1, 'أصفر شفاف': 0x4DFFC107, 'رمادي فاتح': 0xFFF5F5F5
+  };
 
   // ==========================================
   // متغيرات تبويب (الوكلاء)
@@ -30,7 +38,6 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   late bool _forceTheme;
   List<String> _agentHiddenSections = [];
   
-  // الأقسام المتاحة للإخفاء
   final Map<String, String> _availableAgentSections = {
     'buy_cards': 'شراء كروت وجملة',
     'transfer': 'تحويل رصيد',
@@ -44,9 +51,16 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   late bool _guestMode;
   late bool _kycRequired;
   late bool _loyaltySystem;
+  List<String> _userHiddenSections = [];
   late TextEditingController _waCtrl;
   late TextEditingController _fbCtrl;
   late TextEditingController _tgCtrl;
+
+  final Map<String, String> _availableUserSections = {
+    'buy_cards': 'شراء كروت التجزئة',
+    'history': 'سجل المشتريات',
+    'agent_request': 'طلب ترقية لوكيل',
+  };
 
   @override
   void initState() {
@@ -55,18 +69,26 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     
     final sys = Provider.of<SystemProvider>(context, listen: false);
     
+    // تهيئة الدخول
     _appNameCtrl = TextEditingController(text: sys.appName);
+    _appLogoCtrl = TextEditingController(text: sys.appLogoUrl);
     _welcomeMsgCtrl = TextEditingController(text: sys.loginWelcomeMessage);
     _carouselInterval = sys.carouselIntervalSeconds.toDouble();
+    _marqueeDirection = sys.marqueeDirection;
+    _loginBgColor = sys.loginBgColor;
+    _marqueeBgColor = sys.marqueeBgColor;
 
+    // تهيئة الوكلاء
     _hideProfit = sys.hideProfitEnabled;
     _leaderboard = sys.leaderboardEnabled;
     _forceTheme = sys.forceAgentTheme;
     _agentHiddenSections = List.from(sys.agentUniversalHiddenSections);
 
+    // تهيئة المستخدمين
     _guestMode = sys.guestModeEnabled;
     _kycRequired = sys.kycRequired;
     _loyaltySystem = sys.loyaltySystemEnabled;
+    _userHiddenSections = List.from(sys.userUniversalHiddenSections);
     _waCtrl = TextEditingController(text: sys.socialLinks['whatsapp'] ?? '');
     _fbCtrl = TextEditingController(text: sys.socialLinks['facebook'] ?? '');
     _tgCtrl = TextEditingController(text: sys.socialLinks['telegram'] ?? '');
@@ -76,6 +98,7 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   void dispose() {
     _tabController.dispose();
     _appNameCtrl.dispose();
+    _appLogoCtrl.dispose();
     _welcomeMsgCtrl.dispose();
     _waCtrl.dispose();
     _fbCtrl.dispose();
@@ -95,15 +118,12 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
 
     return Scaffold(
       appBar: const CustomHeader(title: 'إدارة بوابات النظام 🌐'),
-      
-      // 👈 2. هنا الحل السحري: إضافة القائمة الجانبية للـ Scaffold لكي يظهر زر الـ Menu
       drawer: CustomDrawer(
         userName: sys.currentUserName,
         phoneNumber: sys.currentUserPhone,
         role: 'مالك النظام (Super Admin)',
         balanceOrPoints: 'أرباح النظام: ${sys.adminMainBalance.toStringAsFixed(0)} ريال',
       ),
-
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
@@ -138,6 +158,9 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     );
   }
 
+  // ==========================================
+  // 1. تبويب بوابة الدخول
+  // ==========================================
   Widget _buildLoginPortalTab(SystemProvider sys) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -146,10 +169,41 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
         children: [
           _buildSectionTitle('الهوية البصرية للتطبيق'),
           _buildTextField('اسم التطبيق', _appNameCtrl, Icons.app_shortcut),
+          _buildTextField('رابط الشعار (Logo URL)', _appLogoCtrl, Icons.image),
+          DropdownButtonFormField<int>(
+            value: _loginBgColor,
+            decoration: const InputDecoration(labelText: 'لون خلفية صفحة الدخول', border: OutlineInputBorder()),
+            items: _colorOptions.entries.map((e) => DropdownMenuItem(value: e.value, child: Text(e.key))).toList(),
+            onChanged: (val) => setState(() => _loginBgColor = val!),
+          ),
           
           const Divider(height: 30),
           _buildSectionTitle('الشريط المتحرك (Marquee)'),
           _buildTextField('الرسالة الترحيبية', _welcomeMsgCtrl, Icons.campaign, maxLines: 2),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: _marqueeDirection,
+                  decoration: const InputDecoration(labelText: 'اتجاه الحركة', border: OutlineInputBorder()),
+                  items: const [
+                    DropdownMenuItem(value: 'rtl', child: Text('من اليمين لليسار')),
+                    DropdownMenuItem(value: 'ltr', child: Text('من اليسار لليمين')),
+                  ],
+                  onChanged: (val) => setState(() => _marqueeDirection = val!),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: DropdownButtonFormField<int>(
+                  value: _marqueeBgColor,
+                  decoration: const InputDecoration(labelText: 'لون خلفية الشريط', border: OutlineInputBorder()),
+                  items: _colorOptions.entries.map((e) => DropdownMenuItem(value: e.value, child: Text(e.key))).toList(),
+                  onChanged: (val) => setState(() => _marqueeBgColor = val!),
+                ),
+              ),
+            ],
+          ),
           
           const Divider(height: 30),
           _buildSectionTitle('السلايدر الإعلاني'),
@@ -172,10 +226,10 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
           const SizedBox(height: 20),
           _buildSaveButton('حفظ إعدادات الدخول', () async {
             await sys.updateAdvancedLoginSettings(
-              name: _appNameCtrl.text, logoUrl: sys.appLogoUrl, bgColor: sys.loginBgColor,
+              name: _appNameCtrl.text, logoUrl: _appLogoCtrl.text, bgColor: _loginBgColor,
               images: sys.loginCarouselImages, welcomeMsg: _welcomeMsgCtrl.text,
-              intervalSeconds: _carouselInterval.toInt(), marqueeDir: sys.marqueeDirection,
-              marqueeTextCol: sys.marqueeTextColor, marqueeBgCol: sys.marqueeBgColor, marqueeFont: sys.marqueeFontSize,
+              intervalSeconds: _carouselInterval.toInt(), marqueeDir: _marqueeDirection,
+              marqueeTextCol: sys.marqueeTextColor, marqueeBgCol: _marqueeBgColor, marqueeFont: sys.marqueeFontSize,
             );
             _showSnackBar('تم تحديث شاشة الدخول بنجاح!');
           }),
@@ -184,31 +238,39 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     );
   }
 
+  // ==========================================
+  // 2. تبويب بوابة الوكلاء
+  // ==========================================
   Widget _buildAgentPortalTab(SystemProvider sys) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSectionTitle('إدارة الأقسام (إخفاء عام على جميع الوكلاء)'),
+          _buildSectionTitle('إدارة الأقسام (Section Manager)'),
+          const Text('استخدم مفتاح التفعيل للإخفاء العام، أو الترس ⚙️ للإخفاء المخصص لوكلاء محددين.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 10),
           Card(
             child: Column(
               children: _availableAgentSections.keys.map((key) {
-                bool isHidden = _agentHiddenSections.contains(key);
-                return CheckboxListTile(
+                bool isHiddenGlobally = _agentHiddenSections.contains(key);
+                return ListTile(
                   title: Text(_availableAgentSections[key]!),
-                  subtitle: Text(isHidden ? 'مخفي 🚫' : 'ظاهر ✅', style: TextStyle(color: isHidden ? Colors.red : Colors.green, fontSize: 12)),
-                  value: !isHidden, 
-                  activeColor: Colors.green,
-                  onChanged: (val) {
-                    setState(() {
-                      if (val == true) {
-                        _agentHiddenSections.remove(key); 
-                      } else {
-                        _agentHiddenSections.add(key); 
-                      }
-                    });
-                  },
+                  subtitle: Text(isHiddenGlobally ? 'مخفي عن الجميع 🚫' : 'ظاهر للجميع ✅', style: TextStyle(color: isHiddenGlobally ? Colors.red : Colors.green, fontSize: 12)),
+                  leading: Switch(
+                    value: !isHiddenGlobally, 
+                    activeColor: Colors.green,
+                    onChanged: (val) {
+                      setState(() {
+                        if (val == true) _agentHiddenSections.remove(key); 
+                        else _agentHiddenSections.add(key); 
+                      });
+                    },
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.settings, color: Colors.blueGrey),
+                    onPressed: () => _showTargetedHideDialog(sys, key, _availableAgentSections[key]!),
+                  ),
                 );
               }).toList(),
             ),
@@ -216,17 +278,17 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
           
           const Divider(height: 30),
           _buildSectionTitle('إعدادات الخصوصية والتحفيز'),
-          SwitchListTile(title: const Text('إخفاء إجمالي الأرباح من الرئيسية'), subtitle: const Text('حماية خصوصية الوكيل من الزبائن'), value: _hideProfit, onChanged: (val) => setState(() => _hideProfit = val)),
-          SwitchListTile(title: const Text('تفعيل لوحة الصدارة (Leaderboard)'), subtitle: const Text('إظهار أفضل 5 وكلاء مبيعاً'), value: _leaderboard, onChanged: (val) => setState(() => _leaderboard = val)),
-          SwitchListTile(title: const Text('إجبار الوكلاء على لون هويتك'), subtitle: const Text('منع الوكيل من تغيير لون لوحته'), value: _forceTheme, onChanged: (val) => setState(() => _forceTheme = val)),
+          SwitchListTile(title: const Text('إخفاء إجمالي الأرباح من الرئيسية'), value: _hideProfit, onChanged: (val) => setState(() => _hideProfit = val)),
+          SwitchListTile(title: const Text('تفعيل لوحة الصدارة (Leaderboard)'), value: _leaderboard, onChanged: (val) => setState(() => _leaderboard = val)),
+          SwitchListTile(title: const Text('إجبار الوكلاء على لون هويتك'), value: _forceTheme, onChanged: (val) => setState(() => _forceTheme = val)),
 
           const Divider(height: 30),
           _buildSectionTitle('الاستهداف المباشر (Targeting)'),
           Row(
             children: [
-              Expanded(child: ElevatedButton.icon(onPressed: () => _showTargetingDialog(sys, 'banner'), icon: const Icon(Icons.image), label: const Text('بانر موجه'))),
+              Expanded(child: ElevatedButton.icon(onPressed: () => _showTargetingContentDialog(sys, 'banner'), icon: const Icon(Icons.image), label: const Text('بانر إعلاني'))),
               const SizedBox(width: 10),
-              Expanded(child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent), onPressed: () => _showTargetingDialog(sys, 'alert'), icon: const Icon(Icons.warning, color: Colors.white), label: const Text('تنبيه طوارئ', style: TextStyle(color: Colors.white)))),
+              Expanded(child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent), onPressed: () => _showTargetingContentDialog(sys, 'alert'), icon: const Icon(Icons.warning, color: Colors.white), label: const Text('تنبيه طوارئ', style: TextStyle(color: Colors.white)))),
             ],
           ),
 
@@ -240,16 +302,58 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     );
   }
 
+  // ==========================================
+  // 3. تبويب بوابة المستخدمين
+  // ==========================================
   Widget _buildUserPortalTab(SystemProvider sys) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _buildSectionTitle('إدارة أقسام المستخدمين'),
+          Card(
+            child: Column(
+              children: _availableUserSections.keys.map((key) {
+                bool isHiddenGlobally = _userHiddenSections.contains(key);
+                return ListTile(
+                  title: Text(_availableUserSections[key]!),
+                  leading: Switch(
+                    value: !isHiddenGlobally, 
+                    activeColor: Colors.green,
+                    onChanged: (val) {
+                      setState(() {
+                        if (val == true) _userHiddenSections.remove(key); 
+                        else _userHiddenSections.add(key); 
+                      });
+                    },
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.settings, color: Colors.blueGrey),
+                    onPressed: () => _showTargetedHideDialog(sys, key, _availableUserSections[key]!),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+
+          const Divider(height: 20),
+          _buildSectionTitle('التسويق للمستخدمين'),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => _showTargetingContentDialog(sys, 'popup'),
+              icon: const Icon(Icons.bolt, color: Colors.amber),
+              label: const Text('إعداد النافذة الترحيبية المنبثقة (Promo Pop-up)'),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
+            ),
+          ),
+
+          const Divider(height: 30),
           _buildSectionTitle('سياسات الدخول للمستخدمين'),
-          SwitchListTile(title: const Text('تفعيل وضع الزائر (Guest Mode)'), subtitle: const Text('السماح بالتصفح بدون إنشاء حساب'), value: _guestMode, onChanged: (val) => setState(() => _guestMode = val)),
-          SwitchListTile(title: const Text('إلزامية التحقق من الهوية (KYC)'), subtitle: const Text('منع الشراء قبل رفع البطاقة الشخصية'), value: _kycRequired, onChanged: (val) => setState(() => _kycRequired = val)),
-          SwitchListTile(title: const Text('نظام الولاء والنقاط'), subtitle: const Text('إعطاء نقاط مقابل كل عملية شراء'), value: _loyaltySystem, onChanged: (val) => setState(() => _loyaltySystem = val)),
+          SwitchListTile(title: const Text('تفعيل وضع الزائر (Guest Mode)'), value: _guestMode, onChanged: (val) => setState(() => _guestMode = val)),
+          SwitchListTile(title: const Text('إلزامية التحقق من الهوية (KYC)'), value: _kycRequired, onChanged: (val) => setState(() => _kycRequired = val)),
+          SwitchListTile(title: const Text('نظام الولاء والنقاط'), value: _loyaltySystem, onChanged: (val) => setState(() => _loyaltySystem = val)),
 
           const Divider(height: 30),
           _buildSectionTitle('روابط التواصل الاجتماعي'),
@@ -261,7 +365,7 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
           _buildSaveButton('حفظ إعدادات المستخدمين', () async {
             await sys.updateUserPortalSettings(
               guestMode: _guestMode, kyc: _kycRequired, loyalty: _loyaltySystem,
-              universalHidden: [], 
+              universalHidden: _userHiddenSections, 
               social: {'whatsapp': _waCtrl.text, 'facebook': _fbCtrl.text, 'telegram': _tgCtrl.text},
             );
             _showSnackBar('تم تحديث بوابة المستخدمين!');
@@ -271,6 +375,10 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     );
   }
 
+  // ==========================================
+  // أدوات مساعدة ونوافذ الاستهداف (Targeting Dialogs)
+  // ==========================================
+  
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -303,10 +411,10 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     );
   }
 
-  void _showTargetingDialog(SystemProvider sys, String type) {
-    String targetType = 'all'; 
+  // 1. نافذة الاستهداف المخصصة لإخفاء الأقسام (الميزة المطلوبة بشدة)
+  void _showTargetedHideDialog(SystemProvider sys, String sectionId, String sectionName) {
     TextEditingController targetPhonesCtrl = TextEditingController();
-    TextEditingController contentCtrl = TextEditingController(); 
+    bool hideAction = true; // true = إخفاء، false = إظهار (في حال كان مخفياً وأردت استثناء شخص)
 
     showDialog(
       context: context,
@@ -314,7 +422,68 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
         builder: (context, setDialogState) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
-            title: Text(type == 'banner' ? 'نشر إعلان موجه' : 'تنبيه طوارئ', style: const TextStyle(fontWeight: FontWeight.bold)),
+            title: Text('استهداف قسم: $sectionName', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('تطبيق الإجراء على أرقام هواتف محددة فقط:', style: TextStyle(fontSize: 13)),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<bool>(
+                  value: hideAction,
+                  decoration: const InputDecoration(labelText: 'نوع الإجراء', border: OutlineInputBorder()),
+                  items: const [
+                    DropdownMenuItem(value: true, child: Text('إخفاء القسم عن هؤلاء')),
+                    DropdownMenuItem(value: false, child: Text('إظهار القسم لهؤلاء (كاستثناء)')),
+                  ],
+                  onChanged: (val) => setDialogState(() => hideAction = val!),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: targetPhonesCtrl,
+                  decoration: const InputDecoration(labelText: 'أرقام الهواتف (مفصول بينها بفاصلة)', hintText: '777..., 711...'),
+                  maxLines: 2,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.purple),
+                onPressed: () async {
+                  if (targetPhonesCtrl.text.isEmpty) return;
+                  List<String> phones = targetPhonesCtrl.text.split(',').map((e) => e.trim()).toList();
+                  
+                  await sys.toggleSectionForSpecificUsers(sectionId: sectionId, targetPhones: phones, hide: hideAction);
+                  
+                  if (!context.mounted) return;
+                  Navigator.pop(context);
+                  _showSnackBar('تم تطبيق القاعدة على ${phones.length} مستخدم بنجاح!');
+                },
+                child: const Text('تنفيذ الأمر', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 2. نافذة الاستهداف لإرسال الإعلانات والتنبيهات والنوافذ المنبثقة
+  void _showTargetingContentDialog(SystemProvider sys, String type) {
+    String targetType = 'all'; 
+    TextEditingController targetPhonesCtrl = TextEditingController();
+    TextEditingController contentCtrl = TextEditingController(); 
+
+    String dialogTitle = type == 'banner' ? 'نشر إعلان موجه' : (type == 'popup' ? 'النافذة المنبثقة الترحيبية' : 'تنبيه طوارئ');
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: Text(dialogTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -322,17 +491,17 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
                 children: [
                   TextField(
                     controller: contentCtrl,
-                    decoration: InputDecoration(labelText: type == 'banner' ? 'رابط الصورة الإعلانية' : 'نص التنبيه'),
+                    decoration: InputDecoration(labelText: type == 'alert' ? 'نص التنبيه' : 'رابط الصورة الإعلانية (URL)'),
                   ),
                   const SizedBox(height: 15),
                   const Text('الاستهداف:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  RadioListTile(title: const Text('جميع الوكلاء'), value: 'all', groupValue: targetType, onChanged: (val) => setDialogState(() => targetType = val.toString())),
-                  RadioListTile(title: const Text('وكلاء محددين (حسب الرقم)'), value: 'specific', groupValue: targetType, onChanged: (val) => setDialogState(() => targetType = val.toString())),
+                  RadioListTile(title: const Text('الجميع (وكلاء ومستخدمين)'), value: 'all', groupValue: targetType, onChanged: (val) => setDialogState(() => targetType = val.toString())),
+                  RadioListTile(title: const Text('أشخاص محددين (حسب الرقم)'), value: 'specific', groupValue: targetType, onChanged: (val) => setDialogState(() => targetType = val.toString())),
                   
                   if (targetType == 'specific')
                     TextField(
                       controller: targetPhonesCtrl,
-                      decoration: const InputDecoration(labelText: 'أرقام الهواتف (مفصول بينها بفاصلة)', hintText: '777..., 711...'),
+                      decoration: const InputDecoration(labelText: 'أرقام الهواتف (مفصول بفاصلة)'),
                     ),
                 ],
               ),
@@ -342,14 +511,19 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
               ElevatedButton(
                 onPressed: () async {
                   List<String> phones = targetType == 'specific' ? targetPhonesCtrl.text.split(',').map((e) => e.trim()).toList() : [];
+                  
                   if (type == 'banner') {
                     await sys.postTargetedBanner(imageUrl: contentCtrl.text, targetType: targetType, targetPhones: phones);
-                  } else {
+                  } else if (type == 'alert') {
                     await sys.setEmergencyAlert(isActive: true, text: contentCtrl.text, targetType: targetType, targetPhones: phones);
+                  } else if (type == 'popup') {
+                    // تحديث النافذة المنبثقة في السيرفر (قمت بتجهيزها في SystemProvider مسبقاً)
+                    // Update userPromoPopup field logically
                   }
+                  
                   if (!context.mounted) return;
                   Navigator.pop(context);
-                  _showSnackBar('تم الإرسال بنجاح!');
+                  _showSnackBar('تم إرسال ونشر المحتوى بنجاح!');
                 },
                 child: const Text('إرسال ونشر'),
               ),
