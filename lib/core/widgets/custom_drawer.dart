@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:typed_data'; 
+
+// 👇 استدعاء مكتبات الصور والتخزين السحابي
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; 
 
 // 👈 استدعاء العقل المدبر للألوان
 import '../providers/theme_provider.dart';
@@ -18,7 +24,6 @@ import '../../features/super_admin/screens/audit_log_screen.dart';
 import '../../features/super_admin/screens/banners_screen.dart';
 import '../../features/super_admin/screens/sms_gateway_screen.dart';
 import '../../features/super_admin/screens/backup_screen.dart';
-// 👈 استدعاء شاشة بوابات النظام الجديدة
 import '../../features/super_admin/screens/portals_management_screen.dart';
 
 class CustomDrawer extends StatefulWidget {
@@ -44,6 +49,7 @@ class CustomDrawer extends StatefulWidget {
 class _CustomDrawerState extends State<CustomDrawer> {
   bool _isBalanceHidden = false;
   String? _currentLocalImageUrl;
+  bool _isUploading = false; 
 
   @override
   void initState() {
@@ -59,25 +65,95 @@ class _CustomDrawerState extends State<CustomDrawer> {
     );
   }
 
-  void _showCandorSnackBar(BuildContext context, String message) {
+  // 👈 تم إرجاع وتطوير دالتك الخاصة بالتنبيهات للحفاظ على تصميمك الأنيق
+  void _showCandorSnackBar(BuildContext context, String message, {Color bgColor = Colors.orange, IconData icon = Icons.handyman}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.handyman, color: Colors.orange, size: 20),
-            const SizedBox(width: 10),
-            Expanded(child: Text(message, style: const TextStyle(color: Colors.black87))),
-          ],
+        content: Directionality(
+          textDirection: TextDirection.rtl,
+          child: Row(
+            children: [
+              Icon(icon, color: Colors.white, size: 20),
+              const SizedBox(width: 10),
+              Expanded(child: Text(message, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+            ],
+          ),
         ),
-        backgroundColor: Colors.amber.shade100,
+        backgroundColor: bgColor,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 4),
       ),
     );
   }
 
+  // ========================================================
+  // 🚀 المحرك الحقيقي لرفع الصورة من الاستوديو إلى Firebase
+  // ========================================================
+  Future<void> _pickAndUploadImage(BuildContext context) async {
+    final picker = ImagePicker();
+    
+    try {
+      final XFile? pickedFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 800, 
+        imageQuality: 80,
+      );
+
+      if (pickedFile == null) return; 
+
+      setState(() => _isUploading = true);
+      if (Navigator.canPop(context)) Navigator.pop(context); 
+      
+      _showCandorSnackBar(context, 'جاري الرفع إلى السيرفر... ⏳', bgColor: Colors.orange.shade700, icon: Icons.cloud_upload);
+
+      final Uint8List bytes = await pickedFile.readAsBytes();
+
+      String fileName = 'profiles/${widget.phoneNumber}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      Reference storageRef = FirebaseStorage.instance.ref().child(fileName);
+
+      UploadTask uploadTask = storageRef.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+      TaskSnapshot snapshot = await uploadTask;
+
+      String downloadUrl = await snapshot.ref.getDownloadURL();
+
+      await FirebaseFirestore.instance.collection('users').doc(widget.phoneNumber).update({
+        'profileImageUrl': downloadUrl,
+      });
+
+      setState(() {
+        _currentLocalImageUrl = downloadUrl;
+        _isUploading = false;
+      });
+
+      _showCandorSnackBar(context, 'تم تغيير الصورة الشخصية بنجاح! ✅', bgColor: Colors.green.shade700, icon: Icons.check_circle);
+
+    } catch (e) {
+      setState(() => _isUploading = false);
+      _showCandorSnackBar(context, 'فشل رفع الصورة: $e', bgColor: Colors.red.shade700, icon: Icons.error);
+    }
+  }
+
+  Future<void> _deleteProfileImage(BuildContext context) async {
+    try {
+      setState(() => _isUploading = true);
+      if (Navigator.canPop(context)) Navigator.pop(context);
+
+      await FirebaseFirestore.instance.collection('users').doc(widget.phoneNumber).update({
+        'profileImageUrl': FieldValue.delete(),
+      });
+
+      setState(() {
+        _currentLocalImageUrl = null;
+        _isUploading = false;
+      });
+      _showCandorSnackBar(context, 'تم حذف الصورة بنجاح.', bgColor: Colors.blueGrey, icon: Icons.delete);
+    } catch (e) {
+      setState(() => _isUploading = false);
+    }
+  }
+
   void _showProfileImageActionDialog(BuildContext context) {
-    bool hasImage = _currentLocalImageUrl != null;
+    bool hasImage = _currentLocalImageUrl != null && _currentLocalImageUrl!.isNotEmpty;
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -98,27 +174,18 @@ class _CustomDrawerState extends State<CustomDrawer> {
                 child: !hasImage ? const Icon(Icons.person, size: 100, color: Colors.blueGrey) : null,
               ),
               const SizedBox(height: 25),
-              const Text('💡 هذه الوظيفة تتطلب ربطاً حقيقياً بالسيرفر وصلاحيات الهاتف. حالياً نقوم بمحاكاة التصميم فقط.', style: TextStyle(fontSize: 12, color: Colors.orange)),
-              const SizedBox(height: 15),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _showCandorSnackBar(context, 'سيتم ربط (image_picker) لفتح معرض الهاتف في النسخة القادمة.');
-                    },
+                    onPressed: () => _pickAndUploadImage(context), 
                     icon: Icon(hasImage ? Icons.sync : Icons.add_photo_alternate, color: Colors.white, size: 18),
                     label: Text(hasImage ? 'تغيير' : 'إضافة صورة', style: const TextStyle(color: Colors.white)),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade600),
                   ),
                   if (hasImage) 
                     ElevatedButton.icon(
-                      onPressed: () {
-                        setState(() { _currentLocalImageUrl = null; });
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف الصورة (محلياً) بنجاح.'), backgroundColor: Colors.red));
-                      },
+                      onPressed: () => _deleteProfileImage(context), 
                       icon: const Icon(Icons.delete_forever, color: Colors.white, size: 18),
                       label: const Text('حذف', style: TextStyle(color: Colors.white)),
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade400),
@@ -134,7 +201,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
 
   @override
   Widget build(BuildContext context) {
-    bool hasImage = _currentLocalImageUrl != null;
+    bool hasImage = _currentLocalImageUrl != null && _currentLocalImageUrl!.isNotEmpty;
     final themeProvider = Provider.of<ThemeProvider>(context); 
 
     return Drawer(
@@ -156,15 +223,26 @@ class _CustomDrawerState extends State<CustomDrawer> {
                         children: [
                           GestureDetector(
                             onTap: () => _showProfileImageActionDialog(context),
-                            child: Container(
-                              width: 100, height: 100,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle, color: themeProvider.primaryColor.withOpacity(0.1),
-                                border: Border.all(color: themeProvider.primaryColor.withOpacity(0.3), width: 2),
-                                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))],
-                                image: hasImage ? DecorationImage(image: NetworkImage(_currentLocalImageUrl!), fit: BoxFit.cover) : null,
-                              ),
-                              child: !hasImage ? Icon(Icons.person, size: 60, color: themeProvider.primaryColor.withOpacity(0.7)) : null,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Container(
+                                  width: 100, height: 100,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle, color: themeProvider.primaryColor.withOpacity(0.1),
+                                    border: Border.all(color: themeProvider.primaryColor.withOpacity(0.3), width: 2),
+                                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))],
+                                    image: hasImage ? DecorationImage(image: NetworkImage(_currentLocalImageUrl!), fit: BoxFit.cover) : null,
+                                  ),
+                                  child: !hasImage ? Icon(Icons.person, size: 60, color: themeProvider.primaryColor.withOpacity(0.7)) : null,
+                                ),
+                                if (_isUploading)
+                                  Container(
+                                    width: 100, height: 100,
+                                    decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.black.withOpacity(0.5)),
+                                    child: const CircularProgressIndicator(color: Colors.white),
+                                  ),
+                              ],
                             ),
                           ),
                           const SizedBox(height: 15),
@@ -203,7 +281,6 @@ class _CustomDrawerState extends State<CustomDrawer> {
                   Divider(color: themeProvider.adaptiveTextColor.withOpacity(0.2)),
                   Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الإدارة والتسويق', style: TextStyle(color: themeProvider.adaptiveTextColor.withOpacity(0.7), fontSize: 12, fontWeight: FontWeight.bold))),
                   
-                  // 👈 إضافة زر إدارة بوابات النظام هنا
                   _buildDrawerItem(context, 'إدارة بوابات النظام', Icons.important_devices, Colors.deepPurple, const PortalsManagementScreen()),
                   _buildDrawerItem(context, 'إدارة الموظفين والدعم', Icons.support_agent, Colors.brown, const StaffSupportScreen()),
                   _buildDrawerItem(context, 'الإعلانات والبنرات', Icons.campaign, Colors.deepOrange, const BannersScreen()),
