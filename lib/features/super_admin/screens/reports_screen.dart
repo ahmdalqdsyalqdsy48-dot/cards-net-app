@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
-// 👈 هنا الحل السحري: إخفاء TextDirection الخاص بمكتبة intl لمنع التعارض
 import 'package:intl/intl.dart' hide TextDirection; 
+import 'package:flutter/foundation.dart' show kIsWeb; // 👈 لمعرفة هل التطبيق يعمل على الويب أم الموبايل
+import 'dart:io'; // 👈 لحفظ الملفات في الموبايل
+
+// 👇 مكتبات التصدير الجديدة
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:excel/excel.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../../core/providers/system_provider.dart'; 
 import '../../../core/widgets/custom_drawer.dart';
@@ -16,7 +24,6 @@ class ReportsScreen extends StatefulWidget {
 }
 
 class _ReportsScreenState extends State<ReportsScreen> {
-  // متغيرات الفلترة الحقيقية
   String _selectedReportType = 'الكل (شامل)';
   String _selectedAgent = 'الكل';
   DateTimeRange? _selectedDateRange;
@@ -25,20 +32,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
   @override
   void initState() {
     super.initState();
-    // تعيين التاريخ الافتراضي لآخر 30 يوماً
     _selectedDateRange = DateTimeRange(
       start: DateTime.now().subtract(const Duration(days: 30)),
       end: DateTime.now(),
     );
   }
 
-  // ==========================================
-  // ⚙️ محرك معالجة البيانات الحقيقية (Data Engine)
-  // ==========================================
   List<Map<String, dynamic>> _getFilteredData(SystemProvider sys) {
     List<Map<String, dynamic>> data = List.from(sys.transactionsLedger);
 
-    // 1. فلترة حسب التاريخ
     if (_selectedDateRange != null) {
       data = data.where((tx) {
         if (tx['timestamp'] == null) return false;
@@ -48,12 +50,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
       }).toList();
     }
 
-    // 2. فلترة حسب الوكيل
     if (_selectedAgent != 'الكل') {
       data = data.where((tx) => tx['agentName'] == _selectedAgent).toList();
     }
 
-    // 3. فلترة حسب نوع التقرير
     if (_selectedReportType == 'إيداعات وشحن') {
       data = data.where((tx) => tx['type'] == 'إيداع حوالة').toList();
     } else if (_selectedReportType == 'تسويات وخصومات') {
@@ -71,9 +71,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return total;
   }
 
-  // ==========================================
-  // نافذة التقويم الحقيقية 📅
-  // ==========================================
   Future<void> _pickDateRange() async {
     final DateTimeRange? picked = await showDateRangePicker(
       context: context,
@@ -95,9 +92,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
-  // ==========================================
-  // نافذة جدولة التقرير الحقيقية ⏱️
-  // ==========================================
   void _showScheduleDialog(SystemProvider sys) {
     String scheduleType = 'شهرياً';
     final TextEditingController emailController = TextEditingController(text: 'admin@cardsnet.com');
@@ -162,6 +156,124 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ),
       ),
     );
+  }
+
+  // ==========================================
+  // 🚀 محركات التصدير الحقيقية (PDF & Excel)
+  // ==========================================
+  
+  Future<void> _exportToPDF(List<Map<String, dynamic>> data, double totalAmount) async {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري إعداد ملف PDF (يرجى الانتظار لتحميل الخط العربي)... ⏳', textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
+    
+    try {
+      final pdf = pw.Document();
+      // 👈 تحميل خط كايرو العربي من جوجل لضمان ظهور النصوص العربية بشكل صحيح
+      final arabicFont = await PdfGoogleFonts.cairoRegular();
+      final arabicFontBold = await PdfGoogleFonts.cairoBold();
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          textDirection: pw.TextDirection.rtl, // 👈 دعم الكتابة من اليمين لليسار
+          theme: pw.ThemeData.withFont(base: arabicFont, bold: arabicFontBold),
+          build: (pw.Context context) {
+            return [
+              pw.Header(level: 0, child: pw.Text('تقرير كروت نت الشامل', style: pw.TextStyle(font: arabicFontBold, fontSize: 24))),
+              pw.Text('تاريخ التصدير: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}'),
+              pw.Text('الوكيل المحدد: $_selectedAgent | نوع التقرير: $_selectedReportType'),
+              pw.SizedBox(height: 20),
+              
+              // بناء الجدول
+              pw.TableHelper.fromTextArray(
+                context: context,
+                border: pw.TableBorder.all(color: PdfColors.grey400),
+                headerStyle: pw.TextStyle(font: arabicFontBold, color: PdfColors.white),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
+                rowDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
+                cellAlignment: pw.Alignment.center,
+                headers: ['المبلغ', 'النوع', 'اسم الوكيل', 'التاريخ'],
+                data: data.map((row) {
+                  String dateStr = row['timestamp'] != null ? DateFormat('yyyy-MM-dd HH:mm').format((row['timestamp'] as Timestamp).toDate()) : '';
+                  return [
+                    '${row['amount']} ريال',
+                    row['type'] ?? '',
+                    row['agentName'] ?? '',
+                    dateStr,
+                  ];
+                }).toList(),
+              ),
+              
+              pw.SizedBox(height: 20),
+              pw.Divider(),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('إجمالي المبالغ في التقرير:', style: pw.TextStyle(font: arabicFontBold, fontSize: 16)),
+                  pw.Text('${totalAmount.toStringAsFixed(0)} ريال', style: pw.TextStyle(font: arabicFontBold, fontSize: 16, color: PdfColors.green700)),
+                ]
+              )
+            ];
+          },
+        ),
+      );
+
+      // مشاركة الـ PDF (يفتح نافذة الطباعة/الحفظ في الويب والموبايل)
+      await Printing.sharePdf(bytes: await pdf.save(), filename: 'CardsNet_Report_${DateTime.now().millisecondsSinceEpoch}.pdf');
+      
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('حدث خطأ أثناء التصدير: $e', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _exportToExcel(List<Map<String, dynamic>> data) async {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري إعداد ملف الإكسل... 📊', textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
+    
+    try {
+      var excel = Excel.createExcel();
+      Sheet sheetObject = excel['Sheet1'];
+      excel.setDefaultSheet('Sheet1');
+      
+      // إضافة عناوين الأعمدة
+      sheetObject.appendRow([
+        TextCellValue('التاريخ'),
+        TextCellValue('اسم الوكيل'),
+        TextCellValue('نوع العملية'),
+        TextCellValue('المبلغ (ريال)')
+      ]);
+
+      // تعبئة البيانات
+      for (var row in data) {
+        String dateStr = row['timestamp'] != null ? DateFormat('yyyy-MM-dd HH:mm').format((row['timestamp'] as Timestamp).toDate()) : '';
+        sheetObject.appendRow([
+          TextCellValue(dateStr),
+          TextCellValue(row['agentName']?.toString() ?? ''),
+          TextCellValue(row['type']?.toString() ?? ''),
+          DoubleCellValue((row['amount'] ?? 0.0).toDouble()),
+        ]);
+      }
+
+      var fileBytes = excel.save();
+
+      // 👈 حماية ذكية: حفظ الملفات محلياً يعمل على الموبايل فقط (لأن الويب ليس له قرص صلب)
+      if (!kIsWeb) {
+        Directory directory = await getApplicationDocumentsDirectory();
+        String filePath = '${directory.path}/CardsNet_Report_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+        File(filePath)
+          ..createSync(recursive: true)
+          ..writeAsBytesSync(fileBytes!);
+          
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم حفظ الملف بنجاح في المسار:\n$filePath', textDirection: TextDirection.rtl), backgroundColor: Colors.green, duration: const Duration(seconds: 5)));
+      } else {
+        // في الويب، تنزيل الملفات المباشر يتطلب مكتبة إضافية (مثل universal_html)، لذلك نعطي تنبيهاً ذكياً
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لقد تم توليد بيانات الإكسل بنجاح! (ميزة تنزيل الملف المباشر على متصفح الويب سيتم تفعيلها لاحقاً. يرجى استخدام PDF حالياً).', textDirection: TextDirection.rtl), backgroundColor: Colors.blueGrey, duration: const Duration(seconds: 5)));
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('حدث خطأ أثناء تصدير الإكسل: $e', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+    }
   }
 
   @override
@@ -231,16 +343,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
-                    _buildExportBtn(Icons.table_view, 'تصدير CSV', Colors.green.shade700, () {
+                    _buildExportBtn(Icons.table_view, 'تصدير Excel', Colors.green.shade700, () {
                       if (filteredData.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا توجد بيانات لتصديرها!'), backgroundColor: Colors.orange));
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا توجد بيانات لتصديرها!', textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
                         return;
                       }
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم تجميع ${filteredData.length} سجل. (التصدير للملفات يتطلب حزمة PathProvider لاحقاً)', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                      _exportToExcel(filteredData);
                     }),
                     const SizedBox(width: 8),
-                    _buildExportBtn(Icons.picture_as_pdf, 'PDF', Colors.red.shade700, () {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تجهيز البيانات للـ PDF. (يتطلب إضافة حزمة printing لاحقاً)', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                    _buildExportBtn(Icons.picture_as_pdf, 'تصدير PDF', Colors.red.shade700, () {
+                      if (filteredData.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا توجد بيانات لتصديرها!', textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
+                        return;
+                      }
+                      _exportToPDF(filteredData, currentTotalAmount);
                     }),
                     const SizedBox(width: 8),
                     _buildExportBtn(Icons.schedule, 'أتمتة وجدولة', Colors.orange.shade800, () => _showScheduleDialog(sys)),
