@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:typed_data'; // 👈 للتعامل مع الصور
+import 'package:image_picker/image_picker.dart'; // 👈 لفتح الاستوديو
+import 'package:firebase_storage/firebase_storage.dart'; // 👈 لرفع الصور
+import 'package:cloud_firestore/cloud_firestore.dart'; // 👈 لحفظ بيانات النافذة المنبثقة
+
 import '../../../core/providers/system_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../../../core/widgets/custom_drawer.dart';
@@ -25,7 +30,6 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   int _loginBgColor = 0xFFFFFFFF;
   int _marqueeBgColor = 0x4DFFC107;
 
-  // الألوان المتاحة لتسهيل الاختيار في الواجهة
   final Map<String, int> _colorOptions = {
     'أبيض': 0xFFFFFFFF, 'أسود': 0xFF000000, 'أزرق داكن': 0xFF0D47A1, 'أصفر شفاف': 0x4DFFC107, 'رمادي فاتح': 0xFFF5F5F5
   };
@@ -69,7 +73,6 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     
     final sys = Provider.of<SystemProvider>(context, listen: false);
     
-    // تهيئة الدخول
     _appNameCtrl = TextEditingController(text: sys.appName);
     _appLogoCtrl = TextEditingController(text: sys.appLogoUrl);
     _welcomeMsgCtrl = TextEditingController(text: sys.loginWelcomeMessage);
@@ -78,13 +81,11 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     _loginBgColor = sys.loginBgColor;
     _marqueeBgColor = sys.marqueeBgColor;
 
-    // تهيئة الوكلاء
     _hideProfit = sys.hideProfitEnabled;
     _leaderboard = sys.leaderboardEnabled;
     _forceTheme = sys.forceAgentTheme;
     _agentHiddenSections = List.from(sys.agentUniversalHiddenSections);
 
-    // تهيئة المستخدمين
     _guestMode = sys.guestModeEnabled;
     _kycRequired = sys.kycRequired;
     _loyaltySystem = sys.loyaltySystemEnabled;
@@ -110,6 +111,33 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(msg, textDirection: TextDirection.rtl), backgroundColor: isSuccess ? Colors.green : Colors.red),
     );
+  }
+
+  // ========================================================
+  // 🚀 محرك رفع الصور السحابي الخاص بشاشة البوابات
+  // ========================================================
+  Future<String?> _uploadImageToFirebase() async {
+    final picker = ImagePicker();
+    try {
+      final XFile? pickedFile = await picker.pickImage(source: ImageSource.gallery, maxWidth: 800, imageQuality: 80);
+      if (pickedFile == null) return null;
+
+      _showSnackBar('جاري رفع الصورة إلى السيرفر... ⏳', isSuccess: true);
+
+      final Uint8List bytes = await pickedFile.readAsBytes();
+      String fileName = 'system_images/img_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      Reference storageRef = FirebaseStorage.instance.ref().child(fileName);
+
+      UploadTask uploadTask = storageRef.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+      TaskSnapshot snapshot = await uploadTask;
+
+      String downloadUrl = await snapshot.ref.getDownloadURL();
+      _showSnackBar('تم الرفع بنجاح! ✅', isSuccess: true);
+      return downloadUrl;
+    } catch (e) {
+      _showSnackBar('خطأ أثناء الرفع: $e', isSuccess: false);
+      return null;
+    }
   }
 
   @override
@@ -158,9 +186,6 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     );
   }
 
-  // ==========================================
-  // 1. تبويب بوابة الدخول
-  // ==========================================
   Widget _buildLoginPortalTab(SystemProvider sys) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -169,7 +194,34 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
         children: [
           _buildSectionTitle('الهوية البصرية للتطبيق'),
           _buildTextField('اسم التطبيق', _appNameCtrl, Icons.app_shortcut),
-          _buildTextField('رابط الشعار (Logo URL)', _appLogoCtrl, Icons.image),
+          
+          // 👈 حقل اللوجو مدمج مع زر الرفع من الاستوديو
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _appLogoCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'رابط الشعار (Logo URL)', prefixIcon: const Icon(Icons.image, color: Colors.blueAccent),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), filled: true, fillColor: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 18), backgroundColor: Colors.blueGrey, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                  onPressed: () async {
+                    String? url = await _uploadImageToFirebase();
+                    if (url != null) setState(() => _appLogoCtrl.text = url);
+                  },
+                  child: const Icon(Icons.upload_file, color: Colors.white),
+                )
+              ],
+            ),
+          ),
+
           DropdownButtonFormField<int>(
             value: _loginBgColor,
             decoration: const InputDecoration(labelText: 'لون خلفية صفحة الدخول', border: OutlineInputBorder()),
@@ -238,9 +290,6 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     );
   }
 
-  // ==========================================
-  // 2. تبويب بوابة الوكلاء
-  // ==========================================
   Widget _buildAgentPortalTab(SystemProvider sys) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -302,9 +351,6 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     );
   }
 
-  // ==========================================
-  // 3. تبويب بوابة المستخدمين
-  // ==========================================
   Widget _buildUserPortalTab(SystemProvider sys) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -375,10 +421,6 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     );
   }
 
-  // ==========================================
-  // أدوات مساعدة ونوافذ الاستهداف (Targeting Dialogs)
-  // ==========================================
-  
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -411,10 +453,9 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     );
   }
 
-  // 1. نافذة الاستهداف المخصصة لإخفاء الأقسام (الميزة المطلوبة بشدة)
   void _showTargetedHideDialog(SystemProvider sys, String sectionId, String sectionName) {
     TextEditingController targetPhonesCtrl = TextEditingController();
-    bool hideAction = true; // true = إخفاء، false = إظهار (في حال كان مخفياً وأردت استثناء شخص)
+    bool hideAction = true; 
 
     showDialog(
       context: context,
@@ -469,7 +510,6 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     );
   }
 
-  // 2. نافذة الاستهداف لإرسال الإعلانات والتنبيهات والنوافذ المنبثقة
   void _showTargetingContentDialog(SystemProvider sys, String type) {
     String targetType = 'all'; 
     TextEditingController targetPhonesCtrl = TextEditingController();
@@ -489,10 +529,31 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  TextField(
-                    controller: contentCtrl,
-                    decoration: InputDecoration(labelText: type == 'alert' ? 'نص التنبيه' : 'رابط الصورة الإعلانية (URL)'),
-                  ),
+                  // 👈 إذا كان إعلان أو نافذة، نظهر حقل رفع الصورة من الاستوديو!
+                  if (type == 'alert')
+                    TextField(
+                      controller: contentCtrl,
+                      decoration: const InputDecoration(labelText: 'نص التنبيه'),
+                    )
+                  else
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: contentCtrl,
+                            decoration: const InputDecoration(labelText: 'رابط الصورة الإعلانية'),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.upload_file, color: Colors.blue),
+                          onPressed: () async {
+                            String? url = await _uploadImageToFirebase();
+                            if (url != null) setDialogState(() => contentCtrl.text = url);
+                          },
+                        )
+                      ],
+                    ),
+
                   const SizedBox(height: 15),
                   const Text('الاستهداف:', style: TextStyle(fontWeight: FontWeight.bold)),
                   RadioListTile(title: const Text('الجميع (وكلاء ومستخدمين)'), value: 'all', groupValue: targetType, onChanged: (val) => setDialogState(() => targetType = val.toString())),
@@ -517,8 +578,10 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
                   } else if (type == 'alert') {
                     await sys.setEmergencyAlert(isActive: true, text: contentCtrl.text, targetType: targetType, targetPhones: phones);
                   } else if (type == 'popup') {
-                    // تحديث النافذة المنبثقة في السيرفر (قمت بتجهيزها في SystemProvider مسبقاً)
-                    // Update userPromoPopup field logically
+                    // 👈 تم ربط النافذة المنبثقة بقاعدة البيانات بشكل حقيقي 100%
+                    await FirebaseFirestore.instance.collection('system').doc('main_info').update({
+                       'userPromoPopup': {'isActive': true, 'imageUrl': contentCtrl.text, 'targetType': targetType, 'targetPhones': phones}
+                    });
                   }
                   
                   if (!context.mounted) return;
