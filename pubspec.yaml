@@ -20,6 +20,9 @@ dependencies:
   printing: ^5.12.0     
   intl: ^0.19.0         
   marquee: ^2.2.3       
+  # 👇 الحزم الجديدة التي أضفناها للتو لرفع الصور
+  image_picker: ^1.1.2
+  firebase_storage: ^11.7.0
 
 dev_dependencies:
   flutter_test:
