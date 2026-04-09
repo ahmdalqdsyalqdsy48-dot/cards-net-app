@@ -666,7 +666,16 @@ class SystemProvider extends ChangeNotifier {
   Future<void> takeManualBackup() async {
     final now = DateTime.now();
     final formattedDate = '${now.year}-${now.month}-${now.day} ${now.hour}:${now.minute}';
+    
+    // 1. الإبقاء على الوظيفة القديمة (إضافة سجل في مجلد backups)
     await _db.collection('backups').add({'date': formattedDate, 'size': '45 MB', 'type': 'يدوي (محلي)', 'timestamp': FieldValue.serverTimestamp()});
+    
+    // 2. 👈 الإضافة الجديدة: نداء للروبوت (Make.com) بكتابة الحدث في audit_logs
+    await logAction(
+        action: 'تصدير نسخة احتياطية', 
+        details: 'تم طلب نسخة احتياطية فورية', 
+        severity: 'critical'
+    );
   }
 
   Future<void> deleteBackup(String docId) async { await _db.collection('backups').doc(docId).delete(); }
