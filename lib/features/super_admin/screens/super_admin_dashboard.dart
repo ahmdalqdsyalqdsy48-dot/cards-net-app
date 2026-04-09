@@ -72,12 +72,12 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     // ==========================================
     final systemProvider = Provider.of<SystemProvider>(context);
     
-    // بيانات المالك للقائمة الجانبية
+    // 1. بيانات المالك للقائمة الجانبية
     final adminBalance = systemProvider.adminMainBalance;
     final userName = systemProvider.currentUserName;
-    final userPhone = systemProvider.currentUserPhone;
+    final String userPhone = systemProvider.currentUserPhone;
 
-    // حسابات البطاقات الديناميكية
+    // 2. حسابات البطاقات الديناميكية الحالية
     final totalCards = systemProvider.totalSystemCards;
     
     // حساب طلبات الشحن
@@ -85,17 +85,38 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     final pendingCount = pendingRequests.length;
     final double pendingTotal = pendingRequests.fold(0.0, (sum, req) => sum + ((req['amount'] ?? 0.0) as num).toDouble());
 
-    // حساب الوكلاء في خطر (الرصيد أقل من أو يساوي حد الخطر)
+    // حساب الوكلاء في خطر
     final agentsInDanger = systemProvider.agentsList.where((agent) {
       double balance = ((agent['balance'] ?? 0.0) as num).toDouble();
       double dangerLimit = ((agent['dangerLimit'] ?? 0.0) as num).toDouble();
       return balance <= dangerLimit;
     }).length;
 
+    // 3. تجهيز المتغيرات للبطاقات التي كانت ثابتة (تجهيزاً لربطها لاحقاً)
+    final double todaySales = 1250000; // TODO: جلب مبيعات اليوم من الـ Provider
+    final double todayProfit = 45000;  // TODO: جلب أرباح اليوم
+    final int openTicketsCount = 5;    // TODO: جلب عدد التذاكر المفتوحة
+    final int criticalTicketsCount = 2; // TODO: جلب عدد التذاكر الحرجة
+    final int smsBalance = 4500;       // TODO: جلب رصيد الرسائل من API الـ SMS
+    
+    // 💡 خوارزمية ذكية لمعرفة الوكيل الأنشط برمجياً (مؤقتاً نعتبره صاحب أعلى رصيد حتى نبرمج المبيعات)
+    String topAgentName = 'لا يوجد وكلاء';
+    if (systemProvider.agentsList.isNotEmpty) {
+      try {
+        final topAgent = systemProvider.agentsList.reduce((curr, next) {
+          final currBalance = ((curr['balance'] ?? 0) as num).toDouble();
+          final nextBalance = ((next['balance'] ?? 0) as num).toDouble();
+          return currBalance > nextBalance ? curr : next;
+        });
+        topAgentName = topAgent['name'] ?? 'وكيل غير معروف';
+      } catch (e) {
+        topAgentName = 'غير محدد';
+      }
+    }
+
     return Scaffold(
       appBar: const CustomHeader(title: 'غرفة العمليات المركزية'),
       
-      // 👈 تم ربط القائمة الجانبية ببيانات المالك الحقيقية
       drawer: CustomDrawer(
         userName: userName,
         phoneNumber: userPhone,
@@ -127,6 +148,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                             ? 'فلترة الإحصائيات (اليوم)' 
                             : 'من ${_formatDate(_selectedDateRange!.start)} إلى ${_formatDate(_selectedDateRange!.end)}',
                         style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                        overflow: TextOverflow.ellipsis, // لحماية النص من تجاوز الشاشة
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: isDark ? Colors.grey.shade800 : Colors.white,
@@ -163,16 +185,17 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                 mainAxisSpacing: 12,
                 childAspectRatio: 1.1, 
                 children: [
+                  // 1. المبيعات والأرباح
                   _buildDashboardCard(
                     title: 'مبيعات اليوم',
-                    value: '1,250,000', // ثابت مؤقتاً
-                    subValue: '+ أرباح: 45,000',
+                    value: todaySales.toStringAsFixed(0),
+                    subValue: '+ أرباح: ${todayProfit.toStringAsFixed(0)}',
                     icon: Icons.monetization_on,
                     color: Colors.green,
                     onTap: () => _navigateTo(const FinancialCenterScreen()),
                   ),
                   
-                  // 👈 بطاقة طلبات الشحن الديناميكية
+                  // 2. طلبات الشحن المعلقة
                   _buildDashboardCard(
                     title: 'طلبات شحن معلقة',
                     value: '$pendingCount طلبات',
@@ -183,7 +206,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     onTap: () => _navigateTo(const FinancialCenterScreen()),
                   ),
                   
-                  // 👈 بطاقة رادار الخطر الديناميكية
+                  // 3. رادار خطر الوكلاء
                   _buildDashboardCard(
                     title: 'رادار الخطر',
                     value: '$agentsInDanger وكلاء',
@@ -194,16 +217,18 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     onTap: () => _navigateTo(const AgentManagementScreen()),
                   ),
                   
+                  // 4. تذاكر الدعم الفني
                   _buildDashboardCard(
                     title: 'تذاكر الدعم',
-                    value: '5 مفتوحة', // ثابت مؤقتاً
-                    subValue: '2 منها أولوية قصوى',
+                    value: '$openTicketsCount مفتوحة',
+                    subValue: '$criticalTicketsCount منها أولوية قصوى',
                     icon: Icons.support_agent,
                     color: Colors.blue,
+                    isAlert: criticalTicketsCount > 0, // تنبيه إذا كان هناك تذاكر حرجة
                     onTap: () => _navigateTo(const StaffSupportScreen()),
                   ),
                   
-                  // 👈 بطاقة المخزون الكلي الديناميكية
+                  // 5. المخزون الكلي
                   _buildDashboardCard(
                     title: 'إجمالي المخزون',
                     value: '$totalCards كرت',
@@ -213,24 +238,27 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     onTap: () => _navigateTo(const ReportsScreen()),
                   ),
                   
+                  // 6. الوكيل الأنشط (مستخرج برمجياً)
                   _buildDashboardCard(
                     title: 'الوكيل الأنشط',
-                    value: 'شبكة الصقر', // ثابت مؤقتاً
-                    subValue: 'مبيعات: 450 كرت اليوم',
+                    value: topAgentName, 
+                    subValue: 'الأعلى رصيداً حالياً', // يمكن تغييرها للمبيعات لاحقاً
                     icon: Icons.star,
                     color: Colors.amber.shade600,
                     onTap: () => _navigateTo(const AgentManagementScreen()),
                   ),
                   
+                  // 7. رصيد بوابات الرسائل
                   _buildDashboardCard(
                     title: 'رصيد الـ SMS',
-                    value: '4,500', // ثابت مؤقتاً
+                    value: smsBalance.toString(),
                     subValue: 'رسالة متبقية',
                     icon: Icons.sms,
                     color: Colors.purple,
                     onTap: () => _navigateTo(const SmsGatewayScreen()),
                   ),
                   
+                  // 8. الإعدادات
                   _buildDashboardCard(
                     title: 'إعدادات النظام',
                     value: 'تحكم كامل',
@@ -294,11 +322,11 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
               ],
             ),
             const Spacer(),
-            Text(title, style: const TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.bold)),
+            Text(title, style: const TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
             const SizedBox(height: 4),
-            Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isAlert ? Colors.red : null)), 
+            Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isAlert ? Colors.red : null), overflow: TextOverflow.ellipsis), 
             const SizedBox(height: 4),
-            Text(subValue, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold)),
+            Text(subValue, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
           ],
         ),
       ),
