@@ -13,8 +13,13 @@ class AuditLogScreen extends StatefulWidget {
 }
 
 class _AuditLogScreenState extends State<AuditLogScreen> {
-  // متغير لحفظ نص البحث
+  // === متغيرات الفلترة والبحث ===
   String _searchQuery = '';
+  String? _selectedActionType; // لحفظ نوع العملية المحدد
+  DateTimeRange? _selectedDateRange; // لحفظ نطاق التاريخ المحدد
+
+  // قائمة بأنواع العمليات (يمكنك تعديلها لتطابق ما يأتيك من قاعدة البيانات)
+  final List<String> _actionTypes = ['الكل', 'إضافة', 'تعديل', 'حذف', 'تسجيل دخول', 'تغيير صلاحيات'];
 
   // دالة لتحديد لون الخطورة بناءً على نوع العملية
   Color _getSeverityColor(String severity) {
@@ -34,33 +39,124 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
     }
   }
 
+  // 👈 دالة اختيار نطاق التاريخ
+  Future<void> _pickDateRange(BuildContext context) async {
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020), // أقدم تاريخ ممكن
+      lastDate: DateTime.now(),  // لا يمكن اختيار تاريخ في المستقبل
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Colors.blueGrey, // لون الهيدر
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: Directionality(
+            textDirection: TextDirection.rtl,
+            child: child!,
+          ),
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _selectedDateRange = picked;
+      });
+    }
+  }
+
+  // 👈 دالة اختيار نوع العملية من قائمة منبثقة (Bottom Sheet)
+  void _showActionFilterSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('تصفية حسب نوع العملية', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Divider(),
+                Wrap(
+                  spacing: 8.0,
+                  children: _actionTypes.map((type) {
+                    final isSelected = (_selectedActionType == type) || (_selectedActionType == null && type == 'الكل');
+                    return ChoiceChip(
+                      label: Text(type),
+                      selected: isSelected,
+                      selectedColor: Colors.blueGrey.withOpacity(0.3),
+                      onSelected: (selected) {
+                        setState(() {
+                          _selectedActionType = type == 'الكل' ? null : type;
+                        });
+                        Navigator.pop(context);
+                      },
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // 👈 1. الاتصال بالعقل المدبر لجلب البيانات الحية
     final systemProvider = Provider.of<SystemProvider>(context);
     
-    // جلب بيانات المالك الحقيقية للقائمة الجانبية
     final double adminBalance = systemProvider.adminMainBalance;
     final String userName = systemProvider.currentUserName;
     final String userPhone = systemProvider.currentUserPhone;
 
-    // 👈 2. جلب السجل الأسود الحقيقي من السحابة
     final List<Map<String, dynamic>> realAuditLogs = systemProvider.auditLogs;
 
-    // 👈 3. دالة البحث الذكية لتصفية السجل المجلوب بناءً على النص المدخل
+    // 👈 3. دالة البحث والفلترة الذكية (النص + النوع + التاريخ)
     final filteredLogs = realAuditLogs.where((log) {
+      // أ. فلترة النص
       final query = _searchQuery.toLowerCase();
       final name = (log['name'] ?? '').toString().toLowerCase();
       final phone = (log['phone'] ?? '').toString().toLowerCase();
       final action = (log['action'] ?? '').toString().toLowerCase();
       
-      return name.contains(query) || phone.contains(query) || action.contains(query);
+      final matchesSearch = name.contains(query) || phone.contains(query) || action.contains(query);
+
+      // ب. فلترة نوع العملية
+      bool matchesActionType = true;
+      if (_selectedActionType != null) {
+        matchesActionType = action.contains(_selectedActionType!.toLowerCase());
+      }
+
+      // ج. فلترة التاريخ
+      bool matchesDate = true;
+      if (_selectedDateRange != null) {
+        try {
+          final logDate = DateTime.parse(log['datetime'] ?? ''); // يفترض أن التاريخ بصيغة ISO
+          // التأكد أن التاريخ يقع ضمن النطاق (مع تجاهل الوقت)
+          matchesDate = logDate.isAfter(_selectedDateRange!.start.subtract(const Duration(days: 1))) &&
+                        logDate.isBefore(_selectedDateRange!.end.add(const Duration(days: 1)));
+        } catch (e) {
+          // إذا كان هناك خطأ في صيغة التاريخ في قاعدة البيانات نعرضه افتراضياً
+          matchesDate = true; 
+        }
+      }
+
+      return matchesSearch && matchesActionType && matchesDate;
     }).toList();
 
     return Scaffold(
       appBar: const CustomHeader(title: 'السجل الأسود للنشاط'),
       
-      // 👈 تم ربط القائمة الجانبية بالبيانات الحية للمالك
       drawer: CustomDrawer(
         userName: userName,
         phoneNumber: userPhone,
@@ -88,7 +184,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                             });
                           },
                           decoration: InputDecoration(
-                            hintText: 'ابحث برقم الهاتف، أو اسم الموظف / الوكيل...',
+                            hintText: 'ابحث برقم الهاتف، أو الاسم...',
                             prefixIcon: const Icon(Icons.search, color: Colors.blueAccent),
                             filled: true,
                             fillColor: Theme.of(context).cardColor, 
@@ -101,7 +197,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      // زر الطباعة
+                      // زر الطباعة (الوحيد الذي تركناه SnackBar مؤقتاً حتى نقوم ببرمجة دالة الـ PDF)
                       Container(
                         decoration: BoxDecoration(
                           color: Colors.blueGrey.withOpacity(0.1),
@@ -122,25 +218,51 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                   const SizedBox(height: 10),
                   Row(
                     children: [
+                      // زر فلترة نوع العملية (تم التفعيل ✅)
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('نافذة فلترة نوع العملية ستتوفر قريباً ⚙️', textDirection: TextDirection.rtl)));
-                          },
-                          icon: const Icon(Icons.filter_list, size: 16),
-                          label: const Text('نوع العملية'),
+                          onPressed: () => _showActionFilterSheet(context),
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: _selectedActionType != null ? Colors.blue.withOpacity(0.1) : null,
+                            side: BorderSide(color: _selectedActionType != null ? Colors.blue : Colors.grey),
+                          ),
+                          icon: Icon(Icons.filter_list, size: 16, color: _selectedActionType != null ? Colors.blue : null),
+                          label: Text(
+                            _selectedActionType ?? 'نوع العملية',
+                            style: TextStyle(color: _selectedActionType != null ? Colors.blue : null),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 10),
+                      // زر فلترة التاريخ (تم التفعيل ✅)
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('نافذة تحديد التاريخ ستتوفر قريباً 📅', textDirection: TextDirection.rtl)));
-                          },
-                          icon: const Icon(Icons.date_range, size: 16),
-                          label: const Text('تاريخ محدد'),
+                          onPressed: () => _pickDateRange(context),
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: _selectedDateRange != null ? Colors.blue.withOpacity(0.1) : null,
+                            side: BorderSide(color: _selectedDateRange != null ? Colors.blue : Colors.grey),
+                          ),
+                          icon: Icon(Icons.date_range, size: 16, color: _selectedDateRange != null ? Colors.blue : null),
+                          label: Text(
+                            _selectedDateRange != null 
+                              ? '${_selectedDateRange!.start.day}/${_selectedDateRange!.start.month} - ${_selectedDateRange!.end.day}/${_selectedDateRange!.end.month}'
+                              : 'تاريخ محدد',
+                            style: TextStyle(color: _selectedDateRange != null ? Colors.blue : null, fontSize: 12),
+                          ),
                         ),
                       ),
+                      // زر لمسح الفلاتر إذا كانت مفعلة
+                      if (_selectedActionType != null || _selectedDateRange != null)
+                        IconButton(
+                          icon: const Icon(Icons.clear, color: Colors.red),
+                          tooltip: 'إلغاء الفلاتر',
+                          onPressed: () {
+                            setState(() {
+                              _selectedActionType = null;
+                              _selectedDateRange = null;
+                            });
+                          },
+                        )
                     ],
                   ),
                 ],
@@ -166,7 +288,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
               ),
             ),
 
-            // === 3. جدول المراقبة الشامل (يقرأ من السحابة الآن!) ===
+            // === 3. جدول المراقبة الشامل ===
             Expanded(
               child: filteredLogs.isEmpty 
                 ? const Center(child: Text('لا توجد سجلات حالياً، أو لا يوجد تطابق للبحث.', style: TextStyle(color: Colors.grey)))
@@ -175,7 +297,6 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                 itemCount: filteredLogs.length,
                 itemBuilder: (context, index) {
                   final log = filteredLogs[index];
-                  // حماية إضافية في حالة نقص أي بيانات من السحابة
                   final severity = log['severity'] ?? 'normal';
                   final color = _getSeverityColor(severity);
                   final icon = _getSeverityIcon(severity);
@@ -190,7 +311,6 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                     child: IntrinsicHeight(
                       child: Row(
                         children: [
-                          // شريط اللون الجانبي لبيان الخطورة
                           Container(
                             width: 8,
                             decoration: BoxDecoration(
@@ -204,7 +324,6 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // الرأس: الإجراء والوقت
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
@@ -221,7 +340,6 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                                     ],
                                   ),
                                   const Divider(height: 16),
-                                  // تفاصيل القيمة السابقة والجديدة
                                   Container(
                                     padding: const EdgeInsets.all(8),
                                     width: double.infinity,
@@ -232,7 +350,6 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                                     child: Text(log['details'] ?? 'لا توجد تفاصيل', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                                   ),
                                   const SizedBox(height: 10),
-                                  // بيانات المستخدم والـ IP
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
