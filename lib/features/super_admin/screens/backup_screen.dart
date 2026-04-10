@@ -51,9 +51,9 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
   }
 
   // ==========================================
-  // نافذة أخذ نسخة يدوية سحابية ☁️💾
+  // نافذة أخذ نسخة يدوية سحابية (حقيقية بدون تأخير وهمي) ☁️💾
   // ==========================================
-  void _takeManualBackup(SystemProvider provider) {
+  Future<void> _takeManualBackup(SystemProvider provider) async {
     showDialog(
       context: context,
       barrierDismissible: false, 
@@ -73,20 +73,27 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
       ),
     );
 
-    // محاكاة لعملية الرفع ثم الحفظ في السحابة
-    Future.delayed(const Duration(seconds: 3), () async {
-      await provider.takeManualBackup(); // 👈 أمر السحابة
+    try {
+      // 👈 انتظار اكتمال عملية الرفع الحقيقية في السحابة
+      await provider.takeManualBackup(); 
       if (mounted) {
         Navigator.pop(context); // إغلاق نافذة التحميل
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تم أخذ النسخة الاحتياطية بنجاح! ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green)
         );
       }
-    });
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('فشل أخذ النسخة: $e', textDirection: TextDirection.rtl), backgroundColor: Colors.red)
+        );
+      }
+    }
   }
 
   // ==========================================
-  // نافذة استعادة النظام (مراقبة بالصندوق الأسود) 🔄🔴
+  // نافذة استعادة النظام (مراقبة بالصندوق الأسود حقيقية) 🔄🔴
   // ==========================================
   void _showRestoreDialog(SystemProvider provider, Map<String, dynamic> backup) {
     TextEditingController pinController = TextEditingController();
@@ -132,7 +139,8 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                 onPressed: () {
-                  if (pinController.text == '123456') { 
+                  // 👈 التحقق الحقيقي من رقم הـ PIN للمستخدم الحالي
+                  if (pinController.text == provider.currentUserPin) { 
                     Navigator.pop(context);
                     provider.logRestoreAttempt(true, backup['date']); // 👈 توثيق الاستعادة الناجحة
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم التحقق. جاري استعادة النظام... 🔄', textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
@@ -145,6 +153,32 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // 👈 دالة الحذف الآمن للنسخة الاحتياطية (حقيقية)
+  void _confirmDeleteBackup(SystemProvider provider, String docId) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('تأكيد الحذف'),
+          content: const Text('هل أنت متأكد من حذف هذه النسخة الاحتياطية نهائياً من السحابة؟ لا يمكن التراجع عن هذا الإجراء.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () {
+                provider.deleteBackup(docId);
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم مسح النسخة من السيرفر 🗑️', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+              },
+              child: const Text('حذف', style: TextStyle(color: Colors.white)),
+            ),
+          ],
         ),
       ),
     );
@@ -400,8 +434,7 @@ class _BackupScreenState extends State<BackupScreen> with SingleTickerProviderSt
                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري تحميل النسخة إلى جهازك... ⬇️', textDirection: TextDirection.rtl)));
                           }),
                           _buildActionButton(Icons.delete, 'حذف', Colors.red.shade300, () {
-                             provider.deleteBackup(backup['docId']); // 👈 أمر حذف سحابي
-                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم مسح النسخة من السيرفر 🗑️', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                             _confirmDeleteBackup(provider, backup['docId']); // 👈 استدعاء الحذف الآمن
                           }),
                           ElevatedButton.icon(
                             onPressed: () => _showRestoreDialog(provider, backup),
