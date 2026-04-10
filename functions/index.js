@@ -4,47 +4,71 @@ const { google } = require('googleapis');
 
 admin.initializeApp();
 
-// الاعتماد على هوية السيرفر الداخلية
+// إعداد صلاحيات الوصول لجوجل درايف
 const auth = new google.auth.GoogleAuth({
     scopes: ['https://www.googleapis.com/auth/drive.file'],
 });
 const drive = google.drive({ version: 'v3', auth });
 
-exports.automatedBackupEngine = functions.pubsub.schedule('0 * * * *')
-    .timeZone('Asia/Riyadh') 
+/**
+ * محرك النسخ الاحتياطي الآلي - يعمل كل دقيقة
+ */
+exports.automatedBackupEngine = functions.pubsub.schedule('* * * * *')
+    .timeZone('Asia/Riyadh') // تأكد من ضبط التوقيت حسب دولتك
     .onRun(async (context) => {
         const db = admin.firestore();
-        const config = await db.collection('system_settings').doc('backup_config').get();
-        if (!config.exists) return null;
-
-        const { isAutoBackupEnabled, backupTime } = config.data();
-        const currentHour = new Date().getHours(); 
-        const targetHour = parseInt(backupTime); 
-
-        if (!isAutoBackupEnabled || currentHour !== targetHour) return null;
-
-        // سحب بيانات المستخدمين والوكلاء (كمثال)
-        const usersSnap = await db.collection('users').get();
-        const agentsSnap = await db.collection('agents').get();
         
-        const data = {
-           users: usersSnap.docs.map(d => d.data()),
-           agents: agentsSnap.docs.map(d => d.data())
-        };
+        // 1. جلب إعدادات النسخ من قاعدة البيانات
+        const configDoc = await db.collection('system_settings').doc('backup_config').get();
+        
+        if (!configDoc.exists) {
+            console.log('إعدادات النسخ غير موجودة.');
+            return null;
+        }
 
-        const fileName = `NetCards_Backup_${new Date().toISOString()}.json`;
+        const { isAutoBackupEnabled, backupTime } = configDoc.data();
 
-        await drive.files.create({
-            requestBody: {
-                name: fileName,
-                mimeType: 'application/json',
-                // لا تنسَ وضع رمز المجلد الذي شاركناه هنا! 👇
-                parents: ['ضع_معرف_المجلد_هنا'] 
-            },
-            media: {
-                mimeType: 'application/json',
-                body: JSON.stringify(data),
-            },
+        // 2. الحصول على الوقت الحالي بتنسيق HH:mm (مثلاً 04:15)
+        const now = new Date();
+        const currentTime = now.toLocaleTimeString('en-GB', { 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            timeZone: 'Asia/Riyadh' 
         });
-        console.log(`تم رفع النسخة ${fileName} بنجاح!`);
+
+        console.log(`الوقت الحالي: ${currentTime} | وقت النسخ المطلوب: ${backupTime}`);
+
+        // 3. التحقق من الشرط: هل التفعيل متاح وهل الوقت متطابق؟
+        if (!isAutoBackupEnabled || currentTime !== backupTime) {
+            return null;
+        }
+
+        console.log('بدء عملية النسخ الاحتياطي الدقيقة...');
+
+        try {
+            // 4. جلب البيانات (مثال لمجموعة المستخدمين)
+            const snapshot = await db.collection('users').get();
+            const allData = snapshot.docs.map(doc => doc.data());
+
+            // 5. تجهيز الملف ورفعه لجوجل درايف
+            const fileName = `Auto_Backup_${currentTime.replace(':', '-')}_${new Date().toISOString().split('T')[0]}.json`;
+            
+            await drive.files.create({
+                requestBody: {
+                    name: fileName,
+                    mimeType: 'application/json',
+                    parents: ['NetCards_Backups'] // سيتم الرفع للمجلد المخصص
+                },
+                media: {
+                    mimeType: 'application/json',
+                    body: JSON.stringify(allData),
+                },
+            });
+
+            console.log(`تم بنجاح رفع النسخة: ${fileName}`);
+        } catch (error) {
+            console.error('حدث خطأ أثناء النسخ:', error);
+        }
+
+        return null;
     });
