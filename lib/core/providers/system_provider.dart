@@ -65,7 +65,8 @@ class SystemProvider extends ChangeNotifier {
 
   bool _isAutoBackupEnabled = true;
   String _backupFrequency = 'يومياً';
-  String _backupTime = '04:00 فجراً';
+  // 👈 تم تغيير القيمة الافتراضية لتناسب التوقيت الرقمي
+  String _backupTime = '04:00'; 
   String _emergencyEmail = '';
   bool _isDriveLinked = false;
   bool _isDropboxLinked = false;
@@ -167,7 +168,11 @@ class SystemProvider extends ChangeNotifier {
         final data = snapshot.data()!;
         _isAutoBackupEnabled = data['isAutoBackupEnabled'] ?? true;
         _backupFrequency = data['backupFrequency'] ?? 'يومياً';
-        _backupTime = data['backupTime'] ?? '04:00 فجراً';
+        
+        // 👈 التعديل لتنظيف الوقت القديم وتوافقه مع السيرفر
+        String rawTime = data['backupTime'] ?? '04:00';
+        _backupTime = rawTime.contains(' ') ? '04:00' : rawTime;
+        
         _emergencyEmail = data['emergencyEmail'] ?? '';
         _isDriveLinked = data['isDriveLinked'] ?? false;
         _isDropboxLinked = data['isDropboxLinked'] ?? false;
@@ -716,8 +721,14 @@ class SystemProvider extends ChangeNotifier {
     _db.collection('users').doc(_activeUserPhone).update({'isBiometricEnabled': isEnabled});
   }
 
+  // 👈 الدالة المحدثة لحفظ الوقت الرقمي الدقيق
   Future<void> updateAutoBackupSettings(bool isEnabled, String freq, String time, String email) async {
-    await _db.collection('system').doc('backup_settings').update({'isAutoBackupEnabled': isEnabled, 'backupFrequency': freq, 'backupTime': time, 'emergencyEmail': email});
+    await _db.collection('system').doc('backup_settings').update({
+      'isAutoBackupEnabled': isEnabled, 
+      'backupFrequency': freq, 
+      'backupTime': time, 
+      'emergencyEmail': email
+    });
   }
 
   Future<void> toggleCloudLink(String service, bool isLinked) async {
@@ -725,14 +736,19 @@ class SystemProvider extends ChangeNotifier {
     else await _db.collection('system').doc('backup_settings').update({'isDropboxLinked': isLinked});
   }
 
+  // 👈 الدالة المحدثة لإطلاق الزناد اليدوي للسيرفر
   Future<void> takeManualBackup() async {
     final now = DateTime.now();
     final formattedDate = '${now.year}-${now.month}-${now.day} ${now.hour}:${now.minute}';
     
-    // 1. الإبقاء على الوظيفة القديمة (إضافة سجل في مجلد backups)
+    // 1. الإبقاء على الوظيفة القديمة
     await _db.collection('backups').add({'date': formattedDate, 'size': '45 MB', 'type': 'يدوي (محلي)', 'timestamp': FieldValue.serverTimestamp()});
     
-    // 2. 👈 الإضافة الجديدة: نداء للروبوت (Make.com) بكتابة الحدث في audit_logs
+    // 2. إرسال أمر للروبوت الخارجي
+    await _db.collection('system').doc('backup_settings').update({
+      'manualTrigger': FieldValue.serverTimestamp(),
+    });
+
     await logAction(
         action: 'تصدير نسخة احتياطية', 
         details: 'تم طلب نسخة احتياطية فورية', 
