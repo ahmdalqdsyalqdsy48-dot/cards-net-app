@@ -1,0 +1,36 @@
+name: Deploy Firebase Functions
+
+# سيعمل تلقائياً فقط إذا قمت بتعديل شيء داخل مجلد functions
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'functions/**'
+
+jobs:
+  deploy_backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: جلب الكود من المستودع
+        uses: actions/checkout@v3
+
+      - name: تجهيز بيئة Node.js للسيرفر
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: تثبيت مكتبات جوجل
+        run: npm install
+        working-directory: ./functions
+
+      # 👈 أمر النشر على فايربيس
+      - name: النشر على سيرفرات فايربيس
+        uses: w9jds/firebase-action@master
+        with:
+          args: deploy --only functions
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          # استبدل هذه بالـ ID الخاص بمشروعك في فايربيس
+          PROJECT_ID: 'your-firebase-project-id'
