@@ -1,363 +1,778 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; 
 
-// مكتبات الـ PDF التي أضفناها
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
+class SystemProvider extends ChangeNotifier {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-import '../../../core/providers/system_provider.dart';
-import '../../../core/widgets/custom_drawer.dart';
-import '../../../core/widgets/custom_header.dart';
-
-import 'financial_center_screen.dart';
-import 'staff_support_screen.dart';
-import 'reports_screen.dart';
-import 'agent_management_screen.dart';
-import 'sms_gateway_screen.dart';
-import 'settings_screen.dart';
-
-class SuperAdminDashboard extends StatefulWidget {
-  const SuperAdminDashboard({super.key});
-
-  @override
-  State<SuperAdminDashboard> createState() => _SuperAdminDashboardState();
-}
-
-class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
+  double _adminMainBalance = 10000000.0; 
+  int _totalSystemCards = 5000; 
+  String? _activeUserPhone; 
+  double _newsScrollSpeed = 40.0; 
 
   // ==========================================
-  // دالة فتح التقويم وإرسال الفلتر للعقل المدبر 📅
+  // ⚙️ 1. إعدادات النظام الأساسية
   // ==========================================
-  Future<void> _selectDateRange(SystemProvider provider) async {
-    final DateTimeRange? picked = await showDateRangePicker(
-      context: context,
-      initialDateRange: provider.dashboardDateRange ?? DateTimeRange(start: DateTime.now(), end: DateTime.now()),
-      firstDate: DateTime(2023), 
-      lastDate: DateTime(2030),  
-      helpText: 'حدد فترة الفلترة (من - إلى)',
-      cancelText: 'إلغاء',
-      confirmText: 'تأكيد الفلترة',
-      builder: (context, child) {
-        return Directionality(textDirection: TextDirection.rtl, child: child!);
-      },
-    );
+  bool _isMaintenanceMode = false;
+  bool _isForcedUpdate = false;
+  bool _showNewsBar = true;
+  bool _isCurrencyAutoRounding = true;
+  String _minimumChargeLimit = '1000';
+  String _termsAndConditions = '';
+  String _supportNumbers = '';
 
-    if (picked != null && picked != provider.dashboardDateRange) {
-      provider.setDashboardDateRange(picked); // 👈 إخبار العقل المدبر بتغيير التاريخ
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم تحديث الإحصائيات للفترة من ${_formatDate(picked.start)} إلى ${_formatDate(picked.end)} 📊', textDirection: TextDirection.rtl), backgroundColor: Colors.green)
-      );
+  // ==========================================
+  // 🚪 2. إعدادات بوابة تسجيل الدخول (Public Portal)
+  // ==========================================
+  String _appName = 'كروت نت';
+  String _appLogoUrl = '';
+  int _loginBgColor = 0xFFFFFFFF; 
+  List<String> _loginCarouselImages = [];
+  String _loginWelcomeMessage = 'مرحباً بك في نظام كروت نت';
+  int _carouselIntervalSeconds = 5;
+  String _marqueeDirection = 'rtl'; 
+  int _marqueeTextColor = 0xFFFFFFFF;
+  int _marqueeBgColor = 0x4DFFC107; 
+  double _marqueeFontSize = 14.0;
+
+  // ==========================================
+  // 💼 3. إعدادات بوابة الوكلاء (Agents Portal)
+  // ==========================================
+  List<String> _agentUniversalHiddenSections = [];
+  List<Map<String, dynamic>> _agentBanners = [];
+  Map<String, dynamic> _agentEmergencyAlert = {'isActive': false, 'text': '', 'targetType': 'all', 'targetPhones': []};
+  bool _hideProfitEnabled = false;
+  bool _leaderboardEnabled = false;
+  bool _forceAgentTheme = false;
+
+  // ==========================================
+  // 👥 4. إعدادات بوابة المستخدمين (Users Portal)
+  // ==========================================
+  List<String> _userUniversalHiddenSections = [];
+  bool _guestModeEnabled = false;
+  bool _kycRequired = false;
+  Map<String, dynamic> _userPromoPopup = {'isActive': false, 'imageUrl': '', 'targetType': 'all', 'targetPhones': []};
+  Map<String, dynamic> _socialLinks = {'whatsapp': '', 'facebook': '', 'telegram': ''};
+  bool _loyaltySystemEnabled = false;
+
+  // الأخبار الموجهة
+  List<Map<String, dynamic>> _targetedNews = []; 
+
+  List<Map<String, dynamic>> _usersDatabase = [];
+  List<String> _announcements = []; 
+  List<Map<String, dynamic>> _rechargeRequests = []; 
+  List<Map<String, dynamic>> _transactionsLedger = []; 
+  List<Map<String, dynamic>> _auditLogs = []; 
+
+  bool _isAutoBackupEnabled = true;
+  String _backupFrequency = 'يومياً';
+  String _backupTime = '04:00 فجراً';
+  String _emergencyEmail = '';
+  bool _isDriveLinked = false;
+  bool _isDropboxLinked = false;
+  List<Map<String, dynamic>> _backupsList = [];
+  List<Map<String, dynamic>> _bankAccounts = [];
+  List<Map<String, dynamic>> _coupons = [];
+
+  // ==========================================
+  // 🌟 [القسم الجديد]: المتغيرات المالية والدعم (مع الفلترة)
+  // ==========================================
+  List<Map<String, dynamic>> _salesList = []; 
+  List<Map<String, dynamic>> _supportTickets = []; 
+  int _smsBalance = 0; 
+  DateTimeRange? _dashboardDateRange; // لحفظ فلتر التاريخ
+
+  SystemProvider() {
+    _initDatabaseSync();
+  }
+
+  void _initDatabaseSync() {
+    _db.collection('system').doc('main_info').snapshots().listen((snapshot) {
+      if (snapshot.exists) {
+        final data = snapshot.data()!;
+        _adminMainBalance = (data['adminMainBalance'] ?? 10000000.0).toDouble();
+        _totalSystemCards = data['totalSystemCards'] ?? 5000;
+        _announcements = List<String>.from(data['announcements'] ?? ['أهلاً بك في شبكة كروت نت...']);
+        _newsScrollSpeed = (data['newsScrollSpeed'] ?? 40.0).toDouble();
+        
+        // إعدادات الصيانة والسياسات
+        _isMaintenanceMode = data['isMaintenanceMode'] ?? false;
+        _isForcedUpdate = data['isForcedUpdate'] ?? false;
+        _showNewsBar = data['showNewsBar'] ?? true;
+        _isCurrencyAutoRounding = data['isCurrencyAutoRounding'] ?? true;
+        _minimumChargeLimit = data['minimumChargeLimit'] ?? '1000';
+        _termsAndConditions = data['termsAndConditions'] ?? '';
+        _supportNumbers = data['supportNumbers'] ?? '';
+
+        // إعدادات شاشة الدخول المتقدمة
+        _appName = data['appName'] ?? 'كروت نت';
+        _appLogoUrl = data['appLogoUrl'] ?? '';
+        _loginBgColor = data['loginBgColor'] ?? 0xFFFFFFFF;
+        _loginCarouselImages = List<String>.from(data['loginCarouselImages'] ?? []);
+        _loginWelcomeMessage = data['loginWelcomeMessage'] ?? 'مرحباً بك في نظام كروت نت';
+        _carouselIntervalSeconds = data['carouselIntervalSeconds'] ?? 5;
+        _marqueeDirection = data['marqueeDirection'] ?? 'rtl';
+        _marqueeTextColor = data['marqueeTextColor'] ?? 0xFFFFFFFF;
+        _marqueeBgColor = data['marqueeBgColor'] ?? 0x4DFFC107;
+        _marqueeFontSize = (data['marqueeFontSize'] ?? 14.0).toDouble();
+
+        // إعدادات بوابات الوكلاء والمستخدمين
+        _agentUniversalHiddenSections = List<String>.from(data['agentUniversalHiddenSections'] ?? []);
+        _userUniversalHiddenSections = List<String>.from(data['userUniversalHiddenSections'] ?? []);
+        _hideProfitEnabled = data['hideProfitEnabled'] ?? false;
+        _leaderboardEnabled = data['leaderboardEnabled'] ?? false;
+        _forceAgentTheme = data['forceAgentTheme'] ?? false;
+        
+        _guestModeEnabled = data['guestModeEnabled'] ?? false;
+        _kycRequired = data['kycRequired'] ?? false;
+        _loyaltySystemEnabled = data['loyaltySystemEnabled'] ?? false;
+        
+        if (data['socialLinks'] != null) _socialLinks = Map<String, dynamic>.from(data['socialLinks']);
+        if (data['agentEmergencyAlert'] != null) _agentEmergencyAlert = Map<String, dynamic>.from(data['agentEmergencyAlert']);
+        if (data['userPromoPopup'] != null) _userPromoPopup = Map<String, dynamic>.from(data['userPromoPopup']);
+        if (data['agentBanners'] != null) _agentBanners = List<Map<String, dynamic>>.from(data['agentBanners']);
+        if (data['targetedNews'] != null) _targetedNews = List<Map<String, dynamic>>.from(data['targetedNews']);
+        
+        // جلب رصيد SMS
+        _smsBalance = data['smsBalance'] ?? 0;
+
+        notifyListeners();
+      }
+    });
+
+    _db.collection('users').snapshots().listen((snapshot) {
+      if (snapshot.docs.isNotEmpty) {
+        _usersDatabase = snapshot.docs.map((doc) => doc.data()).toList();
+        _runAutoRadar(_usersDatabase); 
+        notifyListeners();
+      }
+    });
+
+    _db.collection('recharge_requests').where('status', isEqualTo: 'قيد الانتظار').snapshots().listen((snapshot) {
+      _rechargeRequests = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
+      notifyListeners();
+    });
+
+    _db.collection('transactions').orderBy('timestamp', descending: true).snapshots().listen((snapshot) {
+      _transactionsLedger = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
+      notifyListeners();
+    });
+
+    _db.collection('audit_logs').orderBy('timestamp', descending: true).limit(50).snapshots().listen((snapshot) {
+      _auditLogs = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
+      notifyListeners();
+    });
+
+    _db.collection('system').doc('backup_settings').snapshots().listen((snapshot) {
+      if (snapshot.exists) {
+        final data = snapshot.data()!;
+        _isAutoBackupEnabled = data['isAutoBackupEnabled'] ?? true;
+        _backupFrequency = data['backupFrequency'] ?? 'يومياً';
+        _backupTime = data['backupTime'] ?? '04:00 فجراً';
+        _emergencyEmail = data['emergencyEmail'] ?? '';
+        _isDriveLinked = data['isDriveLinked'] ?? false;
+        _isDropboxLinked = data['isDropboxLinked'] ?? false;
+        notifyListeners();
+      }
+    });
+
+    _db.collection('backups').orderBy('timestamp', descending: true).snapshots().listen((snapshot) {
+      _backupsList = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
+      notifyListeners();
+    });
+
+    _db.collection('bank_accounts').orderBy('order').snapshots().listen((snapshot) {
+      _bankAccounts = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
+      notifyListeners();
+    });
+
+    _db.collection('coupons').orderBy('createdAt', descending: true).snapshots().listen((snapshot) {
+      _coupons = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
+      notifyListeners();
+    });
+
+    // المستمعات الجديدة
+    _db.collection('support_tickets').snapshots().listen((snapshot) {
+      _supportTickets = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
+      notifyListeners();
+    });
+
+    _db.collection('sales').snapshots().listen((snapshot) {
+      _salesList = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
+      notifyListeners();
+    });
+  }
+
+  void _runAutoRadar(List<Map<String, dynamic>> users) {
+    final now = DateTime.now();
+    WriteBatch batch = _db.batch();
+    bool needsUpdate = false;
+
+    for (var user in users) {
+      if (user['role'] == 'agent' && user['subExpiry'] != null && user['subStatus'] == 'نشط') {
+        try {
+          DateTime expiryDate = DateTime.parse(user['subExpiry']);
+          if (now.isAfter(expiryDate)) {
+            DocumentReference ref = _db.collection('users').doc(user['phone']);
+            batch.update(ref, {'subStatus': 'إنذار'});
+            needsUpdate = true;
+          }
+        } catch (e) {}
+      }
     }
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.year}/${date.month}/${date.day}';
-  }
-
-  void _navigateTo(Widget screen) {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => screen));
+    if (needsUpdate) batch.commit();
   }
 
   // ==========================================
-  // 📄 دالة إنشاء وتصدير الـ PDF الحقيقي
+  // 🔍 دوال القراءة (Getters) 
   // ==========================================
-  Future<void> _generateAndPrintPDF(SystemProvider provider, String topAgent, int agentsDanger, double pendingTotal) async {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري تجهيز تقرير الـ PDF... 📄', textDirection: TextDirection.rtl)));
-    
-    final pdf = pw.Document();
-    // جلب خط عربي مدعوم من جوجل تلقائياً لتجنب مشكلة المربعات المجهولة
-    final arabicFont = await PdfGoogleFonts.cairoRegular();
-    final arabicFontBold = await PdfGoogleFonts.cairoBold();
+  double get adminMainBalance => _adminMainBalance;
+  int get totalSystemCards => _totalSystemCards;
+  List<String> get announcements => _announcements; 
+  double get newsScrollSpeed => _newsScrollSpeed; 
 
-    String dateText = provider.dashboardDateRange == null 
-        ? 'تقرير مبيعات اليوم' 
-        : 'تقرير من: ${_formatDate(provider.dashboardDateRange!.start)} إلى ${_formatDate(provider.dashboardDateRange!.end)}';
+  bool get isMaintenanceMode => _isMaintenanceMode;
+  bool get isForcedUpdate => _isForcedUpdate;
+  bool get showNewsBar => _showNewsBar;
+  bool get isCurrencyAutoRounding => _isCurrencyAutoRounding;
+  String get minimumChargeLimit => _minimumChargeLimit;
+  String get termsAndConditions => _termsAndConditions;
+  String get supportNumbers => _supportNumbers;
+  
+  String get appName => _appName;
+  String get appLogoUrl => _appLogoUrl;
+  int get loginBgColor => _loginBgColor;
+  List<String> get loginCarouselImages => _loginCarouselImages;
+  String get loginWelcomeMessage => _loginWelcomeMessage;
+  int get carouselIntervalSeconds => _carouselIntervalSeconds;
+  String get marqueeDirection => _marqueeDirection;
+  int get marqueeTextColor => _marqueeTextColor;
+  int get marqueeBgColor => _marqueeBgColor;
+  double get marqueeFontSize => _marqueeFontSize;
 
-    pdf.addPage(
-      pw.Page(
-        textDirection: pw.TextDirection.rtl,
-        theme: pw.ThemeData.withFont(base: arabicFont, bold: arabicFontBold),
-        build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Header(
-                level: 0,
-                child: pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Text('غرفة العمليات - نظام كروت نت', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
-                    pw.Text(dateText, style: const pw.TextStyle(fontSize: 14, color: PdfColors.grey700)),
-                  ]
-                )
-              ),
-              pw.SizedBox(height: 20),
-              
-              // جدول البيانات الأساسية
-              pw.TableHelper.fromTextArray(
-                context: context,
-                border: pw.TableBorder.all(color: PdfColors.grey400, width: 1),
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey800),
-                cellAlignment: pw.Alignment.center,
-                data: <List<String>>[
-                  ['البيان', 'القيمة'],
-                  ['إجمالي المبيعات المحققة', '${provider.filteredSales.toStringAsFixed(0)} ريال'],
-                  ['إجمالي الأرباح', '${provider.filteredProfit.toStringAsFixed(0)} ريال'],
-                  ['طلبات الشحن المعلقة', '${provider.pendingRechargeRequests.length} طلبات (${pendingTotal.toStringAsFixed(0)} ريال)'],
-                  ['وكلاء في مرحلة الخطر', '$agentsDanger وكلاء'],
-                  ['الوكيل الأنشط بالفترة', topAgent],
-                  ['إجمالي تذاكر الدعم المفتوحة', '${provider.openTicketsCount} تذاكر'],
-                ],
-              ),
-              pw.SizedBox(height: 30),
-              pw.Text('تم إنشاء هذا التقرير تلقائياً بواسطة نظام Super Admin', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey)),
-            ],
-          );
-        },
-      ),
-    );
+  List<String> get agentUniversalHiddenSections => _agentUniversalHiddenSections;
+  List<Map<String, dynamic>> get agentBanners => _agentBanners;
+  Map<String, dynamic> get agentEmergencyAlert => _agentEmergencyAlert;
+  bool get hideProfitEnabled => _hideProfitEnabled;
+  bool get leaderboardEnabled => _leaderboardEnabled;
+  bool get forceAgentTheme => _forceAgentTheme;
 
-    // عرض شاشة الطباعة والمشاركة
-    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save(), name: 'KrootNet_Report_${DateTime.now().millisecondsSinceEpoch}.pdf');
+  List<String> get userUniversalHiddenSections => _userUniversalHiddenSections;
+  bool get guestModeEnabled => _guestModeEnabled;
+  bool get kycRequired => _kycRequired;
+  Map<String, dynamic> get userPromoPopup => _userPromoPopup;
+  Map<String, dynamic> get socialLinks => _socialLinks;
+  bool get loyaltySystemEnabled => _loyaltySystemEnabled;
+
+  List<Map<String, dynamic>> get targetedNews => _targetedNews;
+
+  List<Map<String, dynamic>> get agentsList => _usersDatabase.where((user) => user['role'] == 'agent').toList();
+  List<Map<String, dynamic>> get usersList => _usersDatabase.where((user) => user['role'] == 'user').toList();
+  List<Map<String, dynamic>> get pendingRechargeRequests => _rechargeRequests;
+  List<Map<String, dynamic>> get transactionsLedger => _transactionsLedger;
+  List<Map<String, dynamic>> get auditLogs => _auditLogs;
+  bool get isAutoBackupEnabled => _isAutoBackupEnabled;
+  String get backupFrequency => _backupFrequency;
+  String get backupTime => _backupTime;
+  String get emergencyEmail => _emergencyEmail;
+  bool get isDriveLinked => _isDriveLinked;
+  bool get isDropboxLinked => _isDropboxLinked;
+  List<Map<String, dynamic>> get backupsList => _backupsList;
+  List<Map<String, dynamic>> get bankAccounts => _bankAccounts;
+  List<Map<String, dynamic>> get coupons => _coupons;
+
+  // 🌟 دوال القراءة والفلترة للمبيعات والتذاكر
+  void setDashboardDateRange(DateTimeRange? range) {
+    _dashboardDateRange = range;
+    notifyListeners();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    // الاتصال بالعقل المدبر
-    final systemProvider = Provider.of<SystemProvider>(context);
-    
-    final adminBalance = systemProvider.adminMainBalance;
-    final userName = systemProvider.currentUserName;
-    final String userPhone = systemProvider.currentUserPhone;
+  DateTimeRange? get dashboardDateRange => _dashboardDateRange;
+  int get smsBalance => _smsBalance;
 
-    final totalCards = systemProvider.totalSystemCards;
-    
-    final pendingRequests = systemProvider.pendingRechargeRequests;
-    final pendingCount = pendingRequests.length;
-    final double pendingTotal = pendingRequests.fold(0.0, (sum, req) => sum + ((req['amount'] ?? 0.0) as num).toDouble());
-
-    final agentsInDanger = systemProvider.agentsList.where((agent) {
-      double balance = ((agent['balance'] ?? 0.0) as num).toDouble();
-      double dangerLimit = ((agent['dangerLimit'] ?? 0.0) as num).toDouble();
-      return balance <= dangerLimit;
-    }).length;
-
-    // 👈 القراءة من الفلتر
-    final double todaySales = systemProvider.filteredSales; 
-    final double todayProfit = systemProvider.filteredProfit;  
-    final int openTicketsCount = systemProvider.openTicketsCount;    
-    final int criticalTicketsCount = systemProvider.criticalTicketsCount; 
-    final int smsBalance = systemProvider.smsBalance;       
-    
-    String topAgentName = 'لا يوجد وكلاء';
-    if (systemProvider.agentsList.isNotEmpty) {
+  double get filteredSales {
+    return _salesList.where((sale) {
+      final dateStr = sale['date'] ?? DateTime.now().toIso8601String();
       try {
-        final topAgent = systemProvider.agentsList.reduce((curr, next) {
-          final currBalance = ((curr['balance'] ?? 0) as num).toDouble();
-          final nextBalance = ((next['balance'] ?? 0) as num).toDouble();
-          return currBalance > nextBalance ? curr : next;
-        });
-        topAgentName = topAgent['name'] ?? 'وكيل غير معروف';
-      } catch (e) { topAgentName = 'غير محدد'; }
+        final date = DateTime.parse(dateStr);
+        if (_dashboardDateRange != null) {
+          return date.isAfter(_dashboardDateRange!.start.subtract(const Duration(days: 1))) &&
+                 date.isBefore(_dashboardDateRange!.end.add(const Duration(days: 1)));
+        }
+        return date.year == DateTime.now().year && date.month == DateTime.now().month && date.day == DateTime.now().day;
+      } catch (e) { return false; }
+    }).fold(0.0, (sum, sale) => sum + ((sale['amount'] ?? 0.0) as num));
+  }
+
+  double get filteredProfit {
+    return _salesList.where((sale) {
+      final dateStr = sale['date'] ?? DateTime.now().toIso8601String();
+      try {
+        final date = DateTime.parse(dateStr);
+        if (_dashboardDateRange != null) {
+          return date.isAfter(_dashboardDateRange!.start.subtract(const Duration(days: 1))) &&
+                 date.isBefore(_dashboardDateRange!.end.add(const Duration(days: 1)));
+        }
+        return date.year == DateTime.now().year && date.month == DateTime.now().month && date.day == DateTime.now().day;
+      } catch (e) { return false; }
+    }).fold(0.0, (sum, sale) => sum + ((sale['profit'] ?? 0.0) as num));
+  }
+
+  int get openTicketsCount => _supportTickets.where((ticket) => ticket['status'] == 'مفتوحة').length;
+  int get criticalTicketsCount => _supportTickets.where((ticket) => ticket['status'] == 'مفتوحة' && ticket['priority'] == 'عالية').length;
+
+  Map<String, dynamic> get subscriptionStats {
+    int active = 0, expiringSoon = 0, frozen = 0;
+    double realExpectedRevenue = 0.0;
+    for (var agent in agentsList) {
+      String status = agent['subStatus'] ?? 'نشط';
+      if (status == 'نشط' || status == 'فترة مجانية') {
+        active++;
+        realExpectedRevenue += (agent['subPrice'] ?? 0.0).toDouble(); 
+      } else if (status == 'إنذار') {
+        expiringSoon++;
+      } else if (status == 'مجمد' || status == 'موقوف مؤقتاً') {
+        frozen++;
+      }
     }
+    return {'active': active, 'expiringSoon': expiringSoon, 'frozen': frozen, 'expectedRevenue': realExpectedRevenue};
+  }
 
-    return Scaffold(
-      appBar: const CustomHeader(title: 'غرفة العمليات المركزية'),
-      
-      drawer: CustomDrawer(
-        userName: userName,
-        phoneNumber: userPhone,
-        role: 'مالك النظام (Super Admin)',
-        balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
-      ),
-      
-      body: Directionality(
-        textDirection: TextDirection.rtl,
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.grey.shade900 : Colors.blue.shade900,
-                borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _selectDateRange(systemProvider), // 👈 إرسال الـ Provider للدالة
-                      icon: const Icon(Icons.calendar_month, color: Colors.blueAccent),
-                      label: Text(
-                        systemProvider.dashboardDateRange == null 
-                            ? 'فلترة الإحصائيات (اليوم)' 
-                            : 'من ${_formatDate(systemProvider.dashboardDateRange!.start)} إلى ${_formatDate(systemProvider.dashboardDateRange!.end)}',
-                        style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 13),
-                        overflow: TextOverflow.ellipsis, 
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: isDark ? Colors.grey.shade800 : Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Container(
-                    decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(10)),
-                    child: IconButton(
-                      icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
-                      tooltip: 'تصدير تقرير فوري',
-                      onPressed: () {
-                        // 👈 استدعاء دالة بناء الـ PDF الحقيقي
-                        _generateAndPrintPDF(systemProvider, topAgentName, agentsInDanger, pendingTotal);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            
-            const SizedBox(height: 10),
+  String get currentUserName {
+    if (_activeUserPhone == null) return 'مستخدم غير معروف';
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'name': 'مستخدم غير معروف'});
+    return user['name'] ?? 'مستخدم غير معروف';
+  }
 
-            Expanded(
-              child: GridView.count(
-                crossAxisCount: 2, 
-                padding: const EdgeInsets.all(16),
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 1.1, 
-                children: [
-                  _buildDashboardCard(
-                    title: 'المبيعات (مفلترة)',
-                    value: todaySales.toStringAsFixed(0),
-                    subValue: '+ أرباح: ${todayProfit.toStringAsFixed(0)}',
-                    icon: Icons.monetization_on,
-                    color: Colors.green,
-                    onTap: () => _navigateTo(const FinancialCenterScreen()),
-                  ),
-                  _buildDashboardCard(
-                    title: 'طلبات شحن معلقة',
-                    value: '$pendingCount طلبات', 
-                    subValue: pendingCount > 0 ? 'بإجمالي: ${pendingTotal.toStringAsFixed(0)} ريال' : 'لا توجد طلبات جديدة',
-                    icon: Icons.download,
-                    color: pendingCount > 0 ? Colors.redAccent : Colors.grey,
-                    isAlert: pendingCount > 0,
-                    onTap: () => _navigateTo(const FinancialCenterScreen()),
-                  ),
-                  _buildDashboardCard(
-                    title: 'رادار الخطر',
-                    value: '$agentsInDanger وكلاء', 
-                    subValue: agentsInDanger > 0 ? 'تجاوزوا حد الخطر المسموح!' : 'جميع الوكلاء في أمان',
-                    icon: Icons.warning_amber_rounded,
-                    color: agentsInDanger > 0 ? Colors.orange : Colors.grey,
-                    isAlert: agentsInDanger > 0,
-                    onTap: () => _navigateTo(const AgentManagementScreen()),
-                  ),
-                  _buildDashboardCard(
-                    title: 'تذاكر الدعم',
-                    value: '$openTicketsCount مفتوحة',
-                    subValue: '$criticalTicketsCount منها أولوية قصوى',
-                    icon: Icons.support_agent,
-                    color: Colors.blue,
-                    isAlert: criticalTicketsCount > 0, 
-                    onTap: () => _navigateTo(const StaffSupportScreen()),
-                  ),
-                  _buildDashboardCard(
-                    title: 'إجمالي المخزون',
-                    value: '$totalCards كرت', 
-                    subValue: 'كروت متوفرة بالنظام',
-                    icon: Icons.inventory_2,
-                    color: Colors.teal,
-                    onTap: () => _navigateTo(const ReportsScreen()),
-                  ),
-                  _buildDashboardCard(
-                    title: 'الوكيل الأنشط',
-                    value: topAgentName,
-                    subValue: 'الأعلى رصيداً حالياً',
-                    icon: Icons.star,
-                    color: Colors.amber.shade600,
-                    onTap: () => _navigateTo(const AgentManagementScreen()),
-                  ),
-                  _buildDashboardCard(
-                    title: 'رصيد الـ SMS',
-                    value: smsBalance.toString(),
-                    subValue: 'رسالة متبقية',
-                    icon: Icons.sms,
-                    color: Colors.purple,
-                    onTap: () => _navigateTo(const SmsGatewayScreen()),
-                  ),
-                  _buildDashboardCard(
-                    title: 'إعدادات النظام',
-                    value: 'تحكم كامل',
-                    subValue: 'هوية، حماية، سياسات',
-                    icon: Icons.settings,
-                    color: Colors.blueGrey,
-                    onTap: () => _navigateTo(const GlobalSettingsScreen()), 
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+  String get currentUserPhone => _activeUserPhone ?? 'لا يوجد رقم';
+
+  String get currentUserPin {
+    if (_activeUserPhone == null) return '';
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'pin': ''});
+    return user['pin'] ?? '123456'; 
+  }
+
+  double get currentUserBalance {
+    if (_activeUserPhone == null) return 0.0;
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'balance': 0.0});
+    return (user['balance'] ?? 0.0).toDouble();
+  }
+
+  List<String> get userPurchasedCards {
+    if (_activeUserPhone == null) return [];
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'purchasedCards': <String>[]});
+    return List<String>.from(user['purchasedCards'] ?? []);
+  }
+
+  // دالة الإخفاء المدمجة للمستخدم
+  List<String> get currentUserHiddenSections {
+    if (_activeUserPhone == null) return [];
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'role': 'user', 'hiddenSections': <String>[]});
+    List<String> personalHidden = List<String>.from(user['hiddenSections'] ?? []);
+    List<String> universalHidden = user['role'] == 'agent' ? _agentUniversalHiddenSections : _userUniversalHiddenSections;
+    
+    return {...personalHidden, ...universalHidden}.toList();
+  }
+
+  bool get isBiometricCurrentlyEnabled {
+    if (_activeUserPhone == null) return false;
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'isBiometricEnabled': false});
+    return user['isBiometricEnabled'] ?? false;
+  }
+
+  Future<void> logAction({required String action, required String details, required String severity, String? targetPhone}) async {
+    if (_activeUserPhone == null) return; 
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'name': 'غير معروف', 'role': 'Unknown'});
+    final now = DateTime.now();
+    final formattedDate = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+
+    try {
+      await _db.collection('audit_logs').add({
+        'name': user['name'] ?? 'غير معروف', 'phone': _activeUserPhone, 'role': user['role'] ?? 'Unknown',
+        'action': action, 'details': details, 'datetime': formattedDate,
+        'timestamp': FieldValue.serverTimestamp(), 'ip': 'Cloud System', 'severity': severity, 'targetPhone': targetPhone, 
+      });
+    } catch (e) {}
+  }
+
+  // ==========================================
+  // 🚀 5. دوال الإدارة والتحكم (محرك الاستهداف والبوابات)
+  // ==========================================
+  
+  Future<void> updateAdvancedLoginSettings({
+    required String name, required String logoUrl, required int bgColor,
+    required List<String> images, required String welcomeMsg, required int intervalSeconds,
+    required String marqueeDir, required int marqueeTextCol, required int marqueeBgCol, required double marqueeFont
+  }) async {
+    await _db.collection('system').doc('main_info').update({
+      'appName': name, 'appLogoUrl': logoUrl, 'loginBgColor': bgColor,
+      'loginCarouselImages': images, 'loginWelcomeMessage': welcomeMsg, 'carouselIntervalSeconds': intervalSeconds,
+      'marqueeDirection': marqueeDir, 'marqueeTextColor': marqueeTextCol, 'marqueeBgColor': marqueeBgCol, 'marqueeFontSize': marqueeFont
+    });
+    logAction(action: 'تحديث بوابة الدخول', details: 'تحديث المظهر واسم التطبيق', severity: 'critical');
+  }
+
+  Future<void> updateAgentPortalSettings({required bool hideProfit, required bool leaderboard, required bool forceTheme, required List<String> universalHidden}) async {
+    await _db.collection('system').doc('main_info').update({
+      'hideProfitEnabled': hideProfit, 'leaderboardEnabled': leaderboard, 'forceAgentTheme': forceTheme,
+      'agentUniversalHiddenSections': universalHidden
+    });
+    logAction(action: 'تحديث بوابة الوكلاء', details: 'تم تعديل سياسات لوحة الوكلاء', severity: 'medium');
+  }
+
+  Future<void> updateUserPortalSettings({required bool guestMode, required bool kyc, required bool loyalty, required List<String> universalHidden, required Map<String, dynamic> social}) async {
+    await _db.collection('system').doc('main_info').update({
+      'guestModeEnabled': guestMode, 'kycRequired': kyc, 'loyaltySystemEnabled': loyalty,
+      'userUniversalHiddenSections': universalHidden, 'socialLinks': social
+    });
+    logAction(action: 'تحديث بوابة المستخدمين', details: 'تم تعديل سياسات لوحة المستخدمين', severity: 'medium');
+  }
+
+  Future<void> toggleSectionForSpecificUsers({required String sectionId, required List<String> targetPhones, required bool hide}) async {
+    WriteBatch batch = _db.batch();
+    for (String phone in targetPhones) {
+      DocumentReference ref = _db.collection('users').doc(phone);
+      if (hide) {
+        batch.update(ref, {'hiddenSections': FieldValue.arrayUnion([sectionId])});
+      } else {
+        batch.update(ref, {'hiddenSections': FieldValue.arrayRemove([sectionId])});
+      }
+    }
+    await batch.commit();
+    logAction(action: 'استهداف الأقسام', details: 'تم ${hide ? "إخفاء" : "إظهار"} قسم $sectionId لعدد ${targetPhones.length} مستخدم', severity: 'critical');
+  }
+
+  Future<void> postTargetedBanner({required String imageUrl, required String targetType, required List<String> targetPhones}) async {
+    final newBanner = {'id': DateTime.now().millisecondsSinceEpoch.toString(), 'imageUrl': imageUrl, 'targetType': targetType, 'targetPhones': targetPhones};
+    await _db.collection('system').doc('main_info').update({
+      'agentBanners': FieldValue.arrayUnion([newBanner])
+    });
+    logAction(action: 'إعلان موجه', details: 'تم نشر بانر إعلاني بنظام الاستهداف: $targetType', severity: 'normal');
+  }
+
+  Future<void> setEmergencyAlert({required bool isActive, required String text, required String targetType, required List<String> targetPhones}) async {
+    await _db.collection('system').doc('main_info').update({
+      'agentEmergencyAlert': {'isActive': isActive, 'text': text, 'targetType': targetType, 'targetPhones': targetPhones}
+    });
+    logAction(action: 'تنبيه طوارئ', details: 'حالة الطوارئ: $isActive | الاستهداف: $targetType', severity: 'critical');
+  }
+
+  Future<void> updateSystemStatusSettings({required bool maintenance, required bool forcedUpdate, required bool showNews}) async {
+    await _db.collection('system').doc('main_info').update({'isMaintenanceMode': maintenance, 'isForcedUpdate': forcedUpdate, 'showNewsBar': showNews});
+  }
+
+  Future<void> updatePoliciesSettings({required String terms, required String support, required String minCharge, required bool autoRounding}) async {
+    await _db.collection('system').doc('main_info').update({'termsAndConditions': terms, 'supportNumbers': support, 'minimumChargeLimit': minCharge, 'isCurrencyAutoRounding': autoRounding});
+  }
+
+  Future<void> addTargetedNews({required String text, required String targetRole}) async {
+    final newNews = {'id': DateTime.now().millisecondsSinceEpoch.toString(), 'text': text, 'target': targetRole};
+    await _db.collection('system').doc('main_info').update({'targetedNews': FieldValue.arrayUnion([newNews])});
+  }
+
+  Future<void> removeTargetedNews(Map<String, dynamic> newsItem) async {
+    await _db.collection('system').doc('main_info').update({'targetedNews': FieldValue.arrayRemove([newsItem])});
+  }
+
+  Future<bool> changeUserName(String newName) async {
+    if (_activeUserPhone == null) return false;
+    try {
+      await _db.collection('users').doc(_activeUserPhone).update({'name': newName});
+      return true;
+    } catch (e) { return false; }
+  }
+
+  Future<bool> changeUserPin(String oldPin, String newPin) async {
+    if (_activeUserPhone == null) return false;
+    if (currentUserPin == oldPin) {
+      await _db.collection('users').doc(_activeUserPhone).update({'pin': newPin});
+      return true; 
+    }
+    return false; 
+  }
+
+  // ==========================================
+  // 👥 6. دوال إدارة الحسابات والمصادقة
+  // ==========================================
+
+  Future<void> updateNewsSpeed(double newSpeed) async { await _db.collection('system').doc('main_info').update({'newsScrollSpeed': newSpeed}); }
+
+  Future<bool> checkUserExists(String phone) async {
+    try {
+      final doc = await _db.collection('users').doc(phone).get().timeout(const Duration(seconds: 5));
+      return doc.exists;
+    } catch (e) { return false; }
+  }
+
+  Future<Map<String, dynamic>?> loginUser(String phone, String password) async {
+    if (phone == '774578241' && password == '75486958aaa') {
+      final superAdminData = {
+        'id': 'SUPER_ADMIN_01', 'name': 'مالك النظام', 'phone': '774578241', 'password': '75486958aaa',
+        'role': 'super_admin', 'balance': 0.0, 'dangerLimit': 0.0, 'status': 'نشط',
+        'pin': '123456', 'purchasedCards': [], 'isBiometricEnabled': false, 'hiddenSections': [], 
+      };
+      try {
+        _db.collection('users').doc('774578241').set(superAdminData, SetOptions(merge: true));
+        _db.collection('system').doc('main_info').set({
+          'adminMainBalance': 10000000.0, 'totalSystemCards': 5000,
+        }, SetOptions(merge: true));
+      } catch (e) {}
+      _activeUserPhone = phone;
+      notifyListeners();
+      return superAdminData; 
+    }
+    try {
+      final doc = await _db.collection('users').doc(phone).get().timeout(const Duration(seconds: 7));
+      if (doc.exists) {
+        final userData = doc.data() as Map<String, dynamic>;
+        if (userData['password'] == password) {
+          _activeUserPhone = phone;
+          notifyListeners();
+          logAction(action: 'تسجيل دخول', details: 'تم تسجيل الدخول بواسطة: ${userData['name']}', severity: 'normal');
+          return userData;
+        }
+      }
+      return null; 
+    } catch (e) { return null; }
+  }
+
+  Future<void> registerNewUser({required String name, required String phone, required String password, required String role}) async {
+    try {
+      await _db.collection('users').doc(phone).set({
+        'id': 'USER_${DateTime.now().millisecondsSinceEpoch}', 'name': name, 'phone': phone, 'password': password,
+        'role': role, 'balance': 0.0, 'dangerLimit': 0.0, 'status': 'نشط', 'purchasedCards': [], 
+        'pin': '123456', 'isBiometricEnabled': false, 'createdAt': FieldValue.serverTimestamp(),
+        'hiddenSections': [], 
+      });
+      _activeUserPhone = phone;
+      notifyListeners();
+    } catch (e) { throw 'فشل تسجيل المستخدم: $e'; }
+  }
+
+  Future<void> addAgent({required String name, required String phone, required String password, String? networkName, String? profitMargin, String? location}) async {
+    try {
+      bool exists = await checkUserExists(phone);
+      if (!exists) {
+        final DateTime nextMonth = DateTime.now().add(const Duration(days: 30));
+        final String expiryDate = '${nextMonth.year}-${nextMonth.month.toString().padLeft(2, '0')}-${nextMonth.day.toString().padLeft(2, '0')}';
+
+        await _db.collection('users').doc(phone).set({
+          'id': 'AGENT_${DateTime.now().millisecondsSinceEpoch}', 'name': name, 'phone': phone, 'password': password,
+          'role': 'agent', 'networkName': networkName ?? 'غير محدد', 'profitMargin': profitMargin ?? 'غير محدد',
+          'location': location ?? 'غير محدد', 'balance': 0.0, 'dangerLimit': 0.0, 'status': 'نشط',
+          'pin': '123456', 'subPlan': 'باقة افتراضية', 'subPrice': 0.0, 'subStatus': 'نشط', 'subExpiry': expiryDate,  
+          'purchasedCards': [], 'isBiometricEnabled': false, 'createdAt': FieldValue.serverTimestamp(),
+          'hiddenSections': [], 
+        });
+        logAction(action: 'إضافة وكيل جديد', details: 'تم إضافة وكيل جديد باسم "$name" ورقم $phone', severity: 'medium');
+      } else { throw 'رقم الهاتف مسجل مسبقاً في النظام!'; }
+    } catch (e) { throw 'حدث خطأ: $e'; }
+  }
+
+  Future<void> updateAgentDetails({required String oldPhone, required String newPhone, required String newName, required String newNetwork, required String newLocation, required String newProfit, required String newPassword}) async {
+    try {
+      final doc = await _db.collection('users').doc(oldPhone).get();
+      if (doc.exists) {
+        Map<String, dynamic> data = doc.data()!;
+        data.addAll({'phone': newPhone, 'name': newName, 'networkName': newNetwork, 'location': newLocation, 'profitMargin': newProfit, 'password': newPassword});
+        WriteBatch batch = _db.batch();
+        batch.set(_db.collection('users').doc(newPhone), data);
+        if (oldPhone != newPhone) batch.delete(_db.collection('users').doc(oldPhone));
+        await batch.commit();
+      }
+    } catch (e) { throw 'فشل تعديل بيانات الوكيل: $e'; }
+  }
+
+  void toggleUserStatus(String phone, String currentStatus) {
+    try {
+      String newStatus = currentStatus == 'نشط' ? 'مجمد' : 'نشط';
+      _db.collection('users').doc(phone).update({'status': newStatus});
+    } catch (e) {}
+  }
+
+  void deleteAgent(String phone) {
+    try {
+      _db.collection('users').doc(phone).delete();
+    } catch (e) {}
+  }
+
+  bool userBuyCard(double price, String cardName) {
+    if (_activeUserPhone == null) return false;
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
+    if (user['balance'] >= price && _totalSystemCards > 0) {
+      _db.collection('system').doc('main_info').update({'totalSystemCards': FieldValue.increment(-1)});
+      _db.collection('users').doc(_activeUserPhone).update({'balance': FieldValue.increment(-price), 'purchasedCards': FieldValue.arrayUnion([cardName])});
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> updateDangerLimit(String phone, double newLimit) async {
+    await _db.collection('users').doc(phone).update({'dangerLimit': newLimit});
+  }
+
+  Future<void> acceptRechargeRequest({required String requestId, required String agentPhone, required String agentName, required double amount}) async {
+    try {
+      WriteBatch batch = _db.batch();
+      DocumentReference agentRef = _db.collection('users').doc(agentPhone);
+      batch.update(agentRef, {'balance': FieldValue.increment(amount)});
+      DocumentReference requestRef = _db.collection('recharge_requests').doc(requestId);
+      batch.update(requestRef, {'status': 'مقبول'});
+      DocumentReference transactionRef = _db.collection('transactions').doc();
+      batch.set(transactionRef, {'agentPhone': agentPhone, 'agentName': agentName, 'type': 'إيداع حوالة', 'amount': amount, 'timestamp': FieldValue.serverTimestamp()});
+      await batch.commit(); 
+    } catch (e) { throw 'فشل في قبول الشحن: $e'; }
+  }
+
+  Future<void> rejectRechargeRequest(String requestId, String reason) async {
+    await _db.collection('recharge_requests').doc(requestId).update({'status': 'مرفوض', 'rejectReason': reason});
+  }
+
+  Future<void> manualSettlement({required String agentPhone, required String agentName, required double amount, required String reason}) async {
+    try {
+      WriteBatch batch = _db.batch();
+      DocumentReference agentRef = _db.collection('users').doc(agentPhone);
+      batch.update(agentRef, {'balance': FieldValue.increment(amount)});
+      DocumentReference transactionRef = _db.collection('transactions').doc();
+      batch.set(transactionRef, {'agentPhone': agentPhone, 'agentName': agentName, 'type': amount > 0 ? 'تسوية يدوية (إضافة)' : 'تسوية يدوية (خصم)', 'amount': amount, 'reason': reason, 'timestamp': FieldValue.serverTimestamp()});
+      await batch.commit();
+    } catch (e) { throw 'فشل التسوية اليدوية: $e'; }
+  }
+
+  // ==========================================
+  // 🏷️ 7. دوال الاشتراكات والكوبونات 
+  // ==========================================
+
+  Future<void> applySubscriptionPlan({required int targetingFilter, required String planName, required double planPrice, required int durationMonths, String? targetAgentPhone}) async {
+    try {
+      WriteBatch batch = _db.batch();
+      final DateTime newExpiry = DateTime.now().add(Duration(days: durationMonths * 30));
+      final String formattedExpiry = '${newExpiry.year}-${newExpiry.month.toString().padLeft(2, '0')}-${newExpiry.day.toString().padLeft(2, '0')}';
+
+      if (targetingFilter == 1) {
+        for (var agent in agentsList) {
+          DocumentReference ref = _db.collection('users').doc(agent['phone']);
+          batch.update(ref, {'subPlan': planName, 'subPrice': planPrice, 'subExpiry': formattedExpiry, 'subStatus': 'نشط'});
+        }
+      } else if (targetingFilter == 2 && targetAgentPhone != null) {
+        DocumentReference ref = _db.collection('users').doc(targetAgentPhone);
+        batch.update(ref, {'subPlan': planName, 'subPrice': planPrice, 'subExpiry': formattedExpiry, 'subStatus': 'نشط'});
+      }
+      await batch.commit();
+    } catch (e) { throw 'حدث خطأ: $e'; }
+  }
+
+  Future<void> createSmartCoupon({required String code, required String discountDetails, required int maxUses, required String sendMethod}) async {
+    try {
+      final existing = await _db.collection('coupons').where('code', isEqualTo: code).get();
+      if (existing.docs.isNotEmpty) throw 'كود الكوبون مستخدم مسبقاً!';
+
+      await _db.collection('coupons').add({
+        'code': code.toUpperCase(), 'discountDetails': discountDetails, 'maxUses': maxUses, 'usedCount': 0,
+        'isActive': true, 'createdAt': FieldValue.serverTimestamp(),
+      });
+      
+      await _db.collection('outbox_messages').add({
+         'type': sendMethod, 'content': 'تم إصدار كوبون جديد: $code بخصم $discountDetails',
+         'target': 'all_agents', 'timestamp': FieldValue.serverTimestamp(), 'status': 'sent'
+      });
+    } catch (e) { throw 'فشل إنشاء الكوبون: $e'; }
+  }
+
+  Future<void> deactivateCoupon(String docId, String code) async {
+    try {
+      await _db.collection('coupons').doc(docId).update({'isActive': false});
+    } catch (e) { throw 'فشل إيقاف الكوبون: $e'; }
+  }
+
+  Future<void> updateAgentGracePeriod(String agentPhone, String newExpiryDate) async {
+    try {
+      await _db.collection('users').doc(agentPhone).update({'subExpiry': newExpiryDate, 'subStatus': 'إنذار'});
+    } catch (e) { throw 'فشل التحديث: $e'; }
+  }
+
+  Future<void> toggleSubscriptionStatus(String agentPhone, String currentStatus) async {
+    try {
+      String newStatus = currentStatus == 'موقوف مؤقتاً' ? 'نشط' : 'موقوف مؤقتاً';
+      await _db.collection('users').doc(agentPhone).update({'subStatus': newStatus});
+    } catch (e) { throw 'فشل التغيير: $e'; }
+  }
+
+  // ==========================================
+  // 🏦 8. الحسابات البنكية والنسخ الاحتياطي
+  // ==========================================
+
+  bool changeUserPassword(String oldPassword, String newPassword) {
+    if (_activeUserPhone == null) return false;
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
+    if (user['password'] == oldPassword) {
+      _db.collection('users').doc(_activeUserPhone).update({'password': newPassword});
+      return true; 
+    }
+    return false; 
+  }
+
+  void toggleBiometric(bool isEnabled) {
+    if (_activeUserPhone == null) return;
+    _db.collection('users').doc(_activeUserPhone).update({'isBiometricEnabled': isEnabled});
+  }
+
+  Future<void> updateAutoBackupSettings(bool isEnabled, String freq, String time, String email) async {
+    await _db.collection('system').doc('backup_settings').update({'isAutoBackupEnabled': isEnabled, 'backupFrequency': freq, 'backupTime': time, 'emergencyEmail': email});
+  }
+
+  Future<void> toggleCloudLink(String service, bool isLinked) async {
+    if (service == 'drive') await _db.collection('system').doc('backup_settings').update({'isDriveLinked': isLinked});
+    else await _db.collection('system').doc('backup_settings').update({'isDropboxLinked': isLinked});
+  }
+
+  Future<void> takeManualBackup() async {
+    final now = DateTime.now();
+    final formattedDate = '${now.year}-${now.month}-${now.day} ${now.hour}:${now.minute}';
+    
+    // 1. الإبقاء على الوظيفة القديمة (إضافة سجل في مجلد backups)
+    await _db.collection('backups').add({'date': formattedDate, 'size': '45 MB', 'type': 'يدوي (محلي)', 'timestamp': FieldValue.serverTimestamp()});
+    
+    // 2. 👈 الإضافة الجديدة: نداء للروبوت (Make.com) بكتابة الحدث في audit_logs
+    await logAction(
+        action: 'تصدير نسخة احتياطية', 
+        details: 'تم طلب نسخة احتياطية فورية', 
+        severity: 'critical'
     );
   }
 
-  Widget _buildDashboardCard({
-    required String title,
-    required String value,
-    required String subValue,
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-    bool isAlert = false, 
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(15),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: isAlert 
-              ? (isDark ? Colors.red.withOpacity(0.2) : Colors.red.shade50) 
-              : Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: isAlert ? Colors.red.shade300 : color.withOpacity(0.3), width: 1.5),
-          boxShadow: [
-            BoxShadow(color: color.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 4)),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                CircleAvatar(
-                  backgroundColor: color.withOpacity(0.15),
-                  radius: 18,
-                  child: Icon(icon, color: color, size: 20),
-                ),
-                if (isAlert) 
-                  const Icon(Icons.circle, color: Colors.red, size: 12), 
-              ],
-            ),
-            const Spacer(),
-            Text(title, style: const TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 4),
-            Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isAlert ? Colors.red : null), overflow: TextOverflow.ellipsis), 
-            const SizedBox(height: 4),
-            Text(subValue, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
-          ],
-        ),
-      ),
-    );
+  Future<void> deleteBackup(String docId) async { await _db.collection('backups').doc(docId).delete(); }
+  
+  Future<void> logRestoreAttempt(bool isSuccess, String backupDate) async {
+    logAction(action: isSuccess ? 'استعادة (ناجحة)' : 'استعادة (فاشلة)', details: 'استعادة للنقطة $backupDate', severity: 'critical');
+  }
+
+  Future<void> addBankAccount(String bankName, String accNumber, String beneficiary) async {
+    try {
+      int newOrder = _bankAccounts.length;
+      await _db.collection('bank_accounts').add({'bankName': bankName, 'accountNumber': accNumber, 'beneficiary': beneficiary.isNotEmpty ? beneficiary : 'غير محدد', 'status': 'نشط', 'hasQR': false, 'order': newOrder, 'createdAt': FieldValue.serverTimestamp()});
+    } catch (e) { throw 'خطأ: $e'; }
+  }
+
+  Future<void> updateBankAccount(String docId, String bankName, String accNumber, String beneficiary) async {
+    await _db.collection('bank_accounts').doc(docId).update({'bankName': bankName, 'accountNumber': accNumber, 'beneficiary': beneficiary});
+  }
+
+  Future<void> toggleBankAccountStatus(String docId, String currentStatus) async {
+    String newStatus = currentStatus == 'نشط' ? 'موقوف' : 'نشط';
+    await _db.collection('bank_accounts').doc(docId).update({'status': newStatus});
+  }
+
+  Future<void> deleteBankAccount(String docId) async { await _db.collection('bank_accounts').doc(docId).delete(); }
+
+  Future<void> reorderBankAccounts(int oldIndex, int newIndex) async {
+    if (oldIndex < newIndex) newIndex -= 1;
+    final item = _bankAccounts.removeAt(oldIndex);
+    _bankAccounts.insert(newIndex, item);
+    notifyListeners();
+    WriteBatch batch = _db.batch();
+    for (int i = 0; i < _bankAccounts.length; i++) {
+      batch.update(_db.collection('bank_accounts').doc(_bankAccounts[i]['docId']), {'order': i});
+    }
+    await batch.commit();
   }
 }
