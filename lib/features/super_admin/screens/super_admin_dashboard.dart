@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+// مكتبات الـ PDF
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+
 import '../../../core/providers/system_provider.dart';
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart';
@@ -20,32 +25,25 @@ class SuperAdminDashboard extends StatefulWidget {
 }
 
 class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
-  DateTimeRange? _selectedDateRange;
-
   // ==========================================
-  // دالة فتح التقويم الحقيقي 📅
+  // دالة فتح التقويم وإرسال الفلتر للعقل المدبر 📅
   // ==========================================
-  Future<void> _selectDateRange() async {
+  Future<void> _selectDateRange(SystemProvider provider) async {
     final DateTimeRange? picked = await showDateRangePicker(
       context: context,
-      initialDateRange: _selectedDateRange ?? DateTimeRange(start: DateTime.now(), end: DateTime.now()),
+      initialDateRange: provider.dashboardDateRange ?? DateTimeRange(start: DateTime.now(), end: DateTime.now()),
       firstDate: DateTime(2023), 
       lastDate: DateTime(2030),  
       helpText: 'حدد فترة الفلترة (من - إلى)',
       cancelText: 'إلغاء',
       confirmText: 'تأكيد الفلترة',
       builder: (context, child) {
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: child!,
-        );
+        return Directionality(textDirection: TextDirection.rtl, child: child!);
       },
     );
 
-    if (picked != null && picked != _selectedDateRange) {
-      setState(() {
-        _selectedDateRange = picked;
-      });
+    if (picked != null && picked != provider.dashboardDateRange) {
+      provider.setDashboardDateRange(picked); // 👈 إخبار العقل المدبر بتغيير التاريخ
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('تم تحديث الإحصائيات للفترة من ${_formatDate(picked.start)} إلى ${_formatDate(picked.end)} 📊', textDirection: TextDirection.rtl), backgroundColor: Colors.green)
       );
@@ -57,10 +55,68 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
   }
 
   void _navigateTo(Widget screen) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => screen),
+    Navigator.push(context, MaterialPageRoute(builder: (context) => screen));
+  }
+
+  // ==========================================
+  // 📄 دالة إنشاء وتصدير الـ PDF الحقيقي
+  // ==========================================
+  Future<void> _generateAndPrintPDF(SystemProvider provider, String topAgent, int agentsDanger, double pendingTotal) async {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري تجهيز تقرير الـ PDF... 📄', textDirection: TextDirection.rtl)));
+    
+    final pdf = pw.Document();
+    final arabicFont = await PdfGoogleFonts.cairoRegular();
+    final arabicFontBold = await PdfGoogleFonts.cairoBold();
+
+    String dateText = provider.dashboardDateRange == null 
+        ? 'تقرير مبيعات اليوم' 
+        : 'تقرير من: ${_formatDate(provider.dashboardDateRange!.start)} إلى ${_formatDate(provider.dashboardDateRange!.end)}';
+
+    pdf.addPage(
+      pw.Page(
+        textDirection: pw.TextDirection.rtl,
+        theme: pw.ThemeData.withFont(base: arabicFont, bold: arabicFontBold),
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Header(
+                level: 0,
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('غرفة العمليات - نظام كروت نت', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
+                    pw.Text(dateText, style: const pw.TextStyle(fontSize: 14, color: PdfColors.grey700)),
+                  ]
+                )
+              ),
+              pw.SizedBox(height: 20),
+              
+              pw.TableHelper.fromTextArray(
+                context: context,
+                border: pw.TableBorder.all(color: PdfColors.grey400, width: 1),
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey800),
+                cellAlignment: pw.Alignment.center,
+                data: <List<String>>[
+                  ['البيان', 'القيمة'],
+                  ['إجمالي المبيعات المحققة', '${provider.filteredSales.toStringAsFixed(0)} ريال'],
+                  ['إجمالي الأرباح', '${provider.filteredProfit.toStringAsFixed(0)} ريال'],
+                  ['طلبات الشحن المعلقة', '${provider.pendingRechargeRequests.length} طلبات (${pendingTotal.toStringAsFixed(0)} ريال)'],
+                  ['وكلاء في مرحلة الخطر', '$agentsDanger وكلاء'],
+                  ['الوكيل الأنشط بالفترة', topAgent],
+                  ['إجمالي تذاكر الدعم المفتوحة', '${provider.openTicketsCount} تذاكر'],
+                ],
+              ),
+              pw.SizedBox(height: 30),
+              pw.Text('تم إنشاء هذا التقرير تلقائياً بواسطة نظام Super Admin', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey)),
+            ],
+          );
+        },
+      ),
     );
+
+    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save(), name: 'KrootNet_Report_${DateTime.now().millisecondsSinceEpoch}.pdf');
   }
 
   @override
@@ -72,34 +128,30 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     // ==========================================
     final systemProvider = Provider.of<SystemProvider>(context);
     
-    // 1. بيانات المالك للقائمة الجانبية
     final adminBalance = systemProvider.adminMainBalance;
     final userName = systemProvider.currentUserName;
     final String userPhone = systemProvider.currentUserPhone;
 
-    // 2. حسابات البطاقات الديناميكية الحالية
     final totalCards = systemProvider.totalSystemCards;
     
-    // حساب طلبات الشحن
     final pendingRequests = systemProvider.pendingRechargeRequests;
     final pendingCount = pendingRequests.length;
     final double pendingTotal = pendingRequests.fold(0.0, (sum, req) => sum + ((req['amount'] ?? 0.0) as num).toDouble());
 
-    // حساب الوكلاء في خطر
     final agentsInDanger = systemProvider.agentsList.where((agent) {
       double balance = ((agent['balance'] ?? 0.0) as num).toDouble();
       double dangerLimit = ((agent['dangerLimit'] ?? 0.0) as num).toDouble();
       return balance <= dangerLimit;
     }).length;
 
-    // 3. تجهيز المتغيرات للبطاقات التي كانت ثابتة (تجهيزاً لربطها لاحقاً)
-    final double todaySales = 1250000; // TODO: جلب مبيعات اليوم من الـ Provider
-    final double todayProfit = 45000;  // TODO: جلب أرباح اليوم
-    final int openTicketsCount = 5;    // TODO: جلب عدد التذاكر المفتوحة
-    final int criticalTicketsCount = 2; // TODO: جلب عدد التذاكر الحرجة
-    final int smsBalance = 4500;       // TODO: جلب رصيد الرسائل من API الـ SMS
+    // 👈 الأرقام أصبحت تُجلب ديناميكياً من العقل المدبر
+    final double todaySales = systemProvider.filteredSales; 
+    final double todayProfit = systemProvider.filteredProfit;  
+    final int openTicketsCount = systemProvider.openTicketsCount;    
+    final int criticalTicketsCount = systemProvider.criticalTicketsCount; 
+    final int smsBalance = systemProvider.smsBalance;       
     
-    // 💡 خوارزمية ذكية لمعرفة الوكيل الأنشط برمجياً (مؤقتاً نعتبره صاحب أعلى رصيد حتى نبرمج المبيعات)
+    // خوارزمية ذكية لمعرفة الوكيل الأنشط برمجياً 
     String topAgentName = 'لا يوجد وكلاء';
     if (systemProvider.agentsList.isNotEmpty) {
       try {
@@ -109,9 +161,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
           return currBalance > nextBalance ? curr : next;
         });
         topAgentName = topAgent['name'] ?? 'وكيل غير معروف';
-      } catch (e) {
-        topAgentName = 'غير محدد';
-      }
+      } catch (e) { topAgentName = 'غير محدد'; }
     }
 
     return Scaffold(
@@ -141,14 +191,14 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: _selectDateRange,
+                      onPressed: () => _selectDateRange(systemProvider), // 👈 إرسال الـ Provider للدالة
                       icon: const Icon(Icons.calendar_month, color: Colors.blueAccent),
                       label: Text(
-                        _selectedDateRange == null 
+                        systemProvider.dashboardDateRange == null 
                             ? 'فلترة الإحصائيات (اليوم)' 
-                            : 'من ${_formatDate(_selectedDateRange!.start)} إلى ${_formatDate(_selectedDateRange!.end)}',
+                            : 'من ${_formatDate(systemProvider.dashboardDateRange!.start)} إلى ${_formatDate(systemProvider.dashboardDateRange!.end)}',
                         style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 13),
-                        overflow: TextOverflow.ellipsis, // لحماية النص من تجاوز الشاشة
+                        overflow: TextOverflow.ellipsis, 
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: isDark ? Colors.grey.shade800 : Colors.white,
@@ -164,7 +214,8 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                       icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
                       tooltip: 'تصدير تقرير فوري',
                       onPressed: () {
-                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري تصدير التقرير للفترة المحددة... 📄', textDirection: TextDirection.rtl)));
+                        // 👈 استدعاء دالة بناء الـ PDF الحقيقي
+                        _generateAndPrintPDF(systemProvider, topAgentName, agentsInDanger, pendingTotal);
                       },
                     ),
                   ),
@@ -185,9 +236,8 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                 mainAxisSpacing: 12,
                 childAspectRatio: 1.1, 
                 children: [
-                  // 1. المبيعات والأرباح
                   _buildDashboardCard(
-                    title: 'مبيعات اليوم',
+                    title: 'المبيعات (مفلترة)',
                     value: todaySales.toStringAsFixed(0),
                     subValue: '+ أرباح: ${todayProfit.toStringAsFixed(0)}',
                     icon: Icons.monetization_on,
@@ -195,7 +245,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     onTap: () => _navigateTo(const FinancialCenterScreen()),
                   ),
                   
-                  // 2. طلبات الشحن المعلقة
                   _buildDashboardCard(
                     title: 'طلبات شحن معلقة',
                     value: '$pendingCount طلبات',
@@ -206,7 +255,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     onTap: () => _navigateTo(const FinancialCenterScreen()),
                   ),
                   
-                  // 3. رادار خطر الوكلاء
                   _buildDashboardCard(
                     title: 'رادار الخطر',
                     value: '$agentsInDanger وكلاء',
@@ -217,18 +265,16 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     onTap: () => _navigateTo(const AgentManagementScreen()),
                   ),
                   
-                  // 4. تذاكر الدعم الفني
                   _buildDashboardCard(
                     title: 'تذاكر الدعم',
                     value: '$openTicketsCount مفتوحة',
                     subValue: '$criticalTicketsCount منها أولوية قصوى',
                     icon: Icons.support_agent,
                     color: Colors.blue,
-                    isAlert: criticalTicketsCount > 0, // تنبيه إذا كان هناك تذاكر حرجة
+                    isAlert: criticalTicketsCount > 0, 
                     onTap: () => _navigateTo(const StaffSupportScreen()),
                   ),
                   
-                  // 5. المخزون الكلي
                   _buildDashboardCard(
                     title: 'إجمالي المخزون',
                     value: '$totalCards كرت',
@@ -238,17 +284,15 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     onTap: () => _navigateTo(const ReportsScreen()),
                   ),
                   
-                  // 6. الوكيل الأنشط (مستخرج برمجياً)
                   _buildDashboardCard(
                     title: 'الوكيل الأنشط',
                     value: topAgentName, 
-                    subValue: 'الأعلى رصيداً حالياً', // يمكن تغييرها للمبيعات لاحقاً
+                    subValue: 'الأعلى رصيداً حالياً', 
                     icon: Icons.star,
                     color: Colors.amber.shade600,
                     onTap: () => _navigateTo(const AgentManagementScreen()),
                   ),
                   
-                  // 7. رصيد بوابات الرسائل
                   _buildDashboardCard(
                     title: 'رصيد الـ SMS',
                     value: smsBalance.toString(),
@@ -258,7 +302,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     onTap: () => _navigateTo(const SmsGatewayScreen()),
                   ),
                   
-                  // 8. الإعدادات
                   _buildDashboardCard(
                     title: 'إعدادات النظام',
                     value: 'تحكم كامل',
