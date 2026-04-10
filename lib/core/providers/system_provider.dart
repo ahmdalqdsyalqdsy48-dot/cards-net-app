@@ -73,6 +73,13 @@ class SystemProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _bankAccounts = [];
   List<Map<String, dynamic>> _coupons = [];
 
+  // ==========================================
+  // 🌟 [القسم الجديد]: المتغيرات المالية والدعم (للشاشة الرئيسية)
+  // ==========================================
+  List<Map<String, dynamic>> _salesList = []; // سيتم ربطها لاحقاً بقاعدة البيانات
+  List<Map<String, dynamic>> _supportTickets = []; // سيتم ربطها لاحقاً بقاعدة البيانات
+  int _smsBalance = 0; // رصيد الرسائل (مبدئي)
+
   SystemProvider() {
     _initDatabaseSync();
   }
@@ -124,6 +131,9 @@ class SystemProvider extends ChangeNotifier {
         if (data['agentBanners'] != null) _agentBanners = List<Map<String, dynamic>>.from(data['agentBanners']);
         if (data['targetedNews'] != null) _targetedNews = List<Map<String, dynamic>>.from(data['targetedNews']);
         
+        // جلب رصيد الـ SMS إذا تم تخزينه في main_info
+        _smsBalance = data['smsBalance'] ?? 0;
+
         notifyListeners();
       }
     });
@@ -176,6 +186,18 @@ class SystemProvider extends ChangeNotifier {
 
     _db.collection('coupons').orderBy('createdAt', descending: true).snapshots().listen((snapshot) {
       _coupons = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
+      notifyListeners();
+    });
+
+    // 🌟 استماع لجدول التذاكر (جديد)
+    _db.collection('support_tickets').snapshots().listen((snapshot) {
+      _supportTickets = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
+      notifyListeners();
+    });
+
+    // 🌟 استماع لجدول المبيعات (جديد)
+    _db.collection('sales').snapshots().listen((snapshot) {
+      _salesList = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
       notifyListeners();
     });
   }
@@ -257,6 +279,37 @@ class SystemProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get backupsList => _backupsList;
   List<Map<String, dynamic>> get bankAccounts => _bankAccounts;
   List<Map<String, dynamic>> get coupons => _coupons;
+
+  // 🌟 [القسم الجديد]: دوال القراءة للمبيعات والدعم
+  int get smsBalance => _smsBalance;
+
+  double get todaySales {
+    return _salesList.where((sale) {
+      final dateStr = sale['date'] ?? DateTime.now().toIso8601String();
+      try {
+        final date = DateTime.parse(dateStr);
+        return date.year == DateTime.now().year && date.month == DateTime.now().month && date.day == DateTime.now().day;
+      } catch (e) { return false; }
+    }).fold(0.0, (sum, sale) => sum + ((sale['amount'] ?? 0.0) as num));
+  }
+
+  double get todayProfit {
+    return _salesList.where((sale) {
+      final dateStr = sale['date'] ?? DateTime.now().toIso8601String();
+      try {
+        final date = DateTime.parse(dateStr);
+        return date.year == DateTime.now().year && date.month == DateTime.now().month && date.day == DateTime.now().day;
+      } catch (e) { return false; }
+    }).fold(0.0, (sum, sale) => sum + ((sale['profit'] ?? 0.0) as num));
+  }
+
+  int get openTicketsCount {
+    return _supportTickets.where((ticket) => ticket['status'] == 'مفتوحة').length;
+  }
+
+  int get criticalTicketsCount {
+    return _supportTickets.where((ticket) => ticket['status'] == 'مفتوحة' && ticket['priority'] == 'عالية').length;
+  }
 
   Map<String, dynamic> get subscriptionStats {
     int active = 0, expiringSoon = 0, frozen = 0;
