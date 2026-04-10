@@ -6,29 +6,75 @@ admin.initializeApp();
 
 // إعداد صلاحيات الوصول لجوجل درايف
 const auth = new google.auth.GoogleAuth({
-    scopes: ['https://www.googleapis.com/auth/drive.file'],
+    scopes: ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive'],
 });
 const drive = google.drive({ version: 'v3', auth });
 
+// ✅ تم إدراج الـ ID الخاص بمجلدك هنا بنجاح
+const DRIVE_FOLDER_ID = '1moLLVojVAaYVUAripWiUOr9dBR5RzJy0'; 
+
 /**
- * محرك النسخ الاحتياطي الآلي - يعمل كل دقيقة
+ * دالة المحرك الأساسي لرفع البيانات
+ */
+async function performBackup(db, prefix) {
+    try {
+        console.log(`[${prefix}] بدء عملية النسخ الاحتياطي...`);
+        
+        // جلب بيانات المستخدمين والعمليات (قاعدة البيانات كاملة)
+        const usersSnap = await db.collection('users').get();
+        const usersData = usersSnap.docs.map(doc => doc.data());
+        
+        const transactionsSnap = await db.collection('transactions').get();
+        const transactionsData = transactionsSnap.docs.map(doc => doc.data());
+
+        const fullData = {
+            backup_info: {
+                type: prefix,
+                timestamp: new Date().toISOString(),
+                folder_id: DRIVE_FOLDER_ID
+            },
+            data: {
+                users: usersData,
+                transactions: transactionsData
+            }
+        };
+
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Riyadh' }).replace(':', '-');
+        const dateStr = now.toISOString().split('T')[0];
+        const fileName = `NetCards_${prefix}_Backup_${dateStr}_${timeStr}.json`;
+        
+        // تنفيذ الرفع الفعلي لمجلدك في درايف
+        await drive.files.create({
+            requestBody: {
+                name: fileName,
+                mimeType: 'application/json',
+                parents: [DRIVE_FOLDER_ID]
+            },
+            media: {
+                mimeType: 'application/json',
+                body: JSON.stringify(fullData),
+            },
+        });
+
+        console.log(`✅ تم بنجاح رفع الملف: ${fileName} إلى المجلد المحدد.`);
+    } catch (error) {
+        console.error('❌ فشل في عملية الرفع:', error);
+    }
+}
+
+/**
+ * ⏰ المحرك المجدول: يعمل كل دقيقة ويفحص "ساعة المنبه"
  */
 exports.automatedBackupEngine = functions.pubsub.schedule('* * * * *')
-    .timeZone('Asia/Riyadh') // تأكد من ضبط التوقيت حسب دولتك
+    .timeZone('Asia/Riyadh')
     .onRun(async (context) => {
         const db = admin.firestore();
+        const configDoc = await db.collection('system').doc('backup_settings').get();
         
-        // 1. جلب إعدادات النسخ من قاعدة البيانات
-        const configDoc = await db.collection('system_settings').doc('backup_config').get();
-        
-        if (!configDoc.exists) {
-            console.log('إعدادات النسخ غير موجودة.');
-            return null;
-        }
+        if (!configDoc.exists) return null;
 
         const { isAutoBackupEnabled, backupTime } = configDoc.data();
-
-        // 2. الحصول على الوقت الحالي بتنسيق HH:mm (مثلاً 04:15)
         const now = new Date();
         const currentTime = now.toLocaleTimeString('en-GB', { 
             hour: '2-digit', 
@@ -36,39 +82,25 @@ exports.automatedBackupEngine = functions.pubsub.schedule('* * * * *')
             timeZone: 'Asia/Riyadh' 
         });
 
-        console.log(`الوقت الحالي: ${currentTime} | وقت النسخ المطلوب: ${backupTime}`);
-
-        // 3. التحقق من الشرط: هل التفعيل متاح وهل الوقت متطابق؟
-        if (!isAutoBackupEnabled || currentTime !== backupTime) {
-            return null;
+        // المقارنة بالدقيقة
+        if (isAutoBackupEnabled && currentTime === backupTime) {
+            await performBackup(db, 'Auto');
         }
+        return null;
+    });
 
-        console.log('بدء عملية النسخ الاحتياطي الدقيقة...');
+/**
+ * ⚡ المحرك الفوري: يستجيب لضغط الزر في التطبيق فوراً
+ */
+exports.manualBackupTrigger = functions.firestore
+    .document('system/backup_settings')
+    .onUpdate(async (change, context) => {
+        const newValue = change.after.data();
+        const previousValue = change.before.data();
 
-        try {
-            // 4. جلب البيانات (مثال لمجموعة المستخدمين)
-            const snapshot = await db.collection('users').get();
-            const allData = snapshot.docs.map(doc => doc.data());
-
-            // 5. تجهيز الملف ورفعه لجوجل درايف
-            const fileName = `Auto_Backup_${currentTime.replace(':', '-')}_${new Date().toISOString().split('T')[0]}.json`;
-            
-            await drive.files.create({
-                requestBody: {
-                    name: fileName,
-                    mimeType: 'application/json',
-                    parents: ['NetCards_Backups'] // سيتم الرفع للمجلد المخصص
-                },
-                media: {
-                    mimeType: 'application/json',
-                    body: JSON.stringify(allData),
-                },
-            });
-
-            console.log(`تم بنجاح رفع النسخة: ${fileName}`);
-        } catch (error) {
-            console.error('حدث خطأ أثناء النسخ:', error);
+        if (newValue.manualTrigger && (!previousValue.manualTrigger || newValue.manualTrigger.toMillis() !== previousValue.manualTrigger.toMillis())) {
+            const db = admin.firestore();
+            await performBackup(db, 'Manual');
         }
-
         return null;
     });
