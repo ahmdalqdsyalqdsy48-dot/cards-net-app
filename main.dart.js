@@ -61109,12 +61109,14 @@ return A.C($async$JD,r)},
 Nd(a){return this.b0r(a)},
 b0r(a){var s=0,r=A.D(t.H),q=this,p,o
 var $async$Nd=A.z(function(b,c){if(b===1)return A.A(c,r)
-for(;;)switch(s){case 0:o=q.a
-o=A.bB(o,o.gaS().ba("system")).br("main_info")
-p=A.eb(A.T(["newsScrollSpeed",a],t.K,t.X))
-p.toString
+for(;;)switch(s){case 0:q.e=a
+q.a7()
+p=q.a
+p=A.bB(p,p.gaS().ba("system")).br("main_info")
+o=A.eb(A.T(["newsScrollSpeed",a],t.K,t.X))
+o.toString
 s=2
-return A.x(o.a.bg(0,p),$async$Nd)
+return A.x(p.a.bg(0,o),$async$Nd)
 case 2:return A.B(null,r)}})
 return A.C($async$Nd,r)},
 Cq(a){return this.aPI(a)},
