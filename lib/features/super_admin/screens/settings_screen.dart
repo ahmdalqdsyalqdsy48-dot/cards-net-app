@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_colorpicker/flutter_colorpicker.dart'; // 👈 استدعاء مكتبة الألوان
+import 'package:flutter_colorpicker/flutter_colorpicker.dart'; 
+import 'package:cloud_firestore/cloud_firestore.dart'; // 👈 للتخاطب المباشر مع قاعدة البيانات
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/theme_provider.dart';
@@ -42,7 +43,7 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          title: const Text('تخصيص مظهر التطبيق', style: TextStyle(fontWeight: FontWeight.bold)),
+          title: const Text('تخصيص مظهر لوحتك الشخصية 🎨', style: TextStyle(fontWeight: FontWeight.bold)),
           content: SingleChildScrollView(
             child: ColorPicker(
               pickerColor: pickerColor,
@@ -55,13 +56,14 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
             ),
           ),
           actions: [
-            // 👈 زر استعادة الافتراضي الجديد
+            // 👈 زر استعادة الافتراضي (اللون الأبيض)
             TextButton(
               onPressed: () {
                 themeProvider.resetToDefault();
                 Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت العودة للون الرسمي الأبيض.', textDirection: TextDirection.rtl)));
               },
-              child: const Text('استعادة الافتراضي', style: TextStyle(color: Colors.grey)),
+              child: const Text('استعادة الافتراضي', style: TextStyle(color: Colors.red)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
@@ -94,8 +96,10 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
             ElevatedButton(
               onPressed: () async {
                 bool success = await systemProvider.changeUserName(nameController.text);
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(success ? 'تم تحديث الاسم بنجاح! ✅' : 'فشل التحديث'), backgroundColor: success ? Colors.green : Colors.red));
+                if(mounted){
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(success ? 'تم تحديث الاسم بنجاح! ✅' : 'فشل التحديث', textDirection: TextDirection.rtl), backgroundColor: success ? Colors.green : Colors.red));
+                }
               },
               child: const Text('حفظ'),
             ),
@@ -109,11 +113,11 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
     TextEditingController oldPass = TextEditingController();
     TextEditingController newPass = TextEditingController();
     TextEditingController confirmPass = TextEditingController();
-    bool obsOld = true, obsNew = true, obsConfirm = true; // للتحكم بأيقونة العين
+    bool obsOld = true, obsNew = true, obsConfirm = true; 
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder( // StatefulBuilder لتحديث حالة العين داخل النافذة فقط
+      builder: (context) => StatefulBuilder( 
         builder: (context, setState) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
@@ -134,15 +138,15 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
                 onPressed: () {
                   if (newPass.text != confirmPass.text) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('كلمة المرور غير متطابقة!'), backgroundColor: Colors.orange));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('كلمة المرور غير متطابقة!', textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
                     return;
                   }
                   bool success = systemProvider.changeUserPassword(oldPass.text, newPass.text);
                   Navigator.pop(context);
                   if (success) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تغيير كلمة المرور بنجاح!'), backgroundColor: Colors.green));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تغيير كلمة المرور بنجاح!', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
                   } else {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('كلمة المرور القديمة خاطئة!'), backgroundColor: Colors.red));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('كلمة المرور القديمة خاطئة!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
                   }
                 },
                 child: const Text('تأكيد التغيير', style: TextStyle(color: Colors.white)),
@@ -185,15 +189,17 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
                 onPressed: () async {
                   if (newPin.text != confirmPin.text) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرمز غير متطابق!'), backgroundColor: Colors.red));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرمز غير متطابق!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
                     return;
                   }
                   bool success = await systemProvider.changeUserPin(oldPin.text, newPin.text);
-                  Navigator.pop(context);
-                  if (success) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث رمز PIN بنجاح! ✅'), backgroundColor: Colors.green));
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('رمز PIN القديم خاطئ!'), backgroundColor: Colors.red));
+                  if(mounted){
+                    Navigator.pop(context);
+                    if (success) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث رمز PIN بنجاح! ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('رمز PIN القديم خاطئ!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                    }
                   }
                 },
                 child: const Text('تحديث الرمز', style: TextStyle(color: Colors.white)),
@@ -205,7 +211,6 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
     );
   }
 
-  // نافذة عامة لتعديل النصوص الكبيرة (مثل الشروط والأحكام)
   void _showTextEditDialog(String title, String initialValue, Function(String) onSave) {
     TextEditingController controller = TextEditingController(text: initialValue);
     showDialog(
@@ -224,6 +229,46 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
     );
   }
 
+  // 👈 نافذة خاصة ببرمجة وتعديل شريط الأخبار العلوي العام
+  void _showGlobalMarqueeEditDialog() {
+    TextEditingController marqueeCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Row(children: [Icon(Icons.campaign, color: Colors.orange), SizedBox(width: 8), Text('تعديل الشريط العلوي العام', style: TextStyle(fontSize: 15))]),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('هذا النص سيظهر في الشريط المتحرك أعلى كل الشاشات لجميع المستخدمين.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 10),
+              TextField(controller: marqueeCtrl, maxLines: 3, decoration: const InputDecoration(hintText: 'اكتب إعلانك أو ترحيبك هنا...', border: OutlineInputBorder())),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            ElevatedButton(
+              onPressed: () async {
+                if (marqueeCtrl.text.isNotEmpty) {
+                  // تحديث السيرفر ليعكس التغيير عند الجميع
+                  await FirebaseFirestore.instance.collection('system').doc('main_info').update({
+                    'announcements': [marqueeCtrl.text]
+                  });
+                  if(mounted){
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تغيير نص الشريط العلوي بنجاح!', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                  }
+                }
+              },
+              child: const Text('تطبيق وحفظ'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final systemProvider = Provider.of<SystemProvider>(context);
@@ -232,7 +277,7 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
     return Scaffold(
       appBar: const CustomHeader(title: 'إعدادات النظام الشخصية'),
       drawer: CustomDrawer(
-        userName: systemProvider.currentUserName, // 👈 قراءة حقيقية
+        userName: systemProvider.currentUserName, 
         phoneNumber: systemProvider.currentUserPhone,
         role: 'مالك النظام (Super Admin)',
         balanceOrPoints: 'أرباح النظام: ${systemProvider.adminMainBalance.toStringAsFixed(0)} ريال',
@@ -246,9 +291,9 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
               child: TabBar(
                 controller: _tabController,
                 isScrollable: true,
-                labelColor: themeProvider.primaryColor,
+                labelColor: themeProvider.primaryColor == const Color(0xFFFFFFFF) ? Colors.blueAccent : themeProvider.primaryColor,
                 unselectedLabelColor: Colors.grey,
-                indicatorColor: themeProvider.primaryColor,
+                indicatorColor: themeProvider.primaryColor == const Color(0xFFFFFFFF) ? Colors.blueAccent : themeProvider.primaryColor,
                 tabs: const [
                   Tab(icon: Icon(Icons.palette), text: 'المظهر والخطوط'),
                   Tab(icon: Icon(Icons.security), text: 'الملف والأمان'), 
@@ -275,7 +320,7 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
   }
 
   // ==========================================
-  // 1. تبويب المظهر والخطوط 🎨 (تم دمج الألوان والخطوط)
+  // 1. تبويب المظهر والخطوط 🎨 
   // ==========================================
   Widget _buildAppearanceTab(ThemeProvider themeProvider) {
     return SingleChildScrollView(
@@ -283,18 +328,18 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSectionTitle('تخصيص ألوان الواجهة'),
+          _buildSectionTitle('تخصيص ألوان الواجهة الخاصة بك'),
           const SizedBox(height: 10),
           Card(
             elevation: 2,
             child: ListTile(
-              leading: Icon(Icons.color_lens, color: themeProvider.primaryColor, size: 30),
+              leading: Icon(Icons.color_lens, color: themeProvider.primaryColor == const Color(0xFFFFFFFF) ? Colors.blue : themeProvider.primaryColor, size: 30),
               title: const Text('دائرة الألوان الاحترافية', style: TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: const Text('تخصيص لون الخلفية والنصوص بذكاء'),
+              subtitle: const Text('قم باختيار لونك المفضل ليتغير مظهر لوحتك بالكامل'),
               trailing: ElevatedButton(
                 onPressed: () => _showColorPickerDialog(context),
-                style: ElevatedButton.styleFrom(backgroundColor: themeProvider.primaryColor),
-                child: const Text('تخصيص المظهر', style: TextStyle(color: Colors.white)),
+                style: ElevatedButton.styleFrom(backgroundColor: themeProvider.primaryColor == const Color(0xFFFFFFFF) ? Colors.blue : themeProvider.primaryColor),
+                child: Text('تخصيص المظهر', style: TextStyle(color: themeProvider.adaptiveTextColor)),
               ),
             ),
           ),
@@ -337,7 +382,7 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
   }
 
   // ==========================================
-  // 2. تبويب الأمان والبيانات الشخصية 🔐 (قراءة حقيقية)
+  // 2. تبويب الأمان والبيانات الشخصية 🔐 
   // ==========================================
   Widget _buildSecurityTab(SystemProvider systemProvider) {
     return SingleChildScrollView(
@@ -361,8 +406,8 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
             child: SwitchListTile(
               secondary: const Icon(Icons.fingerprint, color: Colors.green),
               title: const Text('الدخول بالبصمة (Biometrics)'),
-              value: systemProvider.isBiometricCurrentlyEnabled, // 👈 قراءة حقيقية
-              onChanged: (val) => systemProvider.toggleBiometric(val), // 👈 حفظ حقيقي
+              value: systemProvider.isBiometricCurrentlyEnabled, 
+              onChanged: (val) => systemProvider.toggleBiometric(val), 
             ),
           ),
         ],
@@ -371,19 +416,19 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
   }
 
   // ==========================================
-  // 3. تبويب حالة النظام والصيانة 🚧 (أزرار حقيقية)
+  // 3. تبويب حالة النظام والصيانة 🚧 
   // ==========================================
   Widget _buildSystemStatusTab(SystemProvider systemProvider) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          _buildActionCard(Icons.branding_watermark, 'إعدادات واجهة الدخول', 'تعديل الصور الترحيبية المتحركة والرسالة', onTap: () {
-            // سنضيف الديالوج لاحقاً لتعديل الصور 
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سيتم فتح نافذة إدارة الوسائط قريباً')));
+          // 👈 تم إضافة زر تعديل الشريط العلوي هنا
+          _buildActionCard(Icons.article, 'تعديل نص الشريط العلوي العام', 'تغيير الخبر المتحرك في أعلى التطبيق', onTap: () {
+            _showGlobalMarqueeEditDialog();
           }),
-          _buildActionCard(Icons.newspaper, 'نشر خبر عاجل موجه', 'إرسال خبر في شريط الهيدر لفئة معينة', onTap: () {
-            _showTextEditDialog('نشر خبر موجه', '', (text) => systemProvider.addTargetedNews(text: text, targetRole: 'الكل'));
+          _buildActionCard(Icons.newspaper, 'نشر إشعار إداري داخلي', 'إرسال إشعار لمجموعات معينة', onTap: () {
+            _showTextEditDialog('إشعار إداري', '', (text) => systemProvider.addTargetedNews(text: text, targetRole: 'الكل'));
           }),
           const Divider(),
           SwitchListTile(
@@ -412,7 +457,7 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
   }
 
   // ==========================================
-  // 4. تبويب السياسات والحدود ⚖️ (إدارة حقيقية)
+  // 4. تبويب السياسات والحدود ⚖️ 
   // ==========================================
   Widget _buildPolicyTab(SystemProvider systemProvider) {
     return SingleChildScrollView(
@@ -447,7 +492,6 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
     return Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueGrey));
   }
 
-  // 👈 دالة الحقل النصي المحدثة (مع أيقونة العين)
   Widget _buildPassField(String hint, TextEditingController controller, bool isObscure, VoidCallback toggleEye, {bool isNumber = false, int? maxLength}) {
     return TextField(
       controller: controller,
@@ -459,7 +503,7 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
         labelText: hint,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
-        suffixIcon: IconButton(icon: Icon(isObscure ? Icons.visibility_off : Icons.visibility, color: Colors.grey), onPressed: toggleEye), // 👁️ أيقونة العين
+        suffixIcon: IconButton(icon: Icon(isObscure ? Icons.visibility_off : Icons.visibility, color: Colors.grey), onPressed: toggleEye), 
       ),
     );
   }
