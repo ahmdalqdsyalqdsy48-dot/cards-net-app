@@ -403,7 +403,7 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 🚀 5. دوال الإدارة والتحكم 
+  // 🚀 5. دوال الإدارة والتحكم (التحديث الاستباقي مفعل)
   // ==========================================
   
   Future<void> updateAdvancedLoginSettings({
@@ -412,12 +412,12 @@ class SystemProvider extends ChangeNotifier {
     required String marqueeDir, required int marqueeTextCol, required int marqueeBgCol, required double marqueeFont,
     required String appNameAlign, required String appNameFont, required int appNameColor,
   }) async {
-    // تحديث استباقي محلي
+    // 👈 تحديث استباقي محلي (فوري)
     _appName = name; _appLogoUrl = logoUrl; _loginBgColor = bgColor;
     _loginCarouselImages = images; _loginWelcomeMessage = welcomeMsg; _carouselIntervalSeconds = intervalSeconds;
     _marqueeDirection = marqueeDir; _marqueeTextColor = marqueeTextCol; _marqueeBgColor = marqueeBgCol; _marqueeFontSize = marqueeFont;
     _appNameAlign = appNameAlign; _appNameFont = appNameFont; _appNameColor = appNameColor;
-    notifyListeners();
+    notifyListeners(); 
 
     await _db.collection('system').doc('main_info').update({
       'appName': name, 'appLogoUrl': logoUrl, 'loginBgColor': bgColor,
@@ -429,7 +429,7 @@ class SystemProvider extends ChangeNotifier {
   }
 
   Future<void> updateAgentPortalSettings({required bool hideProfit, required bool leaderboard, required bool forceTheme, required List<String> universalHidden}) async {
-    // تحديث استباقي محلي
+    // 👈 تحديث استباقي محلي
     _hideProfitEnabled = hideProfit; _leaderboardEnabled = leaderboard; _forceAgentTheme = forceTheme; _agentUniversalHiddenSections = universalHidden;
     notifyListeners();
 
@@ -441,7 +441,7 @@ class SystemProvider extends ChangeNotifier {
   }
 
   Future<void> updateUserPortalSettings({required bool guestMode, required bool kyc, required bool loyalty, required List<String> universalHidden, required Map<String, dynamic> social}) async {
-    // تحديث استباقي محلي
+    // 👈 تحديث استباقي محلي
     _guestModeEnabled = guestMode; _kycRequired = kyc; _loyaltySystemEnabled = loyalty; _userUniversalHiddenSections = universalHidden; _socialLinks = social;
     notifyListeners();
 
@@ -481,18 +481,18 @@ class SystemProvider extends ChangeNotifier {
     logAction(action: 'تنبيه طوارئ', details: 'حالة الطوارئ: $isActive | الاستهداف: $targetType', severity: 'critical');
   }
 
-  // 👈 دالة الحالة تم إضافة التحديث الاستباقي لها لتكون فورية
   Future<void> updateSystemStatusSettings({required bool maintenance, required bool forcedUpdate, required bool showNews}) async {
+    // 👈 تحديث استباقي محلي
     _isMaintenanceMode = maintenance; _isForcedUpdate = forcedUpdate; _showNewsBar = showNews;
-    notifyListeners(); // تحديث فوري محلياً
+    notifyListeners(); 
 
     await _db.collection('system').doc('main_info').update({'isMaintenanceMode': maintenance, 'isForcedUpdate': forcedUpdate, 'showNewsBar': showNews});
   }
 
-  // 👈 دالة السياسات تم إضافة التحديث الاستباقي لها لتكون فورية
   Future<void> updatePoliciesSettings({required String terms, required String support, required String minCharge, required bool autoRounding}) async {
+    // 👈 تحديث استباقي محلي
     _termsAndConditions = terms; _supportNumbers = support; _minimumChargeLimit = minCharge; _isCurrencyAutoRounding = autoRounding;
-    notifyListeners(); // تحديث فوري محلياً
+    notifyListeners(); 
 
     await _db.collection('system').doc('main_info').update({'termsAndConditions': terms, 'supportNumbers': support, 'minimumChargeLimit': minCharge, 'isCurrencyAutoRounding': autoRounding});
   }
@@ -527,7 +527,11 @@ class SystemProvider extends ChangeNotifier {
   // 👥 6. دوال إدارة الحسابات والمصادقة
   // ==========================================
 
-  Future<void> updateNewsSpeed(double newSpeed) async { await _db.collection('system').doc('main_info').update({'newsScrollSpeed': newSpeed}); }
+  Future<void> updateNewsSpeed(double newSpeed) async { 
+    _newsScrollSpeed = newSpeed;
+    notifyListeners();
+    await _db.collection('system').doc('main_info').update({'newsScrollSpeed': newSpeed}); 
+  }
 
   Future<bool> checkUserExists(String phone) async {
     try {
