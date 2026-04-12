@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart'; 
-import 'package:cloud_firestore/cloud_firestore.dart'; // 👈 للتخاطب المباشر مع قاعدة البيانات
+import 'package:cloud_firestore/cloud_firestore.dart'; 
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/theme_provider.dart';
@@ -229,7 +229,7 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
     );
   }
 
-  // 👈 نافذة خاصة ببرمجة وتعديل شريط الأخبار العلوي العام
+  // 👈 النافذة الجديدة الخاصة ببرمجة وتعديل شريط الأخبار العلوي العام
   void _showGlobalMarqueeEditDialog() {
     TextEditingController marqueeCtrl = TextEditingController();
     showDialog(
@@ -251,7 +251,7 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
             ElevatedButton(
               onPressed: () async {
                 if (marqueeCtrl.text.isNotEmpty) {
-                  // تحديث السيرفر ليعكس التغيير عند الجميع
+                  // تحديث السيرفر ليعكس التغيير عند الجميع فوراً
                   await FirebaseFirestore.instance.collection('system').doc('main_info').update({
                     'announcements': [marqueeCtrl.text]
                   });
@@ -274,6 +274,9 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
     final systemProvider = Provider.of<SystemProvider>(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
 
+    // 👈 الذكاء اللوني: إذا كان اللون المختار هو الأبيض، استخدم الأزرق للرموز والنصوص
+    final Color safeActiveColor = themeProvider.primaryColor == const Color(0xFFFFFFFF) ? Colors.blueAccent : themeProvider.primaryColor;
+
     return Scaffold(
       appBar: const CustomHeader(title: 'إعدادات النظام الشخصية'),
       drawer: CustomDrawer(
@@ -291,9 +294,9 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
               child: TabBar(
                 controller: _tabController,
                 isScrollable: true,
-                labelColor: themeProvider.primaryColor == const Color(0xFFFFFFFF) ? Colors.blueAccent : themeProvider.primaryColor,
+                labelColor: safeActiveColor, // استخدام اللون الآمن
                 unselectedLabelColor: Colors.grey,
-                indicatorColor: themeProvider.primaryColor == const Color(0xFFFFFFFF) ? Colors.blueAccent : themeProvider.primaryColor,
+                indicatorColor: safeActiveColor,
                 tabs: const [
                   Tab(icon: Icon(Icons.palette), text: 'المظهر والخطوط'),
                   Tab(icon: Icon(Icons.security), text: 'الملف والأمان'), 
@@ -306,7 +309,7 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildAppearanceTab(themeProvider),
+                  _buildAppearanceTab(themeProvider, safeActiveColor),
                   _buildSecurityTab(systemProvider),
                   _buildSystemStatusTab(systemProvider),
                   _buildPolicyTab(systemProvider),
@@ -322,7 +325,7 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
   // ==========================================
   // 1. تبويب المظهر والخطوط 🎨 
   // ==========================================
-  Widget _buildAppearanceTab(ThemeProvider themeProvider) {
+  Widget _buildAppearanceTab(ThemeProvider themeProvider, Color safeActiveColor) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -333,13 +336,13 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
           Card(
             elevation: 2,
             child: ListTile(
-              leading: Icon(Icons.color_lens, color: themeProvider.primaryColor == const Color(0xFFFFFFFF) ? Colors.blue : themeProvider.primaryColor, size: 30),
+              leading: Icon(Icons.color_lens, color: safeActiveColor, size: 30),
               title: const Text('دائرة الألوان الاحترافية', style: TextStyle(fontWeight: FontWeight.bold)),
               subtitle: const Text('قم باختيار لونك المفضل ليتغير مظهر لوحتك بالكامل'),
               trailing: ElevatedButton(
                 onPressed: () => _showColorPickerDialog(context),
-                style: ElevatedButton.styleFrom(backgroundColor: themeProvider.primaryColor == const Color(0xFFFFFFFF) ? Colors.blue : themeProvider.primaryColor),
-                child: Text('تخصيص المظهر', style: TextStyle(color: themeProvider.adaptiveTextColor)),
+                style: ElevatedButton.styleFrom(backgroundColor: safeActiveColor),
+                child: const Text('تخصيص المظهر', style: TextStyle(color: Colors.white)),
               ),
             ),
           ),
@@ -423,7 +426,7 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // 👈 تم إضافة زر تعديل الشريط العلوي هنا
+          // 👈 تم إضافة زر تعديل الشريط العلوي هنا (ينادي الدالة الجديدة)
           _buildActionCard(Icons.article, 'تعديل نص الشريط العلوي العام', 'تغيير الخبر المتحرك في أعلى التطبيق', onTap: () {
             _showGlobalMarqueeEditDialog();
           }),
