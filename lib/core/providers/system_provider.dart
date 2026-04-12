@@ -9,7 +9,7 @@ class SystemProvider extends ChangeNotifier {
   String? _activeUserPhone; 
   double _newsScrollSpeed = 40.0; 
 
-  // 👈 [جديد]: متغيرات الصلاحيات والرتبة الحالية
+  // 👈 متغيرات الصلاحيات والرتبة الحالية
   String _currentUserRole = 'guest';
   Map<String, bool> _currentUserPermissions = {};
 
@@ -37,6 +37,11 @@ class SystemProvider extends ChangeNotifier {
   int _marqueeTextColor = 0xFFFFFFFF;
   int _marqueeBgColor = 0x4DFFC107; 
   double _marqueeFontSize = 14.0;
+  
+  // 👈 متغيرات اسم التطبيق الجديدة
+  String _appNameAlign = 'center';
+  String _appNameFont = 'Cairo';
+  int _appNameColor = 0xFF2196F3;
 
   // ==========================================
   // 💼 3. إعدادات بوابة الوكلاء (Agents Portal)
@@ -83,7 +88,7 @@ class SystemProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _salesList = []; 
   List<Map<String, dynamic>> _supportTickets = []; 
   int _smsBalance = 0; 
-  DateTimeRange? _dashboardDateRange; // لحفظ فلتر التاريخ
+  DateTimeRange? _dashboardDateRange; 
 
   SystemProvider() {
     _initDatabaseSync();
@@ -116,6 +121,11 @@ class SystemProvider extends ChangeNotifier {
         _marqueeTextColor = data['marqueeTextColor'] ?? 0xFFFFFFFF;
         _marqueeBgColor = data['marqueeBgColor'] ?? 0x4DFFC107;
         _marqueeFontSize = (data['marqueeFontSize'] ?? 14.0).toDouble();
+        
+        // 👈 جلب المتغيرات الجديدة من السيرفر
+        _appNameAlign = data['appNameAlign'] ?? 'center';
+        _appNameFont = data['appNameFont'] ?? 'Cairo';
+        _appNameColor = data['appNameColor'] ?? 0xFF2196F3;
 
         _agentUniversalHiddenSections = List<String>.from(data['agentUniversalHiddenSections'] ?? []);
         _userUniversalHiddenSections = List<String>.from(data['userUniversalHiddenSections'] ?? []);
@@ -248,6 +258,11 @@ class SystemProvider extends ChangeNotifier {
   int get marqueeTextColor => _marqueeTextColor;
   int get marqueeBgColor => _marqueeBgColor;
   double get marqueeFontSize => _marqueeFontSize;
+  
+  // 👈 Getters للمتغيرات الجديدة
+  String get appNameAlign => _appNameAlign;
+  String get appNameFont => _appNameFont;
+  int get appNameColor => _appNameColor;
 
   List<String> get agentUniversalHiddenSections => _agentUniversalHiddenSections;
   List<Map<String, dynamic>> get agentBanners => _agentBanners;
@@ -345,10 +360,9 @@ class SystemProvider extends ChangeNotifier {
 
   String get currentUserPhone => _activeUserPhone ?? 'لا يوجد رقم';
 
-  // 👈 [جديد]: دالة لفحص الصلاحيات بذكاء
   bool hasPermission(String permissionName) {
-    if (_currentUserRole == 'super_admin') return true; // المالك يرى كل شيء
-    return _currentUserPermissions[permissionName] ?? false; // الموظف يرى المسموح له فقط
+    if (_currentUserRole == 'super_admin') return true; 
+    return _currentUserPermissions[permissionName] ?? false; 
   }
 
   String get currentUserPin {
@@ -402,17 +416,21 @@ class SystemProvider extends ChangeNotifier {
   // 🚀 5. دوال الإدارة والتحكم (محرك الاستهداف والبوابات)
   // ==========================================
   
+  // 👈 الدالة المحدثة لتشمل المتغيرات الجديدة الخاصة باسم التطبيق
   Future<void> updateAdvancedLoginSettings({
     required String name, required String logoUrl, required int bgColor,
     required List<String> images, required String welcomeMsg, required int intervalSeconds,
-    required String marqueeDir, required int marqueeTextCol, required int marqueeBgCol, required double marqueeFont
+    required String marqueeDir, required int marqueeTextCol, required int marqueeBgCol, required double marqueeFont,
+    required String appNameAlign, required String appNameFont, required int appNameColor,
   }) async {
     await _db.collection('system').doc('main_info').update({
       'appName': name, 'appLogoUrl': logoUrl, 'loginBgColor': bgColor,
       'loginCarouselImages': images, 'loginWelcomeMessage': welcomeMsg, 'carouselIntervalSeconds': intervalSeconds,
-      'marqueeDirection': marqueeDir, 'marqueeTextColor': marqueeTextCol, 'marqueeBgColor': marqueeBgCol, 'marqueeFontSize': marqueeFont
+      'marqueeDirection': marqueeDir, 'marqueeTextColor': marqueeTextCol, 'marqueeBgColor': marqueeBgCol, 'marqueeFontSize': marqueeFont,
+      'appNameAlign': appNameAlign, 'appNameFont': appNameFont, 'appNameColor': appNameColor,
     });
     logAction(action: 'تحديث بوابة الدخول', details: 'تحديث المظهر واسم التطبيق', severity: 'critical');
+    notifyListeners(); // 👈 التحديث الفوري
   }
 
   Future<void> updateAgentPortalSettings({required bool hideProfit, required bool leaderboard, required bool forceTheme, required List<String> universalHidden}) async {
@@ -421,6 +439,7 @@ class SystemProvider extends ChangeNotifier {
       'agentUniversalHiddenSections': universalHidden
     });
     logAction(action: 'تحديث بوابة الوكلاء', details: 'تم تعديل سياسات لوحة الوكلاء', severity: 'medium');
+    notifyListeners(); // 👈 التحديث الفوري
   }
 
   Future<void> updateUserPortalSettings({required bool guestMode, required bool kyc, required bool loyalty, required List<String> universalHidden, required Map<String, dynamic> social}) async {
@@ -429,6 +448,7 @@ class SystemProvider extends ChangeNotifier {
       'userUniversalHiddenSections': universalHidden, 'socialLinks': social
     });
     logAction(action: 'تحديث بوابة المستخدمين', details: 'تم تعديل سياسات لوحة المستخدمين', severity: 'medium');
+    notifyListeners(); // 👈 التحديث الفوري
   }
 
   Future<void> toggleSectionForSpecificUsers({required String sectionId, required List<String> targetPhones, required bool hide}) async {
@@ -495,7 +515,7 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 👥 6. دوال إدارة الحسابات والمصادقة (محدثة لدعم الموظفين)
+  // 👥 6. دوال إدارة الحسابات والمصادقة 
   // ==========================================
 
   Future<void> updateNewsSpeed(double newSpeed) async { await _db.collection('system').doc('main_info').update({'newsScrollSpeed': newSpeed}); }
@@ -508,7 +528,6 @@ class SystemProvider extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>?> loginUser(String phone, String password) async {
-    // تصفير البيانات السابقة لضمان أمان الدخول الجديد
     _currentUserPermissions = {};
     _currentUserRole = 'guest';
 
@@ -525,7 +544,7 @@ class SystemProvider extends ChangeNotifier {
         }, SetOptions(merge: true));
       } catch (e) {}
       _activeUserPhone = phone;
-      _currentUserRole = 'super_admin'; // 👈 ضبط الرتبة للمالك
+      _currentUserRole = 'super_admin'; 
       notifyListeners();
       return superAdminData; 
     }
@@ -535,9 +554,8 @@ class SystemProvider extends ChangeNotifier {
         final userData = doc.data() as Map<String, dynamic>;
         if (userData['password'] == password) {
           _activeUserPhone = phone;
-          _currentUserRole = userData['role'] ?? 'user'; // 👈 تخزين الرتبة الحقيقية
+          _currentUserRole = userData['role'] ?? 'user'; 
 
-          // 👈 جلب صلاحيات الموظف فوراً عند نجاح الدخول
           if (_currentUserRole == 'staff' && userData['permissions'] != null) {
             _currentUserPermissions = Map<String, bool>.from(userData['permissions']);
           }
@@ -560,7 +578,7 @@ class SystemProvider extends ChangeNotifier {
         'hiddenSections': [], 
       });
       _activeUserPhone = phone;
-      _currentUserRole = role; // ضبط الرتبة عند التسجيل
+      _currentUserRole = role; 
       notifyListeners();
     } catch (e) { throw 'فشل تسجيل المستخدم: $e'; }
   }
