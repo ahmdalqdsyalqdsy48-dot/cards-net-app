@@ -5,121 +5,102 @@ class ThemeProvider extends ChangeNotifier {
   // ==========================================
   // 1. تحديد من هو المستخدم الحالي
   // ==========================================
-  String _currentRole = 'super_admin'; 
+  String _currentRole = 'guest'; 
+  String _currentUserPhone = 'default'; // 👈 مفتاح الحفظ الخاص بكل مستخدم
   late SharedPreferences _prefs; 
   bool _isInitialized = false;
 
-  // اللون الافتراضي الموحد لجميع المستخدمين عند الدخول لأول مرة
-  static const Color _defaultAppColor = Color(0xFF1565C0); 
+  // 👈 اللون الافتراضي الموحد لجميع المستخدمين عند الدخول لأول مرة (الأبيض)
+  static const Color _defaultAppColor = Color(0xFFFFFFFF); 
   
-  // 👈 (جديد) إعدادات الخط الافتراضية
-  static const String _defaultFontFamily = 'System'; // الخط الافتراضي للنظام
-  static const double _defaultFontSizeScale = 1.0; // الحجم الطبيعي 100%
+  static const String _defaultFontFamily = 'System'; 
+  static const double _defaultFontSizeScale = 1.0; 
 
   // ==========================================
-  // 2. الخزانة المخصصة الافتراضية (Role Themes)
+  // 2. الخزانة المخصصة (User Themes)
   // ==========================================
-  final Map<String, Map<String, dynamic>> _roleThemes = {
-    'super_admin': {
-      'isDark': false, 
-      'color': _defaultAppColor, 
-      'fontFamily': _defaultFontFamily, 
-      'fontSizeScale': _defaultFontSizeScale
-    },
-    'agent': {
-      'isDark': false, 
-      'color': _defaultAppColor, 
-      'fontFamily': _defaultFontFamily, 
-      'fontSizeScale': _defaultFontSizeScale
-    },
-    'user': {
-      'isDark': false, 
-      'color': _defaultAppColor, 
-      'fontFamily': _defaultFontFamily, 
-      'fontSizeScale': _defaultFontSizeScale
-    },
-  };
+  bool _isDark = false;
+  Color _color = _defaultAppColor;
+  String _fontFamily = _defaultFontFamily;
+  double _fontSizeScale = _defaultFontSizeScale;
 
   ThemeProvider() {
+    _initPrefs();
+  }
+
+  Future<void> _initPrefs() async {
+    _prefs = await SharedPreferences.getInstance();
+    _isInitialized = true;
     _loadPreferences();
   }
 
   // ==========================================
-  // ⚙️ هندسة الذاكرة المحلية (جلب وحفظ)
+  // ⚙️ هندسة الذاكرة المحلية (جلب وحفظ مخصص لكل مستخدم)
   // ==========================================
-  Future<void> _loadPreferences() async {
-    _prefs = await SharedPreferences.getInstance();
+  void _loadPreferences() {
+    if (!_isInitialized) return;
     
-    for (String role in _roleThemes.keys) {
-      bool? savedIsDark = _prefs.getBool('${role}_isDark');
-      int? savedColorValue = _prefs.getInt('${role}_color');
-      // 👈 جلب إعدادات الخطوط من الذاكرة
-      String? savedFontFamily = _prefs.getString('${role}_fontFamily');
-      double? savedFontSizeScale = _prefs.getDouble('${role}_fontSizeScale');
-
-      if (savedIsDark != null) _roleThemes[role]!['isDark'] = savedIsDark;
-      if (savedColorValue != null) _roleThemes[role]!['color'] = Color(savedColorValue);
-      if (savedFontFamily != null) _roleThemes[role]!['fontFamily'] = savedFontFamily;
-      if (savedFontSizeScale != null) _roleThemes[role]!['fontSizeScale'] = savedFontSizeScale;
-    }
-    _isInitialized = true;
+    // 👈 القراءة من الذاكرة بناءً على رقم هاتف المستخدم ليكون المظهر خاصاً به فقط
+    _isDark = _prefs.getBool('${_currentUserPhone}_isDark') ?? false;
+    int? savedColorValue = _prefs.getInt('${_currentUserPhone}_color');
+    _color = savedColorValue != null ? Color(savedColorValue) : _defaultAppColor;
+    _fontFamily = _prefs.getString('${_currentUserPhone}_fontFamily') ?? _defaultFontFamily;
+    _fontSizeScale = _prefs.getDouble('${_currentUserPhone}_fontSizeScale') ?? _defaultFontSizeScale;
+    
     notifyListeners();
   }
 
   // ==========================================
   // 3. دوال القراءة (Getters) 
   // ==========================================
-  bool get isDarkMode => _roleThemes[_currentRole]!['isDark'];
-  Color get primaryColor => _roleThemes[_currentRole]!['color'];
-  
-  // 👈 (جديد) قراءة الخطوط
-  String get fontFamily => _roleThemes[_currentRole]!['fontFamily'];
-  double get fontSizeScale => _roleThemes[_currentRole]!['fontSizeScale'];
-  
+  bool get isDarkMode => _isDark;
+  Color get primaryColor => _color;
+  String get fontFamily => _fontFamily;
+  double get fontSizeScale => _fontSizeScale;
   String get currentRole => _currentRole;
   bool get isInitialized => _isInitialized;
 
+  // 👈 (الذكاء اللوني): تحديد لون النصوص بناءً على لون الخلفية المختار
   Color get adaptiveTextColor {
-    return primaryColor.computeLuminance() > 0.45 ? Colors.black87 : Colors.white;
+    // إذا كانت الخلفية بيضاء أو فاتحة، النص يكون أسود. إذا كانت داكنة، النص أبيض.
+    return primaryColor.computeLuminance() > 0.5 ? Colors.black87 : Colors.white;
   }
 
   // ==========================================
   // 4. دوال التعديل والكتابة (Setters)
   // ==========================================
-  void setRole(String role) {
-    if (_roleThemes.containsKey(role)) {
-      _currentRole = role;
-      notifyListeners(); 
-    }
+  
+  // 👈 استدعاء هذه الدالة عند تسجيل الدخول لتفعيل مظهر المستخدم
+  void setUser(String role, String phone) {
+    _currentRole = role;
+    _currentUserPhone = phone;
+    _loadPreferences(); 
   }
 
   void toggleTheme(bool isDark) {
-    _roleThemes[_currentRole]!['isDark'] = isDark;
-    _prefs.setBool('${_currentRole}_isDark', isDark);
+    _isDark = isDark;
+    _prefs.setBool('${_currentUserPhone}_isDark', isDark);
     notifyListeners(); 
   }
 
   void changeColor(Color color) {
-    _roleThemes[_currentRole]!['color'] = color;
-    _prefs.setInt('${_currentRole}_color', color.value);
+    _color = color;
+    _prefs.setInt('${_currentUserPhone}_color', color.value);
     notifyListeners(); 
   }
 
-  // 👈 (جديد) تغيير نوع الخط
   void changeFontFamily(String font) {
-    _roleThemes[_currentRole]!['fontFamily'] = font;
-    _prefs.setString('${_currentRole}_fontFamily', font);
+    _fontFamily = font;
+    _prefs.setString('${_currentUserPhone}_fontFamily', font);
     notifyListeners();
   }
 
-  // 👈 (جديد) تغيير حجم الخط
   void changeFontSizeScale(double scale) {
-    _roleThemes[_currentRole]!['fontSizeScale'] = scale;
-    _prefs.setDouble('${_currentRole}_fontSizeScale', scale);
+    _fontSizeScale = scale;
+    _prefs.setDouble('${_currentUserPhone}_fontSizeScale', scale);
     notifyListeners();
   }
 
-  // 👈 استعادة المظهر الافتراضي بالكامل (لون + خطوط)
   void resetToDefault() {
     changeColor(_defaultAppColor);
     changeFontFamily(_defaultFontFamily);
