@@ -76,14 +76,15 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
     final bool hasNotifications = uiProvider.hasNewNotifications; 
     final String liveNews = systemProvider.announcements.isNotEmpty ? systemProvider.announcements.join('   🔴   ') : 'مرحباً بك في نظام كروت نت...';
 
-    // 👈 1. اللون الذكي: الهيدر يأخذ لون الواجهة، والأيقونات تأخذ لوناً يتناغم معه
+    // 👈 الألوان الذكية (إذا كان الهيدر أبيض، فالأيقونات والنصوص سوداء والعكس صحيح)
     final Color headerColor = isDark ? const Color(0xFF121212) : themeProvider.primaryColor;
     final Color iconTextColor = isDark ? Colors.white : themeProvider.adaptiveTextColor;
 
     return AppBar(
-      elevation: 0, // 👈 2. إزالة الظل ليندمج الهيدر مع خلفية الشاشة
+      elevation: 2, 
+      shadowColor: Colors.black12,
       backgroundColor: headerColor, 
-      iconTheme: IconThemeData(color: iconTextColor), // 👈 3. الأيقونات تتكيف ذكياً
+      iconTheme: IconThemeData(color: iconTextColor), 
       
       title: Row(
         mainAxisSize: MainAxisSize.min,
@@ -112,6 +113,7 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
         preferredSize: const Size.fromHeight(70),
         child: Column(
           children: [
+            // 👈 شريط الأخبار العلوي المتحرك
             Container(
               width: double.infinity, height: 25, color: Colors.orange.shade700, padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
               child: Row(
@@ -121,18 +123,22 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
                 ],
               ),
             ),
+            // 👈 مربع البحث الذكي
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: Container(
                 height: 35, 
-                decoration: BoxDecoration(color: isDark ? Colors.grey.shade800 : Colors.white.withOpacity(0.9), borderRadius: BorderRadius.circular(8)),
+                decoration: BoxDecoration(color: isDark ? Colors.grey.shade800 : Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)),
                 child: TextField(
-                  onChanged: (value) => uiProvider.updateSearchQuery(value), // 👈 يرسل كلمة البحث للعقل المدبر
-                  style: const TextStyle(color: Colors.black87), // نص البحث دائماً أسود ليكون واضحاً في المربع الأبيض
+                  readOnly: true, // نجعله للقراءة فقط ليفتح نافذة البحث عند النقر
+                  onTap: () {
+                     showSearch(context: context, delegate: SystemSearchDelegate());
+                  },
+                  style: const TextStyle(color: Colors.black87), 
                   decoration: const InputDecoration(
-                    hintText: 'ابحث في النظام...', 
+                    hintText: 'ابحث في أقسام النظام...', 
                     hintStyle: TextStyle(color: Colors.grey, fontSize: 13), 
-                    prefixIcon: Icon(Icons.search, color: Colors.grey, size: 20), 
+                    prefixIcon: Icon(Icons.search, color: Colors.blueAccent, size: 20), 
                     border: InputBorder.none, 
                     contentPadding: EdgeInsets.symmetric(vertical: 8)
                   ),
@@ -141,6 +147,74 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 🚀 محرك البحث الذكي للنظام (Search Delegate)
+// ==========================================
+class SystemSearchDelegate extends SearchDelegate<String> {
+  // خريطة لأهم الأقسام والكلمات الدلالية
+  final Map<String, String> searchMap = {
+    'المركز المالي': 'إدارة الأموال والأرباح',
+    'التقارير': 'التقارير الشاملة والتحليلات',
+    'الوكلاء': 'إدارة الوكلاء',
+    'ميكروتيك': 'فئات كروت ميكروتيك',
+    'المبيعات': 'نقطة البيع السريعة',
+    'رسائل': 'بوابة الـ SMS',
+    'إعدادات': 'الإعدادات العامة والمظهر',
+    'إعلانات': 'إدارة الإعلانات والبنرات',
+    'النسخ الاحتياطي': 'حفظ البيانات',
+  };
+
+  @override
+  String get searchFieldLabel => 'اكتب اسم القسم للبحث...';
+
+  @override
+  List<Widget>? buildActions(BuildContext context) {
+    return [
+      IconButton(icon: const Icon(Icons.clear), onPressed: () => query = '')
+    ];
+  }
+
+  @override
+  Widget? buildLeading(BuildContext context) {
+    return IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => close(context, ''));
+  }
+
+  @override
+  Widget buildResults(BuildContext context) => _buildSearchResults();
+
+  @override
+  Widget buildSuggestions(BuildContext context) => _buildSearchResults();
+
+  Widget _buildSearchResults() {
+    final List<String> results = searchMap.keys.where((element) => element.contains(query)).toList();
+
+    if (results.isEmpty) {
+      return const Center(child: Text('لا توجد نتائج مطابقة لبحثك 🔍', style: TextStyle(fontSize: 16, color: Colors.grey)));
+    }
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: ListView.builder(
+        itemCount: results.length,
+        itemBuilder: (context, index) {
+          String key = results[index];
+          return ListTile(
+            leading: const Icon(Icons.location_on, color: Colors.blueAccent),
+            title: Text(key, style: const TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text(searchMap[key]!),
+            onTap: () {
+              // هنا يتم التوجيه بناءً على القسم المختار
+              close(context, key);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('سيتم نقلك إلى قسم: $key', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+              // ملاحظة: يمكنك لاحقاً ربط كل ضغطة بـ Navigator.push للشاشة المعنية
+            },
+          );
+        },
       ),
     );
   }
