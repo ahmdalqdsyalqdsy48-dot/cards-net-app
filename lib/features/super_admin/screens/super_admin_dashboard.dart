@@ -16,6 +16,7 @@ import 'reports_screen.dart';
 import 'agent_management_screen.dart';
 import 'sms_gateway_screen.dart';
 import 'settings_screen.dart';
+import 'banners_screen.dart'; // 👈 أضفنا استيراد شاشة الإعلانات
 
 class SuperAdminDashboard extends StatefulWidget {
   const SuperAdminDashboard({super.key});
@@ -43,7 +44,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     );
 
     if (picked != null && picked != provider.dashboardDateRange) {
-      provider.setDashboardDateRange(picked); // 👈 إخبار العقل المدبر بتغيير التاريخ
+      provider.setDashboardDateRange(picked); 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('تم تحديث الإحصائيات للفترة من ${_formatDate(picked.start)} إلى ${_formatDate(picked.end)} 📊', textDirection: TextDirection.rtl), backgroundColor: Colors.green)
       );
@@ -122,10 +123,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    // ==========================================
-    // استدعاء البيانات الحية من العقل المدبر 🧠
-    // ==========================================
     final systemProvider = Provider.of<SystemProvider>(context);
     
     final adminBalance = systemProvider.adminMainBalance;
@@ -133,7 +130,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     final String userPhone = systemProvider.currentUserPhone;
 
     final totalCards = systemProvider.totalSystemCards;
-    
     final pendingRequests = systemProvider.pendingRechargeRequests;
     final pendingCount = pendingRequests.length;
     final double pendingTotal = pendingRequests.fold(0.0, (sum, req) => sum + ((req['amount'] ?? 0.0) as num).toDouble());
@@ -144,14 +140,12 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
       return balance <= dangerLimit;
     }).length;
 
-    // 👈 الأرقام أصبحت تُجلب ديناميكياً من العقل المدبر
     final double todaySales = systemProvider.filteredSales; 
     final double todayProfit = systemProvider.filteredProfit;  
     final int openTicketsCount = systemProvider.openTicketsCount;    
     final int criticalTicketsCount = systemProvider.criticalTicketsCount; 
-    final int smsBalance = systemProvider.smsBalance;       
+    final int smsBalance = systemProvider.smsBalance;        
     
-    // خوارزمية ذكية لمعرفة الوكيل الأنشط برمجياً 
     String topAgentName = 'لا يوجد وكلاء';
     if (systemProvider.agentsList.isNotEmpty) {
       try {
@@ -170,7 +164,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
       drawer: CustomDrawer(
         userName: userName,
         phoneNumber: userPhone,
-        role: 'مالك النظام (Super Admin)',
+        role: systemProvider.hasPermission('الرئيسية (غرفة العمليات)') && adminBalance > 0 ? 'مالك النظام' : 'موظف مخصص',
         balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
       ),
       
@@ -179,8 +173,9 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
         child: Column(
           children: [
             // ==========================================
-            // شريط الفلترة العلوية بالتقويم
+            // شريط الفلترة (يظهر فقط لمن لديه صلاحية مالية أو تقارير)
             // ==========================================
+            if (systemProvider.hasPermission('المركز المالي والمحافظ') || systemProvider.hasPermission('التقارير الشاملة'))
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
@@ -191,7 +186,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: () => _selectDateRange(systemProvider), // 👈 إرسال الـ Provider للدالة
+                      onPressed: () => _selectDateRange(systemProvider), 
                       icon: const Icon(Icons.calendar_month, color: Colors.blueAccent),
                       label: Text(
                         systemProvider.dashboardDateRange == null 
@@ -214,7 +209,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                       icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
                       tooltip: 'تصدير تقرير فوري',
                       onPressed: () {
-                        // 👈 استدعاء دالة بناء الـ PDF الحقيقي
                         _generateAndPrintPDF(systemProvider, topAgentName, agentsInDanger, pendingTotal);
                       },
                     ),
@@ -226,7 +220,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
             const SizedBox(height: 10),
 
             // ==========================================
-            // شبكة البطاقات (تم دمج الأرقام الحية) 🔥
+            // شبكة البطاقات الذكية (تعتمد على الصلاحيات) 🔥
             // ==========================================
             Expanded(
               child: GridView.count(
@@ -236,6 +230,9 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                 mainAxisSpacing: 12,
                 childAspectRatio: 1.1, 
                 children: [
+                  
+                  // 1. بطاقة المبيعات
+                  if (systemProvider.hasPermission('المركز المالي والمحافظ'))
                   _buildDashboardCard(
                     title: 'المبيعات (مفلترة)',
                     value: todaySales.toStringAsFixed(0),
@@ -245,6 +242,8 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     onTap: () => _navigateTo(const FinancialCenterScreen()),
                   ),
                   
+                  // 2. بطاقة طلبات الشحن
+                  if (systemProvider.hasPermission('المركز المالي والمحافظ'))
                   _buildDashboardCard(
                     title: 'طلبات شحن معلقة',
                     value: '$pendingCount طلبات',
@@ -255,6 +254,8 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     onTap: () => _navigateTo(const FinancialCenterScreen()),
                   ),
                   
+                  // 3. بطاقة رادار الخطر
+                  if (systemProvider.hasPermission('إدارة الوكلاء الشاملة'))
                   _buildDashboardCard(
                     title: 'رادار الخطر',
                     value: '$agentsInDanger وكلاء',
@@ -265,6 +266,8 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     onTap: () => _navigateTo(const AgentManagementScreen()),
                   ),
                   
+                  // 4. بطاقة تذاكر الدعم
+                  if (systemProvider.hasPermission('إدارة الموظفين والدعم'))
                   _buildDashboardCard(
                     title: 'تذاكر الدعم',
                     value: '$openTicketsCount مفتوحة',
@@ -275,6 +278,8 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     onTap: () => _navigateTo(const StaffSupportScreen()),
                   ),
                   
+                  // 5. بطاقة المخزون
+                  if (systemProvider.hasPermission('التقارير الشاملة'))
                   _buildDashboardCard(
                     title: 'إجمالي المخزون',
                     value: '$totalCards كرت',
@@ -284,6 +289,8 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     onTap: () => _navigateTo(const ReportsScreen()),
                   ),
                   
+                  // 6. بطاقة الوكيل الأنشط
+                  if (systemProvider.hasPermission('إدارة الوكلاء الشاملة'))
                   _buildDashboardCard(
                     title: 'الوكيل الأنشط',
                     value: topAgentName, 
@@ -293,6 +300,8 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     onTap: () => _navigateTo(const AgentManagementScreen()),
                   ),
                   
+                  // 7. بطاقة الـ SMS
+                  if (systemProvider.hasPermission('بوابة رسائل الـ SMS'))
                   _buildDashboardCard(
                     title: 'رصيد الـ SMS',
                     value: smsBalance.toString(),
@@ -301,7 +310,20 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     color: Colors.purple,
                     onTap: () => _navigateTo(const SmsGatewayScreen()),
                   ),
+
+                  // 8. بطاقة الإعلانات
+                  if (systemProvider.hasPermission('الإعلانات التسويقية'))
+                  _buildDashboardCard(
+                    title: 'الإعلانات والبنرات',
+                    value: 'نشطة',
+                    subValue: 'إدارة الحملات الحية',
+                    icon: Icons.campaign,
+                    color: Colors.pink,
+                    onTap: () => _navigateTo(const BannersScreen()),
+                  ),
                   
+                  // 9. بطاقة الإعدادات (تظهر فقط للمالك أو من لديه صلاحية إعدادات)
+                  if (systemProvider.hasPermission('الإعدادات العامة'))
                   _buildDashboardCard(
                     title: 'إعدادات النظام',
                     value: 'تحكم كامل',
