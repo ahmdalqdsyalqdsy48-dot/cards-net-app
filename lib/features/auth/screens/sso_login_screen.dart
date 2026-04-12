@@ -108,7 +108,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       String userRole = userData['role']; 
       Provider.of<ThemeProvider>(context, listen: false).setRole(userRole);
       
-      // 👈 تم دمج המوظف (staff) مع المدير ليدخلا إلى نفس غرفة العمليات
+      // 👈 تم دمج الموظف (staff) ليتم توجيهه إلى لوحة العمليات المركزية
       if (userRole == 'super_admin' || userRole == 'staff') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SuperAdminDashboard()));
       } else if (userRole == 'agent') {
@@ -189,7 +189,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // 👈 استدعاء SystemProvider لقراءة الإعدادات المخصصة من الخادم
     final systemProvider = Provider.of<SystemProvider>(context);
     
     // جلب قائمة الصور والرسالة الترحيبية من الخادم
@@ -199,6 +198,8 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
         : 'أهلاً بك في نظام كروت نت - أسرع شبكة لبيع الكروت والخدمات...';
 
     return Scaffold(
+      // 👈 تطبيق لون الخلفية القادم من لوحة التحكم
+      backgroundColor: Color(systemProvider.loginBgColor),
       body: SafeArea(
         child: SingleChildScrollView(
           child: Column(
@@ -212,13 +213,11 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                     itemCount: carouselImages.isNotEmpty ? carouselImages.length : _fallbackAdColors.length,
                     itemBuilder: (context, index) {
                       if (carouselImages.isNotEmpty) {
-                        // إذا كانت هناك صور مرفوعة من المالك
                         return Image.network(carouselImages[index], fit: BoxFit.cover);
                       } else {
-                        // ألوان احتياطية في حال عدم وجود صور
                         return Container(
                           color: _fallbackAdColors[index],
-                          child: Center(child: Text('صورة إعلانية ${index + 1}', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold))),
+                          child: Center(child: Text('مساحة إعلانية ${index + 1}', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold))),
                         );
                       }
                     },
@@ -227,19 +226,30 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                 
                 // 2. الترتيب الثاني: شريط الرسالة الترحيبية المتحركة
                 Container(
-                  width: double.infinity, height: 35, color: Colors.amber.withOpacity(0.3),
-                  child: _CustomMarquee(text: welcomeMessage), // 👈 يقرأ الرسالة الحقيقية
+                  width: double.infinity, height: 35, 
+                  color: Color(systemProvider.marqueeBgColor), // 👈 لون خلفية الشريط المخصص
+                  child: _CustomMarquee(
+                    text: welcomeMessage,
+                    textColor: Color(systemProvider.marqueeTextColor), // 👈 لون نص الشريط المخصص
+                    direction: systemProvider.marqueeDirection, // 👈 اتجاه الشريط المخصص
+                  ),
                 ),
                 
                 const SizedBox(height: 20),
                 
-                // 3. الترتيب الثالث: اسم التطبيق أو الشعار
-                const Row(
+                // 3. الترتيب الثالث: اسم التطبيق أو الشعار (مربوط بالتحكم)
+                Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.wifi_tethering, size: 40, color: Colors.blueAccent),
-                    SizedBox(width: 10),
-                    Text('شبكة كروت نت', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                    if (systemProvider.appLogoUrl.isNotEmpty)
+                      Image.network(systemProvider.appLogoUrl, height: 50, errorBuilder: (c, e, s) => const Icon(Icons.wifi_tethering, size: 40, color: Colors.blueAccent))
+                    else
+                      const Icon(Icons.wifi_tethering, size: 40, color: Colors.blueAccent),
+                    const SizedBox(width: 10),
+                    Text(
+                      systemProvider.appName.isNotEmpty ? systemProvider.appName : 'شبكة كروت نت', 
+                      style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blueAccent)
+                    ),
                   ],
                 ),
                 const SizedBox(height: 30),
@@ -366,17 +376,24 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
 }
 
 // ==========================================
-// أداة الشريط المتحرك (Marquee)
+// 🚀 أداة الشريط المتحرك (Marquee) المصححة والمطورة
 // ==========================================
 class _CustomMarquee extends StatefulWidget {
   final String text;
-  const _CustomMarquee({required this.text});
+  final Color textColor;
+  final String direction;
+
+  const _CustomMarquee({
+    required this.text, 
+    required this.textColor, 
+    required this.direction
+  });
 
   @override
   State<_CustomMarquee> createState() => _CustomMarqueeState();
 }
 
-class _CustomMarqueeState extends State<_CustomMarquee> with SingleTickerProviderStateMixin {
+class _CustomMarqueeState extends State<_CustomMarquee> {
   late ScrollController _scrollController;
   Timer? _timer;
 
@@ -388,14 +405,21 @@ class _CustomMarqueeState extends State<_CustomMarquee> with SingleTickerProvide
   }
 
   void _startScrolling() {
-    _timer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
+    if (!mounted) return;
+    _timer = Timer.periodic(const Duration(milliseconds: 30), (timer) {
       if (_scrollController.hasClients) {
         double maxScroll = _scrollController.position.maxScrollExtent;
         double currentScroll = _scrollController.offset;
-        if (currentScroll >= maxScroll) {
-          _scrollController.jumpTo(0.0);
-        } else {
-          _scrollController.animateTo(currentScroll + 2.0, duration: const Duration(milliseconds: 50), curve: Curves.linear);
+        
+        // التحقق من وجود مساحة كافية للتمرير
+        if (maxScroll > 0) {
+          if (currentScroll >= maxScroll) {
+            // العودة للبداية بنعومة وسرعة
+            _scrollController.jumpTo(0.0);
+          } else {
+            // التمرير المستمر
+            _scrollController.jumpTo(currentScroll + 1.5);
+          }
         }
       }
     });
@@ -410,14 +434,22 @@ class _CustomMarqueeState extends State<_CustomMarquee> with SingleTickerProvide
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      controller: _scrollController,
-      scrollDirection: Axis.horizontal,
-      reverse: true,
-      physics: const NeverScrollableScrollPhysics(),
-      children: [
-        Center(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 50.0), child: Text(widget.text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)))),
-      ],
+    return Directionality(
+      // تحديد اتجاه النص بناءً على اختيارات الإدارة
+      textDirection: widget.direction == 'ltr' ? TextDirection.ltr : TextDirection.rtl,
+      child: SingleChildScrollView(
+        controller: _scrollController,
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(), // منع التمرير اليدوي
+        child: Padding(
+          // إضافة مساحة فارغة لخلق تأثير الدخول والخروج من الشاشة
+          padding: const EdgeInsets.symmetric(horizontal: 400.0, vertical: 6.0),
+          child: Text(
+            widget.text, 
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: widget.textColor)
+          ),
+        ),
+      ),
     );
   }
 }
