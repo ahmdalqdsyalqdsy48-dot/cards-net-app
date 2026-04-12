@@ -9,6 +9,10 @@ class SystemProvider extends ChangeNotifier {
   String? _activeUserPhone; 
   double _newsScrollSpeed = 40.0; 
 
+  // 👈 [جديد]: متغيرات الصلاحيات والرتبة الحالية
+  String _currentUserRole = 'guest';
+  Map<String, bool> _currentUserPermissions = {};
+
   // ==========================================
   // ⚙️ 1. إعدادات النظام الأساسية
   // ==========================================
@@ -65,7 +69,6 @@ class SystemProvider extends ChangeNotifier {
 
   bool _isAutoBackupEnabled = true;
   String _backupFrequency = 'يومياً';
-  // 👈 تم تغيير القيمة الافتراضية لتناسب التوقيت الرقمي
   String _backupTime = '04:00'; 
   String _emergencyEmail = '';
   bool _isDriveLinked = false;
@@ -95,7 +98,6 @@ class SystemProvider extends ChangeNotifier {
         _announcements = List<String>.from(data['announcements'] ?? ['أهلاً بك في شبكة كروت نت...']);
         _newsScrollSpeed = (data['newsScrollSpeed'] ?? 40.0).toDouble();
         
-        // إعدادات الصيانة والسياسات
         _isMaintenanceMode = data['isMaintenanceMode'] ?? false;
         _isForcedUpdate = data['isForcedUpdate'] ?? false;
         _showNewsBar = data['showNewsBar'] ?? true;
@@ -104,7 +106,6 @@ class SystemProvider extends ChangeNotifier {
         _termsAndConditions = data['termsAndConditions'] ?? '';
         _supportNumbers = data['supportNumbers'] ?? '';
 
-        // إعدادات شاشة الدخول المتقدمة
         _appName = data['appName'] ?? 'كروت نت';
         _appLogoUrl = data['appLogoUrl'] ?? '';
         _loginBgColor = data['loginBgColor'] ?? 0xFFFFFFFF;
@@ -116,7 +117,6 @@ class SystemProvider extends ChangeNotifier {
         _marqueeBgColor = data['marqueeBgColor'] ?? 0x4DFFC107;
         _marqueeFontSize = (data['marqueeFontSize'] ?? 14.0).toDouble();
 
-        // إعدادات بوابات الوكلاء والمستخدمين
         _agentUniversalHiddenSections = List<String>.from(data['agentUniversalHiddenSections'] ?? []);
         _userUniversalHiddenSections = List<String>.from(data['userUniversalHiddenSections'] ?? []);
         _hideProfitEnabled = data['hideProfitEnabled'] ?? false;
@@ -133,7 +133,6 @@ class SystemProvider extends ChangeNotifier {
         if (data['agentBanners'] != null) _agentBanners = List<Map<String, dynamic>>.from(data['agentBanners']);
         if (data['targetedNews'] != null) _targetedNews = List<Map<String, dynamic>>.from(data['targetedNews']);
         
-        // جلب رصيد SMS
         _smsBalance = data['smsBalance'] ?? 0;
 
         notifyListeners();
@@ -168,11 +167,8 @@ class SystemProvider extends ChangeNotifier {
         final data = snapshot.data()!;
         _isAutoBackupEnabled = data['isAutoBackupEnabled'] ?? true;
         _backupFrequency = data['backupFrequency'] ?? 'يومياً';
-        
-        // 👈 التعديل لتنظيف الوقت القديم وتوافقه مع السيرفر
         String rawTime = data['backupTime'] ?? '04:00';
         _backupTime = rawTime.contains(' ') ? '04:00' : rawTime;
-        
         _emergencyEmail = data['emergencyEmail'] ?? '';
         _isDriveLinked = data['isDriveLinked'] ?? false;
         _isDropboxLinked = data['isDropboxLinked'] ?? false;
@@ -195,7 +191,6 @@ class SystemProvider extends ChangeNotifier {
       notifyListeners();
     });
 
-    // المستمعات الجديدة
     _db.collection('support_tickets').snapshots().listen((snapshot) {
       _supportTickets = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
       notifyListeners();
@@ -350,6 +345,12 @@ class SystemProvider extends ChangeNotifier {
 
   String get currentUserPhone => _activeUserPhone ?? 'لا يوجد رقم';
 
+  // 👈 [جديد]: دالة لفحص الصلاحيات بذكاء
+  bool hasPermission(String permissionName) {
+    if (_currentUserRole == 'super_admin') return true; // المالك يرى كل شيء
+    return _currentUserPermissions[permissionName] ?? false; // الموظف يرى المسموح له فقط
+  }
+
   String get currentUserPin {
     if (_activeUserPhone == null) return '';
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'pin': ''});
@@ -368,13 +369,11 @@ class SystemProvider extends ChangeNotifier {
     return List<String>.from(user['purchasedCards'] ?? []);
   }
 
-  // دالة الإخفاء المدمجة للمستخدم
   List<String> get currentUserHiddenSections {
     if (_activeUserPhone == null) return [];
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'role': 'user', 'hiddenSections': <String>[]});
     List<String> personalHidden = List<String>.from(user['hiddenSections'] ?? []);
     List<String> universalHidden = user['role'] == 'agent' ? _agentUniversalHiddenSections : _userUniversalHiddenSections;
-    
     return {...personalHidden, ...universalHidden}.toList();
   }
 
@@ -496,7 +495,7 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 👥 6. دوال إدارة الحسابات والمصادقة
+  // 👥 6. دوال إدارة الحسابات والمصادقة (محدثة لدعم الموظفين)
   // ==========================================
 
   Future<void> updateNewsSpeed(double newSpeed) async { await _db.collection('system').doc('main_info').update({'newsScrollSpeed': newSpeed}); }
@@ -509,6 +508,10 @@ class SystemProvider extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>?> loginUser(String phone, String password) async {
+    // تصفير البيانات السابقة لضمان أمان الدخول الجديد
+    _currentUserPermissions = {};
+    _currentUserRole = 'guest';
+
     if (phone == '774578241' && password == '75486958aaa') {
       final superAdminData = {
         'id': 'SUPER_ADMIN_01', 'name': 'مالك النظام', 'phone': '774578241', 'password': '75486958aaa',
@@ -522,6 +525,7 @@ class SystemProvider extends ChangeNotifier {
         }, SetOptions(merge: true));
       } catch (e) {}
       _activeUserPhone = phone;
+      _currentUserRole = 'super_admin'; // 👈 ضبط الرتبة للمالك
       notifyListeners();
       return superAdminData; 
     }
@@ -531,6 +535,13 @@ class SystemProvider extends ChangeNotifier {
         final userData = doc.data() as Map<String, dynamic>;
         if (userData['password'] == password) {
           _activeUserPhone = phone;
+          _currentUserRole = userData['role'] ?? 'user'; // 👈 تخزين الرتبة الحقيقية
+
+          // 👈 جلب صلاحيات الموظف فوراً عند نجاح الدخول
+          if (_currentUserRole == 'staff' && userData['permissions'] != null) {
+            _currentUserPermissions = Map<String, bool>.from(userData['permissions']);
+          }
+
           notifyListeners();
           logAction(action: 'تسجيل دخول', details: 'تم تسجيل الدخول بواسطة: ${userData['name']}', severity: 'normal');
           return userData;
@@ -549,6 +560,7 @@ class SystemProvider extends ChangeNotifier {
         'hiddenSections': [], 
       });
       _activeUserPhone = phone;
+      _currentUserRole = role; // ضبط الرتبة عند التسجيل
       notifyListeners();
     } catch (e) { throw 'فشل تسجيل المستخدم: $e'; }
   }
@@ -721,7 +733,6 @@ class SystemProvider extends ChangeNotifier {
     _db.collection('users').doc(_activeUserPhone).update({'isBiometricEnabled': isEnabled});
   }
 
-  // 👈 الدالة المحدثة لحفظ الوقت الرقمي الدقيق
   Future<void> updateAutoBackupSettings(bool isEnabled, String freq, String time, String email) async {
     await _db.collection('system').doc('backup_settings').update({
       'isAutoBackupEnabled': isEnabled, 
@@ -736,15 +747,12 @@ class SystemProvider extends ChangeNotifier {
     else await _db.collection('system').doc('backup_settings').update({'isDropboxLinked': isLinked});
   }
 
-  // 👈 الدالة المحدثة لإطلاق الزناد اليدوي للسيرفر
   Future<void> takeManualBackup() async {
     final now = DateTime.now();
     final formattedDate = '${now.year}-${now.month}-${now.day} ${now.hour}:${now.minute}';
     
-    // 1. الإبقاء على الوظيفة القديمة
     await _db.collection('backups').add({'date': formattedDate, 'size': '45 MB', 'type': 'يدوي (محلي)', 'timestamp': FieldValue.serverTimestamp()});
     
-    // 2. إرسال أمر للروبوت الخارجي
     await _db.collection('system').doc('backup_settings').update({
       'manualTrigger': FieldValue.serverTimestamp(),
     });
