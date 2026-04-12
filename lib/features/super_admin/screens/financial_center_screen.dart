@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart' hide TextDirection; // 👈 حجبنا اتجاه النص لمنع التضارب مع فلاتر
-import 'package:pdf/pdf.dart'; // 👈 محرك الـ PDF
-import 'package:pdf/widgets.dart' as pw; // 👈 أدوات رسم الـ PDF
-import 'package:printing/printing.dart'; // 👈 للطباعة والتحميل من المتصفح
+import 'package:intl/intl.dart' hide TextDirection; 
+import 'package:pdf/pdf.dart'; 
+import 'package:pdf/widgets.dart' as pw; 
+import 'package:printing/printing.dart'; 
 
 import '../../../core/providers/system_provider.dart'; 
 import '../../../core/widgets/custom_drawer.dart';
@@ -19,7 +19,10 @@ class FinancialCenterScreen extends StatefulWidget {
 
 class _FinancialCenterScreenState extends State<FinancialCenterScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  String _searchQuery = ''; // 👈 متغير البحث الشامل
+  String _searchQuery = ''; 
+  
+  // 👈 متغيرات لمنع النقرات المزدوجة أثناء معالجة الطلبات
+  final Set<String> _processingRequests = {};
 
   @override
   void initState() {
@@ -34,137 +37,177 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
   }
 
   // ==========================================
-  // النوافذ المنبثقة لطلبات الشحن
+  // النوافذ المنبثقة لطلبات الشحن (مع حماية التحميل)
   // ==========================================
   void _acceptRequest(Map<String, dynamic> req, SystemProvider provider) async {
+    final docId = req['docId'];
+    if (_processingRequests.contains(docId)) return; // منع التكرار
+
+    setState(() => _processingRequests.add(docId)); // بدء التحميل
+
     try {
       await provider.acceptRechargeRequest(
-        requestId: req['docId'],
+        requestId: docId,
         agentPhone: req['agentPhone'],
         agentName: req['agentName'],
         amount: double.parse(req['amount'].toString()),
       );
-      if (context.mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تأكيد الشحن وإيداع المبلغ بنجاح ✅'), backgroundColor: Colors.green));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
+      }
+    } finally {
+      if (mounted) setState(() => _processingRequests.remove(docId)); // إنهاء التحميل
     }
   }
 
   void _showRejectDialog(Map<String, dynamic> req, SystemProvider provider) {
     final reasonController = TextEditingController();
+    final docId = req['docId'];
+
     showDialog(
       context: context,
-      builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: const Text('رفض طلب الشحن ❌', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('يرجى كتابة سبب الرفض (سيصل للوكيل كإشعار):'),
-              const SizedBox(height: 10),
-              TextField(
-                controller: reasonController,
-                decoration: InputDecoration(
-                  hintText: 'مثال: رقم المرجع خاطئ...',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                maxLines: 2,
+      barrierDismissible: false, // 👈 منع الإغلاق الخطأ
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          bool isRejecting = false;
+
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              title: const Text('رفض طلب الشحن ❌', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('يرجى كتابة سبب الرفض (سيصل للوكيل كإشعار):'),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: reasonController,
+                    decoration: InputDecoration(
+                      hintText: 'مثال: رقم المرجع خاطئ...',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    maxLines: 2,
+                  ),
+                ],
               ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () async {
-                await provider.rejectRechargeRequest(req['docId'], reasonController.text);
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم رفض الطلب بنجاح.'), backgroundColor: Colors.red));
-                }
-              },
-              child: const Text('تأكيد الرفض', style: TextStyle(color: Colors.white)),
+              actions: [
+                if (!isRejecting)
+                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                  onPressed: isRejecting ? null : () async {
+                    setStateDialog(() => isRejecting = true);
+                    try {
+                      await provider.rejectRechargeRequest(docId, reasonController.text);
+                      if (mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم رفض الطلب بنجاح.'), backgroundColor: Colors.red));
+                      }
+                    } catch (e) {
+                      setStateDialog(() => isRejecting = false);
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
+                    }
+                  },
+                  child: isRejecting 
+                      ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('تأكيد الرفض', style: TextStyle(color: Colors.white)),
+                ),
+              ],
             ),
-          ],
-        ),
+          );
+        }
       ),
     );
   }
 
   // ==========================================
-  // النوافذ المنبثقة للمحافظ والتسوية
+  // النوافذ المنبثقة للمحافظ والتسوية (مع التحميل)
   // ==========================================
   void _showManualSettlementDialog(Map<String, dynamic> agent, SystemProvider provider) {
-    int settlementType = 1; // 1: إضافة, 2: خصم
+    int settlementType = 1; 
     final amountController = TextEditingController();
     final reasonController = TextEditingController();
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) => Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            title: Text('تسوية يدوية لمحفظة: ${agent['name']}', style: const TextStyle(fontWeight: FontWeight.bold)),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: RadioListTile(
-                          title: const Text('إضافة 🟢', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                          value: 1,
-                          groupValue: settlementType,
-                          onChanged: (val) => setStateDialog(() => settlementType = val as int),
+        builder: (context, setStateDialog) {
+          bool isProcessing = false;
+
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              title: Text('تسوية يدوية لمحفظة: ${agent['name']}', style: const TextStyle(fontWeight: FontWeight.bold)),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: RadioListTile(
+                            title: const Text('إضافة 🟢', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                            value: 1, groupValue: settlementType,
+                            onChanged: (val) => setStateDialog(() => settlementType = val as int),
+                          ),
                         ),
-                      ),
-                      Expanded(
-                        child: RadioListTile(
-                          title: const Text('خصم 🔴', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                          value: 2,
-                          groupValue: settlementType,
-                          onChanged: (val) => setStateDialog(() => settlementType = val as int),
+                        Expanded(
+                          child: RadioListTile(
+                            title: const Text('خصم 🔴', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                            value: 2, groupValue: settlementType,
+                            onChanged: (val) => setStateDialog(() => settlementType = val as int),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  _buildTextField('المبلغ (بالريال)', Icons.money, controller: amountController, isNumber: true),
-                  const SizedBox(height: 10),
-                  _buildTextField('السبب (إجباري للتسجيل بالسجل)', Icons.edit_note, controller: reasonController),
-                ],
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    _buildTextField('المبلغ (بالريال)', Icons.money, controller: amountController, isNumber: true),
+                    const SizedBox(height: 10),
+                    _buildTextField('السبب (إجباري للسجل)', Icons.edit_note, controller: reasonController),
+                  ],
+                ),
               ),
+              actions: [
+                if (!isProcessing)
+                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+                ElevatedButton(
+                  onPressed: isProcessing ? null : () async {
+                    if (amountController.text.isEmpty || reasonController.text.isEmpty) return;
+                    setStateDialog(() => isProcessing = true);
+
+                    try {
+                      double amount = double.parse(amountController.text);
+                      if (settlementType == 2) amount = -amount; 
+
+                      await provider.manualSettlement(
+                        agentPhone: agent['phone'],
+                        agentName: agent['name'],
+                        amount: amount,
+                        reason: reasonController.text,
+                      );
+
+                      if (mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت التسوية بنجاح ✅'), backgroundColor: Colors.green));
+                      }
+                    } catch (e) {
+                      setStateDialog(() => isProcessing = false);
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
+                    }
+                  },
+                  child: isProcessing 
+                      ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('تنفيذ التسوية'),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-              ElevatedButton(
-                onPressed: () async {
-                  if (amountController.text.isEmpty || reasonController.text.isEmpty) return;
-                  double amount = double.parse(amountController.text);
-                  if (settlementType == 2) amount = -amount; // إذا كان خصم، نجعله بالسالب
-
-                  await provider.manualSettlement(
-                    agentPhone: agent['phone'],
-                    agentName: agent['name'],
-                    amount: amount,
-                    reason: reasonController.text,
-                  );
-
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت التسوية بنجاح وتحديث السجل الشامل. ✅'), backgroundColor: Colors.green));
-                  }
-                },
-                child: const Text('تنفيذ التسوية'),
-              ),
-            ],
-          ),
-        ),
+          );
+        }
       ),
     );
   }
@@ -176,7 +219,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          title: const Text('ضبط حد الخطر المخصص 🎛️', style: TextStyle(fontWeight: FontWeight.bold)),
+          title: const Text('ضبط حد الخطر 🎛️', style: TextStyle(fontWeight: FontWeight.bold)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -197,7 +240,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
             ElevatedButton(
               onPressed: () async {
                 await provider.updateDangerLimit(agent['phone'], double.parse(limitController.text));
-                if (context.mounted) {
+                if (mounted) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث حد الخطر بنجاح.')));
                 }
@@ -234,30 +277,14 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      ActionChip(label: const Text('اليوم'), onPressed: () {
-                        setStateDialog(() {
-                          startDate = DateTime.now();
-                          endDate = DateTime.now();
-                        });
-                      }),
-                      ActionChip(label: const Text('هذا الأسبوع'), onPressed: () {
-                        setStateDialog(() {
-                          startDate = DateTime.now().subtract(const Duration(days: 7));
-                          endDate = DateTime.now();
-                        });
-                      }),
-                      ActionChip(label: const Text('هذا الشهر'), onPressed: () {
-                        setStateDialog(() {
-                          startDate = DateTime(DateTime.now().year, DateTime.now().month, 1);
-                          endDate = DateTime.now();
-                        });
-                      }),
+                      ActionChip(label: const Text('اليوم'), onPressed: () => setStateDialog(() { startDate = DateTime.now(); endDate = DateTime.now(); })),
+                      ActionChip(label: const Text('أسبوع'), onPressed: () => setStateDialog(() { startDate = DateTime.now().subtract(const Duration(days: 7)); endDate = DateTime.now(); })),
+                      ActionChip(label: const Text('شهر'), onPressed: () => setStateDialog(() { startDate = DateTime(DateTime.now().year, DateTime.now().month, 1); endDate = DateTime.now(); })),
                     ],
                   ),
                   const Divider(height: 20),
                   const Text('أو حدد التاريخ يدوياً:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                   const SizedBox(height: 10),
-                  // زر تاريخ البداية
                   OutlinedButton.icon(
                     onPressed: () async {
                       final picked = await showDatePicker(context: context, initialDate: startDate ?? DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime.now());
@@ -267,7 +294,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                     label: Text(startDate == null ? 'من تاريخ (البداية)' : DateFormat('yyyy-MM-dd').format(startDate!)),
                   ),
                   const SizedBox(height: 10),
-                  // زر تاريخ النهاية
                   OutlinedButton.icon(
                     onPressed: () async {
                       final picked = await showDatePicker(context: context, initialDate: endDate ?? DateTime.now(), firstDate: startDate ?? DateTime(2020), lastDate: DateTime.now());
@@ -285,19 +311,15 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                 onPressed: () async {
                   if (startDate == null || endDate == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى تحديد فترة الكشف أولاً!'), backgroundColor: Colors.orange));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى تحديد فترة الكشف!'), backgroundColor: Colors.orange));
                     return;
                   }
-                  
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري معالجة وتوليد الـ PDF... ⏳')));
-                  
-                  // استدعاء دالة بناء الـ PDF
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري توليد الـ PDF... ⏳')));
                   await _generateAndDownloadPdf(agent, startDate!, endDate!, provider.transactionsLedger);
-                  
-                  if (context.mounted) Navigator.pop(context);
+                  if (mounted) Navigator.pop(context);
                 },
                 icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
-                label: const Text('تصدير الكشف (PDF)', style: TextStyle(color: Colors.white)),
+                label: const Text('تصدير (PDF)', style: TextStyle(color: Colors.white)),
               ),
             ],
           ),
@@ -306,10 +328,8 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     );
   }
 
-  // 🛠️ المحرك الفعلي لبناء الـ PDF باللغة العربية
   Future<void> _generateAndDownloadPdf(Map<String, dynamic> agent, DateTime start, DateTime end, List<Map<String, dynamic>> allLedger) async {
-    // 1. فلترة العمليات للوكيل وفي النطاق الزمني
-    final endInclusive = DateTime(end.year, end.month, end.day, 23, 59, 59); // لنهاية اليوم
+    final endInclusive = DateTime(end.year, end.month, end.day, 23, 59, 59); 
     final startInclusive = DateTime(start.year, start.month, start.day, 0, 0, 0);
 
     final filteredLedger = allLedger.where((t) {
@@ -319,14 +339,12 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
       return d.isAfter(startInclusive) && d.isBefore(endInclusive);
     }).toList();
 
-    // 2. تجهيز الخط العربي المجاني من جوجل لحل مشكلة المربعات
     final arabicFont = await PdfGoogleFonts.cairoRegular();
     final pdf = pw.Document();
 
-    // 3. بناء صفحات الـ PDF
     pdf.addPage(
       pw.Page(
-        textDirection: pw.TextDirection.rtl, // دعم العربي من اليمين لليسار
+        textDirection: pw.TextDirection.rtl, 
         theme: pw.ThemeData.withFont(base: arabicFont),
         build: (pw.Context context) {
           return pw.Column(
@@ -339,14 +357,13 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
               pw.Text('الفترة: من ${DateFormat('yyyy-MM-dd').format(start)} إلى ${DateFormat('yyyy-MM-dd').format(end)}'),
               pw.SizedBox(height: 20),
               
-              // بناء الجدول
               pw.TableHelper.fromTextArray(
                 context: context,
                 headerStyle: pw.TextStyle(font: arabicFont, fontWeight: pw.FontWeight.bold),
                 cellStyle: pw.TextStyle(font: arabicFont),
                 cellAlignment: pw.Alignment.center,
                 data: <List<String>>[
-                  <String>['التاريخ', 'النوع', 'المبلغ'], // صف العناوين
+                  <String>['التاريخ', 'النوع', 'المبلغ'], 
                   ...filteredLedger.map((item) {
                     DateTime date = (item['timestamp'] as Timestamp).toDate();
                     return [
@@ -369,7 +386,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
       ),
     );
 
-    // 4. فتح نافذة التحميل/الطباعة في المتصفح أو الجوال
     await Printing.sharePdf(bytes: await pdf.save(), filename: 'statement_${agent['phone']}.pdf');
   }
 
@@ -390,7 +406,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // 👈 محرك البحث الشامل الجديد
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: TextField(
@@ -439,11 +454,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     );
   }
 
-  // ==========================================
-  // التبويب الأول: طلبات شحن المحافظ الحية 📥
-  // ==========================================
   Widget _buildRechargeRequestsTab(SystemProvider provider) {
-    // فلترة الطلبات بناءً على البحث
     final requests = provider.pendingRechargeRequests.where((req) {
       final query = _searchQuery.toLowerCase();
       return (req['agentName']?.toString().toLowerCase().contains(query) ?? false) ||
@@ -458,6 +469,9 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
       itemCount: requests.length,
       itemBuilder: (context, index) {
         final req = requests[index];
+        final docId = req['docId'];
+        final isProcessing = _processingRequests.contains(docId); // 👈 فحص حالة التحميل لهذا الطلب تحديداً
+
         return Card(
           elevation: 3,
           margin: const EdgeInsets.only(bottom: 16),
@@ -471,7 +485,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(req['agentName'] ?? 'مجهول', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue)),
-                    // معالجة التاريخ السحابي
                     Text(req['timestamp'] != null ? DateFormat('yyyy-MM-dd HH:mm').format((req['timestamp'] as Timestamp).toDate()) : 'الآن', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                   ],
                 ),
@@ -483,10 +496,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                 const SizedBox(height: 10),
                 
                 OutlinedButton.icon(
-                  onPressed: () {
-                    // سيتم برمجتها لفتح رابط الـ Storage لاحقاً
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سيتم عرض صورة السند من السحابة هنا 📸')));
-                  },
+                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سيتم عرض صورة السند من السحابة هنا 📸'))),
                   icon: const Icon(Icons.image, size: 18),
                   label: const Text('عرض صورة سند التحويل'),
                   style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 40)),
@@ -497,16 +507,16 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                   children: [
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: () => _acceptRequest(req, provider),
-                        icon: const Icon(Icons.check_circle, color: Colors.white, size: 18),
-                        label: const Text('تأكيد الشحن', style: TextStyle(color: Colors.white, fontSize: 13)),
+                        onPressed: isProcessing ? null : () => _acceptRequest(req, provider),
+                        icon: isProcessing ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.check_circle, color: Colors.white, size: 18),
+                        label: Text(isProcessing ? 'جاري...' : 'تأكيد الشحن', style: const TextStyle(color: Colors.white, fontSize: 13)),
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: () => _showRejectDialog(req, provider),
+                        onPressed: isProcessing ? null : () => _showRejectDialog(req, provider),
                         icon: const Icon(Icons.cancel, color: Colors.white, size: 18),
                         label: const Text('رفض', style: TextStyle(color: Colors.white, fontSize: 13)),
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -522,11 +532,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     );
   }
 
-  // ==========================================
-  // التبويب الثاني: أرصدة المحافظ الحالية 💰
-  // ==========================================
   Widget _buildWalletsTab(SystemProvider provider) {
-    // فلترة المحافظ بناءً على البحث
     final wallets = provider.agentsList.where((agent) {
       final query = _searchQuery.toLowerCase();
       return (agent['name']?.toString().toLowerCase().contains(query) ?? false) ||
@@ -585,11 +591,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     );
   }
 
-  // ==========================================
-  // التبويب الثالث: سجل الحركات المالي الشامل 📜
-  // ==========================================
   Widget _buildLedgerTab(SystemProvider provider) {
-    // فلترة السجل المالي
     final ledger = provider.transactionsLedger.where((log) {
       final query = _searchQuery.toLowerCase();
       return (log['agentName']?.toString().toLowerCase().contains(query) ?? false) ||
@@ -638,9 +640,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     );
   }
 
-  // ==========================================
-  // دوال مساعدة للتصميم
-  // ==========================================
   Widget _buildInfoRow(String title, String value, {bool isBold = false, Color? color}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
