@@ -9,7 +9,6 @@ class SystemProvider extends ChangeNotifier {
   String? _activeUserPhone; 
   double _newsScrollSpeed = 40.0; 
 
-  // 👈 متغيرات الصلاحيات والرتبة الحالية
   String _currentUserRole = 'guest';
   Map<String, bool> _currentUserPermissions = {};
 
@@ -38,7 +37,6 @@ class SystemProvider extends ChangeNotifier {
   int _marqueeBgColor = 0x4DFFC107; 
   double _marqueeFontSize = 14.0;
   
-  // 👈 متغيرات اسم التطبيق الجديدة
   String _appNameAlign = 'center';
   String _appNameFont = 'Cairo';
   int _appNameColor = 0xFF2196F3;
@@ -63,9 +61,7 @@ class SystemProvider extends ChangeNotifier {
   Map<String, dynamic> _socialLinks = {'whatsapp': '', 'facebook': '', 'telegram': ''};
   bool _loyaltySystemEnabled = false;
 
-  // الأخبار الموجهة
   List<Map<String, dynamic>> _targetedNews = []; 
-
   List<Map<String, dynamic>> _usersDatabase = [];
   List<String> _announcements = []; 
   List<Map<String, dynamic>> _rechargeRequests = []; 
@@ -82,9 +78,6 @@ class SystemProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _bankAccounts = [];
   List<Map<String, dynamic>> _coupons = [];
 
-  // ==========================================
-  // 🌟 [القسم الجديد]: المتغيرات المالية والدعم (مع الفلترة)
-  // ==========================================
   List<Map<String, dynamic>> _salesList = []; 
   List<Map<String, dynamic>> _supportTickets = []; 
   int _smsBalance = 0; 
@@ -122,7 +115,6 @@ class SystemProvider extends ChangeNotifier {
         _marqueeBgColor = data['marqueeBgColor'] ?? 0x4DFFC107;
         _marqueeFontSize = (data['marqueeFontSize'] ?? 14.0).toDouble();
         
-        // 👈 جلب المتغيرات الجديدة من السيرفر
         _appNameAlign = data['appNameAlign'] ?? 'center';
         _appNameFont = data['appNameFont'] ?? 'Cairo';
         _appNameColor = data['appNameColor'] ?? 0xFF2196F3;
@@ -259,7 +251,6 @@ class SystemProvider extends ChangeNotifier {
   int get marqueeBgColor => _marqueeBgColor;
   double get marqueeFontSize => _marqueeFontSize;
   
-  // 👈 Getters للمتغيرات الجديدة
   String get appNameAlign => _appNameAlign;
   String get appNameFont => _appNameFont;
   int get appNameColor => _appNameColor;
@@ -295,7 +286,6 @@ class SystemProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get bankAccounts => _bankAccounts;
   List<Map<String, dynamic>> get coupons => _coupons;
 
-  // 🌟 دوال القراءة والفلترة للمبيعات والتذاكر
   void setDashboardDateRange(DateTimeRange? range) {
     _dashboardDateRange = range;
     notifyListeners();
@@ -413,16 +403,22 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 🚀 5. دوال الإدارة والتحكم (محرك الاستهداف والبوابات)
+  // 🚀 5. دوال الإدارة والتحكم 
   // ==========================================
   
-  // 👈 الدالة المحدثة لتشمل المتغيرات الجديدة الخاصة باسم التطبيق
   Future<void> updateAdvancedLoginSettings({
     required String name, required String logoUrl, required int bgColor,
     required List<String> images, required String welcomeMsg, required int intervalSeconds,
     required String marqueeDir, required int marqueeTextCol, required int marqueeBgCol, required double marqueeFont,
     required String appNameAlign, required String appNameFont, required int appNameColor,
   }) async {
+    // تحديث استباقي محلي
+    _appName = name; _appLogoUrl = logoUrl; _loginBgColor = bgColor;
+    _loginCarouselImages = images; _loginWelcomeMessage = welcomeMsg; _carouselIntervalSeconds = intervalSeconds;
+    _marqueeDirection = marqueeDir; _marqueeTextColor = marqueeTextCol; _marqueeBgColor = marqueeBgCol; _marqueeFontSize = marqueeFont;
+    _appNameAlign = appNameAlign; _appNameFont = appNameFont; _appNameColor = appNameColor;
+    notifyListeners();
+
     await _db.collection('system').doc('main_info').update({
       'appName': name, 'appLogoUrl': logoUrl, 'loginBgColor': bgColor,
       'loginCarouselImages': images, 'loginWelcomeMessage': welcomeMsg, 'carouselIntervalSeconds': intervalSeconds,
@@ -430,25 +426,30 @@ class SystemProvider extends ChangeNotifier {
       'appNameAlign': appNameAlign, 'appNameFont': appNameFont, 'appNameColor': appNameColor,
     });
     logAction(action: 'تحديث بوابة الدخول', details: 'تحديث المظهر واسم التطبيق', severity: 'critical');
-    notifyListeners(); // 👈 التحديث الفوري
   }
 
   Future<void> updateAgentPortalSettings({required bool hideProfit, required bool leaderboard, required bool forceTheme, required List<String> universalHidden}) async {
+    // تحديث استباقي محلي
+    _hideProfitEnabled = hideProfit; _leaderboardEnabled = leaderboard; _forceAgentTheme = forceTheme; _agentUniversalHiddenSections = universalHidden;
+    notifyListeners();
+
     await _db.collection('system').doc('main_info').update({
       'hideProfitEnabled': hideProfit, 'leaderboardEnabled': leaderboard, 'forceAgentTheme': forceTheme,
       'agentUniversalHiddenSections': universalHidden
     });
     logAction(action: 'تحديث بوابة الوكلاء', details: 'تم تعديل سياسات لوحة الوكلاء', severity: 'medium');
-    notifyListeners(); // 👈 التحديث الفوري
   }
 
   Future<void> updateUserPortalSettings({required bool guestMode, required bool kyc, required bool loyalty, required List<String> universalHidden, required Map<String, dynamic> social}) async {
+    // تحديث استباقي محلي
+    _guestModeEnabled = guestMode; _kycRequired = kyc; _loyaltySystemEnabled = loyalty; _userUniversalHiddenSections = universalHidden; _socialLinks = social;
+    notifyListeners();
+
     await _db.collection('system').doc('main_info').update({
       'guestModeEnabled': guestMode, 'kycRequired': kyc, 'loyaltySystemEnabled': loyalty,
       'userUniversalHiddenSections': universalHidden, 'socialLinks': social
     });
     logAction(action: 'تحديث بوابة المستخدمين', details: 'تم تعديل سياسات لوحة المستخدمين', severity: 'medium');
-    notifyListeners(); // 👈 التحديث الفوري
   }
 
   Future<void> toggleSectionForSpecificUsers({required String sectionId, required List<String> targetPhones, required bool hide}) async {
@@ -480,11 +481,19 @@ class SystemProvider extends ChangeNotifier {
     logAction(action: 'تنبيه طوارئ', details: 'حالة الطوارئ: $isActive | الاستهداف: $targetType', severity: 'critical');
   }
 
+  // 👈 دالة الحالة تم إضافة التحديث الاستباقي لها لتكون فورية
   Future<void> updateSystemStatusSettings({required bool maintenance, required bool forcedUpdate, required bool showNews}) async {
+    _isMaintenanceMode = maintenance; _isForcedUpdate = forcedUpdate; _showNewsBar = showNews;
+    notifyListeners(); // تحديث فوري محلياً
+
     await _db.collection('system').doc('main_info').update({'isMaintenanceMode': maintenance, 'isForcedUpdate': forcedUpdate, 'showNewsBar': showNews});
   }
 
+  // 👈 دالة السياسات تم إضافة التحديث الاستباقي لها لتكون فورية
   Future<void> updatePoliciesSettings({required String terms, required String support, required String minCharge, required bool autoRounding}) async {
+    _termsAndConditions = terms; _supportNumbers = support; _minimumChargeLimit = minCharge; _isCurrencyAutoRounding = autoRounding;
+    notifyListeners(); // تحديث فوري محلياً
+
     await _db.collection('system').doc('main_info').update({'termsAndConditions': terms, 'supportNumbers': support, 'minimumChargeLimit': minCharge, 'isCurrencyAutoRounding': autoRounding});
   }
 
@@ -515,7 +524,7 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 👥 6. دوال إدارة الحسابات والمصادقة 
+  // 👥 6. دوال إدارة الحسابات والمصادقة
   // ==========================================
 
   Future<void> updateNewsSpeed(double newSpeed) async { await _db.collection('system').doc('main_info').update({'newsScrollSpeed': newSpeed}); }
@@ -672,10 +681,6 @@ class SystemProvider extends ChangeNotifier {
       await batch.commit();
     } catch (e) { throw 'فشل التسوية اليدوية: $e'; }
   }
-
-  // ==========================================
-  // 🏷️ 7. دوال الاشتراكات والكوبونات 
-  // ==========================================
 
   Future<void> applySubscriptionPlan({required int targetingFilter, required String planName, required double planPrice, required int durationMonths, String? targetAgentPhone}) async {
     try {
