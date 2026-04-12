@@ -108,7 +108,8 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       String userRole = userData['role']; 
       Provider.of<ThemeProvider>(context, listen: false).setRole(userRole);
       
-      if (userRole == 'super_admin') {
+      // 👈 تم دمج המوظف (staff) مع المدير ليدخلا إلى نفس غرفة العمليات
+      if (userRole == 'super_admin' || userRole == 'staff') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SuperAdminDashboard()));
       } else if (userRole == 'agent') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const AgentDashboardScreen()));
