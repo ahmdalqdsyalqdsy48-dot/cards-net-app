@@ -63558,7 +63558,7 @@ if(m!=null){l=J.o(m,"role")
 k=p.c
 k.toString
 A.dJ(k,!1,t.eC).Z1(l)
-if(l==="super_admin"){k=p.c
+if(l==="super_admin"||l==="staff"){k=p.c
 k.toString
 A.DR(k,A.it(new A.b4i(),null,t.z))}else if(l==="agent"){k=p.c
 k.toString
