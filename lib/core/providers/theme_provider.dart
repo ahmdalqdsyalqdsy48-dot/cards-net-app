@@ -3,22 +3,44 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ThemeProvider extends ChangeNotifier {
   // ==========================================
-  // 1. تحديد من هو المستخدم الحالي
+  // 1. المتغيرات الأساسية وتحديد الهوية
   // ==========================================
   String _currentRole = 'guest'; 
-  String _currentUserPhone = 'default'; // 👈 مفتاح الحفظ الخاص بكل مستخدم
+  String _currentUserPhone = 'default'; // مفتاح الحفظ الخاص بكل مستخدم
   late SharedPreferences _prefs; 
   bool _isInitialized = false;
 
-  // 👈 اللون الافتراضي الموحد لجميع المستخدمين عند الدخول لأول مرة (الأبيض)
+  // اللون الافتراضي الرسمي للنظام (الأبيض) كما طلبت
   static const Color _defaultAppColor = Color(0xFFFFFFFF); 
   
-  static const String _defaultFontFamily = 'System'; 
+  static const String _defaultFontFamily = 'Cairo'; 
   static const double _defaultFontSizeScale = 1.0; 
 
   // ==========================================
-  // 2. الخزانة المخصصة (User Themes)
+  // 2. الخزانة المخصصة الافتراضية (Role Themes) ✅ [تم الحفاظ عليها]
   // ==========================================
+  final Map<String, Map<String, dynamic>> _roleThemes = {
+    'super_admin': {
+      'isDark': false, 
+      'color': _defaultAppColor, 
+      'fontFamily': _defaultFontFamily, 
+      'fontSizeScale': _defaultFontSizeScale
+    },
+    'agent': {
+      'isDark': false, 
+      'color': _defaultAppColor, 
+      'fontFamily': _defaultFontFamily, 
+      'fontSizeScale': _defaultFontSizeScale
+    },
+    'user': {
+      'isDark': false, 
+      'color': _defaultAppColor, 
+      'fontFamily': _defaultFontFamily, 
+      'fontSizeScale': _defaultFontSizeScale
+    },
+  };
+
+  // المتغيرات الحية المستخدمة حالياً في الواجهة
   bool _isDark = false;
   Color _color = _defaultAppColor;
   String _fontFamily = _defaultFontFamily;
@@ -35,17 +57,24 @@ class ThemeProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // ⚙️ هندسة الذاكرة المحلية (جلب وحفظ مخصص لكل مستخدم)
+  // ⚙️ هندسة الذاكرة المحلية (جلب وحفظ مخصص)
   // ==========================================
   void _loadPreferences() {
     if (!_isInitialized) return;
     
-    // 👈 القراءة من الذاكرة بناءً على رقم هاتف المستخدم ليكون المظهر خاصاً به فقط
-    _isDark = _prefs.getBool('${_currentUserPhone}_isDark') ?? false;
-    int? savedColorValue = _prefs.getInt('${_currentUserPhone}_color');
-    _color = savedColorValue != null ? Color(savedColorValue) : _defaultAppColor;
-    _fontFamily = _prefs.getString('${_currentUserPhone}_fontFamily') ?? _defaultFontFamily;
-    _fontSizeScale = _prefs.getDouble('${_currentUserPhone}_fontSizeScale') ?? _defaultFontSizeScale;
+    // أولاً: قراءة إعدادات الرتب القديمة لضمان عدم تعطل النظام
+    for (String role in _roleThemes.keys) {
+      _roleThemes[role]!['isDark'] = _prefs.getBool('${role}_isDark') ?? false;
+      int? savedCol = _prefs.getInt('${role}_color');
+      if (savedCol != null) _roleThemes[role]!['color'] = Color(savedCol);
+    }
+
+    // ثانياً: تحميل إعدادات "المستخدم الحالي" بناءً على رقم هاتفه (التخصيص الفردي)
+    _isDark = _prefs.getBool('${_currentUserPhone}_isDark') ?? (_roleThemes[_currentRole]?['isDark'] ?? false);
+    int? savedUserColor = _prefs.getInt('${_currentUserPhone}_color');
+    _color = savedUserColor != null ? Color(savedUserColor) : (_roleThemes[_currentRole]?['color'] ?? _defaultAppColor);
+    _fontFamily = _prefs.getString('${_currentUserPhone}_fontFamily') ?? (_roleThemes[_currentRole]?['fontFamily'] ?? _defaultFontFamily);
+    _fontSizeScale = _prefs.getDouble('${_currentUserPhone}_fontSizeScale') ?? (_roleThemes[_currentRole]?['fontSizeScale'] ?? _defaultFontSizeScale);
     
     notifyListeners();
   }
@@ -60,9 +89,9 @@ class ThemeProvider extends ChangeNotifier {
   String get currentRole => _currentRole;
   bool get isInitialized => _isInitialized;
 
-  // 👈 (الذكاء اللوني): تحديد لون النصوص بناءً على لون الخلفية المختار
+  // 👈 الذكاء اللوني المطور: يقرأ شدة الإضاءة ويقرر لون النص (أبيض أو أسود) ليكون متجاوباً 100%
   Color get adaptiveTextColor {
-    // إذا كانت الخلفية بيضاء أو فاتحة، النص يكون أسود. إذا كانت داكنة، النص أبيض.
+    // إذا كان اللون المختار فاتحاً جداً (مثل الأبيض)، النص يكون أسود، والعكس صحيح
     return primaryColor.computeLuminance() > 0.5 ? Colors.black87 : Colors.white;
   }
 
@@ -70,7 +99,15 @@ class ThemeProvider extends ChangeNotifier {
   // 4. دوال التعديل والكتابة (Setters)
   // ==========================================
   
-  // 👈 استدعاء هذه الدالة عند تسجيل الدخول لتفعيل مظهر المستخدم
+  // دالة الرتبة القديمة (للتوافق)
+  void setRole(String role) {
+    if (_roleThemes.containsKey(role)) {
+      _currentRole = role;
+      _loadPreferences(); 
+    }
+  }
+
+  // دالة الدخول الجديدة (المخصصة لكل رقم هاتف على حدة)
   void setUser(String role, String phone) {
     _currentRole = role;
     _currentUserPhone = phone;
@@ -105,5 +142,6 @@ class ThemeProvider extends ChangeNotifier {
     changeColor(_defaultAppColor);
     changeFontFamily(_defaultFontFamily);
     changeFontSizeScale(_defaultFontSizeScale);
+    toggleTheme(false);
   }
 }
