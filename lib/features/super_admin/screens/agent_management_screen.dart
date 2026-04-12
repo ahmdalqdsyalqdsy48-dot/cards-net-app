@@ -14,11 +14,10 @@ class AgentManagementScreen extends StatefulWidget {
 }
 
 class _AgentManagementScreenState extends State<AgentManagementScreen> {
-  // متغير للبحث
   String _searchQuery = '';
 
   // ==========================================
-  // 1. نافذة إضافة وكيل جديد (استجابة فورية + حفظ في الخلفية)
+  // 1. نافذة إضافة وكيل جديد (تم تحديثها لتشمل حالة التحميل ومنع ضياع البيانات)
   // ==========================================
   void _showAddAgentDialog(SystemProvider provider) {
     final nameController = TextEditingController();
@@ -30,77 +29,93 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.person_add, color: Colors.blue),
-              SizedBox(width: 10),
-              Text('إضافة وكيل جديد', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildTextField('الاسم الرباعي للوكيل', Icons.person, controller: nameController),
-                _buildTextField('رقم الهاتف (اسم المستخدم)', Icons.phone, controller: phoneController, isNumber: true),
-                _buildTextField('اسم الشبكة', Icons.wifi, controller: networkController),
-                _buildTextField('موقع الشبكة (الحي / المنطقة)', Icons.location_on, controller: locationController),
-                _buildTextField('نسبة ربح النظام (العمولة)', Icons.percent, controller: profitController, isNumber: true),
-                _buildTextField('كلمة المرور الافتراضية', Icons.lock, controller: passwordController),
+      barrierDismissible: false, // 👈 منع إغلاق النافذة بالخطأ أثناء الكتابة
+      builder: (context) => StatefulBuilder( // 👈 استخدام StatefulBuilder لتحديث الزر الداخلي
+        builder: (context, setStateDialog) {
+          bool isLoading = false; // حالة التحميل
+
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.person_add, color: Colors.blue),
+                  SizedBox(width: 10),
+                  Text('إضافة وكيل جديد', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildTextField('الاسم الرباعي للوكيل', Icons.person, controller: nameController),
+                    _buildTextField('رقم الهاتف (اسم المستخدم)', Icons.phone, controller: phoneController, isNumber: true),
+                    _buildTextField('اسم الشبكة', Icons.wifi, controller: networkController),
+                    _buildTextField('موقع الشبكة (الحي / المنطقة)', Icons.location_on, controller: locationController),
+                    _buildTextField('نسبة ربح النظام (العمولة)', Icons.percent, controller: profitController, isNumber: true),
+                    _buildTextField('كلمة المرور الافتراضية', Icons.lock, controller: passwordController),
+                  ],
+                ),
+              ),
+              actions: [
+                if (!isLoading) // إخفاء زر الإلغاء أثناء التحميل
+                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء', style: TextStyle(color: Colors.red))),
+                
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+                  onPressed: isLoading ? null : () async {
+                    String phone = phoneController.text.trim();
+                    String name = nameController.text.trim();
+
+                    if (name.isNotEmpty && phone.isNotEmpty) {
+                      setStateDialog(() => isLoading = true); // 👈 تشغيل مؤشر التحميل
+
+                      String defaultPassword = passwordController.text.trim().isNotEmpty 
+                          ? passwordController.text.trim() 
+                          : phone;
+
+                      try {
+                        // 1. انتظار رد السيرفر
+                        await provider.addAgent(
+                          name: name,
+                          phone: phone,
+                          password: defaultPassword,
+                          networkName: networkController.text.trim(),
+                          profitMargin: profitController.text.trim(),
+                          location: locationController.text.trim(),
+                        );
+
+                        // 2. إذا نجح الحفظ، نغلق النافذة ونعرض إشعار النجاح
+                        if (mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إنشاء حساب الوكيل بنجاح! ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                        }
+                      } catch (error) {
+                        // 3. إذا فشل، نوقف التحميل ليتدارك المدير الخطأ بدون إغلاق النافذة
+                        setStateDialog(() => isLoading = false);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل الحفظ ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red, duration: const Duration(seconds: 4)));
+                        }
+                      }
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال الاسم ورقم الهاتف على الأقل! ❌', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                    }
+                  },
+                  // 👈 تغيير شكل الزر أثناء التحميل
+                  child: isLoading 
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('حفظ واعتماد الوكيل', style: TextStyle(color: Colors.white)),
+                ),
               ],
             ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء', style: TextStyle(color: Colors.red))),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
-              onPressed: () {
-                String phone = phoneController.text.trim();
-                String name = nameController.text.trim();
-
-                if (name.isNotEmpty && phone.isNotEmpty) {
-                  String defaultPassword = passwordController.text.trim().isNotEmpty 
-                      ? passwordController.text.trim() 
-                      : phone;
-
-                  final messenger = ScaffoldMessenger.of(context);
-
-                  // 1. إرسال الأوامر للسحابة في الخلفية واصطياد الأخطاء إن وجدت
-                  provider.addAgent(
-                    name: name,
-                    phone: phone,
-                    password: defaultPassword,
-                    networkName: networkController.text.trim(),
-                    profitMargin: profitController.text.trim(),
-                    location: locationController.text.trim(),
-                  ).catchError((error) {
-                    messenger.showSnackBar(SnackBar(content: Text('فشل الحفظ ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red, duration: const Duration(seconds: 6)));
-                  });
-
-                  // 2. إغلاق النافذة فوراً لسرعة الاستخدام
-                  Navigator.pop(context);
-
-                  // 3. إظهار إشعار التحميل في الخلفية
-                  messenger.showSnackBar(
-                    const SnackBar(content: Text('جاري إنشاء حساب الوكيل السحابي... ☁️', textDirection: TextDirection.rtl), backgroundColor: Colors.blueGrey, duration: Duration(seconds: 2))
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال الاسم ورقم الهاتف على الأقل! ❌', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
-                }
-              },
-              child: const Text('حفظ واعتماد الوكيل', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        ),
+          );
+        }
       ),
     );
   }
 
   // ==========================================
-  // 2. نافذة تعديل بيانات وكيل حالي (استجابة فورية)
+  // 2. نافذة تعديل بيانات وكيل حالي (مع حالة التحميل)
   // ==========================================
   void _showEditAgentDialog(Map<String, dynamic> agent, SystemProvider provider) {
     final nameController = TextEditingController(text: agent['name']);
@@ -114,61 +129,79 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.edit, color: Colors.orange),
-              SizedBox(width: 10),
-              Text('تعديل بيانات الوكيل', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildTextField('الاسم الرباعي', Icons.person, controller: nameController),
-                _buildTextField('رقم الهاتف (الآيدي للحساب)', Icons.phone, controller: phoneController, isNumber: true),
-                _buildTextField('اسم الشبكة', Icons.wifi, controller: networkController),
-                _buildTextField('موقع الشبكة', Icons.location_on, controller: locationController),
-                _buildTextField('نسبة الربح', Icons.percent, controller: profitController, isNumber: true),
-                _buildTextField('كلمة المرور', Icons.lock, controller: passwordController),
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          bool isLoading = false;
+
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.edit, color: Colors.orange),
+                  SizedBox(width: 10),
+                  Text('تعديل بيانات الوكيل', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildTextField('الاسم الرباعي', Icons.person, controller: nameController),
+                    _buildTextField('رقم الهاتف (الآيدي للحساب)', Icons.phone, controller: phoneController, isNumber: true),
+                    _buildTextField('اسم الشبكة', Icons.wifi, controller: networkController),
+                    _buildTextField('موقع الشبكة', Icons.location_on, controller: locationController),
+                    _buildTextField('نسبة الربح', Icons.percent, controller: profitController, isNumber: true),
+                    _buildTextField('كلمة المرور', Icons.lock, controller: passwordController),
+                  ],
+                ),
+              ),
+              actions: [
+                if (!isLoading)
+                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+                
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                  onPressed: isLoading ? null : () async {
+                    setStateDialog(() => isLoading = true);
+
+                    try {
+                      await provider.updateAgentDetails(
+                        oldPhone: oldPhone,
+                        newPhone: phoneController.text.trim(),
+                        newName: nameController.text.trim(),
+                        newNetwork: networkController.text.trim(),
+                        newLocation: locationController.text.trim(),
+                        newProfit: '${profitController.text.trim()}%',
+                        newPassword: passwordController.text.trim(),
+                      );
+
+                      if (mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تطبيق التعديلات بنجاح ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                      }
+                    } catch (error) {
+                      setStateDialog(() => isLoading = false);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل التعديل ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                      }
+                    }
+                  },
+                  child: isLoading 
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('حفظ التعديلات', style: TextStyle(color: Colors.white)),
+                ),
               ],
             ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-              onPressed: () {
-                final messenger = ScaffoldMessenger.of(context);
-
-                provider.updateAgentDetails(
-                  oldPhone: oldPhone,
-                  newPhone: phoneController.text.trim(),
-                  newName: nameController.text.trim(),
-                  newNetwork: networkController.text.trim(),
-                  newLocation: locationController.text.trim(),
-                  newProfit: '${profitController.text.trim()}%',
-                  newPassword: passwordController.text.trim(),
-                ).catchError((error) {
-                  messenger.showSnackBar(SnackBar(content: Text('فشل التعديل ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red, duration: const Duration(seconds: 6)));
-                });
-
-                Navigator.pop(context);
-                messenger.showSnackBar(const SnackBar(content: Text('جاري تطبيق التعديلات السحابية... ☁️', textDirection: TextDirection.rtl), backgroundColor: Colors.orange, duration: Duration(seconds: 2)));
-              },
-              child: const Text('حفظ التعديلات', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        ),
+          );
+        }
       ),
     );
   }
 
   // ==========================================
-  // 3. دوال التجميد والحذف (مربوطة بالخلفية)
+  // 3. دوال التجميد والحذف (الخلفية)
   // ==========================================
   void _toggleFreeze(Map<String, dynamic> agent, SystemProvider provider) {
     final messenger = ScaffoldMessenger.of(context);
@@ -177,9 +210,9 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
     try {
       provider.toggleUserStatus(agent['phone'], agent['status']);
       messenger.showSnackBar(SnackBar(
-        content: Text(isGoingToFreeze ? 'جاري تجميد الوكيل... ⏸️' : 'جاري تنشيط الوكيل... ▶️', textDirection: TextDirection.rtl), 
-        backgroundColor: Colors.blueGrey,
-        duration: const Duration(seconds: 1)
+        content: Text(isGoingToFreeze ? 'تم تجميد الوكيل بنجاح ⏸️' : 'تم تنشيط الوكيل بنجاح ▶️', textDirection: TextDirection.rtl), 
+        backgroundColor: isGoingToFreeze ? Colors.orange : Colors.green,
+        duration: const Duration(seconds: 2)
       ));
     } catch (error) {
       messenger.showSnackBar(SnackBar(content: Text('فشل تغيير الحالة ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
@@ -200,11 +233,10 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () {
                 final messenger = ScaffoldMessenger.of(context);
-                
                 try {
                   provider.deleteAgent(agent['phone']); 
                   Navigator.pop(context);
-                  messenger.showSnackBar(const SnackBar(content: Text('جاري الحذف النهائي من السيرفر... 🗑️', textDirection: TextDirection.rtl), backgroundColor: Colors.red, duration: Duration(seconds: 2)));
+                  messenger.showSnackBar(const SnackBar(content: Text('تم الحذف النهائي من السيرفر 🗑️', textDirection: TextDirection.rtl), backgroundColor: Colors.red, duration: Duration(seconds: 2)));
                 } catch (error) {
                   Navigator.pop(context);
                   messenger.showSnackBar(SnackBar(content: Text('فشل الحذف ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
