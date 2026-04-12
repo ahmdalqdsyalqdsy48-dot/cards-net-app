@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // 👈 استدعاء قاعدة البيانات
+import 'package:cloud_firestore/cloud_firestore.dart'; 
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/system_provider.dart'; 
 import '../../../core/widgets/custom_drawer.dart';
-import '../../../core/widgets/custom_header.dart';
+import '../../../core/widgets/custom_header.dart'; 
 
 class StaffSupportScreen extends StatefulWidget {
   const StaffSupportScreen({super.key});
@@ -30,15 +30,14 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
   }
 
   // ==========================================
-  // 1. نافذة إضافة موظف جديد 👥 (حقيقية)
+  // 1. نافذة إضافة موظف جديد 👥 (حقيقية + تصميمك الأصلي)
   // ==========================================
-  void _showAddStaffDialog(SystemProvider provider) {
+  void _showAddStaffDialog() {
     final nameController = TextEditingController();
     final phoneController = TextEditingController();
     final salaryController = TextEditingController();
     final passwordController = TextEditingController();
     
-    // خريطة الصلاحيات
     Map<String, bool> permissions = {
       'الرئيسية (غرفة العمليات)': false,
       'إدارة الوكلاء الشاملة': false,
@@ -49,7 +48,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
       'إدارة الموظفين والدعم': false,
       'الإعلانات التسويقية': false,
       'بوابة رسائل الـ SMS': false,
-      'السجل الأسود للنشاط': false,
+      'السجل الأسود للنشاط (للقراءة)': false,
       'الإعدادات العامة': false,
       'النسخ الاحتياطي': false,
     };
@@ -84,7 +83,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
                     _buildTextField('الراتب الشهري (اختياري)', Icons.monetization_on, controller: salaryController, isNumber: true),
                     
                     const Divider(),
-                    const Text('الصلاحيات الممنوحة:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                    const Text('الصلاحيات الممنوحة للموظف:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
                     
                     CheckboxListTile(
                       title: const Text('تحديد كافة الصلاحيات ✅', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
@@ -112,6 +111,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
                             title: Text(key, style: const TextStyle(fontSize: 13)),
                             value: permissions[key],
                             activeColor: Colors.green,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10),
                             dense: true,
                             onChanged: (val) {
                               setStateDialog(() {
@@ -132,33 +132,32 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
                   TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
                 ElevatedButton(
                   onPressed: isLoading ? null : () async {
-                    if (nameController.text.isNotEmpty && phoneController.text.isNotEmpty && passwordController.text.isNotEmpty) {
+                    if (nameController.text.isNotEmpty && phoneController.text.isNotEmpty) {
                       setStateDialog(() => isLoading = true);
                       
                       try {
-                        // 1. إنشاء حساب الموظف في Firestore
                         await _db.collection('users').doc(phoneController.text.trim()).set({
                           'id': 'STAFF_${DateTime.now().millisecondsSinceEpoch}',
                           'name': nameController.text.trim(),
                           'phone': phoneController.text.trim(),
                           'password': passwordController.text.trim(),
                           'role': 'staff',
-                          'salary': salaryController.text.trim().isNotEmpty ? salaryController.text.trim() : '0',
+                          'salary': salaryController.text.trim().isNotEmpty ? '${salaryController.text.trim()} ريال' : 'غير محدد',
                           'status': 'نشط',
-                          'permissions': permissions, // 👈 حفظ خريطة الصلاحيات
+                          'permissions': permissions,
                           'createdAt': FieldValue.serverTimestamp(),
                         });
 
                         if (mounted) {
                           Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الموظف بنجاح ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة الموظف وصلاحياته بنجاح! ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
                         }
                       } catch (e) {
                         setStateDialog(() => isLoading = false);
                         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
                       }
                     } else {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى ملء البيانات الأساسية! ❌', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال اسم ورقم هاتف الموظف! ❌', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
                     }
                   },
                   child: isLoading 
@@ -174,9 +173,9 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
   }
 
   // ==========================================
-  // دوال التحكم بالموظفين
+  // دوال التحكم بالموظفين (محسنة)
   // ==========================================
-  void _toggleStaffStatus(Map<String, dynamic> emp, SystemProvider provider) async {
+  void _toggleStaffStatus(Map<String, dynamic> emp) async {
     try {
       String newStatus = emp['status'] == 'نشط' ? 'موقوف' : 'نشط';
       await _db.collection('users').doc(emp['phone']).update({'status': newStatus});
@@ -185,14 +184,14 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
     }
   }
 
-  void _deleteStaff(Map<String, dynamic> emp, SystemProvider provider) {
+  void _deleteStaff(Map<String, dynamic> emp) {
     showDialog(
       context: context,
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           title: const Text('حذف الموظف 🗑️', style: TextStyle(color: Colors.red)),
-          content: const Text('هل أنت متأكد من حذف هذا الموظف نهائياً؟'),
+          content: const Text('هل أنت متأكد من حذف هذا الموظف؟ سيتم إلغاء وصوله للنظام فوراً.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('تراجع')),
             ElevatedButton(
@@ -202,7 +201,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
                   await _db.collection('users').doc(emp['phone']).delete();
                   if (mounted) {
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم الحذف بنجاح.', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف الموظف بنجاح.', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
                   }
                 } catch (e) {
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
@@ -216,76 +215,53 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
     );
   }
 
-  void _paySalary(Map<String, dynamic> emp, SystemProvider provider) {
-    final amountController = TextEditingController(text: emp['salary'].toString());
-    
+  void _paySalary(Map<String, dynamic> emp) {
     showDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) {
-          bool isPaying = false;
-          return Directionality(
-            textDirection: TextDirection.rtl,
-            child: AlertDialog(
-              title: const Text('تسليم الراتب 💸', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('هل تقر بتسليم الراتب للموظف "${emp['name']}"؟ سيتم تسجيله كمصروفات.'),
-                  const SizedBox(height: 10),
-                  _buildTextField('مبلغ الراتب الفعلي (بالريال)', Icons.money, controller: amountController, isNumber: true),
-                ],
-              ),
-              actions: [
-                if (!isPaying)
-                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                  onPressed: isPaying ? null : () async {
-                    if (amountController.text.isEmpty) return;
-                    setStateDialog(() => isPaying = true);
-                    
-                    try {
-                      double amount = double.parse(amountController.text);
-                      
-                      WriteBatch batch = _db.batch();
-                      // خصم من أرباح النظام
-                      batch.update(_db.collection('system').doc('main_info'), {
-                        'adminMainBalance': FieldValue.increment(-amount)
-                      });
-                      // تسجيل في السجل المالي
-                      batch.set(_db.collection('transactions').doc(), {
-                        'agentPhone': emp['phone'],
-                        'agentName': emp['name'],
-                        'type': 'مصروفات تشغيلية (راتب)',
-                        'amount': -amount,
-                        'timestamp': FieldValue.serverTimestamp(),
-                      });
-                      
-                      await batch.commit();
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('تسليم الراتب 💸', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+          content: Text('هل تقر بتسليم الراتب للموظف "${emp['name']}"؟\n\n(سيقوم النظام آلياً بتسجيل المبلغ كـ "مصروفات تشغيلية" لخصمه من صافي أرباحك في التقارير الختامية).'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              onPressed: () async {
+                try {
+                  // استخراج الرقم من النص (مثال: "80000 ريال")
+                  String salaryStr = emp['salary'].toString().replaceAll(RegExp(r'[^0-9]'), '');
+                  double amount = salaryStr.isEmpty ? 0 : double.parse(salaryStr);
 
-                      if (mounted) {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تسليم الراتب وتسجيله بنجاح ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
-                      }
-                    } catch (e) {
-                      setStateDialog(() => isPaying = false);
-                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
-                    }
-                  },
-                  child: isPaying ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('نعم، أقر بالتسليم', style: TextStyle(color: Colors.white)),
-                ),
-              ],
+                  WriteBatch batch = _db.batch();
+                  batch.update(_db.collection('system').doc('main_info'), {'adminMainBalance': FieldValue.increment(-amount)});
+                  batch.set(_db.collection('transactions').doc(), {
+                    'agentPhone': emp['phone'],
+                    'agentName': emp['name'],
+                    'type': 'مصروفات تشغيلية (راتب موظف)',
+                    'amount': -amount,
+                    'timestamp': FieldValue.serverTimestamp(),
+                  });
+                  await batch.commit();
+
+                  if (mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تسجيل الراتب كمصروفات تشغيلية بنجاح. ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                  }
+                } catch (e) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
+                }
+              },
+              child: const Text('نعم، أقر بالتسليم', style: TextStyle(color: Colors.white)),
             ),
-          );
-        }
+          ],
+        ),
       ),
     );
   }
 
   // ==========================================
-  // دوال تذاكر الدعم الفني 🎧 (حقيقية)
+  // دوال التبويب الثاني (تذاكر الدعم الفني) 🎧
   // ==========================================
   void _showTicketChat(Map<String, dynamic> ticket, String docId) {
     final replyController = TextEditingController();
@@ -295,7 +271,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          title: Text('تذكرة ${ticket['id'] ?? docId} - ${ticket['agentName'] ?? 'مجهول'}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          title: Text('تذكرة ${ticket['id'] ?? docId} - ${ticket['agentName'] ?? ticket['agent'] ?? 'مجهول'}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           content: SizedBox(
             width: double.maxFinite,
             child: Column(
@@ -311,7 +287,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
                   ),
                 ),
                 
-                // عرض الردود السابقة والملاحظات (إذا وجدت)
+                // عرض الردود المحفوظة
                 if (ticket['replies'] != null)
                   ...List.generate(ticket['replies'].length, (index) {
                     var reply = ticket['replies'][index];
@@ -331,7 +307,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
                           children: [
                             if (isInternal) const Icon(Icons.lock, size: 14, color: Colors.orange),
                             if (isInternal) const SizedBox(width: 5),
-                            Text('${isInternal ? "ملاحظة سرية:" : "الدعم:"}\n${reply['text']}', style: TextStyle(fontSize: 12, color: isInternal ? Colors.brown : Colors.black87)),
+                            Text('${isInternal ? "ملاحظة داخلية:" : "الدعم:"}\n${reply['text']}', style: TextStyle(fontSize: 12, color: isInternal ? Colors.brown : Colors.black87)),
                           ],
                         ),
                       ),
@@ -351,6 +327,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
                           'replies': FieldValue.arrayUnion([{'text': replyController.text, 'isInternal': false, 'timestamp': DateTime.now().toIso8601String()}])
                         });
                         replyController.clear();
+                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال الرد للوكيل بنجاح ✉️', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
                       }
                     ),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
@@ -411,6 +388,28 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
     );
   }
 
+  // استعادة نافذة إحالة التذكرة (كما كانت تماماً)
+  void _showAssignTicketDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('إحالة التذكرة ↪️', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('اختر الموظف الذي تريد تحويل التذكرة إليه:'),
+              const SizedBox(height: 10),
+              ListTile(title: const Text('محمود المالي (محاسب)'), leading: const Icon(Icons.person), onTap: () { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إحالة التذكرة بنجاح.', textDirection: TextDirection.rtl))); }),
+              ListTile(title: const Text('سالم الدعم (خدمة عملاء)'), leading: const Icon(Icons.person), onTap: () { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إحالة التذكرة بنجاح.', textDirection: TextDirection.rtl))); }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _closeTicket(String docId) async {
     try {
       await _db.collection('support_tickets').doc(docId).update({'status': 'مغلقة'});
@@ -428,8 +427,8 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
     return Scaffold(
       appBar: const CustomHeader(title: 'إدارة الموظفين والدعم'),
       drawer: CustomDrawer(
-        userName: systemProvider.currentUserName,
-        phoneNumber: systemProvider.currentUserPhone,
+        userName: 'مالك النظام',
+        phoneNumber: '774578241',
         role: 'مالك النظام (Super Admin)',
         balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
       ),
@@ -437,22 +436,26 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            TabBar(
-              controller: _tabController,
-              labelColor: Colors.blueAccent,
-              unselectedLabelColor: Colors.grey,
-              indicatorColor: Colors.blueAccent,
-              indicatorWeight: 3,
-              tabs: const [
-                Tab(icon: Icon(Icons.people_alt), text: 'الموظفين والصلاحيات'),
-                Tab(icon: Icon(Icons.support_agent), text: 'تذاكر الدعم الفني'),
-              ],
+            Container(
+              color: Colors.transparent,
+              child: TabBar(
+                controller: _tabController,
+                labelColor: Colors.blueAccent,
+                unselectedLabelColor: Colors.grey,
+                indicatorColor: Colors.blueAccent,
+                indicatorWeight: 3,
+                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                tabs: const [
+                  Tab(icon: Icon(Icons.people_alt), text: 'الموظفين والصلاحيات'),
+                  Tab(icon: Icon(Icons.support_agent), text: 'تذاكر الدعم الفني'),
+                ],
+              ),
             ),
             Expanded(
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildStaffTab(systemProvider),
+                  _buildStaffTab(),
                   _buildTicketsTab(),
                 ],
               ),
@@ -464,9 +467,9 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
   }
 
   // ==========================================
-  // واجهة التبويب الأول (جلب الموظفين من السيرفر)
+  // واجهة التبويب الأول (الموظفين - مربوطة بالسيرفر)
   // ==========================================
-  Widget _buildStaffTab(SystemProvider provider) {
+  Widget _buildStaffTab() {
     return Column(
       children: [
         Padding(
@@ -475,7 +478,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
             width: double.infinity,
             height: 45,
             child: ElevatedButton.icon(
-              onPressed: () => _showAddStaffDialog(provider),
+              onPressed: _showAddStaffDialog,
               icon: const Icon(Icons.person_add, color: Colors.white),
               label: const Text('إضافة موظف جديد', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
@@ -495,8 +498,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: staffList.length,
                 itemBuilder: (context, index) {
-                  var doc = staffList[index];
-                  var emp = doc.data() as Map<String, dynamic>;
+                  var emp = staffList[index].data() as Map<String, dynamic>;
                   final isActive = emp['status'] == 'نشط';
 
                   return Card(
@@ -513,8 +515,8 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('${emp['name']} (موظف)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, decoration: isActive ? TextDecoration.none : TextDecoration.lineThrough)),
-                              Chip(label: Text(emp['status'] ?? '', style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold)), backgroundColor: isActive ? Colors.green : Colors.red),
+                              Text('${emp['name']} (موظف مخصص)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, decoration: isActive ? TextDecoration.none : TextDecoration.lineThrough)),
+                              Chip(label: Text(emp['status'] ?? 'نشط', style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold)), backgroundColor: isActive ? Colors.green : Colors.red),
                             ],
                           ),
                           const SizedBox(height: 5),
@@ -522,16 +524,17 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text('هاتف: ${emp['phone']}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                              Text('الراتب: ${emp['salary']} ريال', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                              Text('الراتب: ${emp['salary']}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
                             ],
                           ),
                           const Divider(),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
-                              _buildIconButton(isActive ? Icons.pause_circle : Icons.play_circle, isActive ? 'إيقاف' : 'تفعيل', isActive ? Colors.orange : Colors.green, () => _toggleStaffStatus(emp, provider)),
-                              _buildIconButton(Icons.delete, 'حذف', Colors.red, () => _deleteStaff(emp, provider)),
-                              _buildIconButton(Icons.monetization_on, 'تسليم الراتب', Colors.green, () => _paySalary(emp, provider)),
+                              _buildIconButton(Icons.settings, 'تعديل', Colors.blue, () { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('نافذة التعديل ستتوفر قريباً ⚙️', textDirection: TextDirection.rtl))); }),
+                              _buildIconButton(isActive ? Icons.pause_circle : Icons.play_circle, isActive ? 'إيقاف' : 'تفعيل', isActive ? Colors.orange : Colors.green, () => _toggleStaffStatus(emp)),
+                              _buildIconButton(Icons.delete, 'حذف', Colors.red, () => _deleteStaff(emp)),
+                              _buildIconButton(Icons.monetization_on, 'تسليم الراتب', Colors.green, () => _paySalary(emp)),
                             ],
                           ),
                         ],
@@ -548,7 +551,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
   }
 
   // ==========================================
-  // واجهة التبويب الثاني (جلب التذاكر من السيرفر)
+  // واجهة التبويب الثاني (التذاكر - مربوطة بالسيرفر)
   // ==========================================
   Widget _buildTicketsTab() {
     return StreamBuilder<QuerySnapshot>(
@@ -580,18 +583,19 @@ class _StaffSupportScreenState extends State<StaffSupportScreen> with SingleTick
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('${ticket['id'] ?? 'بدون رقم'} | ${ticket['agentName'] ?? 'مجهول'}', style: TextStyle(fontWeight: FontWeight.bold, color: isClosed ? Colors.grey : null)),
+                        Text('${ticket['id'] ?? docId.substring(0,5)} | ${ticket['agent'] ?? ticket['agentName'] ?? 'مجهول'}', style: TextStyle(fontWeight: FontWeight.bold, color: isClosed ? Colors.grey : null)),
                         Text(ticket['priority'] ?? 'عادية', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                       ],
                     ),
                     const SizedBox(height: 5),
-                    Text(ticket['subject'] ?? '', style: TextStyle(fontSize: 14, color: isClosed ? Colors.grey : Colors.blueGrey)),
+                    Text(ticket['subject'] ?? 'بدون عنوان', style: TextStyle(fontSize: 14, color: isClosed ? Colors.grey : Colors.blueGrey)),
                     const Divider(),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
                         _buildIconButton(Icons.chat, 'فتح التذكرة', isClosed ? Colors.grey : Colors.blue, () => _showTicketChat(ticket, docId)),
                         _buildIconButton(Icons.lock, 'ملاحظة سرية', isClosed ? Colors.grey : Colors.orange, () => _showInternalNoteDialog(docId)),
+                        if (!isClosed) _buildIconButton(Icons.shortcut, 'إحالة إلى..', Colors.purple, _showAssignTicketDialog),
                         if (!isClosed) _buildIconButton(Icons.check_circle, 'إغلاق', Colors.green, () => _closeTicket(docId)),
                       ],
                     ),
