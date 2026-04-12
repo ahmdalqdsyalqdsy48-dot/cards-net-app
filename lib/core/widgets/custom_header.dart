@@ -76,15 +76,18 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
     final bool hasNotifications = uiProvider.hasNewNotifications; 
     final String liveNews = systemProvider.announcements.isNotEmpty ? systemProvider.announcements.join('   🔴   ') : 'مرحباً بك في نظام كروت نت...';
 
-    // 👈 الألوان الذكية (إذا كان الهيدر أبيض، فالأيقونات والنصوص سوداء والعكس صحيح)
+    // 👈 اللون الذكي: الهيدر يأخذ لون الواجهة، والأيقونات والنصوص تأخذ لوناً معاكساً لضمان الوضوح
     final Color headerColor = isDark ? const Color(0xFF121212) : themeProvider.primaryColor;
     final Color iconTextColor = isDark ? Colors.white : themeProvider.adaptiveTextColor;
 
+    // قراءة ألوان الشريط المتحرك من الإعدادات (لتتحكم بها لاحقاً من قسم البنرات)
+    final Color marqueeBg = Color(systemProvider.marqueeBgColor);
+    final Color marqueeTextCol = Color(systemProvider.marqueeTextColor);
+
     return AppBar(
-      elevation: 2, 
-      shadowColor: Colors.black12,
+      elevation: 0, // إزالة الظل ليندمج الهيدر
       backgroundColor: headerColor, 
-      iconTheme: IconThemeData(color: iconTextColor), 
+      iconTheme: IconThemeData(color: iconTextColor), // الأيقونات تتكيف ذكياً
       
       title: Row(
         mainAxisSize: MainAxisSize.min,
@@ -113,34 +116,48 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
         preferredSize: const Size.fromHeight(70),
         child: Column(
           children: [
-            // 👈 شريط الأخبار العلوي المتحرك
-            Container(
-              width: double.infinity, height: 25, color: Colors.orange.shade700, padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
-              child: Row(
-                children: [
-                  const Icon(Icons.campaign, color: Colors.white, size: 18), const SizedBox(width: 8),
-                  Expanded(child: Marquee(text: liveNews, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold), scrollAxis: Axis.horizontal, crossAxisAlignment: CrossAxisAlignment.center, blankSpace: 50.0, velocity: systemProvider.newsScrollSpeed, pauseAfterRound: const Duration(milliseconds: 500), startPadding: 10.0, textDirection: TextDirection.rtl)),
-                ],
+            // 👈 الشريط المتحرك (يقرأ إعداداته من النظام ليتوافق مع شاشة الإعلانات لاحقاً)
+            if (systemProvider.showNewsBar)
+              Container(
+                width: double.infinity, height: 25, color: marqueeBg, padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.campaign, color: marqueeTextCol, size: 18), const SizedBox(width: 8),
+                    Expanded(
+                      child: Marquee(
+                        text: liveNews, 
+                        style: TextStyle(color: marqueeTextCol, fontSize: systemProvider.marqueeFontSize, fontWeight: FontWeight.bold), 
+                        scrollAxis: Axis.horizontal, 
+                        crossAxisAlignment: CrossAxisAlignment.center, 
+                        blankSpace: 50.0, 
+                        velocity: systemProvider.newsScrollSpeed, 
+                        pauseAfterRound: const Duration(milliseconds: 500), 
+                        startPadding: 10.0, 
+                        textDirection: systemProvider.marqueeDirection == 'rtl' ? TextDirection.rtl : TextDirection.ltr
+                      )
+                    ),
+                  ],
+                ),
               ),
-            ),
-            // 👈 مربع البحث الذكي
+            
+            // 👈 زر البحث (يفتح نافذة البحث الذكية)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              child: Container(
-                height: 35, 
-                decoration: BoxDecoration(color: isDark ? Colors.grey.shade800 : Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)),
-                child: TextField(
-                  readOnly: true, // نجعله للقراءة فقط ليفتح نافذة البحث عند النقر
-                  onTap: () {
-                     showSearch(context: context, delegate: SystemSearchDelegate());
-                  },
-                  style: const TextStyle(color: Colors.black87), 
-                  decoration: const InputDecoration(
-                    hintText: 'ابحث في أقسام النظام...', 
-                    hintStyle: TextStyle(color: Colors.grey, fontSize: 13), 
-                    prefixIcon: Icon(Icons.search, color: Colors.blueAccent, size: 20), 
-                    border: InputBorder.none, 
-                    contentPadding: EdgeInsets.symmetric(vertical: 8)
+              child: InkWell(
+                onTap: () {
+                  showSearch(context: context, delegate: SystemSearchDelegate());
+                },
+                child: Container(
+                  height: 35, 
+                  decoration: BoxDecoration(color: isDark ? Colors.grey.shade800 : Colors.white.withOpacity(0.9), borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.search, color: Colors.grey, size: 20),
+                      const SizedBox(width: 10),
+                      Text('ابحث في النظام...', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                    ],
                   ),
                 ),
               ),
@@ -156,26 +173,27 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
 // 🚀 محرك البحث الذكي للنظام (Search Delegate)
 // ==========================================
 class SystemSearchDelegate extends SearchDelegate<String> {
-  // خريطة لأهم الأقسام والكلمات الدلالية
+  // خريطة للأقسام والكلمات الدلالية لسهولة التوجيه لاحقاً
   final Map<String, String> searchMap = {
     'المركز المالي': 'إدارة الأموال والأرباح',
     'التقارير': 'التقارير الشاملة والتحليلات',
-    'الوكلاء': 'إدارة الوكلاء',
-    'ميكروتيك': 'فئات كروت ميكروتيك',
+    'الوكلاء': 'إدارة الوكلاء والمستخدمين',
+    'ميكروتيك': 'فئات وباقات شبكات الميكروتيك',
     'المبيعات': 'نقطة البيع السريعة',
-    'رسائل': 'بوابة الـ SMS',
-    'إعدادات': 'الإعدادات العامة والمظهر',
-    'إعلانات': 'إدارة الإعلانات والبنرات',
-    'النسخ الاحتياطي': 'حفظ البيانات',
+    'رسائل': 'بوابة الـ SMS والإشعارات',
+    'إعدادات': 'الإعدادات العامة للمظهر والسياسات',
+    'إعلانات': 'إدارة الإعلانات والبنرات التسويقية',
+    'النسخ الاحتياطي': 'حفظ واستعادة البيانات',
   };
 
   @override
-  String get searchFieldLabel => 'اكتب اسم القسم للبحث...';
+  String get searchFieldLabel => 'اكتب للبحث...';
 
   @override
   List<Widget>? buildActions(BuildContext context) {
     return [
-      IconButton(icon: const Icon(Icons.clear), onPressed: () => query = '')
+      if (query.isNotEmpty)
+        IconButton(icon: const Icon(Icons.clear), onPressed: () => query = '')
     ];
   }
 
@@ -191,7 +209,7 @@ class SystemSearchDelegate extends SearchDelegate<String> {
   Widget buildSuggestions(BuildContext context) => _buildSearchResults();
 
   Widget _buildSearchResults() {
-    final List<String> results = searchMap.keys.where((element) => element.contains(query)).toList();
+    final List<String> results = searchMap.keys.where((element) => element.contains(query) || searchMap[element]!.contains(query)).toList();
 
     if (results.isEmpty) {
       return const Center(child: Text('لا توجد نتائج مطابقة لبحثك 🔍', style: TextStyle(fontSize: 16, color: Colors.grey)));
@@ -204,14 +222,13 @@ class SystemSearchDelegate extends SearchDelegate<String> {
         itemBuilder: (context, index) {
           String key = results[index];
           return ListTile(
-            leading: const Icon(Icons.location_on, color: Colors.blueAccent),
+            leading: const Icon(Icons.screen_search_desktop, color: Colors.blueAccent),
             title: Text(key, style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text(searchMap[key]!),
             onTap: () {
-              // هنا يتم التوجيه بناءً على القسم المختار
               close(context, key);
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('سيتم نقلك إلى قسم: $key', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
-              // ملاحظة: يمكنك لاحقاً ربط كل ضغطة بـ Navigator.push للشاشة المعنية
+              // يمكننا لاحقاً برمجة عملية النقل (Navigator) بناءً على الـ key المختار
             },
           );
         },
