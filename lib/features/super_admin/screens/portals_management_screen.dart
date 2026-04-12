@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/widgets/custom_header.dart';
@@ -20,7 +19,7 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   late TabController _tabController;
   bool _isSaving = false;
 
-  // 1. أقسام الوكلاء الحقيقية (مطابقة للمجلدات)
+  // 1. أقسام الوكلاء
   final Map<String, String> _agentSections = {
     'agent_dashboard_screen': 'الرئيسية (لوحة التحكم)',
     'quick_pos_screen': 'نقطة البيع السريعة',
@@ -34,7 +33,7 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     'agent_settings_screen': 'إعدادات الحساب',
   };
 
-  // 2. أقسام المستخدمين الحقيقية (مطابقة للمجلدات)
+  // 2. أقسام المستخدمين
   final Map<String, String> _userSections = {
     'user_dashboard_screen': 'الرئيسية (لوحة التحكم)',
     'network_store_screen': 'متجر الشبكات المتاحة',
@@ -46,11 +45,13 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     'user_settings_screen': 'إعدادات الملف الشخصي',
   };
 
-  // المتغيرات المحلية للتحكم
-  late TextEditingController _appNameCtrl, _appLogoCtrl, _welcomeMsgCtrl;
+  late TextEditingController _appNameCtrl, _welcomeMsgCtrl;
   late double _carouselInterval;
   String _marqueeDirection = 'rtl';
   int _loginBgColor = 0xFFFFFFFF, _marqueeBgColor = 0x4DFFC107;
+  
+  // 👈 قائمة الصور المتعددة للسلايدر
+  List<String> _sliderImages = [];
 
   late bool _hideProfit, _leaderboard, _forceTheme;
   List<String> _agentHiddenList = [];
@@ -66,12 +67,14 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     final sys = Provider.of<SystemProvider>(context, listen: false);
 
     _appNameCtrl = TextEditingController(text: sys.appName);
-    _appLogoCtrl = TextEditingController(text: sys.appLogoUrl);
     _welcomeMsgCtrl = TextEditingController(text: sys.loginWelcomeMessage);
     _carouselInterval = sys.carouselIntervalSeconds.toDouble();
     _marqueeDirection = sys.marqueeDirection;
     _loginBgColor = sys.loginBgColor;
     _marqueeBgColor = sys.marqueeBgColor;
+    
+    // 👈 جلب الصور المحفوظة مسبقاً
+    _sliderImages = List.from(sys.loginCarouselImages);
 
     _hideProfit = sys.hideProfitEnabled;
     _leaderboard = sys.leaderboardEnabled;
@@ -91,42 +94,45 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   void dispose() {
     _tabController.dispose();
     _appNameCtrl.dispose();
-    _appLogoCtrl.dispose();
     _welcomeMsgCtrl.dispose();
-    _waCtrl.dispose(); 
-    _fbCtrl.dispose(); 
-    _tgCtrl.dispose();
+    _waCtrl.dispose(); _fbCtrl.dispose(); _tgCtrl.dispose();
     super.dispose();
   }
 
-  // محرك الرفع السحابي المحسن
-  Future<String?> _uploadImage() async {
-    final picker = ImagePicker();
-    try {
-      final XFile? file = await picker.pickImage(source: ImageSource.gallery, maxWidth: 800, imageQuality: 85);
-      if (file == null) return null;
-      _showSnack('جاري الرفع للسيرفر... ☁️');
-      final Uint8List bytes = await file.readAsBytes();
-      String path = 'portal_assets/img_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      Reference ref = FirebaseStorage.instance.ref().child(path);
-      await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
-      String url = await ref.getDownloadURL();
-      _showSnack('تم الرفع بنجاح ✅');
-      return url;
-    } catch (e) { 
-      _showSnack('خطأ في الرفع: $e', isErr: true); 
-      return null; 
-    }
+  void _showSnack(String m, {bool isErr = false}) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m, textDirection: TextDirection.rtl), backgroundColor: isErr ? Colors.red : Colors.green));
   }
 
-  void _showSnack(String m, {bool isErr = false}) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(m, textDirection: TextDirection.rtl), 
-          backgroundColor: isErr ? Colors.red : Colors.green
-        )
-      );
+  // ========================================================
+  // 🚀 محرك الرفع المتعدد للصور (Multi-Image Upload)
+  // ========================================================
+  Future<void> _uploadMultipleImages() async {
+    final picker = ImagePicker();
+    try {
+      // السماح باختيار أكثر من صورة
+      final List<XFile> pickedFiles = await picker.pickMultiImage(maxWidth: 800, imageQuality: 85);
+      if (pickedFiles.isEmpty) return;
+
+      setState(() => _isSaving = true);
+      _showSnack('جاري رفع ${pickedFiles.length} صور للسيرفر... ☁️');
+
+      for (var file in pickedFiles) {
+        final Uint8List bytes = await file.readAsBytes();
+        String path = 'portal_assets/slider_${DateTime.now().millisecondsSinceEpoch}_${pickedFiles.indexOf(file)}.jpg';
+        Reference ref = FirebaseStorage.instance.ref().child(path);
+        await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+        String url = await ref.getDownloadURL();
+        
+        setState(() {
+          _sliderImages.add(url); // إضافة الصورة للقائمة فور رفعها
+        });
+      }
+
+      setState(() => _isSaving = false);
+      _showSnack('تم رفع الصور بنجاح ✅');
+    } catch (e) { 
+      setState(() => _isSaving = false);
+      _showSnack('خطأ في الرفع: $e', isErr: true); 
     }
   }
 
@@ -149,20 +155,12 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
               controller: _tabController,
               labelColor: Colors.blueAccent,
               indicatorColor: Colors.blueAccent,
-              tabs: const [
-                Tab(text: 'الدخول'), 
-                Tab(text: 'الوكلاء'), 
-                Tab(text: 'المستخدمين')
-              ],
+              tabs: const [Tab(text: 'الدخول'), Tab(text: 'الوكلاء'), Tab(text: 'المستخدمين')],
             ),
             Expanded(
               child: TabBarView(
                 controller: _tabController,
-                children: [
-                  _buildLoginTab(sys), 
-                  _buildAgentTab(sys), 
-                  _buildUserTab(sys)
-                ],
+                children: [_buildLoginTab(sys), _buildAgentTab(sys), _buildUserTab(sys)],
               ),
             ),
           ],
@@ -180,17 +178,6 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
         children: [
           _buildTitle('الهوية البصرية'),
           _buildTextField('اسم التطبيق', _appNameCtrl, Icons.edit),
-          Row(
-            children: [
-              Expanded(child: _buildTextField('رابط اللوجو', _appLogoCtrl, Icons.image)),
-              const SizedBox(width: 8),
-              _buildUploadBtn(() async {
-                String? url = await _uploadImage();
-                if (url != null) setState(() => _appLogoCtrl.text = url);
-              }),
-            ],
-          ),
-          if (_appLogoCtrl.text.isNotEmpty) _buildPreview(_appLogoCtrl.text, 'معاينة الشعار'),
           
           DropdownButtonFormField<int>(
             value: _loginBgColor,
@@ -199,23 +186,90 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
             onChanged: (v) => setState(() => _loginBgColor = v!),
           ),
 
-          _buildTitle('شريط الأخبار المتحرك'),
-          _buildTextField('الرسالة الترحيبية', _welcomeMsgCtrl, Icons.campaign, maxLines: 2),
+          const SizedBox(height: 20),
+          _buildTitle('إدارة صور واجهة الدخول (السلايدر)'),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, padding: const EdgeInsets.symmetric(vertical: 12)),
+              onPressed: _isSaving ? null : _uploadMultipleImages, 
+              icon: const Icon(Icons.collections, color: Colors.white), 
+              label: const Text('اختيار ورفع صور متعددة من المعرض', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+            ),
+          ),
           
-          _buildTitle('سرعة السلايدر: ${_carouselInterval.toInt()} ثواني'),
+          // عرض الصور المرفوعة
+          if (_sliderImages.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 100,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: _sliderImages.length,
+                itemBuilder: (context, index) {
+                  return Stack(
+                    children: [
+                      Container(
+                        margin: const EdgeInsets.only(left: 8),
+                        width: 150,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          image: DecorationImage(image: NetworkImage(_sliderImages[index]), fit: BoxFit.cover)
+                        ),
+                      ),
+                      Positioned(
+                        top: 0, right: 0,
+                        child: IconButton(
+                          icon: const Icon(Icons.cancel, color: Colors.red),
+                          onPressed: () => setState(() => _sliderImages.removeAt(index)),
+                        ),
+                      )
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+
+          _buildTitle('سرعة تقليب الصور: ${_carouselInterval.toInt()} ثواني'),
           Slider(value: _carouselInterval, min: 2, max: 15, divisions: 13, onChanged: (v) => setState(() => _carouselInterval = v)),
 
-          const SizedBox(height: 20),
-          _buildSaveBtn('حفظ تحديثات الهوية', () async {
+          _buildTitle('شريط الرسالة الترحيبية'),
+          _buildTextField('الرسالة الترحيبية', _welcomeMsgCtrl, Icons.campaign, maxLines: 2),
+          
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: _marqueeDirection,
+                  decoration: const InputDecoration(labelText: 'اتجاه الحركة', border: OutlineInputBorder()),
+                  items: const [DropdownMenuItem(value: 'rtl', child: Text('من اليمين')), DropdownMenuItem(value: 'ltr', child: Text('من اليسار'))],
+                  onChanged: (v) => setState(() => _marqueeDirection = v!),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: DropdownButtonFormField<int>(
+                  value: _marqueeBgColor,
+                  decoration: const InputDecoration(labelText: 'لون شريط الأخبار', border: OutlineInputBorder()),
+                  items: _colorOptions.entries.map((e) => DropdownMenuItem(value: e.value, child: Text(e.key))).toList(),
+                  onChanged: (v) => setState(() => _marqueeBgColor = v!),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 25),
+          _buildSaveBtn('حفظ تحديثات الدخول', () async {
             setState(() => _isSaving = true);
             await sys.updateAdvancedLoginSettings(
-              name: _appNameCtrl.text, logoUrl: _appLogoCtrl.text, bgColor: _loginBgColor,
-              images: sys.loginCarouselImages, welcomeMsg: _welcomeMsgCtrl.text,
+              name: _appNameCtrl.text, logoUrl: '', bgColor: _loginBgColor,
+              images: _sliderImages, welcomeMsg: _welcomeMsgCtrl.text, // 👈 تم حفظ قائمة الصور للسيرفر
               intervalSeconds: _carouselInterval.toInt(), marqueeDir: _marqueeDirection,
               marqueeTextCol: sys.marqueeTextColor, marqueeBgCol: _marqueeBgColor, marqueeFont: sys.marqueeFontSize,
             );
             setState(() => _isSaving = false);
-            _showSnack('تم تحديث هوية التطبيق! 🚀');
+            _showSnack('تم تحديث صفحة الدخول! 🚀');
           }),
         ],
       ),
@@ -277,11 +331,7 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
           _buildTitle('ظهور الأقسام للمستخدمين'),
           ..._userSections.keys.map((key) {
             bool isHidden = _userHiddenList.contains(key);
-            return CheckboxListTile(
-              title: Text(_userSections[key]!), 
-              value: !isHidden, 
-              onChanged: (v) => setState(() { v! ? _userHiddenList.remove(key) : _userHiddenList.add(key); })
-            );
+            return CheckboxListTile(title: Text(_userSections[key]!), value: !isHidden, onChanged: (v) => setState(() { v! ? _userHiddenList.remove(key) : _userHiddenList.add(key); }));
           }).toList(),
 
           _buildTitle('سياسات الدخول والأمان'),
@@ -290,7 +340,6 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
           _buildSwitch('تفعيل نظام النقاط والجوائز', _loyaltySystem, (v) => setState(() => _loyaltySystem = v)),
 
           _buildTitle('روابط التواصل الاجتماعي'),
-          // تم استبدال Icons.whatsapp بـ Icons.chat لحل مشكلة البناء للويب
           _buildTextField('رابط واتساب الدعم', _waCtrl, Icons.chat),
           _buildTextField('رابط قناة تليجرام', _tgCtrl, Icons.send),
 
@@ -312,89 +361,18 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
 
   // --- الأدوات المساعدة ---
   Widget _buildTitle(String t) => Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(t, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey, fontSize: 15)));
-  
-  Widget _buildTextField(String l, TextEditingController c, IconData i, {int maxLines = 1}) => Padding(
-    padding: const EdgeInsets.only(bottom: 12), 
-    child: TextField(
-      controller: c, 
-      maxLines: maxLines, 
-      decoration: InputDecoration(labelText: l, prefixIcon: Icon(i, color: Colors.blueAccent), border: const OutlineInputBorder())
-    )
-  );
-  
+  Widget _buildTextField(String l, TextEditingController c, IconData i, {int maxLines = 1}) => Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: c, maxLines: maxLines, decoration: InputDecoration(labelText: l, prefixIcon: Icon(i, color: Colors.blueAccent), border: const OutlineInputBorder())));
   Widget _buildSwitch(String t, bool v, Function(bool) c) => SwitchListTile(title: Text(t, style: const TextStyle(fontSize: 14)), value: v, activeColor: Colors.blueAccent, onChanged: c);
-  
-  Widget _buildUploadBtn(VoidCallback p) => Container(decoration: BoxDecoration(color: Colors.blueAccent, borderRadius: BorderRadius.circular(8)), child: IconButton(icon: const Icon(Icons.cloud_upload, color: Colors.white), onPressed: p));
-  
-  Widget _buildPreview(String u, String t) => Container(margin: const EdgeInsets.symmetric(vertical: 10), padding: const EdgeInsets.all(8), decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(10)), child: Column(children: [Text(t, style: const TextStyle(fontSize: 10)), const SizedBox(height: 5), Image.network(u, height: 70, errorBuilder: (c,e,s) => const Icon(Icons.broken_image, color: Colors.red))]));
-  
   Widget _buildSaveBtn(String t, VoidCallback p) => SizedBox(width: double.infinity, height: 50, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade900, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: _isSaving ? null : p, child: _isSaving ? const CircularProgressIndicator(color: Colors.white) : Text(t, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))));
 
   void _showTargetedDialog(SystemProvider sys, String sid, String sname) {
     TextEditingController p = TextEditingController();
-    showDialog(
-      context: context, 
-      builder: (c) => AlertDialog(
-        title: Text('تحكم خاص بـ $sname'), 
-        content: TextField(controller: p, decoration: const InputDecoration(hintText: 'الأرقام مفصولة بفاصلة (مثلاً 777..., 711...)', border: OutlineInputBorder())), 
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text('إلغاء')), 
-          ElevatedButton(
-            onPressed: () async { 
-              List<String> list = p.text.split(',').map((e) => e.trim()).toList(); 
-              await sys.toggleSectionForSpecificUsers(sectionId: sid, targetPhones: list, hide: true); 
-              if (context.mounted) {
-                Navigator.pop(c); 
-                _showSnack('تم تنفيذ الأمر بنجاح!'); 
-              }
-            }, 
-            child: const Text('تنفيذ')
-          )
-        ]
-      )
-    );
+    showDialog(context: context, builder: (c) => AlertDialog(title: Text('تحكم خاص بـ $sname'), content: TextField(controller: p, decoration: const InputDecoration(hintText: 'الأرقام مفصولة بفاصلة (مثلاً 777..., 711...)', border: OutlineInputBorder())), actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('إلغاء')), ElevatedButton(onPressed: () async { List<String> list = p.text.split(',').map((e) => e.trim()).toList(); await sys.toggleSectionForSpecificUsers(sectionId: sid, targetPhones: list, hide: true); if(mounted){Navigator.pop(c); _showSnack('تم التنفيذ!');} }, child: const Text('تنفيذ'))]));
   }
 
   void _showContentDialog(SystemProvider sys, String type) {
     TextEditingController content = TextEditingController();
-    showDialog(
-      context: context, 
-      builder: (c) => AlertDialog(
-        title: Text(type == 'banner' ? 'نشر إعلان موجه' : 'تنبيه طوارئ'), 
-        content: Column(
-          mainAxisSize: MainAxisSize.min, 
-          children: [
-            TextField(controller: content, decoration: InputDecoration(labelText: type == 'banner' ? 'رابط الصورة' : 'نص التنبيه', border: const OutlineInputBorder())), 
-            if (type == 'banner') 
-              TextButton.icon(
-                onPressed: () async { 
-                  String? url = await _uploadImage(); 
-                  if (url != null) content.text = url; 
-                }, 
-                icon: const Icon(Icons.upload), 
-                label: const Text('رفع من الاستوديو')
-              )
-          ]
-        ), 
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text('إلغاء')), 
-          ElevatedButton(
-            onPressed: () async { 
-              if (type == 'banner') {
-                await sys.postTargetedBanner(imageUrl: content.text, targetType: 'all', targetPhones: []); 
-              } else {
-                await sys.setEmergencyAlert(isActive: true, text: content.text, targetType: 'all', targetPhones: []); 
-              }
-              if (context.mounted) {
-                Navigator.pop(c); 
-                _showSnack('تم النشر! ✅'); 
-              }
-            }, 
-            child: const Text('نشر للجميع')
-          )
-        ]
-      )
-    );
+    showDialog(context: context, builder: (c) => AlertDialog(title: Text(type == 'banner' ? 'نشر إعلان موجه' : 'تنبيه طوارئ'), content: Column(mainAxisSize: MainAxisSize.min, children: [TextField(controller: content, decoration: InputDecoration(labelText: type == 'banner' ? 'رابط الصورة' : 'نص التنبيه', border: const OutlineInputBorder()))]), actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('إلغاء')), ElevatedButton(onPressed: () async { if (type == 'banner') await sys.postTargetedBanner(imageUrl: content.text, targetType: 'all', targetPhones: []); else await sys.setEmergencyAlert(isActive: true, text: content.text, targetType: 'all', targetPhones: []); if(mounted){Navigator.pop(c); _showSnack('تم النشر! ✅');} }, child: const Text('نشر للجميع'))]));
   }
 
   final Map<String, int> _colorOptions = {'أبيض': 0xFFFFFFFF, 'أسود': 0xFF000000, 'أزرق داكن': 0xFF0D47A1, 'أصفر': 0x4DFFC107, 'رمادي': 0xFFF5F5F5};
