@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart'; 
 import 'package:cloud_firestore/cloud_firestore.dart'; 
+import 'package:google_fonts/google_fonts.dart'; // 👈 استدعاء مكتبة الخطوط
 
 import 'core/providers/theme_provider.dart';
 import 'core/providers/system_provider.dart'; 
@@ -51,8 +52,22 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 👈 استدعاء العقل المدبر للألوان
     final themeProvider = Provider.of<ThemeProvider>(context);
+
+    // 👈 دالة ذكية لتطبيق نوع الخط المختار من لوحة التحكم
+    TextTheme _applyFont(TextTheme baseTheme, Color textColor) {
+      if (themeProvider.fontFamily == 'System') return baseTheme.apply(bodyColor: textColor, displayColor: textColor);
+      
+      try {
+        return GoogleFonts.getTextTheme(
+          themeProvider.fontFamily,
+          baseTheme,
+        ).apply(bodyColor: textColor, displayColor: textColor);
+      } catch (e) {
+        // إذا فشل تحميل الخط، استخدم خط كالفون الافتراضي
+        return GoogleFonts.cairoTextTheme(baseTheme).apply(bodyColor: textColor, displayColor: textColor);
+      }
+    }
 
     return MaterialApp(
       title: 'نظام كروت نت',
@@ -60,29 +75,32 @@ class MyApp extends StatelessWidget {
       
       themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
       
+      // 👈 السر هنا: تطبيق نسبة تكبير أو تصغير الخط المحددة من لوحة المالك على النظام بأكمله
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(themeProvider.fontSizeScale),
+          ),
+          child: child!,
+        );
+      },
+
       // ==========================================
-      // ☀️ الوضع النهاري (الذكي 100%)
+      // ☀️ الوضع النهاري 
       // ==========================================
       theme: ThemeData(
         primaryColor: themeProvider.primaryColor,
-        // 👈 1. جعلنا لون الخلفية 100% هو اللون الذي اختاره المستخدم
         scaffoldBackgroundColor: themeProvider.primaryColor, 
         
-        // 👈 2. الذكاء اللوني: إجبار النصوص على (أبيض/أسود) لتكون مقروءة دائماً
-        textTheme: TextTheme(
-          bodyLarge: TextStyle(color: themeProvider.adaptiveTextColor),
-          bodyMedium: TextStyle(color: themeProvider.adaptiveTextColor),
-          titleLarge: TextStyle(color: themeProvider.adaptiveTextColor),
-        ),
+        // 👈 تطبيق الخط واللون المتجاوب مع الخلفية
+        textTheme: _applyFont(ThemeData.light().textTheme, themeProvider.adaptiveTextColor),
         
-        // 👈 3. جعل الأيقونات أيضاً تتبع نفس الذكاء اللوني
         iconTheme: IconThemeData(color: themeProvider.adaptiveTextColor),
         
-        // 👈 4. الهيدر (الشريط العلوي) يتناغم مع الخلفية
         appBarTheme: AppBarTheme(
           backgroundColor: themeProvider.primaryColor,
           foregroundColor: themeProvider.adaptiveTextColor, 
-          elevation: 0, // إزالة الظل ليندمج مع الخلفية
+          elevation: 0, 
         ),
 
         colorScheme: ColorScheme.fromSeed(
@@ -93,20 +111,18 @@ class MyApp extends StatelessWidget {
       ),
       
       // ==========================================
-      // 🌙 الوضع الليلي (المريح للعين)
+      // 🌙 الوضع الليلي 
       // ==========================================
       darkTheme: ThemeData(
         primaryColor: themeProvider.primaryColor,
-        // في الوضع الليلي ندمج اللون المختار بنسبة 20% فقط مع الأسود لكي لا يؤذي العين
         scaffoldBackgroundColor: Color.alphaBlend(
           themeProvider.primaryColor.withOpacity(0.2), 
           const Color(0xFF121212),
         ),
-        textTheme: const TextTheme(
-          bodyLarge: TextStyle(color: Colors.white),
-          bodyMedium: TextStyle(color: Colors.white),
-          titleLarge: TextStyle(color: Colors.white),
-        ),
+        
+        // 👈 تطبيق الخط واللون الأبيض الثابت في الوضع الليلي
+        textTheme: _applyFont(ThemeData.dark().textTheme, Colors.white),
+        
         iconTheme: const IconThemeData(color: Colors.white),
         appBarTheme: AppBarTheme(
           backgroundColor: Color.alphaBlend(
