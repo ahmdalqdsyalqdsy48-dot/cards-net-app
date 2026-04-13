@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/ui_provider.dart'; // 👈 استدعاء مزود الأصوات
 
 import '../../super_admin/screens/super_admin_dashboard.dart';
 import '../../agent_panel/screens/agent_dashboard_screen.dart';
@@ -37,9 +38,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   Timer? _carouselTimer;
   int _currentPage = 0;
   
-  // ألوان احتياطية في حال لم يرفع المالك صوراً حقيقية بعد
   final List<Color> _fallbackAdColors = [Colors.blue.shade800, Colors.deepPurple, Colors.teal];
-
   final LocalAuthentication auth = LocalAuthentication();
 
   @override
@@ -87,16 +86,29 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   // ==========================================
   Future<void> _processLogin() async {
     FocusScope.of(context).unfocus();
+    final uiProvider = Provider.of<UiProvider>(context, listen: false); // 👈 لربط الأصوات
+    uiProvider.playSound('click'); // 👈 صوت النقر
+
     String phone = phoneController.text.trim();
     String password = passwordController.text.trim();
 
     if (phone.isEmpty || password.isEmpty) {
+      uiProvider.playSound('error'); // 👈 صوت الخطأ
       _showErrorSnackBar('يرجى إدخال رقم الهاتف وكلمة المرور.');
       return;
     }
 
     setState(() => isLoading = true);
     final systemProvider = Provider.of<SystemProvider>(context, listen: false);
+    
+    // 👈 تجاوز وضع الصيانة فقط لمالك النظام (إذا كان رقمه 774578241)
+    if (systemProvider.isMaintenanceMode && phone != '774578241') {
+      setState(() => isLoading = false);
+      uiProvider.playSound('error');
+      _showErrorSnackBar('النظام تحت الصيانة حالياً. يرجى المحاولة لاحقاً.');
+      return;
+    }
+
     final Map<String, dynamic>? userData = await systemProvider.loginUser(phone, password);
     
     if (!mounted) return;
@@ -106,6 +118,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       String userRole = userData['role']; 
       
       Provider.of<ThemeProvider>(context, listen: false).setUser(userRole, phone);
+      uiProvider.playSound('success'); // 👈 صوت الدخول الناجح
       
       if (userRole == 'super_admin' || userRole == 'staff') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SuperAdminDashboard()));
@@ -115,17 +128,22 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
       }
     } else {
+      uiProvider.playSound('error'); // 👈 صوت فشل الدخول
       _showErrorSnackBar('رقم الهاتف غير مسجل أو كلمة المرور خاطئة!');
     }
   }
 
   Future<void> _processRegistration() async {
     FocusScope.of(context).unfocus();
+    final uiProvider = Provider.of<UiProvider>(context, listen: false);
+    uiProvider.playSound('click');
+
     String phone = phoneController.text.trim();
     String password = passwordController.text.trim();
     String name = nameController.text.trim();
 
     if (phone.isEmpty || password.isEmpty || name.isEmpty) {
+      uiProvider.playSound('error');
       _showErrorSnackBar('يرجى تعبئة جميع الحقول!');
       return;
     }
@@ -138,6 +156,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
 
     if (isExist) {
       setState(() => isLoading = false);
+      uiProvider.playSound('error');
       _showErrorSnackBar('هذا الرقم مسجل مسبقاً! يرجى تسجيل الدخول.');
       setState(() => isLoginMode = true);
     } else {
@@ -146,12 +165,14 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       setState(() => isLoading = false);
 
       Provider.of<ThemeProvider>(context, listen: false).setUser('user', phone);
+      uiProvider.playSound('success');
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
       _showSuccessSnackBar('تم التسجيل بنجاح! أهلاً بك.');
     }
   }
 
   Future<void> _authenticateWithBiometrics() async {
+    Provider.of<UiProvider>(context, listen: false).playSound('click');
     if (kIsWeb) {
       _showErrorSnackBar('عذراً، الدخول بالبصمة يعمل فقط على تطبيقات الهواتف (Android/iOS) وليس المتصفح.');
       return;
@@ -160,6 +181,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   }
 
   void _showForgotPasswordDialog() {
+    Provider.of<UiProvider>(context, listen: false).playSound('click');
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -167,7 +189,11 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
         content: const TextField(keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: 'أدخل رقم هاتفك المسجل', prefixIcon: Icon(Icons.phone)), textDirection: TextDirection.rtl),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-          ElevatedButton(onPressed: () { Navigator.pop(context); _showSuccessSnackBar('تم إرسال رمز الاستعادة (OTP) إلى رقمك.'); }, child: const Text('إرسال الرمز')),
+          ElevatedButton(onPressed: () { 
+            Navigator.pop(context); 
+            Provider.of<UiProvider>(context, listen: false).playSound('success');
+            _showSuccessSnackBar('تم إرسال رمز الاستعادة (OTP) إلى رقمك.'); 
+          }, child: const Text('إرسال الرمز')),
         ],
       ),
     );
@@ -182,22 +208,70 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   }
 
   // ==========================================
-  // 3. بناء الواجهة 
+  // 3. بناء الواجهة مع دروع الحماية
   // ==========================================
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final systemProvider = Provider.of<SystemProvider>(context);
+    final themeProvider = Provider.of<ThemeProvider>(context);
     
-    final List<String> carouselImages = systemProvider.loginCarouselImages;
-    final String welcomeMessage = systemProvider.loginWelcomeMessage.isNotEmpty 
-        ? systemProvider.loginWelcomeMessage 
-        : 'أهلاً بك في نظام كروت نت - أسرع شبكة لبيع الكروت والخدمات...';
+    // 🛡️ درع الصيانة العامة
+    if (systemProvider.isMaintenanceMode) {
+      return Scaffold(
+        backgroundColor: themeProvider.primaryColor,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.build_circle, size: 100, color: Colors.redAccent),
+              const SizedBox(height: 20),
+              Text('النظام تحت الصيانة', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: themeProvider.adaptiveTextColor)),
+              const SizedBox(height: 10),
+              Text('نعمل على تحسين تجربتكم، سنعود قريباً.', style: TextStyle(fontSize: 16, color: themeProvider.adaptiveTextColor.withOpacity(0.7))),
+              const SizedBox(height: 40),
+              // زر دخول طوارئ يظهر فقط للمالك (للتجاوز)
+              TextButton.icon(
+                onPressed: () => _showEmergencyLoginDialog(),
+                icon: const Icon(Icons.admin_panel_settings, color: Colors.blue),
+                label: const Text('دخول الطوارئ (للإدارة فقط)'),
+              )
+            ],
+          ),
+        ),
+      );
+    }
 
-    final CrossAxisAlignment columnAlign = systemProvider.appNameAlign == 'right' 
-        ? CrossAxisAlignment.start 
-        : (systemProvider.appNameAlign == 'left' ? CrossAxisAlignment.end : CrossAxisAlignment.center);
-    
+    // 🛡️ درع التحديث الإجباري
+    if (systemProvider.isForcedUpdate) {
+      return Scaffold(
+        backgroundColor: themeProvider.primaryColor,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.system_update, size: 100, color: Colors.orange),
+              const SizedBox(height: 20),
+              Text('تحديث هام متاح', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: themeProvider.adaptiveTextColor)),
+              const SizedBox(height: 10),
+              Text('يرجى تحديث التطبيق إلى آخر إصدار لمتابعة الاستخدام.', textAlign: TextAlign.center, style: TextStyle(fontSize: 16, color: themeProvider.adaptiveTextColor.withOpacity(0.7))),
+              const SizedBox(height: 30),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12)),
+                onPressed: () { /* كود التوجيه لمتجر بلاي أو أبل */ },
+                icon: const Icon(Icons.download, color: Colors.white),
+                label: const Text('تحديث الآن', style: TextStyle(color: Colors.white, fontSize: 16)),
+              )
+            ],
+          ),
+        ),
+      );
+    }
+
+    // الواجهة الطبيعية إذا لم تكن هناك صيانة أو تحديث
+    final List<String> carouselImages = systemProvider.loginCarouselImages;
+    final String welcomeMessage = systemProvider.loginWelcomeMessage.isNotEmpty ? systemProvider.loginWelcomeMessage : 'أهلاً بك في نظام كروت نت';
+    final CrossAxisAlignment columnAlign = systemProvider.appNameAlign == 'right' ? CrossAxisAlignment.start : (systemProvider.appNameAlign == 'left' ? CrossAxisAlignment.end : CrossAxisAlignment.center);
     final String customFont = systemProvider.appNameFont;
     final Color customColor = Color(systemProvider.appNameColor);
     final String appName = systemProvider.appName.isNotEmpty ? systemProvider.appName : 'شبكة كروت نت';
@@ -209,7 +283,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
           child: Column(
             children: [
               if (isLoginMode) ...[
-                // مساحة السلايدر
                 SizedBox(
                   height: MediaQuery.of(context).size.height * 0.22,
                   child: PageView.builder(
@@ -218,11 +291,10 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                     itemBuilder: (context, index) {
                       if (carouselImages.isNotEmpty) {
                         return Container(
-                          // 👈 إضافة خلفية شفافة لملء الفراغ المحتمل بشكل أنيق
                           color: Colors.transparent, 
                           child: Image.network(
                             carouselImages[index], 
-                            fit: BoxFit.contain, // 👈 التعديل السحري هنا لمنع القص نهائياً
+                            fit: BoxFit.contain, 
                             errorBuilder: (context, error, stackTrace) => Container(
                               color: Colors.grey.shade300,
                               child: const Center(child: Icon(Icons.broken_image, color: Colors.grey, size: 50)),
@@ -239,16 +311,17 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                   ),
                 ),
                 
-                // شريط الأخبار
-                Container(
-                  width: double.infinity, height: 35, 
-                  color: Color(systemProvider.marqueeBgColor), 
-                  child: _CustomMarquee(
-                    text: welcomeMessage,
-                    textColor: Color(systemProvider.marqueeTextColor), 
-                    direction: systemProvider.marqueeDirection, 
+                // 👈 شريط الأخبار محمي بشرط الظهور (showNewsBar)
+                if (systemProvider.showNewsBar)
+                  Container(
+                    width: double.infinity, height: 35, 
+                    color: Color(systemProvider.marqueeBgColor), 
+                    child: _CustomMarquee(
+                      text: welcomeMessage,
+                      textColor: Color(systemProvider.marqueeTextColor), 
+                      direction: systemProvider.marqueeDirection, 
+                    ),
                   ),
-                ),
                 
                 const SizedBox(height: 20),
                 
@@ -265,13 +338,12 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                             child: Image.network(
                               systemProvider.appLogoUrl, 
                               height: 100, 
-                              fit: BoxFit.contain, // 👈 تم التأكد أن الشعار أيضاً لن يُقص
+                              fit: BoxFit.contain, 
                               errorBuilder: (c, e, s) => const SizedBox.shrink()
                             ),
                           ),
                           const SizedBox(height: 15), 
                         ],
-                        
                         Text(
                           appName, 
                           textAlign: systemProvider.appNameAlign == 'right' ? TextAlign.right : (systemProvider.appNameAlign == 'left' ? TextAlign.left : TextAlign.center),
@@ -295,7 +367,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                 const SizedBox(height: 30),
               ],
 
-              // حقول الإدخال
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: Directionality(
@@ -327,6 +398,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                           suffixIcon: IconButton(
                             icon: Icon(obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.grey),
                             onPressed: () {
+                              Provider.of<UiProvider>(context, listen: false).playSound('click');
                               setState(() { obscurePassword = !obscurePassword; });
                             },
                           ),
@@ -341,7 +413,10 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                           children: [
                             Row(
                               children: [
-                                Checkbox(value: rememberMe, onChanged: (value) => setState(() => rememberMe = value!)),
+                                Checkbox(value: rememberMe, onChanged: (value) {
+                                  Provider.of<UiProvider>(context, listen: false).playSound('click');
+                                  setState(() => rememberMe = value!);
+                                }),
                                 const Text("تذكرني", style: TextStyle(fontSize: 14)),
                               ],
                             ),
@@ -386,6 +461,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                           Text(isLoginMode ? "ليس لديك حساب؟" : "لديك حساب بالفعل؟", style: const TextStyle(fontSize: 15)),
                           TextButton(
                             onPressed: () {
+                              Provider.of<UiProvider>(context, listen: false).playSound('click');
                               setState(() {
                                 isLoginMode = !isLoginMode; 
                                 phoneController.clear();
@@ -403,6 +479,37 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
               const SizedBox(height: 30),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // 👈 نافذة دخول طوارئ تظهر للمالك فقط إذا كان النظام تحت الصيانة
+  void _showEmergencyLoginDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('دخول الطوارئ', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: phoneController, decoration: const InputDecoration(labelText: 'رقم الإدارة (774578241)')),
+              const SizedBox(height: 10),
+              TextField(controller: passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'كلمة المرور')),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _processLogin(); // سيمرر الدخول لأن الرقم سيطابق الاستثناء
+              }, 
+              child: const Text('دخول')
+            ),
+          ],
         ),
       ),
     );
