@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:local_auth/local_auth.dart';
-import 'package:google_fonts/google_fonts.dart'; // 👈 استدعاء مكتبة الخطوط الجديدة
+import 'package:google_fonts/google_fonts.dart'; 
 
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/providers/system_provider.dart';
@@ -45,7 +45,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   @override
   void initState() {
     super.initState();
-    // تأخير تشغيل السلايدر حتى يتم تحميل البيانات من Provider
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _startDynamicCarousel();
     });
@@ -195,9 +194,10 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
         ? systemProvider.loginWelcomeMessage 
         : 'أهلاً بك في نظام كروت نت - أسرع شبكة لبيع الكروت والخدمات...';
 
-    final MainAxisAlignment alignAxis = systemProvider.appNameAlign == 'right' 
-        ? MainAxisAlignment.end 
-        : (systemProvider.appNameAlign == 'left' ? MainAxisAlignment.start : MainAxisAlignment.center);
+    // 👈 تحديد المحاذاة العمودية (لأننا غيرنا الترتيب إلى Column)
+    final CrossAxisAlignment columnAlign = systemProvider.appNameAlign == 'right' 
+        ? CrossAxisAlignment.start // في اللغة العربية (RTL) البداية هي اليمين
+        : (systemProvider.appNameAlign == 'left' ? CrossAxisAlignment.end : CrossAxisAlignment.center);
     
     final String customFont = systemProvider.appNameFont;
     final Color customColor = Color(systemProvider.appNameColor);
@@ -210,14 +210,23 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
           child: Column(
             children: [
               if (isLoginMode) ...[
+                // مساحة السلايدر
                 SizedBox(
-                  height: MediaQuery.of(context).size.height * 0.2,
+                  height: MediaQuery.of(context).size.height * 0.22,
                   child: PageView.builder(
                     controller: _pageController,
                     itemCount: carouselImages.isNotEmpty ? carouselImages.length : _fallbackAdColors.length,
                     itemBuilder: (context, index) {
                       if (carouselImages.isNotEmpty) {
-                        return Image.network(carouselImages[index], fit: BoxFit.cover);
+                        // 👈 حماية السلايدر بروابط خارجية من الانهيار
+                        return Image.network(
+                          carouselImages[index], 
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Container(
+                            color: Colors.grey.shade300,
+                            child: const Center(child: Icon(Icons.broken_image, color: Colors.grey, size: 50)),
+                          ),
+                        );
                       } else {
                         return Container(
                           color: _fallbackAdColors[index],
@@ -228,6 +237,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                   ),
                 ),
                 
+                // شريط الأخبار
                 Container(
                   width: double.infinity, height: 35, 
                   color: Color(systemProvider.marqueeBgColor), 
@@ -240,26 +250,35 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                 
                 const SizedBox(height: 20),
                 
+                // 👈 الترتيب الملكي الجديد (الشعار وفوقه الاسم)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24.0),
                   child: Directionality(
                     textDirection: TextDirection.rtl, 
-                    child: Row(
-                      mainAxisAlignment: alignAxis, 
+                    child: Column(
+                      crossAxisAlignment: columnAlign, // يستجيب لاختيارك
                       children: [
-                        if (systemProvider.appLogoUrl.isNotEmpty)
-                          Image.network(systemProvider.appLogoUrl, height: 50, errorBuilder: (c, e, s) => const SizedBox.shrink()), 
-                        if (systemProvider.appLogoUrl.isNotEmpty)
-                          const SizedBox(width: 10), 
+                        if (systemProvider.appLogoUrl.isNotEmpty) ...[
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.network(
+                              systemProvider.appLogoUrl, 
+                              height: 100, // 👈 مساحة ممتازة للصور الجدارية أو الشعارات
+                              fit: BoxFit.contain, // يمنع ضغط أو تمطيط الصورة
+                              errorBuilder: (c, e, s) => const SizedBox.shrink()
+                            ),
+                          ),
+                          const SizedBox(height: 15), 
+                        ],
                         
-                        // 👈 الكود الذكي لتطبيق الخطوط الاحترافية
                         Text(
                           appName, 
+                          textAlign: systemProvider.appNameAlign == 'right' ? TextAlign.right : (systemProvider.appNameAlign == 'left' ? TextAlign.left : TextAlign.center),
                           style: customFont == 'System' || customFont.isEmpty
-                              ? TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: customColor)
+                              ? TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: customColor)
                               : GoogleFonts.getFont(
                                   customFont,
-                                  textStyle: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: customColor),
+                                  textStyle: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: customColor),
                                 ),
                         ),
                       ],
@@ -275,6 +294,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                 const SizedBox(height: 30),
               ],
 
+              // حقول الإدخال
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: Directionality(
