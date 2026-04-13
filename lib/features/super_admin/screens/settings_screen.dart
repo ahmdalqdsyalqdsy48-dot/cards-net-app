@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart'; 
 import 'package:cloud_firestore/cloud_firestore.dart'; 
+import 'package:local_auth/local_auth.dart'; // 👈 مكتبة البصمة الحقيقية
+import 'package:shared_preferences/shared_preferences.dart'; // 👈 مكتبة الحفظ المحلي
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/theme_provider.dart';
@@ -18,16 +20,55 @@ class GlobalSettingsScreen extends StatefulWidget {
 class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
+  // 👈 متغيرات مؤقتة لتبويب المظهر (حتى لا تتغير فوراً إلا بعد الحفظ)
+  bool _isInit = false;
+  String _tempFont = 'System';
+  double _tempFontSize = 1.0;
+  bool _tempDarkMode = false;
+
+  // 👈 متغيرات تبويب الأمان
+  bool _soundsEnabled = true;
+  final LocalAuthentication _localAuth = LocalAuthentication();
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _loadLocalSettings();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_isInit) {
+      final tp = Provider.of<ThemeProvider>(context, listen: false);
+      _tempFont = tp.fontFamily;
+      _tempFontSize = tp.fontSizeScale;
+      _tempDarkMode = tp.isDarkMode;
+      _isInit = true;
+    }
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  // تحميل إعدادات الصوت من ذاكرة الهاتف
+  Future<void> _loadLocalSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _soundsEnabled = prefs.getBool('soundsEnabled') ?? true;
+    });
+  }
+
+  void _showSnack(String m, {bool isSuccess = true}) {
+    if(mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(m, textDirection: TextDirection.rtl), backgroundColor: isSuccess ? Colors.green : Colors.red)
+      );
+    }
   }
 
   // ==========================================
@@ -56,12 +97,11 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
             ),
           ),
           actions: [
-            // 👈 زر استعادة الافتراضي (اللون الأبيض)
             TextButton(
               onPressed: () {
                 themeProvider.resetToDefault();
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت العودة للون الرسمي الأبيض.', textDirection: TextDirection.rtl)));
+                _showSnack('تمت العودة للون الرسمي الأبيض.', isSuccess: true);
               },
               child: const Text('استعادة الافتراضي', style: TextStyle(color: Colors.red)),
             ),
@@ -98,7 +138,7 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
                 bool success = await systemProvider.changeUserName(nameController.text);
                 if(mounted){
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(success ? 'تم تحديث الاسم بنجاح! ✅' : 'فشل التحديث', textDirection: TextDirection.rtl), backgroundColor: success ? Colors.green : Colors.red));
+                  _showSnack(success ? 'تم تحديث الاسم بنجاح! ✅' : 'فشل التحديث', isSuccess: success);
                 }
               },
               child: const Text('حفظ'),
@@ -138,15 +178,15 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
                 onPressed: () {
                   if (newPass.text != confirmPass.text) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('كلمة المرور غير متطابقة!', textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
+                    _showSnack('كلمة المرور غير متطابقة!', isSuccess: false);
                     return;
                   }
                   bool success = systemProvider.changeUserPassword(oldPass.text, newPass.text);
                   Navigator.pop(context);
                   if (success) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تغيير كلمة المرور بنجاح!', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                    _showSnack('تم تغيير كلمة المرور بنجاح!', isSuccess: true);
                   } else {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('كلمة المرور القديمة خاطئة!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                    _showSnack('كلمة المرور القديمة خاطئة!', isSuccess: false);
                   }
                 },
                 child: const Text('تأكيد التغيير', style: TextStyle(color: Colors.white)),
@@ -189,16 +229,16 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
                 onPressed: () async {
                   if (newPin.text != confirmPin.text) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرمز غير متطابق!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                    _showSnack('الرمز غير متطابق!', isSuccess: false);
                     return;
                   }
                   bool success = await systemProvider.changeUserPin(oldPin.text, newPin.text);
                   if(mounted){
                     Navigator.pop(context);
                     if (success) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث رمز PIN بنجاح! ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                      _showSnack('تم تحديث رمز PIN بنجاح! ✅', isSuccess: true);
                     } else {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('رمز PIN القديم خاطئ!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                      _showSnack('رمز PIN القديم خاطئ!', isSuccess: false);
                     }
                   }
                 },
@@ -229,7 +269,6 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
     );
   }
 
-  // 👈 النافذة الجديدة الخاصة ببرمجة وتعديل شريط الأخبار العلوي العام
   void _showGlobalMarqueeEditDialog() {
     TextEditingController marqueeCtrl = TextEditingController();
     showDialog(
@@ -251,13 +290,12 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
             ElevatedButton(
               onPressed: () async {
                 if (marqueeCtrl.text.isNotEmpty) {
-                  // تحديث السيرفر ليعكس التغيير عند الجميع فوراً
                   await FirebaseFirestore.instance.collection('system').doc('main_info').update({
                     'announcements': [marqueeCtrl.text]
                   });
                   if(mounted){
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تغيير نص الشريط العلوي بنجاح!', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                    _showSnack('تم تغيير نص الشريط العلوي بنجاح!', isSuccess: true);
                   }
                 }
               },
@@ -273,8 +311,6 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
   Widget build(BuildContext context) {
     final systemProvider = Provider.of<SystemProvider>(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
-
-    // 👈 الذكاء اللوني: إذا كان اللون المختار هو الأبيض، استخدم الأزرق للرموز والنصوص
     final Color safeActiveColor = themeProvider.primaryColor == const Color(0xFFFFFFFF) ? Colors.blueAccent : themeProvider.primaryColor;
 
     return Scaffold(
@@ -294,7 +330,7 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
               child: TabBar(
                 controller: _tabController,
                 isScrollable: true,
-                labelColor: safeActiveColor, // استخدام اللون الآمن
+                labelColor: safeActiveColor, 
                 unselectedLabelColor: Colors.grey,
                 indicatorColor: safeActiveColor,
                 tabs: const [
@@ -310,7 +346,7 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
                 controller: _tabController,
                 children: [
                   _buildAppearanceTab(themeProvider, safeActiveColor),
-                  _buildSecurityTab(systemProvider),
+                  _buildSecurityTab(systemProvider, safeActiveColor),
                   _buildSystemStatusTab(systemProvider),
                   _buildPolicyTab(systemProvider),
                 ],
@@ -326,95 +362,192 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
   // 1. تبويب المظهر والخطوط 🎨 
   // ==========================================
   Widget _buildAppearanceTab(ThemeProvider themeProvider, Color safeActiveColor) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSectionTitle('تخصيص ألوان الواجهة الخاصة بك'),
-          const SizedBox(height: 10),
-          Card(
-            elevation: 2,
-            child: ListTile(
-              leading: Icon(Icons.color_lens, color: safeActiveColor, size: 30),
-              title: const Text('دائرة الألوان الاحترافية', style: TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: const Text('قم باختيار لونك المفضل ليتغير مظهر لوحتك بالكامل'),
-              trailing: ElevatedButton(
-                onPressed: () => _showColorPickerDialog(context),
-                style: ElevatedButton.styleFrom(backgroundColor: safeActiveColor),
-                child: const Text('تخصيص المظهر', style: TextStyle(color: Colors.white)),
-              ),
-            ),
-          ),
-          const Divider(height: 40),
-          _buildSectionTitle('إدارة الخطوط'),
-          Card(
-            elevation: 1,
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ListTile(
-                  leading: const Icon(Icons.font_download, color: Colors.blue),
-                  title: const Text('نوع الخط'),
-                  trailing: DropdownButton<String>(
-                    value: themeProvider.fontFamily,
-                    items: ['System', 'Cairo', 'Tajawal'].map((String font) => DropdownMenuItem(value: font, child: Text(font))).toList(),
-                    onChanged: (val) { if (val != null) themeProvider.changeFontFamily(val); },
+                // 👈 ملاحظة هامة للمالك
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  margin: const EdgeInsets.only(bottom: 15),
+                  decoration: BoxDecoration(color: Colors.amber.withOpacity(0.2), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.amber)),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.amber),
+                      SizedBox(width: 8),
+                      Expanded(child: Text('تنبيه: التعديلات في هذا القسم تنعكس على جهازك أنت فقط (اللوحة الشخصية للمالك) لتخصيص راحتك البصرية.', style: TextStyle(fontSize: 12, color: Colors.black87))),
+                    ],
                   ),
                 ),
-                ListTile(
-                  leading: const Icon(Icons.format_size, color: Colors.orange),
-                  title: const Text('حجم الخط العام'),
-                  subtitle: Slider(
-                    value: themeProvider.fontSizeScale, min: 0.8, max: 1.5, divisions: 7, label: themeProvider.fontSizeScale.toString(),
-                    onChanged: (val) => themeProvider.changeFontSizeScale(val),
+                
+                _buildSectionTitle('تخصيص ألوان الواجهة الخاصة بك'),
+                const SizedBox(height: 10),
+                Card(
+                  elevation: 2,
+                  child: ListTile(
+                    leading: Icon(Icons.color_lens, color: safeActiveColor, size: 30),
+                    title: const Text('دائرة الألوان الاحترافية', style: TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: const Text('قم باختيار لونك المفضل ليتغير مظهر لوحتك بالكامل'),
+                    trailing: ElevatedButton(
+                      onPressed: () => _showColorPickerDialog(context),
+                      style: ElevatedButton.styleFrom(backgroundColor: safeActiveColor),
+                      child: const Text('تخصيص المظهر', style: TextStyle(color: Colors.white)),
+                    ),
                   ),
+                ),
+                const Divider(height: 40),
+                _buildSectionTitle('إدارة الخطوط (محلية)'),
+                Card(
+                  elevation: 1,
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.font_download, color: Colors.blue),
+                        title: const Text('نوع الخط'),
+                        trailing: DropdownButton<String>(
+                          value: _tempFont,
+                          // 👈 تمت زيادة الخطوط الاحترافية
+                          items: ['System', 'Cairo', 'Tajawal', 'Almarai', 'Changa', 'Lalezar', 'Readex Pro', 'IBM Plex Sans Arabic']
+                              .map((String font) => DropdownMenuItem(value: font, child: Text(font))).toList(),
+                          onChanged: (val) { if (val != null) setState(() => _tempFont = val); },
+                        ),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.format_size, color: Colors.orange),
+                        title: const Text('حجم الخط العام'),
+                        subtitle: Slider(
+                          value: _tempFontSize, min: 0.8, max: 1.5, divisions: 7, label: _tempFontSize.toStringAsFixed(1),
+                          onChanged: (val) => setState(() => _tempFontSize = val),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 40),
+                SwitchListTile(
+                  secondary: const Icon(Icons.dark_mode, color: Colors.indigo),
+                  title: const Text('تفعيل الوضع الليلي (Dark Mode)'),
+                  value: _tempDarkMode, 
+                  onChanged: (val) => setState(() => _tempDarkMode = val),
                 ),
               ],
             ),
           ),
-          const Divider(height: 40),
-          SwitchListTile(
-            secondary: const Icon(Icons.dark_mode, color: Colors.indigo),
-            title: const Text('تفعيل الوضع الليلي (Dark Mode)'),
-            value: themeProvider.isDarkMode, 
-            onChanged: (val) => themeProvider.toggleTheme(val),
+        ),
+        
+        // 👈 زر الحفظ الجديد
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: Theme.of(context).scaffoldBackgroundColor, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, -5))]),
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+            icon: const Icon(Icons.save, color: Colors.white),
+            label: const Text('حفظ إعدادات المظهر', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+            onPressed: () {
+              themeProvider.changeFontFamily(_tempFont);
+              themeProvider.changeFontSizeScale(_tempFontSize);
+              themeProvider.toggleTheme(_tempDarkMode);
+              _showSnack('تم حفظ المظهر والخطوط بنجاح!', isSuccess: true);
+            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   // ==========================================
   // 2. تبويب الأمان والبيانات الشخصية 🔐 
   // ==========================================
-  Widget _buildSecurityTab(SystemProvider systemProvider) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSectionTitle('الملف الشخصي للمالك'),
-          const SizedBox(height: 10),
-          _buildInteractiveCard(Icons.person, 'الاسم الرباعي', systemProvider.currentUserName, () => _showEditNameDialog(systemProvider)),
-          
-          const Divider(height: 30),
-          _buildSectionTitle('إعدادات الأمان والحماية'),
-          const SizedBox(height: 10),
-          _buildInteractiveCard(Icons.lock_reset, 'كلمة المرور', '********', () => _showEditPasswordDialog(systemProvider), color: Colors.redAccent),
-          _buildInteractiveCard(Icons.pin, 'رمز PIN السريع', '******', () => _showEditPinDialog(systemProvider), color: Colors.orange),
-          
-          const SizedBox(height: 10),
-          Card(
-            elevation: 1,
-            child: SwitchListTile(
-              secondary: const Icon(Icons.fingerprint, color: Colors.green),
-              title: const Text('الدخول بالبصمة (Biometrics)'),
-              value: systemProvider.isBiometricCurrentlyEnabled, 
-              onChanged: (val) => systemProvider.toggleBiometric(val), 
+  Widget _buildSecurityTab(SystemProvider systemProvider, Color safeActiveColor) {
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSectionTitle('الملف الشخصي للمالك'),
+                const SizedBox(height: 10),
+                _buildInteractiveCard(Icons.person, 'الاسم الرباعي', systemProvider.currentUserName, () => _showEditNameDialog(systemProvider)),
+                
+                const Divider(height: 30),
+                _buildSectionTitle('إعدادات الأمان والحماية'),
+                const SizedBox(height: 10),
+                _buildInteractiveCard(Icons.lock_reset, 'كلمة المرور', '********', () => _showEditPasswordDialog(systemProvider), color: Colors.redAccent),
+                _buildInteractiveCard(Icons.pin, 'رمز PIN السريع', '******', () => _showEditPinDialog(systemProvider), color: Colors.orange),
+                
+                const SizedBox(height: 10),
+                Card(
+                  elevation: 1,
+                  child: Column(
+                    children: [
+                      // 👈 ميزة البصمة الحقيقية تم ربطها هنا
+                      SwitchListTile(
+                        secondary: const Icon(Icons.fingerprint, color: Colors.green),
+                        title: const Text('الدخول بالبصمة (Biometrics)'),
+                        subtitle: const Text('المصادقة بمستشعر الهاتف', style: TextStyle(fontSize: 11)),
+                        value: systemProvider.isBiometricCurrentlyEnabled, 
+                        onChanged: (val) async {
+                          if (val) {
+                            try {
+                              bool authenticated = await _localAuth.authenticate(
+                                localizedReason: 'يرجى تأكيد هويتك لتفعيل الدخول بالبصمة',
+                                options: const AuthenticationOptions(biometricOnly: true, stickyAuth: true),
+                              );
+                              if (authenticated) {
+                                systemProvider.toggleBiometric(true);
+                                _showSnack('تم تفعيل البصمة بنجاح! 🔒', isSuccess: true);
+                              } else {
+                                _showSnack('تم إلغاء التفعيل.', isSuccess: false);
+                              }
+                            } catch (e) {
+                              _showSnack('عذراً، جهازك لا يدعم البصمة أو أنها غير معدّة.', isSuccess: false);
+                            }
+                          } else {
+                            systemProvider.toggleBiometric(false);
+                            _showSnack('تم إيقاف الدخول بالبصمة.', isSuccess: true);
+                          }
+                        }, 
+                      ),
+                      const Divider(height: 1),
+                      // 👈 ميزة تشغيل/إيقاف الأصوات
+                      SwitchListTile(
+                        secondary: const Icon(Icons.volume_up, color: Colors.blue),
+                        title: const Text('أصوات التطبيق (النقرات والإشعارات)'),
+                        value: _soundsEnabled, 
+                        onChanged: (val) => setState(() => _soundsEnabled = val), 
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+        
+        // 👈 زر الحفظ الجديد
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: Theme.of(context).scaffoldBackgroundColor, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, -5))]),
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(backgroundColor: safeActiveColor, padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+            icon: const Icon(Icons.security, color: Colors.white),
+            label: const Text('حفظ إعدادات الأمان', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+            onPressed: () async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setBool('soundsEnabled', _soundsEnabled);
+              _showSnack('تم حفظ التغييرات بنجاح!', isSuccess: true);
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -426,7 +559,6 @@ class _GlobalSettingsScreenState extends State<GlobalSettingsScreen> with Single
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // 👈 تم إضافة زر تعديل الشريط العلوي هنا (ينادي الدالة الجديدة)
           _buildActionCard(Icons.article, 'تعديل نص الشريط العلوي العام', 'تغيير الخبر المتحرك في أعلى التطبيق', onTap: () {
             _showGlobalMarqueeEditDialog();
           }),
