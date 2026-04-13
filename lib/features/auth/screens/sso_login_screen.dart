@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:google_fonts/google_fonts.dart'; // 👈 استدعاء مكتبة الخطوط الجديدة
 
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/providers/system_provider.dart';
@@ -52,11 +53,9 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
 
   void _startDynamicCarousel() {
     final systemProvider = Provider.of<SystemProvider>(context, listen: false);
-    // قراءة المدة الزمنية لتغير الصور من السيرفر (بالثواني)
     int interval = systemProvider.carouselIntervalSeconds > 0 ? systemProvider.carouselIntervalSeconds : 5;
 
     _carouselTimer = Timer.periodic(Duration(seconds: interval), (Timer timer) {
-      // نحدد عدد العناصر بناءً على الصور المرفوعة أو الألوان الاحتياطية
       int itemCount = systemProvider.loginCarouselImages.isNotEmpty 
           ? systemProvider.loginCarouselImages.length 
           : _fallbackAdColors.length;
@@ -107,10 +106,8 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     if (userData != null) {
       String userRole = userData['role']; 
       
-      // 👈 استخدام الدالة المحدثة التي تربط الرتبة مع رقم الهاتف لتفعيل المظهر الخاص به
       Provider.of<ThemeProvider>(context, listen: false).setUser(userRole, phone);
       
-      // 👈 توجيه الموظف (staff) إلى لوحة العمليات المركزية
       if (userRole == 'super_admin' || userRole == 'staff') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SuperAdminDashboard()));
       } else if (userRole == 'agent') {
@@ -193,29 +190,26 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     final theme = Theme.of(context);
     final systemProvider = Provider.of<SystemProvider>(context);
     
-    // جلب قائمة الصور والرسالة الترحيبية من الخادم
     final List<String> carouselImages = systemProvider.loginCarouselImages;
     final String welcomeMessage = systemProvider.loginWelcomeMessage.isNotEmpty 
         ? systemProvider.loginWelcomeMessage 
         : 'أهلاً بك في نظام كروت نت - أسرع شبكة لبيع الكروت والخدمات...';
 
-    // 👈 استخراج بيانات المحاذاة والخط واللون من الـ Provider
     final MainAxisAlignment alignAxis = systemProvider.appNameAlign == 'right' 
         ? MainAxisAlignment.end 
         : (systemProvider.appNameAlign == 'left' ? MainAxisAlignment.start : MainAxisAlignment.center);
+    
     final String customFont = systemProvider.appNameFont;
     final Color customColor = Color(systemProvider.appNameColor);
     final String appName = systemProvider.appName.isNotEmpty ? systemProvider.appName : 'شبكة كروت نت';
 
     return Scaffold(
-      // تطبيق لون الخلفية القادم من لوحة التحكم
       backgroundColor: Color(systemProvider.loginBgColor),
       body: SafeArea(
         child: SingleChildScrollView(
           child: Column(
             children: [
               if (isLoginMode) ...[
-                // 1. الترتيب الأول: الصور المتغيرة (Slider)
                 SizedBox(
                   height: MediaQuery.of(context).size.height * 0.2,
                   child: PageView.builder(
@@ -234,7 +228,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                   ),
                 ),
                 
-                // 2. الترتيب الثاني: شريط الرسالة الترحيبية المتحركة
                 Container(
                   width: double.infinity, height: 35, 
                   color: Color(systemProvider.marqueeBgColor), 
@@ -247,26 +240,27 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                 
                 const SizedBox(height: 20),
                 
-                // 3. الترتيب الثالث: اسم التطبيق أو الشعار (مربوط بمتغيرات التحكم)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24.0),
                   child: Directionality(
-                    textDirection: TextDirection.rtl, // لضمان صحة اليمين واليسار
+                    textDirection: TextDirection.rtl, 
                     child: Row(
-                      mainAxisAlignment: alignAxis, // 👈 استجابة لمكان الظهور
+                      mainAxisAlignment: alignAxis, 
                       children: [
                         if (systemProvider.appLogoUrl.isNotEmpty)
-                          Image.network(systemProvider.appLogoUrl, height: 50, errorBuilder: (c, e, s) => const SizedBox.shrink()), // لا تظهر شيء لو فشل اللوجو
+                          Image.network(systemProvider.appLogoUrl, height: 50, errorBuilder: (c, e, s) => const SizedBox.shrink()), 
                         if (systemProvider.appLogoUrl.isNotEmpty)
-                          const SizedBox(width: 10), // مسافة فقط لو كان هناك لوجو
+                          const SizedBox(width: 10), 
+                        
+                        // 👈 الكود الذكي لتطبيق الخطوط الاحترافية
                         Text(
                           appName, 
-                          style: TextStyle(
-                            fontSize: 28, 
-                            fontWeight: FontWeight.bold, 
-                            color: customColor, // 👈 استجابة للون
-                            fontFamily: customFont, // 👈 استجابة لنوع الخط
-                          )
+                          style: customFont == 'System' || customFont.isEmpty
+                              ? TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: customColor)
+                              : GoogleFonts.getFont(
+                                  customFont,
+                                  textStyle: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: customColor),
+                                ),
                         ),
                       ],
                     ),
@@ -281,7 +275,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                 const SizedBox(height: 30),
               ],
 
-              // 4. بقية التفاصيل: حقول الإدخال
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: Directionality(
@@ -396,7 +389,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
 }
 
 // ==========================================
-// 🚀 أداة الشريط المتحرك (Marquee) 
+// 🚀 أداة الشريط المتحرك (Marquee)
 // ==========================================
 class _CustomMarquee extends StatefulWidget {
   final String text;
@@ -431,13 +424,10 @@ class _CustomMarqueeState extends State<_CustomMarquee> {
         double maxScroll = _scrollController.position.maxScrollExtent;
         double currentScroll = _scrollController.offset;
         
-        // التحقق من وجود مساحة كافية للتمرير
         if (maxScroll > 0) {
           if (currentScroll >= maxScroll) {
-            // العودة للبداية بنعومة وسرعة
             _scrollController.jumpTo(0.0);
           } else {
-            // التمرير المستمر
             _scrollController.jumpTo(currentScroll + 1.5);
           }
         }
@@ -455,14 +445,12 @@ class _CustomMarqueeState extends State<_CustomMarquee> {
   @override
   Widget build(BuildContext context) {
     return Directionality(
-      // تحديد اتجاه النص بناءً على اختيارات الإدارة
       textDirection: widget.direction == 'ltr' ? TextDirection.ltr : TextDirection.rtl,
       child: SingleChildScrollView(
         controller: _scrollController,
         scrollDirection: Axis.horizontal,
-        physics: const NeverScrollableScrollPhysics(), // منع التمرير اليدوي
+        physics: const NeverScrollableScrollPhysics(), 
         child: Padding(
-          // إضافة مساحة فارغة لخلق تأثير الدخول والخروج من الشاشة
           padding: const EdgeInsets.symmetric(horizontal: 400.0, vertical: 6.0),
           child: Text(
             widget.text, 
