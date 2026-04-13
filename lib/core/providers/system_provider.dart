@@ -403,33 +403,32 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 🚀 5. دوال الإدارة والتحكم (التحديث الاستباقي مفعل)
+  // 🚀 5. دوال الإدارة والتحكم (تم التعديل لاستقبال الروابط بنجاح)
   // ==========================================
   
   Future<void> updateAdvancedLoginSettings({
     required String name, required String logoUrl, required int bgColor,
     required List<String> images, required String welcomeMsg, required int intervalSeconds,
-    required String marqueeDir, required int marqueeTextCol, required int marqueeBgCol, required double marqueeFont,
+    required String marqueeDir, required int marqueeTextCol, required int marqueeBgCol,
     required String appNameAlign, required String appNameFont, required int appNameColor,
   }) async {
     // 👈 تحديث استباقي محلي (فوري)
     _appName = name; _appLogoUrl = logoUrl; _loginBgColor = bgColor;
     _loginCarouselImages = images; _loginWelcomeMessage = welcomeMsg; _carouselIntervalSeconds = intervalSeconds;
-    _marqueeDirection = marqueeDir; _marqueeTextColor = marqueeTextCol; _marqueeBgColor = marqueeBgCol; _marqueeFontSize = marqueeFont;
+    _marqueeDirection = marqueeDir; _marqueeTextColor = marqueeTextCol; _marqueeBgColor = marqueeBgCol; 
     _appNameAlign = appNameAlign; _appNameFont = appNameFont; _appNameColor = appNameColor;
     notifyListeners(); 
 
     await _db.collection('system').doc('main_info').update({
       'appName': name, 'appLogoUrl': logoUrl, 'loginBgColor': bgColor,
       'loginCarouselImages': images, 'loginWelcomeMessage': welcomeMsg, 'carouselIntervalSeconds': intervalSeconds,
-      'marqueeDirection': marqueeDir, 'marqueeTextColor': marqueeTextCol, 'marqueeBgColor': marqueeBgCol, 'marqueeFontSize': marqueeFont,
+      'marqueeDirection': marqueeDir, 'marqueeTextColor': marqueeTextCol, 'marqueeBgColor': marqueeBgCol,
       'appNameAlign': appNameAlign, 'appNameFont': appNameFont, 'appNameColor': appNameColor,
     });
     logAction(action: 'تحديث بوابة الدخول', details: 'تحديث المظهر واسم التطبيق', severity: 'critical');
   }
 
   Future<void> updateAgentPortalSettings({required bool hideProfit, required bool leaderboard, required bool forceTheme, required List<String> universalHidden}) async {
-    // 👈 تحديث استباقي محلي
     _hideProfitEnabled = hideProfit; _leaderboardEnabled = leaderboard; _forceAgentTheme = forceTheme; _agentUniversalHiddenSections = universalHidden;
     notifyListeners();
 
@@ -441,7 +440,6 @@ class SystemProvider extends ChangeNotifier {
   }
 
   Future<void> updateUserPortalSettings({required bool guestMode, required bool kyc, required bool loyalty, required List<String> universalHidden, required Map<String, dynamic> social}) async {
-    // 👈 تحديث استباقي محلي
     _guestModeEnabled = guestMode; _kycRequired = kyc; _loyaltySystemEnabled = loyalty; _userUniversalHiddenSections = universalHidden; _socialLinks = social;
     notifyListeners();
 
@@ -482,7 +480,6 @@ class SystemProvider extends ChangeNotifier {
   }
 
   Future<void> updateSystemStatusSettings({required bool maintenance, required bool forcedUpdate, required bool showNews}) async {
-    // 👈 تحديث استباقي محلي
     _isMaintenanceMode = maintenance; _isForcedUpdate = forcedUpdate; _showNewsBar = showNews;
     notifyListeners(); 
 
@@ -490,7 +487,6 @@ class SystemProvider extends ChangeNotifier {
   }
 
   Future<void> updatePoliciesSettings({required String terms, required String support, required String minCharge, required bool autoRounding}) async {
-    // 👈 تحديث استباقي محلي
     _termsAndConditions = terms; _supportNumbers = support; _minimumChargeLimit = minCharge; _isCurrencyAutoRounding = autoRounding;
     notifyListeners(); 
 
