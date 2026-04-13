@@ -13,7 +13,7 @@ dependencies:
   provider: ^6.1.2 
   local_auth: ^2.1.6 
   flutter_colorpicker: ^1.1.0 
-  shared_preferences: ^2.2.2    # 👈 تمت إضافة مكتبة الذاكرة المحلية هنا بنجاح
+  shared_preferences: ^2.2.2    
   firebase_core: ^2.32.0 
   cloud_firestore: ^4.15.8 
   pdf: ^3.11.0          
@@ -22,10 +22,10 @@ dependencies:
   marquee: ^2.2.3       
   image_picker: ^1.1.2
   firebase_storage: ^11.7.0
-  # 👇 الحزم الجديدة الخاصة بتصدير التقارير (PDF و Excel) وحفظها محلياً
   path_provider: ^2.1.2
   excel: ^4.0.3
-  google_fonts: ^6.1.0  # 👈 تمت إضافة مكتبة خطوط جوجل هنا لحل مشكلة الخطوط
+  google_fonts: ^6.1.0  
+  audioplayers: ^5.2.1  # 👈 تمت إضافة مكتبة تشغيل الأصوات هنا
 
 dev_dependencies:
   flutter_test:
