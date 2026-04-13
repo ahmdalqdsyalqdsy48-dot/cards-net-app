@@ -194,9 +194,8 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
         ? systemProvider.loginWelcomeMessage 
         : 'أهلاً بك في نظام كروت نت - أسرع شبكة لبيع الكروت والخدمات...';
 
-    // 👈 تحديد المحاذاة العمودية (لأننا غيرنا الترتيب إلى Column)
     final CrossAxisAlignment columnAlign = systemProvider.appNameAlign == 'right' 
-        ? CrossAxisAlignment.start // في اللغة العربية (RTL) البداية هي اليمين
+        ? CrossAxisAlignment.start 
         : (systemProvider.appNameAlign == 'left' ? CrossAxisAlignment.end : CrossAxisAlignment.center);
     
     final String customFont = systemProvider.appNameFont;
@@ -218,13 +217,16 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                     itemCount: carouselImages.isNotEmpty ? carouselImages.length : _fallbackAdColors.length,
                     itemBuilder: (context, index) {
                       if (carouselImages.isNotEmpty) {
-                        // 👈 حماية السلايدر بروابط خارجية من الانهيار
-                        return Image.network(
-                          carouselImages[index], 
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Container(
-                            color: Colors.grey.shade300,
-                            child: const Center(child: Icon(Icons.broken_image, color: Colors.grey, size: 50)),
+                        return Container(
+                          // 👈 إضافة خلفية شفافة لملء الفراغ المحتمل بشكل أنيق
+                          color: Colors.transparent, 
+                          child: Image.network(
+                            carouselImages[index], 
+                            fit: BoxFit.contain, // 👈 التعديل السحري هنا لمنع القص نهائياً
+                            errorBuilder: (context, error, stackTrace) => Container(
+                              color: Colors.grey.shade300,
+                              child: const Center(child: Icon(Icons.broken_image, color: Colors.grey, size: 50)),
+                            ),
                           ),
                         );
                       } else {
@@ -250,21 +252,20 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                 
                 const SizedBox(height: 20),
                 
-                // 👈 الترتيب الملكي الجديد (الشعار وفوقه الاسم)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24.0),
                   child: Directionality(
                     textDirection: TextDirection.rtl, 
                     child: Column(
-                      crossAxisAlignment: columnAlign, // يستجيب لاختيارك
+                      crossAxisAlignment: columnAlign, 
                       children: [
                         if (systemProvider.appLogoUrl.isNotEmpty) ...[
                           ClipRRect(
                             borderRadius: BorderRadius.circular(12),
                             child: Image.network(
                               systemProvider.appLogoUrl, 
-                              height: 100, // 👈 مساحة ممتازة للصور الجدارية أو الشعارات
-                              fit: BoxFit.contain, // يمنع ضغط أو تمطيط الصورة
+                              height: 100, 
+                              fit: BoxFit.contain, // 👈 تم التأكد أن الشعار أيضاً لن يُقص
                               errorBuilder: (c, e, s) => const SizedBox.shrink()
                             ),
                           ),
