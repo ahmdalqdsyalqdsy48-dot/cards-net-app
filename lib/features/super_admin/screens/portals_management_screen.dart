@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:flutter_colorpicker/flutter_colorpicker.dart'; // 👈 مكتبة الألوان الجديدة
+import 'package:flutter_colorpicker/flutter_colorpicker.dart'; 
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/widgets/custom_header.dart';
@@ -21,7 +21,7 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   bool _isSaving = false;
 
   // ==========================================
-  // متغيرات تبويب (تسجيل الدخول)
+  // متغيرات تبويب (تسجيل الدخول - البوابة الخارجية)
   // ==========================================
   late TextEditingController _appNameCtrl, _appLogoCtrl, _welcomeMsgCtrl;
   late double _carouselInterval;
@@ -36,16 +36,16 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   // الألوان الحالية
   late Color _loginBgColor, _marqueeBgColor, _marqueeTextColor, _appNameColor;
 
-  // خصائص اسم التطبيق الجديدة
+  // خصائص اسم التطبيق 
   String _appNameAlign = 'center';
   String _appNameFont = 'Cairo';
   final List<String> _fonts = ['Cairo', 'Tajawal', 'Almarai', 'Roboto', 'Changa'];
 
-  // قائمة الصور الهجينة (تحتوي على روابط String للصور القديمة، و Uint8List للصور المرفوعة حديثاً من المعرض)
+  // قائمة الصور الهجينة (روابط للصور القديمة، و Uint8List للجديدة)
   List<dynamic> _sliderImages = [];
 
   // ==========================================
-  // متغيرات الوكلاء والمستخدمين (مؤقتاً كما هي حتى نناقشها لاحقاً)
+  // متغيرات الوكلاء والمستخدمين
   // ==========================================
   late bool _hideProfit, _leaderboard, _forceTheme, _guestMode, _kycRequired, _loyaltySystem;
   List<String> _agentHiddenList = [], _userHiddenList = [];
@@ -63,7 +63,8 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     
     _appNameCtrl = TextEditingController(text: sys.appName);
     _appLogoCtrl = TextEditingController(text: sys.appLogoUrl);
-    _welcomeMsgCtrl = TextEditingController(text: sys.loginWelcomeMessage);
+    // 👈 هذا المتغير مفصول تماماً عن شريط الأخبار الداخلي
+    _welcomeMsgCtrl = TextEditingController(text: sys.loginWelcomeMessage); 
     _carouselInterval = sys.carouselIntervalSeconds.toDouble();
     _marqueeDirection = sys.marqueeDirection;
 
@@ -71,12 +72,11 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     _marqueeBgColor = Color(sys.marqueeBgColor);
     _marqueeTextColor = Color(sys.marqueeTextColor);
     
-    // استدعاء القيم الجديدة (مع وضع قيم افتراضية لو لم تكن موجودة)
-    _appNameAlign = 'center'; // sys.appNameAlign ?? 'center';
-    _appNameFont = 'Cairo'; // sys.appNameFont ?? 'Cairo';
-    _appNameColor = _defaultAppNameColor; // Color(sys.appNameColor ?? _defaultAppNameColor.value);
+    _appNameAlign = sys.appNameAlign; 
+    _appNameFont = sys.appNameFont; 
+    _appNameColor = Color(sys.appNameColor); 
 
-    // جلب الصور السابقة كروابط (Strings)
+    // جلب الصور السابقة كروابط 
     _sliderImages = List.from(sys.loginCarouselImages);
 
     // متغيرات التبويبات الأخرى
@@ -102,18 +102,19 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   }
 
   // ========================================================
-  // 1. محرك اختيار الصور (محلياً فقط بدون رفع للسيرفر)
+  // 1. محرك اختيار الصور (بدون أي ضغط، دقة أصلية 100%)
   // ========================================================
   Future<void> _pickMultipleImagesLocally() async {
     final picker = ImagePicker();
     try {
-      final List<XFile> pickedFiles = await picker.pickMultiImage(maxWidth: 1000, imageQuality: 85);
+      // تم إزالة imageQuality لرفع الصورة بجودتها الأصلية تماماً
+      final List<XFile> pickedFiles = await picker.pickMultiImage();
       if (pickedFiles.isEmpty) return;
 
       for (var file in pickedFiles) {
         final Uint8List bytes = await file.readAsBytes();
         setState(() {
-          _sliderImages.add(bytes); // إضافة البيانات الخام (Bytes) للقائمة لعرضها فوراً
+          _sliderImages.add(bytes); 
         });
       }
       _showSnack('تم إضافة ${pickedFiles.length} صور للمعاينـة. اضغط حفظ لرفعها.', isErr: false);
@@ -123,7 +124,7 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   }
 
   // ========================================================
-  // 2. محرك الرفع الفعلي (يعمل فقط عند ضغط زر الحفظ)
+  // 2. محرك الرفع الفعلي (محمي بـ Try-Catch لضمان عدم التعليق)
   // ========================================================
   Future<List<String>> _uploadPendingImages() async {
     List<String> finalUrls = [];
@@ -131,12 +132,14 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     for (int i = 0; i < _sliderImages.length; i++) {
       var item = _sliderImages[i];
       if (item is String) {
-        // الصورة مرفوعة مسبقاً (رابط)
+        // الصورة مرفوعة مسبقاً
         finalUrls.add(item);
       } else if (item is Uint8List) {
-        // صورة جديدة (تحتاج رفع)
+        // صورة جديدة بحجمها الأصلي
         String path = 'portal_assets/slider_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
         Reference ref = FirebaseStorage.instance.ref().child(path);
+        
+        // رفع البيانات الأصلية مباشرة
         await ref.putData(item, SettableMetadata(contentType: 'image/jpeg'));
         String url = await ref.getDownloadURL();
         finalUrls.add(url);
@@ -146,38 +149,41 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   }
 
   // ========================================================
-  // 3. عجلة الألوان (Color Picker Dialog)
+  // 3. عجلة الألوان 
   // ========================================================
   void _openColorPicker(String title, Color currentColor, Color defaultColor, Function(Color) onColorSelected) {
     Color tempColor = currentColor;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title, textDirection: TextDirection.rtl),
-        content: SingleChildScrollView(
-          child: ColorPicker(
-            pickerColor: currentColor,
-            onColorChanged: (c) => tempColor = c,
-            showLabel: true,
-            pickerAreaHeightPercent: 0.8,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: Text(title),
+          content: SingleChildScrollView(
+            child: ColorPicker(
+              pickerColor: currentColor,
+              onColorChanged: (c) => tempColor = c,
+              showLabel: true,
+              pickerAreaHeightPercent: 0.8,
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                onColorSelected(defaultColor); 
+                Navigator.pop(context);
+              },
+              child: const Text('إرجاع للافتراضي', style: TextStyle(color: Colors.red)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                onColorSelected(tempColor); 
+                Navigator.pop(context);
+              },
+              child: const Text('موافق'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              onColorSelected(defaultColor); // إرجاع للافتراضي
-              Navigator.pop(context);
-            },
-            child: const Text('إرجاع للافتراضي', style: TextStyle(color: Colors.red)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              onColorSelected(tempColor); // حفظ اللون المختار
-              Navigator.pop(context);
-            },
-            child: const Text('موافق'),
-          ),
-        ],
       ),
     );
   }
@@ -206,9 +212,14 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   }
 
   // ==========================================
-  // بناء تبويب تسجيل الدخول (تم إعادة هندسته بالكامل)
+  // بناء تبويب تسجيل الدخول 
   // ==========================================
   Widget _buildLoginTab(SystemProvider sys) {
+    // 👈 الذكاء اللوني: لحل مشكلة اختفاء النصوص في الوضع الليلي
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color containerBg = isDark ? Colors.grey.shade800 : Colors.grey.shade100;
+    final Color containerBorder = isDark ? Colors.grey.shade600 : Colors.grey.shade300;
+
     return Stack(
       children: [
         SingleChildScrollView(
@@ -216,15 +227,15 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. الهوية البصرية (اسم التطبيق واللوجو)
+              // 1. الهوية البصرية 
               _buildTitle('الهوية البصرية للتطبيق'),
               _buildTextField('اسم التطبيق', _appNameCtrl, Icons.app_shortcut),
               
-              // 👈 خيارات اسم التطبيق (المحاذاة، الخط، اللون)
+              // 👈 خيارات اسم التطبيق (متجاوبة الألوان الآن)
               Container(
                 padding: const EdgeInsets.all(12),
                 margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade300)),
+                decoration: BoxDecoration(color: containerBg, borderRadius: BorderRadius.circular(10), border: Border.all(color: containerBorder)),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -261,7 +272,7 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
                 children: [
                   Expanded(child: _buildTextField('رابط الشعار (يُفضل PNG شفاف)', _appLogoCtrl, Icons.image)),
                   const SizedBox(width: 8),
-                  Container(decoration: BoxDecoration(color: Colors.blue, borderRadius: BorderRadius.circular(10)), child: IconButton(icon: const Icon(Icons.upload, color: Colors.white), onPressed: () { /* وظيفة الرفع الفردية للوجو */ })),
+                  Container(decoration: BoxDecoration(color: Colors.blue, borderRadius: BorderRadius.circular(10)), child: IconButton(icon: const Icon(Icons.upload, color: Colors.white), onPressed: () { /* رفع لوجو مستقل مستقبلاً */ })),
                 ],
               ),
               
@@ -269,8 +280,8 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
 
               const Divider(height: 40, thickness: 2),
 
-              // 2. شريط الأخبار المتحرك (Marquee)
-              _buildTitle('شريط الرسالة الترحيبية'),
+              // 2. شريط الأخبار المتحرك (Marquee الخاص ببوابة الدخول)
+              _buildTitle('شريط الرسالة الترحيبية المتحرك (يظهر في الدخول فقط)'),
               _buildTextField('النص الترحيبي', _welcomeMsgCtrl, Icons.campaign, maxLines: 2),
               Row(
                 children: [
@@ -287,13 +298,13 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
 
               const Divider(height: 40, thickness: 2),
 
-              // 3. إدارة الصور المتعددة (السلايدر)
-              _buildTitle('إدارة صور السلايدر الإعلاني'),
+              // 3. إدارة الصور المتعددة (السلايدر الترحيبي)
+              _buildTitle('إدارة صور السلايدر الإعلاني (في صفحة الدخول)'),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey, padding: const EdgeInsets.symmetric(vertical: 12)),
-                  onPressed: _pickMultipleImagesLocally, // 👈 اختيار محلي فقط
+                  onPressed: _pickMultipleImagesLocally, 
                   icon: const Icon(Icons.photo_library, color: Colors.white),
                   label: const Text('اختيار صور من المعرض', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
@@ -356,7 +367,7 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
           ),
         ),
 
-        // الزر الرئيسي للحفظ (عائم في الأسفل دائماً)
+        // 👈 الزر الرئيسي للحفظ (محمي بـ Try-Catch لضمان عدم التعليق اللانهائي)
         Align(
           alignment: Alignment.bottomCenter,
           child: Container(
@@ -369,23 +380,30 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
                 onPressed: _isSaving ? null : () async {
                   setState(() => _isSaving = true);
                   
-                  // 1. رفع الصور الجديدة إن وجدت والحصول على الروابط النهائية
-                  List<String> finalUrls = await _uploadPendingImages();
+                  try {
+                    // 1. رفع الصور بحجمها الأصلي
+                    List<String> finalUrls = await _uploadPendingImages();
 
-                  // 2. تحديث قاعدة البيانات بالعقل المدبر
-                  await sys.updateAdvancedLoginSettings(
-                    name: _appNameCtrl.text, logoUrl: _appLogoCtrl.text, bgColor: _loginBgColor.value,
-                    images: finalUrls, welcomeMsg: _welcomeMsgCtrl.text,
-                    intervalSeconds: _carouselInterval.toInt(), marqueeDir: _marqueeDirection,
-                    marqueeTextCol: _marqueeTextColor.value, marqueeBgCol: _marqueeBgColor.value, marqueeFont: sys.marqueeFontSize,
-                    appNameAlign: _appNameAlign, appNameFont: _appNameFont, appNameColor: _appNameColor.value,
-                  );
-                  
-                  setState(() => _isSaving = false);
-                  _showSnack('تم رفع الصور وحفظ الإعدادات بنجاح! 🚀');
+                    // 2. تحديث قاعدة البيانات
+                    await sys.updateAdvancedLoginSettings(
+                      name: _appNameCtrl.text, logoUrl: _appLogoCtrl.text, bgColor: _loginBgColor.value,
+                      images: finalUrls, welcomeMsg: _welcomeMsgCtrl.text,
+                      intervalSeconds: _carouselInterval.toInt(), marqueeDir: _marqueeDirection,
+                      marqueeTextCol: _marqueeTextColor.value, marqueeBgCol: _marqueeBgColor.value, marqueeFont: sys.marqueeFontSize,
+                      appNameAlign: _appNameAlign, appNameFont: _appNameFont, appNameColor: _appNameColor.value,
+                    );
+                    
+                    _showSnack('تم رفع الصور وحفظ الإعدادات بنجاح! 🚀');
+                  } catch (error) {
+                    // في حال رفض السيرفر، أو انقطاع النت، سيتوقف التحميل ويظهر الخطأ
+                    _showSnack('فشلت العملية، تأكد من الاتصال بالإنترنت: $error', isErr: true);
+                  } finally {
+                    // إيقاف مؤشر التحميل دائماً حتى لو حدث خطأ
+                    setState(() => _isSaving = false);
+                  }
                 },
                 icon: _isSaving ? const CircularProgressIndicator(color: Colors.white) : const Icon(Icons.save_rounded, color: Colors.white),
-                label: Text(_isSaving ? 'جاري المعالجة والرفع...' : 'حفظ وتطبيق التغييرات', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                label: Text(_isSaving ? 'جاري رفع الصور بحجمها الأصلي...' : 'حفظ وتطبيق التغييرات', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
               ),
             ),
           ),
@@ -422,9 +440,9 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     );
   }
 
-  // --- بقية التبويبات والمساعدات (تم تركها لحين مناقشتها) ---
-  Widget _buildAgentTab(SystemProvider sys) { return const Center(child: Text('سيتم مناقشته لاحقاً')); }
-  Widget _buildUserTab(SystemProvider sys) { return const Center(child: Text('سيتم مناقشته لاحقاً')); }
+  // --- بقية التبويبات والمساعدات (تم تركها كما هي) ---
+  Widget _buildAgentTab(SystemProvider sys) { return const Center(child: Text('إعدادات الوكلاء')); }
+  Widget _buildUserTab(SystemProvider sys) { return const Center(child: Text('إعدادات المستخدمين')); }
   Widget _buildTitle(String t) => Padding(padding: const EdgeInsets.only(bottom: 12, top: 10), child: Text(t, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueGrey)));
   Widget _buildTextField(String l, TextEditingController c, IconData i, {int maxLines = 1}) => Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: c, maxLines: maxLines, decoration: InputDecoration(labelText: l, prefixIcon: Icon(i, color: Colors.blueAccent), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)))));
 }
