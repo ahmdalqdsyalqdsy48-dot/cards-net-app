@@ -106,9 +106,11 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
 
     if (userData != null) {
       String userRole = userData['role']; 
-      Provider.of<ThemeProvider>(context, listen: false).setRole(userRole);
       
-      // 👈 تم دمج الموظف (staff) ليتم توجيهه إلى لوحة العمليات المركزية
+      // 👈 استخدام الدالة المحدثة التي تربط الرتبة مع رقم الهاتف لتفعيل المظهر الخاص به
+      Provider.of<ThemeProvider>(context, listen: false).setUser(userRole, phone);
+      
+      // 👈 توجيه الموظف (staff) إلى لوحة العمليات المركزية
       if (userRole == 'super_admin' || userRole == 'staff') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SuperAdminDashboard()));
       } else if (userRole == 'agent') {
@@ -147,7 +149,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       if (!mounted) return;
       setState(() => isLoading = false);
 
-      Provider.of<ThemeProvider>(context, listen: false).setRole('user');
+      Provider.of<ThemeProvider>(context, listen: false).setUser('user', phone);
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
       _showSuccessSnackBar('تم التسجيل بنجاح! أهلاً بك.');
     }
@@ -184,7 +186,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   }
 
   // ==========================================
-  // 3. بناء الواجهة (بالترتيب المطلوب)
+  // 3. بناء الواجهة 
   // ==========================================
   @override
   Widget build(BuildContext context) {
@@ -197,8 +199,16 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
         ? systemProvider.loginWelcomeMessage 
         : 'أهلاً بك في نظام كروت نت - أسرع شبكة لبيع الكروت والخدمات...';
 
+    // 👈 استخراج بيانات المحاذاة والخط واللون من الـ Provider
+    final MainAxisAlignment alignAxis = systemProvider.appNameAlign == 'right' 
+        ? MainAxisAlignment.end 
+        : (systemProvider.appNameAlign == 'left' ? MainAxisAlignment.start : MainAxisAlignment.center);
+    final String customFont = systemProvider.appNameFont;
+    final Color customColor = Color(systemProvider.appNameColor);
+    final String appName = systemProvider.appName.isNotEmpty ? systemProvider.appName : 'شبكة كروت نت';
+
     return Scaffold(
-      // 👈 تطبيق لون الخلفية القادم من لوحة التحكم
+      // تطبيق لون الخلفية القادم من لوحة التحكم
       backgroundColor: Color(systemProvider.loginBgColor),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -227,35 +237,45 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                 // 2. الترتيب الثاني: شريط الرسالة الترحيبية المتحركة
                 Container(
                   width: double.infinity, height: 35, 
-                  color: Color(systemProvider.marqueeBgColor), // 👈 لون خلفية الشريط المخصص
+                  color: Color(systemProvider.marqueeBgColor), 
                   child: _CustomMarquee(
                     text: welcomeMessage,
-                    textColor: Color(systemProvider.marqueeTextColor), // 👈 لون نص الشريط المخصص
-                    direction: systemProvider.marqueeDirection, // 👈 اتجاه الشريط المخصص
+                    textColor: Color(systemProvider.marqueeTextColor), 
+                    direction: systemProvider.marqueeDirection, 
                   ),
                 ),
                 
                 const SizedBox(height: 20),
                 
-                // 3. الترتيب الثالث: اسم التطبيق أو الشعار (مربوط بالتحكم)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (systemProvider.appLogoUrl.isNotEmpty)
-                      Image.network(systemProvider.appLogoUrl, height: 50, errorBuilder: (c, e, s) => const Icon(Icons.wifi_tethering, size: 40, color: Colors.blueAccent))
-                    else
-                      const Icon(Icons.wifi_tethering, size: 40, color: Colors.blueAccent),
-                    const SizedBox(width: 10),
-                    Text(
-                      systemProvider.appName.isNotEmpty ? systemProvider.appName : 'شبكة كروت نت', 
-                      style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blueAccent)
+                // 3. الترتيب الثالث: اسم التطبيق أو الشعار (مربوط بمتغيرات التحكم)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: Directionality(
+                    textDirection: TextDirection.rtl, // لضمان صحة اليمين واليسار
+                    child: Row(
+                      mainAxisAlignment: alignAxis, // 👈 استجابة لمكان الظهور
+                      children: [
+                        if (systemProvider.appLogoUrl.isNotEmpty)
+                          Image.network(systemProvider.appLogoUrl, height: 50, errorBuilder: (c, e, s) => const SizedBox.shrink()), // لا تظهر شيء لو فشل اللوجو
+                        if (systemProvider.appLogoUrl.isNotEmpty)
+                          const SizedBox(width: 10), // مسافة فقط لو كان هناك لوجو
+                        Text(
+                          appName, 
+                          style: TextStyle(
+                            fontSize: 28, 
+                            fontWeight: FontWeight.bold, 
+                            color: customColor, // 👈 استجابة للون
+                            fontFamily: customFont, // 👈 استجابة لنوع الخط
+                          )
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
                 const SizedBox(height: 30),
               ] else ...[
                 const SizedBox(height: 50),
-                const Center(child: Icon(Icons.wifi_tethering, size: 60, color: Colors.blueAccent)),
+                const Center(child: Icon(Icons.person_add, size: 60, color: Colors.blueAccent)),
                 const SizedBox(height: 10),
                 const Text('إنشاء حساب جديد', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
                 const SizedBox(height: 30),
@@ -376,7 +396,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
 }
 
 // ==========================================
-// 🚀 أداة الشريط المتحرك (Marquee) المصححة والمطورة
+// 🚀 أداة الشريط المتحرك (Marquee) 
 // ==========================================
 class _CustomMarquee extends StatefulWidget {
   final String text;
