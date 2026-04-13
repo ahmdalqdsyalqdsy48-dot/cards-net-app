@@ -1,24 +1,24 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:audioplayers/audioplayers.dart'; // 👈 استدعاء مكتبة الصوت
+import 'package:audioplayers/audioplayers.dart'; 
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/services.dart'; // 👈 لاستخدام أصوات نقرات النظام الافتراضية
+import 'package:flutter/services.dart';
 
 class UiProvider extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final AudioPlayer _audioPlayer = AudioPlayer(); // 👈 إنشاء مشغل الصوت
+  final AudioPlayer _audioPlayer = AudioPlayer(); 
 
   bool _isOnline = true; 
   List<Map<String, dynamic>> _unreadNotifications = [];
   bool _hasNewNotifications = false;
   String _globalSearchQuery = '';
   
-  bool _soundsEnabled = true; // 👈 حالة الأصوات
+  bool _soundsEnabled = true;
 
   UiProvider(String? currentUserId) {
     _monitorInternetConnection();
-    _loadSoundSettings(); // 👈 جلب إعدادات الصوت عند بدء التشغيل
+    _loadSoundSettings();
     if (currentUserId != null) {
       _listenToNotifications(currentUserId);
     }
@@ -31,7 +31,7 @@ class UiProvider extends ChangeNotifier {
   bool get isSoundsEnabled => _soundsEnabled;
 
   // ==========================================
-  // 🎵 محرك الأصوات الديناميكي
+  // 🎵 محرك الأصوات المطور (إصلاح جذري للويب)
   // ==========================================
   Future<void> _loadSoundSettings() async {
     final prefs = await SharedPreferences.getInstance();
@@ -39,27 +39,35 @@ class UiProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // يمكن استدعاء هذه الدالة من أي مكان في التطبيق لتشغيل الأصوات
+  // 👈 دالة هامة لتحديث الحالة فوراً عند ضغط الزر في الإعدادات
+  Future<void> updateSoundSettings(bool value) async {
+    _soundsEnabled = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('soundsEnabled', value);
+    notifyListeners();
+  }
+
   Future<void> playSound(String type) async {
-    // التحقق أولاً: هل سمح المالك بتشغيل الأصوات؟
     if (!_soundsEnabled) return; 
 
     try {
+      // إيقاف أي صوت شغال حالياً للبدء فوراً (مهم للسرعة)
+      await _audioPlayer.stop();
+
       if (type == 'click') {
-        // صوت نقرة خفيف من نظام الهاتف/المتصفح
-        SystemSound.play(SystemSoundType.click);
+        await SystemSound.play(SystemSoundType.click);
       } else if (type == 'success') {
-        // صوت نجاح عملية (تم الربط بأصوات جوجل الرسمية لتعمل مباشرة)
-        await _audioPlayer.play(UrlSource('https://actions.google.com/sounds/v1/ui/succeed_bright.ogg'));
+        // رابط MP3 مستقر جداً لصوت النجاح
+        await _audioPlayer.play(UrlSource('https://www.soundjay.com/buttons/sounds/button-37.mp3'));
       } else if (type == 'error') {
-        // صوت خطأ
-        await _audioPlayer.play(UrlSource('https://actions.google.com/sounds/v1/alarms/error_beep.ogg'));
+        // صوت تنبيه خطأ
+        await _audioPlayer.play(UrlSource('https://www.soundjay.com/buttons/sounds/button-10.mp3'));
       } else if (type == 'notification') {
-        // صوت إشعار جديد
-        await _audioPlayer.play(UrlSource('https://actions.google.com/sounds/v1/alarms/message_alerts.ogg'));
+        // صوت إشعار احترافي
+        await _audioPlayer.play(UrlSource('https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3'));
       }
     } catch (e) {
-      debugPrint('تعذر تشغيل الصوت: $e');
+      debugPrint('تنبيه: المتصفح قد يحظر الصوت قبل التفاعل الأول $e');
     }
   }
 
@@ -84,15 +92,12 @@ class UiProvider extends ChangeNotifier {
         .snapshots().listen((snapshot) {
       
       bool hadNew = _hasNewNotifications;
-      
       _unreadNotifications = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
       _hasNewNotifications = _unreadNotifications.isNotEmpty;
 
-      // 👈 تشغيل صوت الإشعار فوراً إذا وصل إشعار جديد أثناء فتح التطبيق
       if (_hasNewNotifications && !hadNew) {
         playSound('notification');
       }
-
       notifyListeners();
     });
   }
