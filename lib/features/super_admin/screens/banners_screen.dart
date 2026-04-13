@@ -32,7 +32,7 @@ class _BannersScreenState extends State<BannersScreen> with SingleTickerProvider
   }
 
   // ==========================================
-  // 1. أدوات مساعدة (اختيار الألوان)
+  // 1. نافذة اختيار الألوان (مساعدة)
   // ==========================================
   void _showColorPicker(String title, Color initialColor, Function(Color) onColorChanged) {
     showDialog(
@@ -51,104 +51,66 @@ class _BannersScreenState extends State<BannersScreen> with SingleTickerProvider
   }
 
   // ==========================================
-  // 2. نافذة إنشاء حملة جديدة (بالاستهداف الدقيق)
+  // 2. نافذة إضافة إعلان جديد (بكل التفاصيل والاستهداف)
   // ==========================================
   void _showAddBannerDialog() {
-    // المتغيرات المحلية للنافذة
-    bool targetEndUsers = true, targetMainAgents = true, targetSubAgents = false, targetStaff = false, targetAdmin = false;
-    String customPhoneRule = 'none'; // 'none', 'include_only', 'exclude'
-    
-    final titleCtrl = TextEditingController();
-    final imgUrlCtrl = TextEditingController();
-    final ctaCtrl = TextEditingController();
-    final linkCtrl = TextEditingController();
-    final startCtrl = TextEditingController();
-    final endCtrl = TextEditingController();
-    final customPhonesCtrl = TextEditingController();
+    bool targetEndUsers = true;
+    bool targetMainAgents = true;
+    bool targetSubAgents = false;
+    bool targetStaff = false;
+
+    final TextEditingController titleController = TextEditingController();
+    final TextEditingController imgUrlController = TextEditingController();
+    final TextEditingController ctaController = TextEditingController();
+    final TextEditingController linkController = TextEditingController();
+    final TextEditingController startDateController = TextEditingController();
+    final TextEditingController endDateController = TextEditingController();
 
     showDialog(
       context: context,
-      barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setStateDialog) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
-            title: const Row(children: [Icon(Icons.campaign, color: Colors.blueAccent), SizedBox(width: 8), Text('إنشاء حملة تسويقية / بنر داخلي', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))]),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // الحقول الإجبارية
-                    _buildSectionHeader('المعلومات الأساسية (إجبارية) 🔴'),
-                    _buildTextField('عنوان الإعلان (داخلي للمتابعة)', Icons.title, controller: titleCtrl, isRequired: true),
-                    _buildTextField('رابط الصورة (URL)', Icons.image, controller: imgUrlCtrl, isRequired: true),
-                    
-                    const SizedBox(height: 15),
-                    
-                    // الحقول الاختيارية
-                    _buildSectionHeader('التوجيه والإجراء (اختياري) 🟢'),
-                    _buildTextField('نص الزر (مثال: اشترِ الآن)', Icons.smart_button, controller: ctaCtrl),
-                    _buildTextField('رابط التوجيه عند النقر (مسار الشاشة أو رابط إنترنت)', Icons.link, controller: linkCtrl),
-                    
-                    const SizedBox(height: 15),
+            title: const Row(children: [Icon(Icons.add_photo_alternate, color: Colors.blueAccent), SizedBox(width: 8), Text('إضافة إعلان / بنر داخلي', style: TextStyle(fontWeight: FontWeight.bold))]),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildSectionHeader('المعلومات الأساسية 🔴'),
+                  _buildTextField('عنوان الإعلان (داخلي لك)', Icons.title, controller: titleController),
+                  _buildTextField('رابط الصورة (URL)', Icons.image, controller: imgUrlController),
+                  
+                  const SizedBox(height: 10),
+                  _buildSectionHeader('التوجيه والإجراء 🟢'),
+                  _buildTextField('نص الزر (مثال: اشترِ الآن)', Icons.smart_button, controller: ctaController),
+                  _buildTextField('مسار التوجيه عند النقر (رابط أو قسم)', Icons.link, controller: linkController),
+                  
+                  const SizedBox(height: 10),
+                  _buildSectionHeader('الجدولة الزمنية 🟢'),
+                  Row(
+                    children: [
+                      Expanded(child: _buildTextField('يبدأ (YYYY-MM-DD)', Icons.play_arrow, controller: startDateController)),
+                      const SizedBox(width: 8),
+                      Expanded(child: _buildTextField('ينتهي (YYYY-MM-DD)', Icons.stop, controller: endDateController)),
+                    ],
+                  ),
 
-                    _buildSectionHeader('الجدولة الزمنية (اختياري - فارغ = مستمر) 🟢'),
-                    Row(
+                  const SizedBox(height: 10),
+                  _buildSectionHeader('الاستهداف (لمن يظهر؟) 🎯'),
+                  Container(
+                    decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+                    child: Column(
                       children: [
-                        Expanded(child: _buildTextField('يبدأ في (YYYY-MM-DD)', Icons.play_circle, controller: startCtrl)),
-                        const SizedBox(width: 8),
-                        Expanded(child: _buildTextField('ينتهي في (YYYY-MM-DD)', Icons.stop_circle, controller: endCtrl)),
+                        CheckboxListTile(title: const Text('المستخدمين النهائيين'), dense: true, value: targetEndUsers, onChanged: (v) => setStateDialog(() => targetEndUsers = v!)),
+                        CheckboxListTile(title: const Text('الوكلاء الرئيسيين'), dense: true, value: targetMainAgents, onChanged: (v) => setStateDialog(() => targetMainAgents = v!)),
+                        CheckboxListTile(title: const Text('الوكلاء الفرعيين'), dense: true, value: targetSubAgents, onChanged: (v) => setStateDialog(() => targetSubAgents = v!)),
+                        CheckboxListTile(title: const Text('الموظفين'), dense: true, value: targetStaff, onChanged: (v) => setStateDialog(() => targetStaff = v!)),
                       ],
                     ),
-
-                    const SizedBox(height: 15),
-
-                    // محرك الاستهداف الدقيق (العبقري)
-                    _buildSectionHeader('الاستهداف (من يرى الإعلان؟) 🎯'),
-                    Container(
-                      decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(10)),
-                      child: Column(
-                        children: [
-                          CheckboxListTile(title: const Text('الزبائن النهائيين (Users)', style: TextStyle(fontSize: 13)), value: targetEndUsers, dense: true, onChanged: (v) => setStateDialog(() => targetEndUsers = v!)),
-                          CheckboxListTile(title: const Text('الوكلاء الرئيسيين (Main Agents)', style: TextStyle(fontSize: 13)), value: targetMainAgents, dense: true, onChanged: (v) => setStateDialog(() => targetMainAgents = v!)),
-                          CheckboxListTile(title: const Text('الوكلاء الفرعيين (Sub Agents)', style: TextStyle(fontSize: 13)), value: targetSubAgents, dense: true, onChanged: (v) => setStateDialog(() => targetSubAgents = v!)),
-                          CheckboxListTile(title: const Text('الموظفين (Staff)', style: TextStyle(fontSize: 13)), value: targetStaff, dense: true, onChanged: (v) => setStateDialog(() => targetStaff = v!)),
-                          CheckboxListTile(title: const Text('مالك النظام (Super Admin)', style: TextStyle(fontSize: 13)), value: targetAdmin, dense: true, onChanged: (v) => setStateDialog(() => targetAdmin = v!)),
-                          
-                          const Divider(),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('تخصيص بأرقام الهواتف (مفصولة بفاصلة):', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-                                const SizedBox(height: 5),
-                                TextField(
-                                  controller: customPhonesCtrl,
-                                  decoration: const InputDecoration(hintText: '777..., 711...', isDense: true, border: OutlineInputBorder()),
-                                ),
-                                const SizedBox(height: 5),
-                                DropdownButton<String>(
-                                  isExpanded: true,
-                                  value: customPhoneRule,
-                                  items: const [
-                                    DropdownMenuItem(value: 'none', child: Text('لا تفعل شيء (تجاهل الأرقام أعلاه)')),
-                                    DropdownMenuItem(value: 'include_only', child: Text('عرض الإعلان لهؤلاء الأشخاص فقط')),
-                                    DropdownMenuItem(value: 'exclude', child: Text('إخفاء الإعلان عن هؤلاء الأشخاص فقط')),
-                                  ],
-                                  onChanged: (v) => setStateDialog(() => customPhoneRule = v!),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
             actions: [
@@ -156,43 +118,41 @@ class _BannersScreenState extends State<BannersScreen> with SingleTickerProvider
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                 onPressed: () async {
-                  if (titleCtrl.text.isEmpty || imgUrlCtrl.text.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء تعبئة الحقول الإجبارية (العنوان والصورة)!'), backgroundColor: Colors.red));
-                    return;
-                  }
-                  
-                  // تجهيز خريطة الاستهداف للسيرفر
-                  Map<String, dynamic> targetConfig = {
-                    'roles': {
-                      'user': targetEndUsers,
-                      'agent': targetMainAgents,
-                      'sub_agent': targetSubAgents,
-                      'staff': targetStaff,
-                      'super_admin': targetAdmin,
-                    },
-                    'customPhones': customPhonesCtrl.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
-                    'customRule': customPhoneRule,
-                  };
+                  if (titleController.text.isNotEmpty && imgUrlController.text.isNotEmpty) {
+                    // تحديد الاستهداف كنص للعرض في القائمة
+                    String targetText = 'مخصص';
+                    if (targetEndUsers && targetMainAgents && targetSubAgents && targetStaff) targetText = 'الجميع';
+                    else if (targetEndUsers && !targetMainAgents) targetText = 'المستخدمين';
+                    else if (!targetEndUsers && targetMainAgents) targetText = 'الوكلاء';
 
-                  await _bannersCollection.add({
-                    'title': titleCtrl.text,
-                    'imageUrl': imgUrlCtrl.text,
-                    'ctaText': ctaCtrl.text,
-                    'linkUrl': linkCtrl.text,
-                    'startDate': startCtrl.text,
-                    'endDate': endCtrl.text,
-                    'status': 'نشط',
-                    'targetConfig': targetConfig,
-                    'views': 0, 'clicks': 0,
-                    'createdAt': FieldValue.serverTimestamp(),
-                  });
-
-                  if (mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إطلاق الحملة التسويقية بنجاح! 🚀'), backgroundColor: Colors.green));
+                    await _bannersCollection.add({
+                      'title': titleController.text,
+                      'imageUrl': imgUrlController.text,
+                      'ctaText': ctaController.text,
+                      'linkUrl': linkController.text,
+                      'startDate': startDateController.text,
+                      'endDate': endDateController.text,
+                      'target': targetText,
+                      'targetConfig': {
+                        'endUsers': targetEndUsers,
+                        'mainAgents': targetMainAgents,
+                        'subAgents': targetSubAgents,
+                        'staff': targetStaff,
+                      },
+                      'status': 'نشط',
+                      'views': 0,
+                      'clicks': 0,
+                      'createdAt': FieldValue.serverTimestamp(),
+                    });
+                    if (mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إطلاق الحملة بنجاح! 🚀'), backgroundColor: Colors.green));
+                    }
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء كتابة العنوان ووضع رابط الصورة! ❌'), backgroundColor: Colors.red));
                   }
                 },
-                child: const Text('حفظ ونشر الإعلان', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                child: const Text('حفظ ونشر', style: TextStyle(color: Colors.white)),
               ),
             ],
           ),
@@ -202,47 +162,87 @@ class _BannersScreenState extends State<BannersScreen> with SingleTickerProvider
   }
 
   // ==========================================
-  // 3. بناء واجهة الشاشة الرئيسية
+  // 3. دوال التحكم بالبنرات (مربوطة بـ Firestore)
+  // ==========================================
+  void _toggleBannerStatus(String docId, String currentStatus) async {
+    String newStatus = currentStatus == 'نشط' ? 'موقوف مؤقتاً' : 'نشط';
+    await _bannersCollection.doc(docId).update({'status': newStatus});
+  }
+
+  void _deleteBanner(String docId) {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('حذف الإعلان 🗑️', style: TextStyle(color: Colors.red)),
+          content: const Text('هل أنت متأكد من مسح هذه الحملة نهائياً؟'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('تراجع')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () async {
+                await _bannersCollection.doc(docId).delete();
+                if(mounted) Navigator.pop(context);
+              },
+              child: const Text('حذف نهائي', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // 4. بناء الواجهة الرئيسية
   // ==========================================
   @override
   Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
-    final theme = Provider.of<ThemeProvider>(context);
+    final systemProvider = Provider.of<SystemProvider>(context);
+    final themeProvider = Provider.of<ThemeProvider>(context);
 
     return Scaffold(
-      appBar: const CustomHeader(title: 'لوحة التحكم بالإعلانات الداخلية'),
-      drawer: CustomDrawer(userName: sys.currentUserName, phoneNumber: sys.currentUserPhone, role: 'مالك النظام', balanceOrPoints: 'أرباح النظام: ${sys.adminMainBalance.toStringAsFixed(0)}'),
+      appBar: const CustomHeader(title: 'إدارة الإعلانات والبنرات الداخليـة'),
+      drawer: CustomDrawer(
+        userName: systemProvider.currentUserName,
+        phoneNumber: systemProvider.currentUserPhone,
+        role: 'مالك النظام (Super Admin)',
+        balanceOrPoints: 'أرباح النظام: ${systemProvider.adminMainBalance.toStringAsFixed(0)}',
+      ),
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
             TabBar(
               controller: _tabController,
-              labelColor: theme.primaryColor == const Color(0xFFFFFFFF) ? Colors.blueAccent : theme.primaryColor,
-              indicatorColor: theme.primaryColor == const Color(0xFFFFFFFF) ? Colors.blueAccent : theme.primaryColor,
+              labelColor: themeProvider.primaryColor == const Color(0xFFFFFFFF) ? Colors.blueAccent : themeProvider.primaryColor,
+              indicatorColor: themeProvider.primaryColor == const Color(0xFFFFFFFF) ? Colors.blueAccent : themeProvider.primaryColor,
               tabs: const [
                 Tab(icon: Icon(Icons.campaign), text: 'إعدادات الشريط العلوي'),
-                Tab(icon: Icon(Icons.photo_library), text: 'إدارة البنرات (الداخلية)'),
+                Tab(icon: Icon(Icons.photo_library), text: 'قائمة البنرات التسويقية'),
               ],
             ),
             Expanded(
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildMarqueeSettingsTab(sys), // التبويب الأول
-                  _buildBannersListTab(),      // التبويب الثاني
+                  _buildMarqueeSettingsTab(systemProvider), // التبويب الأول
+                  _buildBannersListTab(),                 // التبويب الثاني
                 ],
               ),
             ),
           ],
         ),
       ),
-      floatingActionButton: _tabController.index == 1 ? FloatingActionButton.extended(
-        onPressed: _showAddBannerDialog,
-        backgroundColor: Colors.blue.shade800,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('حملة جديدة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-      ) : null,
+      // زر إضافة حملة يظهر فقط في تبويب البنرات (التبويب الثاني)
+      floatingActionButton: _tabController.index == 1 
+          ? FloatingActionButton.extended(
+              onPressed: _showAddBannerDialog,
+              backgroundColor: Colors.blueAccent,
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text('حملة جديدة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ) 
+          : null,
     );
   }
 
@@ -279,7 +279,7 @@ class _BannersScreenState extends State<BannersScreen> with SingleTickerProvider
                     controller: TextEditingController(text: sys.announcements.isNotEmpty ? sys.announcements.first : ''),
                     onSubmitted: (text) async {
                        await FirebaseFirestore.instance.collection('system').doc('main_info').update({'announcements': [text]});
-                       if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تغيير الخبر!'), backgroundColor: Colors.green));
+                       if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تغيير الخبر بجميع اللوحات!'), backgroundColor: Colors.green));
                     },
                   ),
                   const SizedBox(height: 10),
@@ -300,7 +300,7 @@ class _BannersScreenState extends State<BannersScreen> with SingleTickerProvider
                 Row(
                   children: [
                     Expanded(child: ListTile(title: const Text('لون الخلفية'), trailing: CircleAvatar(backgroundColor: Color(sys.marqueeBgColor)), onTap: () => _showColorPicker('اختر لون الخلفية', Color(sys.marqueeBgColor), (c) { FirebaseFirestore.instance.collection('system').doc('main_info').update({'marqueeBgColor': c.value}); }))),
-                    Container(height: 30, width: 1, color: Colors.grey.shade300), // فاصل
+                    Container(height: 30, width: 1, color: Colors.grey.shade300),
                     Expanded(child: ListTile(title: const Text('لون النص'), trailing: CircleAvatar(backgroundColor: Color(sys.marqueeTextColor)), onTap: () => _showColorPicker('اختر لون النص', Color(sys.marqueeTextColor), (c) { FirebaseFirestore.instance.collection('system').doc('main_info').update({'marqueeTextColor': c.value}); }))),
                   ],
                 ),
@@ -333,14 +333,13 @@ class _BannersScreenState extends State<BannersScreen> with SingleTickerProvider
               ],
             ),
           ),
-          const SizedBox(height: 80), // مساحة للـ FloatingButton لو تم التبديل
         ],
       ),
     );
   }
 
   // ==========================================
-  // 🟢 التبويب الثاني: قائمة البنرات التسويقية (مع الإحصائيات)
+  // 🟢 التبويب الثاني: قائمة البنرات التسويقية (مع الكروت والإحصائيات)
   // ==========================================
   Widget _buildBannersListTab() {
     return StreamBuilder<QuerySnapshot>(
@@ -348,29 +347,32 @@ class _BannersScreenState extends State<BannersScreen> with SingleTickerProvider
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return const Center(child: Text('لا توجد بنرات حالياً. أنشئ حملتك الأولى! 🚀', style: TextStyle(color: Colors.grey, fontSize: 16)));
+          return const Center(child: Text('لا توجد بنرات حالياً. أنشئ حملتك الأولى من الزر بالأسفل! 🚀', style: TextStyle(color: Colors.grey, fontSize: 14)));
         }
 
         final docs = snapshot.data!.docs;
         return ListView.builder(
-          padding: const EdgeInsets.only(top: 10, bottom: 80), // مساحة سفلية للزر
+          padding: const EdgeInsets.only(top: 10, bottom: 80), // مساحة سفلية للزر العائم
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final doc = docs[index];
             final data = doc.data() as Map<String, dynamic>;
             final docId = doc.id; 
             
-            // حساب نسبة النقر للظهور (CTR)
+            // حساب الإحصائيات (Views, Clicks, CTR)
             int views = data['views'] ?? 0;
             int clicks = data['clicks'] ?? 0;
             double ctr = views > 0 ? (clicks / views) * 100 : 0.0;
             
-            bool isPaused = data['status'] == 'موقوف';
+            bool isPaused = data['status'] == 'موقوف مؤقتاً';
+            bool isExpired = data['status'] == 'منتهي';
+
+            Color statusColor = isPaused ? Colors.orange : (isExpired ? Colors.grey : Colors.green);
 
             return Card(
               elevation: 4,
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: isPaused ? Colors.red.shade200 : Colors.green.shade200, width: 2)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: statusColor.withOpacity(0.5), width: 2)),
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Column(
@@ -382,38 +384,37 @@ class _BannersScreenState extends State<BannersScreen> with SingleTickerProvider
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: Image.network(data['imageUrl'] ?? '', width: 80, height: 50, fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(width: 80, height: 50, color: Colors.grey.shade300, child: const Icon(Icons.image_not_supported))),
+                          child: Image.network(data['imageUrl'] ?? '', width: 80, height: 60, fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(width: 80, height: 60, color: Colors.grey.shade300, child: const Icon(Icons.image_not_supported))),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(data['title'] ?? 'بدون عنوان', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, decoration: isPaused ? TextDecoration.lineThrough : null)),
+                              Text(data['title'] ?? 'بدون عنوان', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, decoration: (isPaused || isExpired) ? TextDecoration.lineThrough : null)),
                               const SizedBox(height: 5),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(color: isPaused ? Colors.red.shade100 : Colors.green.shade100, borderRadius: BorderRadius.circular(10)),
-                                child: Text(isPaused ? 'موقوف مؤقتاً' : 'نشط حالياً', style: TextStyle(fontSize: 10, color: isPaused ? Colors.red.shade800 : Colors.green.shade800, fontWeight: FontWeight.bold)),
+                                decoration: BoxDecoration(color: statusColor.withOpacity(0.2), borderRadius: BorderRadius.circular(10)),
+                                child: Text(data['status'] ?? 'غير معروف', style: TextStyle(fontSize: 10, color: statusColor, fontWeight: FontWeight.bold)),
                               ),
+                              const SizedBox(height: 3),
+                              Text('الاستهداف: ${data['target'] ?? 'غير محدد'}', style: const TextStyle(fontSize: 11, color: Colors.blueGrey)),
                             ],
                           ),
                         ),
                         // زر الحذف وإيقاف/تشغيل
                         Row(
                           children: [
-                            IconButton(icon: Icon(isPaused ? Icons.play_arrow : Icons.pause, color: isPaused ? Colors.green : Colors.orange), onPressed: () {
-                              _bannersCollection.doc(docId).update({'status': isPaused ? 'نشط' : 'موقوف'});
-                            }),
-                            IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () {
-                              _bannersCollection.doc(docId).delete();
-                            }),
+                            if (!isExpired)
+                              IconButton(icon: Icon(isPaused ? Icons.play_circle_fill : Icons.pause_circle_filled, color: isPaused ? Colors.green : Colors.orange, size: 28), onPressed: () => _toggleBannerStatus(docId, data['status'])),
+                            IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _deleteBanner(docId)),
                           ],
                         )
                       ],
                     ),
                     const Divider(),
-                    // الإحصائيات (Views, Clicks, CTR)
+                    // الإحصائيات 
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
@@ -432,12 +433,9 @@ class _BannersScreenState extends State<BannersScreen> with SingleTickerProvider
     );
   }
 
-  // --- دوال مساعدة في التصميم (UI Helpers) ---
+  // --- دوال مساعدة في التصميم ---
   Widget _buildSectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0, top: 10.0),
-      child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.blueGrey)),
-    );
+    return Padding(padding: const EdgeInsets.only(bottom: 8.0, top: 10.0), child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.blueGrey)));
   }
 
   Widget _buildTextField(String hint, IconData icon, {TextEditingController? controller, bool isRequired = false}) {
