@@ -17,7 +17,7 @@ class ThemeProvider extends ChangeNotifier {
   static const double _defaultFontSizeScale = 1.0; 
 
   // ==========================================
-  // 2. الخزانة المخصصة الافتراضية (Role Themes) ✅ [تم الحفاظ عليها]
+  // 2. الخزانة المخصصة الافتراضية (Role Themes)
   // ==========================================
   final Map<String, Map<String, dynamic>> _roleThemes = {
     'super_admin': {
@@ -73,6 +73,8 @@ class ThemeProvider extends ChangeNotifier {
     _isDark = _prefs.getBool('${_currentUserPhone}_isDark') ?? (_roleThemes[_currentRole]?['isDark'] ?? false);
     int? savedUserColor = _prefs.getInt('${_currentUserPhone}_color');
     _color = savedUserColor != null ? Color(savedUserColor) : (_roleThemes[_currentRole]?['color'] ?? _defaultAppColor);
+    
+    // 👈 جلب الخطوط والأحجام المخصصة للمستخدم
     _fontFamily = _prefs.getString('${_currentUserPhone}_fontFamily') ?? (_roleThemes[_currentRole]?['fontFamily'] ?? _defaultFontFamily);
     _fontSizeScale = _prefs.getDouble('${_currentUserPhone}_fontSizeScale') ?? (_roleThemes[_currentRole]?['fontSizeScale'] ?? _defaultFontSizeScale);
     
@@ -89,9 +91,8 @@ class ThemeProvider extends ChangeNotifier {
   String get currentRole => _currentRole;
   bool get isInitialized => _isInitialized;
 
-  // 👈 الذكاء اللوني المطور: يقرأ شدة الإضاءة ويقرر لون النص (أبيض أو أسود) ليكون متجاوباً 100%
+  // الذكاء اللوني المطور: يقرأ شدة الإضاءة ويقرر لون النص (أبيض أو أسود) ليكون متجاوباً 100%
   Color get adaptiveTextColor {
-    // إذا كان اللون المختار فاتحاً جداً (مثل الأبيض)، النص يكون أسود، والعكس صحيح
     return primaryColor.computeLuminance() > 0.5 ? Colors.black87 : Colors.white;
   }
 
@@ -99,7 +100,6 @@ class ThemeProvider extends ChangeNotifier {
   // 4. دوال التعديل والكتابة (Setters)
   // ==========================================
   
-  // دالة الرتبة القديمة (للتوافق)
   void setRole(String role) {
     if (_roleThemes.containsKey(role)) {
       _currentRole = role;
@@ -107,7 +107,6 @@ class ThemeProvider extends ChangeNotifier {
     }
   }
 
-  // دالة الدخول الجديدة (المخصصة لكل رقم هاتف على حدة)
   void setUser(String role, String phone) {
     _currentRole = role;
     _currentUserPhone = phone;
@@ -126,12 +125,14 @@ class ThemeProvider extends ChangeNotifier {
     notifyListeners(); 
   }
 
+  // 👈 التأكد من تطبيق الخطوط فوراً
   void changeFontFamily(String font) {
     _fontFamily = font;
     _prefs.setString('${_currentUserPhone}_fontFamily', font);
     notifyListeners();
   }
 
+  // 👈 التأكد من تطبيق الحجم فوراً
   void changeFontSizeScale(double scale) {
     _fontSizeScale = scale;
     _prefs.setDouble('${_currentUserPhone}_fontSizeScale', scale);
