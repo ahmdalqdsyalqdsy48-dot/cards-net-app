@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:typed_data';
-import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart'; 
 
 import '../../../core/providers/system_provider.dart';
-import '../../../core/providers/theme_provider.dart'; // 👈 ضروري لتباين الألوان
+import '../../../core/providers/theme_provider.dart'; 
 import '../../../core/widgets/custom_header.dart';
 import '../../../core/widgets/custom_drawer.dart';
 
@@ -21,8 +18,8 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   late TabController _tabController;
   bool _isSaving = false;
 
-  // متغيرات تبويب تسجيل الدخول
-  late TextEditingController _appNameCtrl, _appLogoCtrl, _welcomeMsgCtrl;
+  // متحكمات النصوص
+  late TextEditingController _appNameCtrl, _appLogoCtrl, _welcomeMsgCtrl, _sliderUrlCtrl;
   late double _carouselInterval;
   String _marqueeDirection = 'rtl';
   
@@ -37,17 +34,14 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   String _appNameFont = 'Cairo';
   final List<String> _fonts = ['Cairo', 'Tajawal', 'Almarai', 'Roboto', 'Changa'];
 
-  List<dynamic> _sliderImages = [];
-  Uint8List? _newLogoBytes; // 👈 لتخزين الشعار الجديد قبل الرفع
-
-  late bool _hideProfit, _leaderboard, _forceTheme, _guestMode, _kycRequired, _loyaltySystem;
-  List<String> _agentHiddenList = [], _userHiddenList = [];
-  late TextEditingController _waCtrl, _fbCtrl, _tgCtrl;
+  // 👈 قائمة روابط الصور للسلايدر الإعلاني
+  List<String> _sliderImageUrls = [];
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _sliderUrlCtrl = TextEditingController(); // 👈 متحكم حقل إضافة الرابط
     _loadData();
   }
 
@@ -68,22 +62,15 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
     _appNameFont = sys.appNameFont; 
     _appNameColor = Color(sys.appNameColor); 
 
-    _sliderImages = List.from(sys.loginCarouselImages);
-
-    _hideProfit = sys.hideProfitEnabled; _leaderboard = sys.leaderboardEnabled; _forceTheme = sys.forceAgentTheme;
-    _agentHiddenList = List.from(sys.agentUniversalHiddenSections);
-    _guestMode = sys.guestModeEnabled; _kycRequired = sys.kycRequired; _loyaltySystem = sys.loyaltySystemEnabled;
-    _userHiddenList = List.from(sys.userUniversalHiddenSections);
-    _waCtrl = TextEditingController(text: sys.socialLinks['whatsapp'] ?? '');
-    _fbCtrl = TextEditingController(text: sys.socialLinks['facebook'] ?? '');
-    _tgCtrl = TextEditingController(text: sys.socialLinks['telegram'] ?? '');
+    // جلب روابط السلايدر المحفوظة سابقاً
+    _sliderImageUrls = List<String>.from(sys.loginCarouselImages);
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     _appNameCtrl.dispose(); _appLogoCtrl.dispose(); _welcomeMsgCtrl.dispose();
-    _waCtrl.dispose(); _fbCtrl.dispose(); _tgCtrl.dispose();
+    _sliderUrlCtrl.dispose();
     super.dispose();
   }
 
@@ -92,82 +79,22 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   }
 
   // ========================================================
-  // 1. محرك اختيار الشعار (اللوجو)
+  // محرك إضافة روابط السلايدر
   // ========================================================
-  Future<void> _pickLogoLocally() async {
-    final picker = ImagePicker();
-    try {
-      final XFile? pickedFile = await picker.pickImage(source: ImageSource.gallery);
-      if (pickedFile == null) return;
-
-      final Uint8List bytes = await pickedFile.readAsBytes();
+  void _addSliderUrl() {
+    String url = _sliderUrlCtrl.text.trim();
+    if (url.isNotEmpty && (url.startsWith('http://') || url.startsWith('https://'))) {
       setState(() {
-        _newLogoBytes = bytes;
-        _appLogoCtrl.text = 'سيتم الرفع عند الحفظ...'; // إشعار بصري للمستخدم
+        _sliderImageUrls.add(url);
+        _sliderUrlCtrl.clear();
       });
-    } catch (e) {
-      _showSnack('حدث خطأ أثناء اختيار الشعار', isErr: true);
+    } else {
+      _showSnack('يرجى إدخال رابط مباشر صحيح يبدأ بـ http أو https', isErr: true);
     }
   }
 
   // ========================================================
-  // 2. محرك اختيار صور السلايدر
-  // ========================================================
-  Future<void> _pickMultipleImagesLocally() async {
-    final picker = ImagePicker();
-    try {
-      final List<XFile> pickedFiles = await picker.pickMultiImage();
-      if (pickedFiles.isEmpty) return;
-
-      for (var file in pickedFiles) {
-        final Uint8List bytes = await file.readAsBytes();
-        setState(() {
-          _sliderImages.add(bytes); 
-        });
-      }
-      _showSnack('تم إضافة ${pickedFiles.length} صور. اضغط حفظ للرفع.', isErr: false);
-    } catch (e) {
-      _showSnack('حدث خطأ أثناء اختيار الصور', isErr: true);
-    }
-  }
-
-  // ========================================================
-  // 3. محرك الرفع الفعلي (محمي بـ Timeout قوي جداً)
-  // ========================================================
-  Future<List<String>> _uploadPendingImages() async {
-    List<String> finalUrls = [];
-    
-    for (int i = 0; i < _sliderImages.length; i++) {
-      var item = _sliderImages[i];
-      if (item is String) {
-        finalUrls.add(item);
-      } else if (item is Uint8List) {
-        String path = 'portal_assets/slider_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
-        Reference ref = FirebaseStorage.instance.ref().child(path);
-        
-        // 👈 إضافة Timeout قوي لمنع التعليق اللانهائي
-        await ref.putData(item, SettableMetadata(contentType: 'image/jpeg')).timeout(const Duration(seconds: 20));
-        String url = await ref.getDownloadURL();
-        finalUrls.add(url);
-      }
-    }
-    return finalUrls;
-  }
-
-  Future<String?> _uploadLogoIfChanged() async {
-    if (_newLogoBytes == null) return null;
-    try {
-      String path = 'portal_assets/logo_${DateTime.now().millisecondsSinceEpoch}.png';
-      Reference ref = FirebaseStorage.instance.ref().child(path);
-      await ref.putData(_newLogoBytes!, SettableMetadata(contentType: 'image/png')).timeout(const Duration(seconds: 20));
-      return await ref.getDownloadURL();
-    } catch (e) {
-      throw 'فشل رفع الشعار!';
-    }
-  }
-
-  // ========================================================
-  // 4. عجلة الألوان المتجاوبة
+  // عجلة الألوان المتجاوبة
   // ========================================================
   void _openColorPicker(String title, Color currentColor, Color defaultColor, Function(Color) onColorSelected, Color textColor) {
     Color tempColor = currentColor;
@@ -199,7 +126,7 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
     final theme = Provider.of<ThemeProvider>(context);
-    final Color textColor = theme.adaptiveTextColor; // 👈 لون النص المتجاوب 100%
+    final Color textColor = theme.adaptiveTextColor;
 
     return Scaffold(
       appBar: const CustomHeader(title: 'إدارة البوابات الذكية'),
@@ -210,7 +137,7 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
           children: [
             TabBar(
               controller: _tabController, 
-              labelColor: textColor, // 👈 استجابة التبويبات للون
+              labelColor: textColor, 
               indicatorColor: textColor,
               unselectedLabelColor: textColor.withOpacity(0.5),
               tabs: const [Tab(text: 'بوابة الدخول'), Tab(text: 'الوكلاء'), Tab(text: 'المستخدمين')]
@@ -228,7 +155,7 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   }
 
   // ==========================================
-  // بناء تبويب تسجيل الدخول (خالي من الألوان الثابتة)
+  // بناء تبويب تسجيل الدخول 
   // ==========================================
   Widget _buildLoginTab(SystemProvider sys, ThemeProvider theme, Color textColor) {
     return Stack(
@@ -241,14 +168,13 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
               _buildTitle('الهوية البصرية للتطبيق', textColor),
               _buildAdaptiveTextField('اسم التطبيق', _appNameCtrl, Icons.app_shortcut, textColor),
               
-              // 👈 المربع الذي كان أبيض، الآن شفاف وذو حدود تتناسب مع لون المظهر
               Container(
                 padding: const EdgeInsets.all(12),
                 margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
-                  color: Colors.transparent, // بدون لون ثابت
+                  color: Colors.transparent, 
                   borderRadius: BorderRadius.circular(10), 
-                  border: Border.all(color: textColor.withOpacity(0.3), width: 1.5) // حدود متجاوبة
+                  border: Border.all(color: textColor.withOpacity(0.3), width: 1.5)
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -260,7 +186,7 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
                         Expanded(
                           child: DropdownButtonFormField<String>(
                             value: _appNameAlign,
-                            dropdownColor: Theme.of(context).scaffoldBackgroundColor, // لون القائمة المنسدلة متجاوب
+                            dropdownColor: Theme.of(context).scaffoldBackgroundColor,
                             style: TextStyle(color: textColor, fontFamily: theme.fontFamily),
                             decoration: InputDecoration(
                               labelText: 'مكان الظهور', 
@@ -296,17 +222,8 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
                 ),
               ),
 
-              Row(
-                children: [
-                  Expanded(child: _buildAdaptiveTextField('رابط الشعار (يُفضل PNG شفاف)', _appLogoCtrl, Icons.image, textColor, readOnly: _newLogoBytes != null)),
-                  const SizedBox(width: 8),
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(color: textColor.withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: textColor.withOpacity(0.3))), 
-                    child: IconButton(icon: Icon(Icons.upload_file, color: textColor), onPressed: _pickLogoLocally) // 👈 الزر أصبح يعمل
-                  ),
-                ],
-              ),
+              // 👈 حقل الشعار (تم الإبقاء عليه كما طلبت، يعمل بالروابط فقط)
+              _buildAdaptiveTextField('رابط الشعار المباشر (URL)', _appLogoCtrl, Icons.link, textColor),
               
               _buildColorRow('لون خلفية صفحة الدخول', _loginBgColor, _defaultBgColor, (c) => setState(() => _loginBgColor = c), textColor),
 
@@ -335,26 +252,40 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
 
               Divider(height: 40, thickness: 1, color: textColor.withOpacity(0.2)),
 
-              _buildTitle('إدارة صور السلايدر الإعلاني', textColor),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: textColor.withOpacity(0.1), elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: textColor.withOpacity(0.3)))),
-                  onPressed: _pickMultipleImagesLocally, 
-                  icon: Icon(Icons.photo_library, color: textColor),
-                  label: Text('اختيار صور من المعرض', style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
-                ),
+              // 👈 إدارة السلايدر الإعلاني بنظام الروابط (الاقتراح الثاني)
+              _buildTitle('إدارة صور السلايدر الإعلاني (عبر الروابط)', textColor),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _buildAdaptiveTextField('ألصق رابط الصورة هنا...', _sliderUrlCtrl, Icons.add_photo_alternate, textColor),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    height: 55, // نفس ارتفاع حقل النص تقريباً
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueAccent, 
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                      ),
+                      onPressed: _addSliderUrl, 
+                      child: const Text('إضافة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+                    ),
+                  ),
+                ],
               ),
 
-              if (_sliderImages.isNotEmpty) ...[
-                const SizedBox(height: 15),
+              // عرض الصور المضافة مع زر الحذف
+              if (_sliderImageUrls.isNotEmpty) ...[
+                const SizedBox(height: 5),
                 SizedBox(
                   height: 140,
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
-                    itemCount: _sliderImages.length,
+                    itemCount: _sliderImageUrls.length,
                     itemBuilder: (context, index) {
-                      var img = _sliderImages[index];
+                      var imgUrl = _sliderImageUrls[index];
                       return Container(
                         margin: const EdgeInsets.only(left: 10),
                         width: 200,
@@ -364,25 +295,15 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
                           children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(10),
-                              child: img is String 
-                                  ? Image.network(img, fit: BoxFit.cover, errorBuilder: (c,e,s)=>const Icon(Icons.broken_image))
-                                  : Image.memory(img as Uint8List, fit: BoxFit.cover),
+                              child: Image.network(imgUrl, fit: BoxFit.cover, errorBuilder: (c,e,s)=>const Icon(Icons.broken_image, size: 40, color: Colors.grey)),
                             ),
-                            Positioned(top: 0, right: 0, child: IconButton(icon: const Icon(Icons.cancel, color: Colors.red, size: 28), onPressed: () => setState(() => _sliderImages.removeAt(index)))),
                             Positioned(
-                              bottom: 0, left: 0, right: 0,
-                              child: Container(
-                                color: Colors.black54,
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                  children: [
-                                    IconButton(icon: const Icon(Icons.arrow_circle_right, color: Colors.white), onPressed: index < _sliderImages.length - 1 ? () => _moveImage(index, index + 1) : null),
-                                    Text('${index + 1}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                                    IconButton(icon: const Icon(Icons.arrow_circle_left, color: Colors.white), onPressed: index > 0 ? () => _moveImage(index, index - 1) : null),
-                                  ],
-                                ),
-                              ),
-                            )
+                              top: 0, right: 0, 
+                              child: IconButton(
+                                icon: const Icon(Icons.cancel, color: Colors.red, size: 28), 
+                                onPressed: () => setState(() => _sliderImageUrls.removeAt(index))
+                              )
+                            ),
                           ],
                         ),
                       );
@@ -398,7 +319,7 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
           ),
         ),
 
-        // 👈 زر الحفظ المحمي 100% 
+        // 👈 زر الحفظ السريع (بدون انتظار رفع الصور)
         Align(
           alignment: Alignment.bottomCenter,
           child: Container(
@@ -412,43 +333,37 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
                   setState(() => _isSaving = true);
                   
                   try {
-                    // رفع الشعار لو تم تغييره
-                    String? newLogoUrl = await _uploadLogoIfChanged();
-                    String finalLogo = newLogoUrl ?? _appLogoCtrl.text;
-
-                    // رفع الصور (محمية بـ Timeout)
-                    List<String> finalUrls = await _uploadPendingImages();
-
+                    // إرسال البيانات مباشرة للعقل المدبر (روابط نصية فقط)
                     await sys.updateAdvancedLoginSettings(
-                      name: _appNameCtrl.text, logoUrl: finalLogo, bgColor: _loginBgColor.value,
-                      images: finalUrls, welcomeMsg: _welcomeMsgCtrl.text,
-                      intervalSeconds: _carouselInterval.toInt(), marqueeDir: _marqueeDirection,
-                      marqueeTextCol: _marqueeTextColor.value, marqueeBgCol: _marqueeBgColor.value, marqueeFont: sys.marqueeFontSize,
-                      appNameAlign: _appNameAlign, appNameFont: _appNameFont, appNameColor: _appNameColor.value,
+                      name: _appNameCtrl.text, 
+                      logoUrl: _appLogoCtrl.text, 
+                      bgColor: _loginBgColor.value,
+                      images: _sliderImageUrls, // 👈 إرسال قائمة الروابط
+                      welcomeMsg: _welcomeMsgCtrl.text, 
+                      intervalSeconds: _carouselInterval.toInt(), 
+                      marqueeDir: _marqueeDirection,
+                      marqueeTextCol: _marqueeTextColor.value, 
+                      marqueeBgCol: _marqueeBgColor.value, 
+                      appNameAlign: _appNameAlign, 
+                      appNameFont: _appNameFont, 
+                      appNameColor: _appNameColor.value,
                     );
                     
-                    _showSnack('تم حفظ الإعدادات ورفع الملفات بنجاح! ✅');
+                    _showSnack('تم حفظ الإعدادات بنجاح! ✅');
                   } catch (error) {
-                    _showSnack('خطأ في الاتصال بالخادم، يرجى المحاولة مجدداً!', isErr: true);
+                    _showSnack('حدث خطأ أثناء الحفظ!', isErr: true);
                   } finally {
                     setState(() => _isSaving = false);
                   }
                 },
                 icon: _isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.save_rounded, color: Colors.white),
-                label: Text(_isSaving ? 'جاري المعالجة والرفع...' : 'حفظ وتطبيق التغييرات', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                label: Text(_isSaving ? 'جاري الحفظ...' : 'حفظ وتطبيق التغييرات', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
               ),
             ),
           ),
         ),
       ],
     );
-  }
-
-  void _moveImage(int oldIndex, int newIndex) {
-    setState(() {
-      final item = _sliderImages.removeAt(oldIndex);
-      _sliderImages.insert(newIndex, item);
-    });
   }
 
   Widget _buildColorRow(String title, Color color, Color defColor, Function(Color) onChanged, Color textColor) {
@@ -475,7 +390,6 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
   
   Widget _buildTitle(String t, Color textColor) => Padding(padding: const EdgeInsets.only(bottom: 12, top: 10), child: Text(t, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: textColor)));
   
-  // 👈 حقل نصي متجاوب الألوان
   Widget _buildAdaptiveTextField(String l, TextEditingController c, IconData i, Color textColor, {int maxLines = 1, bool readOnly = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12), 
@@ -483,7 +397,7 @@ class _PortalsManagementScreenState extends State<PortalsManagementScreen> with 
         controller: c, 
         maxLines: maxLines, 
         readOnly: readOnly,
-        style: TextStyle(color: textColor), // النص المكتوب
+        style: TextStyle(color: textColor), 
         decoration: InputDecoration(
           labelText: l, 
           labelStyle: TextStyle(color: textColor.withOpacity(0.7)),
