@@ -3,18 +3,22 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:audioplayers/audioplayers.dart'; 
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/services.dart';
 
 class UiProvider extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final AudioPlayer _audioPlayer = AudioPlayer(); 
+  
+  // 👈 1. إنشاء مشغلات منفصلة لكل نوع صوت حتى لا تقطع بعضها في الويب
+  final AudioPlayer _clickPlayer = AudioPlayer();
+  final AudioPlayer _successPlayer = AudioPlayer();
+  final AudioPlayer _errorPlayer = AudioPlayer();
+  final AudioPlayer _notifPlayer = AudioPlayer();
 
   bool _isOnline = true; 
   List<Map<String, dynamic>> _unreadNotifications = [];
   bool _hasNewNotifications = false;
   String _globalSearchQuery = '';
   
-  bool _soundsEnabled = true;
+  bool _soundsEnabled = true; 
 
   UiProvider(String? currentUserId) {
     _monitorInternetConnection();
@@ -31,7 +35,7 @@ class UiProvider extends ChangeNotifier {
   bool get isSoundsEnabled => _soundsEnabled;
 
   // ==========================================
-  // 🎵 محرك الأصوات المطور (إصلاح جذري للويب)
+  // 🎵 محرك الأصوات الديناميكي (نسخة الويب المحسنة)
   // ==========================================
   Future<void> _loadSoundSettings() async {
     final prefs = await SharedPreferences.getInstance();
@@ -39,35 +43,31 @@ class UiProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 👈 دالة هامة لتحديث الحالة فوراً عند ضغط الزر في الإعدادات
   Future<void> updateSoundSettings(bool value) async {
     _soundsEnabled = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('soundsEnabled', value);
     notifyListeners();
+    // تجربة الصوت فوراً عند التفعيل للتأكد من عمله
+    if (value) playSound('success'); 
   }
 
   Future<void> playSound(String type) async {
     if (!_soundsEnabled) return; 
 
     try {
-      // إيقاف أي صوت شغال حالياً للبدء فوراً (مهم للسرعة)
-      await _audioPlayer.stop();
-
       if (type == 'click') {
-        await SystemSound.play(SystemSoundType.click);
+        // 👈 صوت نقرة احترافي ومضمون عبر audioplayers
+        await _clickPlayer.play(UrlSource('https://actions.google.com/sounds/v1/ui/button_click.ogg'), volume: 0.5);
       } else if (type == 'success') {
-        // رابط MP3 مستقر جداً لصوت النجاح
-        await _audioPlayer.play(UrlSource('https://www.soundjay.com/buttons/sounds/button-37.mp3'));
+        await _successPlayer.play(UrlSource('https://actions.google.com/sounds/v1/ui/succeed_bright.ogg'), volume: 1.0);
       } else if (type == 'error') {
-        // صوت تنبيه خطأ
-        await _audioPlayer.play(UrlSource('https://www.soundjay.com/buttons/sounds/button-10.mp3'));
+        await _errorPlayer.play(UrlSource('https://actions.google.com/sounds/v1/alarms/error_beep.ogg'), volume: 0.8);
       } else if (type == 'notification') {
-        // صوت إشعار احترافي
-        await _audioPlayer.play(UrlSource('https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3'));
+        await _notifPlayer.play(UrlSource('https://actions.google.com/sounds/v1/alarms/message_alerts.ogg'), volume: 1.0);
       }
     } catch (e) {
-      debugPrint('تنبيه: المتصفح قد يحظر الصوت قبل التفاعل الأول $e');
+      debugPrint('تحذير الصوت (طبيعي في المتصفحات قبل التفاعل): $e');
     }
   }
 
@@ -98,6 +98,7 @@ class UiProvider extends ChangeNotifier {
       if (_hasNewNotifications && !hadNew) {
         playSound('notification');
       }
+
       notifyListeners();
     });
   }
