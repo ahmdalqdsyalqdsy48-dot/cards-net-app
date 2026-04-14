@@ -1,3 +1,4 @@
+import 'dart:convert'; // 👈 ضروري لفك تشفير صورة السند
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,7 +8,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart'; 
 
 import '../../../core/providers/system_provider.dart'; 
-import '../../../core/providers/ui_provider.dart'; // 👈 استدعاء محرك الصوت
+import '../../../core/providers/ui_provider.dart'; 
+import '../../../core/providers/theme_provider.dart'; // 👈 ضروري لتكيف الألوان
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart'; 
 
@@ -22,14 +24,12 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
   late TabController _tabController;
   String _searchQuery = ''; 
   
-  // متغيرات لمنع النقرات المزدوجة أثناء معالجة الطلبات
   final Set<String> _processingRequests = {};
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    // 👈 إضافة صوت عند التبديل بين التبويبات (طلبات الشحن، المحافظ، السجل)
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) {
         Provider.of<UiProvider>(context, listen: false).playSound('click');
@@ -43,19 +43,18 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     super.dispose();
   }
 
-  // دالة مساعدة لتشغيل الأصوات بسهولة
   void _play(BuildContext context, String type) => 
       Provider.of<UiProvider>(context, listen: false).playSound(type);
 
   // ==========================================
-  // النوافذ المنبثقة لطلبات الشحن (مع حماية التحميل والأصوات)
+  // النوافذ المنبثقة لطلبات الشحن 
   // ==========================================
   void _acceptRequest(Map<String, dynamic> req, SystemProvider provider) async {
-    _play(context, 'click'); // 👈 صوت نقرة زر التأكيد
+    _play(context, 'click'); 
     final docId = req['docId'];
-    if (_processingRequests.contains(docId)) return; // منع التكرار
+    if (_processingRequests.contains(docId)) return; 
 
-    setState(() => _processingRequests.add(docId)); // بدء التحميل
+    setState(() => _processingRequests.add(docId)); 
 
     try {
       await provider.acceptRechargeRequest(
@@ -65,16 +64,16 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
         amount: double.parse(req['amount'].toString()),
       );
       if (mounted) {
-        _play(context, 'success'); // 👈 صوت إضافة الرصيد بنجاح
+        _play(context, 'success'); 
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تأكيد الشحن وإيداع المبلغ بنجاح ✅'), backgroundColor: Colors.green));
       }
     } catch (e) {
       if (mounted) {
-        _play(context, 'error'); // 👈 صوت فشل العملية
+        _play(context, 'error'); 
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
       }
     } finally {
-      if (mounted) setState(() => _processingRequests.remove(docId)); // إنهاء التحميل
+      if (mounted) setState(() => _processingRequests.remove(docId)); 
     }
   }
 
@@ -93,12 +92,13 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
+              backgroundColor: Theme.of(context).cardColor, // 👈 توافق مع الوضع الليلي
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               title: const Text('رفض طلب الشحن ❌', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('يرجى كتابة سبب الرفض (سيصل للوكيل كإشعار):'),
+                  Text('يرجى كتابة سبب الرفض (سيصل للوكيل كإشعار):', style: TextStyle(color: Provider.of<ThemeProvider>(context).adaptiveTextColor)),
                   const SizedBox(height: 10),
                   TextField(
                     controller: reasonController,
@@ -120,7 +120,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                     try {
                       await provider.rejectRechargeRequest(docId, reasonController.text);
                       if (mounted) {
-                        _play(context, 'success'); // صوت إتمام عملية الرفض بنجاح
+                        _play(context, 'success'); 
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم رفض الطلب بنجاح.'), backgroundColor: Colors.red));
                       }
@@ -163,6 +163,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
+              backgroundColor: Theme.of(context).cardColor,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               title: Text('تسوية يدوية لمحفظة: ${agent['name']}', style: const TextStyle(fontWeight: FontWeight.bold)),
               content: SingleChildScrollView(
@@ -251,6 +252,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
+          backgroundColor: Theme.of(context).cardColor,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Text('ضبط حد الخطر 🎛️', style: TextStyle(fontWeight: FontWeight.bold)),
           content: Column(
@@ -306,6 +308,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
         builder: (context, setStateDialog) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
+            backgroundColor: Theme.of(context).cardColor,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             title: Text('كشف حساب: ${agent['name']}', style: const TextStyle(fontWeight: FontWeight.bold)),
             content: SingleChildScrollView(
@@ -313,19 +316,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('الأزرار السريعة:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                  const SizedBox(height: 5),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      ActionChip(label: const Text('اليوم'), onPressed: () { _play(context, 'click'); setStateDialog(() { startDate = DateTime.now(); endDate = DateTime.now(); }); }),
-                      ActionChip(label: const Text('أسبوع'), onPressed: () { _play(context, 'click'); setStateDialog(() { startDate = DateTime.now().subtract(const Duration(days: 7)); endDate = DateTime.now(); }); }),
-                      ActionChip(label: const Text('شهر'), onPressed: () { _play(context, 'click'); setStateDialog(() { startDate = DateTime(DateTime.now().year, DateTime.now().month, 1); endDate = DateTime.now(); }); }),
-                    ],
-                  ),
-                  const Divider(height: 20),
-                  const Text('أو حدد التاريخ يدوياً:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                  const SizedBox(height: 10),
                   OutlinedButton.icon(
                     onPressed: () async {
                       _play(context, 'click');
@@ -385,28 +375,41 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     }).toList();
 
     final arabicFont = await PdfGoogleFonts.cairoRegular();
+    final arabicBold = await PdfGoogleFonts.cairoBold();
     final pdf = pw.Document();
 
     pdf.addPage(
       pw.Page(
         textDirection: pw.TextDirection.rtl, 
-        theme: pw.ThemeData.withFont(base: arabicFont),
+        theme: pw.ThemeData.withFont(base: arabicFont, bold: arabicBold),
         build: (pw.Context context) {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Center(child: pw.Text('كشف حساب وكيل - نظام كروت نت', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold))),
+              pw.Container(
+                padding: const pw.EdgeInsets.all(15),
+                color: PdfColors.teal700,
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('كشف حساب وكيل', style: pw.TextStyle(color: PdfColors.white, fontSize: 20, fontWeight: pw.FontWeight.bold)),
+                    pw.Text('نظام كروت نت', style: pw.TextStyle(color: PdfColors.white, fontSize: 14)),
+                  ]
+                )
+              ),
               pw.SizedBox(height: 20),
-              pw.Text('اسم الوكيل: ${agent['name']}'),
+              pw.Text('اسم الوكيل: ${agent['name']}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
               pw.Text('الهاتف: ${agent['phone']}'),
-              pw.Text('الفترة: من ${DateFormat('yyyy-MM-dd').format(start)} إلى ${DateFormat('yyyy-MM-dd').format(end)}'),
+              pw.Text('الفترة: من ${DateFormat('yyyy-MM-dd').format(start)} إلى ${DateFormat('yyyy-MM-dd').format(end)}', style: const pw.TextStyle(color: PdfColors.grey700)),
               pw.SizedBox(height: 20),
               
               pw.TableHelper.fromTextArray(
                 context: context,
-                headerStyle: pw.TextStyle(font: arabicFont, fontWeight: pw.FontWeight.bold),
+                headerStyle: pw.TextStyle(font: arabicBold, color: PdfColors.white),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey800),
                 cellStyle: pw.TextStyle(font: arabicFont),
                 cellAlignment: pw.Alignment.center,
+                oddRowDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
                 data: <List<String>>[
                   <String>['التاريخ', 'النوع', 'المبلغ'], 
                   ...filteredLedger.map((item) {
@@ -432,13 +435,16 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     );
 
     await Printing.sharePdf(bytes: await pdf.save(), filename: 'statement_${agent['phone']}.pdf');
-    if (mounted) _play(context, 'success'); // صوت نجاح تصدير الـ PDF
+    if (mounted) _play(context, 'success'); 
   }
 
   @override
   Widget build(BuildContext context) {
     final systemProvider = Provider.of<SystemProvider>(context);
+    final themeProvider = Provider.of<ThemeProvider>(context); // 👈 استدعاء الثيم
     final adminBalance = systemProvider.adminMainBalance;
+    final cardColor = Theme.of(context).cardColor;
+    final textColor = themeProvider.adaptiveTextColor;
 
     return Scaffold(
       appBar: const CustomHeader(title: 'المركز المالي والمحافظ'),
@@ -456,14 +462,14 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
               padding: const EdgeInsets.all(16.0),
               child: TextField(
                 onChanged: (value) {
-                  if(value.length == 1) _play(context, 'click'); // نقرة خفيفة عند بدء البحث
+                  if(value.length == 1) _play(context, 'click'); 
                   setState(() => _searchQuery = value);
                 },
                 decoration: InputDecoration(
                   hintText: 'بحث شامل بالاسم، أو رقم الهاتف...',
                   prefixIcon: const Icon(Icons.search, color: Colors.blueAccent),
                   filled: true,
-                  fillColor: Theme.of(context).cardColor,
+                  fillColor: cardColor, // 👈 متوافق مع الثيم
                   contentPadding: const EdgeInsets.symmetric(vertical: 0),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
                 ),
@@ -491,9 +497,9 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildRechargeRequestsTab(systemProvider),
-                  _buildWalletsTab(systemProvider),
-                  _buildLedgerTab(systemProvider),
+                  _buildRechargeRequestsTab(systemProvider, cardColor, textColor),
+                  _buildWalletsTab(systemProvider, cardColor, textColor),
+                  _buildLedgerTab(systemProvider, cardColor, textColor),
                 ],
               ),
             ),
@@ -503,7 +509,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     );
   }
 
-  Widget _buildRechargeRequestsTab(SystemProvider provider) {
+  Widget _buildRechargeRequestsTab(SystemProvider provider, Color cardColor, Color textColor) {
     final requests = provider.pendingRechargeRequests.where((req) {
       final query = _searchQuery.toLowerCase();
       return (req['agentName']?.toString().toLowerCase().contains(query) ?? false) ||
@@ -522,6 +528,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
         final isProcessing = _processingRequests.contains(docId); 
 
         return Card(
+          color: cardColor, // 👈 متوافق مع الثيم
           elevation: 3,
           margin: const EdgeInsets.only(bottom: 16),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
@@ -538,16 +545,36 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                   ],
                 ),
                 const Divider(),
-                _buildInfoRow('رقم الهاتف:', req['agentPhone'] ?? ''),
-                _buildInfoRow('المبلغ المطلوب:', '${req['amount']} ريال', isBold: true, color: Colors.green),
-                _buildInfoRow('البنك المحول منه:', req['bankName'] ?? 'غير محدد'),
-                _buildInfoRow('رقم المرجع:', req['ref'] ?? 'لا يوجد'),
+                _buildInfoRow('رقم الهاتف:', req['agentPhone'] ?? '', textColor: textColor),
+                _buildInfoRow('المبلغ المطلوب:', '${req['amount']} ريال', isBold: true, color: Colors.green, textColor: textColor),
+                _buildInfoRow('البنك المحول منه:', req['bankName'] ?? 'غير محدد', textColor: textColor),
+                _buildInfoRow('رقم المرجع:', req['ref'] ?? 'لا يوجد', textColor: textColor),
                 const SizedBox(height: 10),
                 
+                // 👈 1. برمجة زر عرض الصورة المشفرة Base64
                 OutlinedButton.icon(
-                  onPressed: () { _play(context, 'click'); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سيتم عرض صورة السند من السحابة هنا 📸'))); },
-                  icon: const Icon(Icons.image, size: 18),
-                  label: const Text('عرض صورة سند التحويل'),
+                  onPressed: () {
+                    _play(context, 'click');
+                    if (req['hasReceipt'] == true && req['receiptBase64'] != null) {
+                      showDialog(
+                        context: context,
+                        builder: (_) => Dialog(
+                          backgroundColor: Colors.transparent,
+                          child: Stack(
+                            alignment: Alignment.topRight,
+                            children: [
+                              InteractiveViewer(child: Image.memory(base64Decode(req['receiptBase64']), fit: BoxFit.contain)),
+                              IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 30), onPressed: () => Navigator.pop(context)),
+                            ],
+                          ),
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الوكيل لم يقم بإرفاق صورة السند ⏳'), backgroundColor: Colors.orange));
+                    }
+                  },
+                  icon: Icon(Icons.image, size: 18, color: req['hasReceipt'] == true ? Colors.green : Colors.grey),
+                  label: Text(req['hasReceipt'] == true ? 'عرض صورة السند 📸' : 'لا يوجد سند مرفق', style: TextStyle(color: req['hasReceipt'] == true ? Colors.green : Colors.grey)),
                   style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 40), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                 ),
                 const SizedBox(height: 10),
@@ -581,7 +608,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     );
   }
 
-  Widget _buildWalletsTab(SystemProvider provider) {
+  Widget _buildWalletsTab(SystemProvider provider, Color cardColor, Color textColor) {
     final wallets = provider.agentsList.where((agent) {
       final query = _searchQuery.toLowerCase();
       return (agent['name']?.toString().toLowerCase().contains(query) ?? false) ||
@@ -600,6 +627,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
         final isDanger = balance <= dangerLimit;
 
         return Card(
+          color: cardColor,
           elevation: 2,
           margin: const EdgeInsets.only(bottom: 12),
           shape: RoundedRectangleBorder(
@@ -613,7 +641,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('${agent['name']} (${agent['phone']})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    Text('${agent['name']} (${agent['phone']})', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textColor)),
                     Row(
                       children: [
                         if (isDanger) const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 20),
@@ -627,9 +655,9 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildIconButton(Icons.settings, 'تسوية', Colors.blue, () => _showManualSettlementDialog(agent, provider)),
-                    _buildIconButton(Icons.tune, 'الخطر', Colors.orange, () => _showDangerLimitDialog(agent, provider)),
-                    _buildIconButton(Icons.picture_as_pdf, 'كشف', Colors.red, () => _showPdfStatementDialog(agent, provider)),
+                    _buildIconButton(Icons.settings, 'تسوية', Colors.blue, () => _showManualSettlementDialog(agent, provider), textColor),
+                    _buildIconButton(Icons.tune, 'الخطر', Colors.orange, () => _showDangerLimitDialog(agent, provider), textColor),
+                    _buildIconButton(Icons.picture_as_pdf, 'كشف', Colors.red, () => _showPdfStatementDialog(agent, provider), textColor),
                   ],
                 ),
               ],
@@ -640,7 +668,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     );
   }
 
-  Widget _buildLedgerTab(SystemProvider provider) {
+  Widget _buildLedgerTab(SystemProvider provider, Color cardColor, Color textColor) {
     final ledger = provider.transactionsLedger.where((log) {
       final query = _searchQuery.toLowerCase();
       return (log['agentName']?.toString().toLowerCase().contains(query) ?? false) ||
@@ -660,6 +688,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
         final color = isPositive ? Colors.green : Colors.red;
 
         return Card(
+          color: cardColor,
           margin: const EdgeInsets.only(bottom: 8),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: ListTile(
@@ -670,7 +699,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
             title: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(log['agentName'] ?? 'مجهول', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                Text(log['agentName'] ?? 'مجهول', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textColor)),
                 Text('${isPositive ? '+' : ''}$amount', style: TextStyle(fontWeight: FontWeight.bold, color: color, fontSize: 14), textDirection: TextDirection.ltr),
               ],
             ),
@@ -678,8 +707,8 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 4),
-                Text(log['type'] ?? 'حركة مالية', style: const TextStyle(fontWeight: FontWeight.bold)), 
-                if (log['reason'] != null) Text('السبب: ${log['reason']}', style: const TextStyle(fontSize: 12)),
+                Text(log['type'] ?? 'حركة مالية', style: TextStyle(fontWeight: FontWeight.bold, color: textColor.withOpacity(0.8))), 
+                if (log['reason'] != null) Text('السبب: ${log['reason']}', style: TextStyle(fontSize: 12, color: textColor.withOpacity(0.6))),
                 const SizedBox(height: 4),
                 Text(log['timestamp'] != null ? DateFormat('yyyy-MM-dd hh:mm a').format((log['timestamp'] as Timestamp).toDate()) : 'الآن', style: const TextStyle(fontSize: 12, color: Colors.grey)),
               ],
@@ -690,14 +719,14 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     );
   }
 
-  Widget _buildInfoRow(String title, String value, {bool isBold = false, Color? color}) {
+  Widget _buildInfoRow(String title, String value, {bool isBold = false, Color? color, required Color textColor}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title, style: const TextStyle(color: Colors.blueGrey)),
-          Text(value, style: TextStyle(fontWeight: isBold ? FontWeight.bold : FontWeight.normal, color: color)),
+          Text(title, style: TextStyle(color: textColor.withOpacity(0.7))),
+          Text(value, style: TextStyle(fontWeight: isBold ? FontWeight.bold : FontWeight.normal, color: color ?? textColor)),
         ],
       ),
     );
@@ -716,7 +745,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     );
   }
 
-  Widget _buildIconButton(IconData icon, String label, Color color, VoidCallback onTap) {
+  Widget _buildIconButton(IconData icon, String label, Color color, VoidCallback onTap, Color textColor) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
