@@ -95,7 +95,13 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                       } catch (error) {
                         _play(context, 'error'); // 👈 صوت الخطأ
                         setStateDialog(() => isLoading = false);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل الحفظ ❌: $error'), backgroundColor: Colors.red));
+                        }
                       }
+                    } else {
+                        _play(context, 'error');
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال الاسم ورقم الهاتف على الأقل! ❌'), backgroundColor: Colors.red));
                     }
                   },
                   child: isLoading 
@@ -111,7 +117,97 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
   }
 
   // ==========================================
-  // 2. تجميد الوكيل (مع صوت تبديل الحالة)
+  // 2. نافذة تعديل بيانات وكيل حالي
+  // ==========================================
+  void _showEditAgentDialog(Map<String, dynamic> agent, SystemProvider provider) {
+    _play(context, 'click');
+    final nameController = TextEditingController(text: agent['name']);
+    final phoneController = TextEditingController(text: agent['phone']);
+    final networkController = TextEditingController(text: agent['networkName'] ?? '');
+    final locationController = TextEditingController(text: agent['location'] ?? '');
+    final profitController = TextEditingController(text: agent['profitMargin'].toString().replaceAll('%', ''));
+    final passwordController = TextEditingController(text: agent['password']);
+
+    final oldPhone = agent['phone']; 
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          bool isLoading = false;
+
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Row(
+                children: [
+                  Icon(Icons.edit, color: Colors.orange),
+                  SizedBox(width: 10),
+                  Text('تعديل بيانات الوكيل', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildTextField('الاسم الرباعي', Icons.person, controller: nameController),
+                    _buildTextField('رقم الهاتف (الآيدي للحساب)', Icons.phone, controller: phoneController, isNumber: true),
+                    _buildTextField('اسم الشبكة', Icons.wifi, controller: networkController),
+                    _buildTextField('موقع الشبكة', Icons.location_on, controller: locationController),
+                    _buildTextField('نسبة الربح %', Icons.percent, controller: profitController, isNumber: true),
+                    _buildTextField('كلمة المرور', Icons.lock, controller: passwordController),
+                  ],
+                ),
+              ),
+              actions: [
+                if (!isLoading)
+                  TextButton(onPressed: () { _play(context, 'click'); Navigator.pop(context); }, child: const Text('إلغاء')),
+                
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                  onPressed: isLoading ? null : () async {
+                    setStateDialog(() => isLoading = true);
+
+                    try {
+                      await provider.updateAgentDetails(
+                        oldPhone: oldPhone,
+                        newPhone: phoneController.text.trim(),
+                        newName: nameController.text.trim(),
+                        newNetwork: networkController.text.trim(),
+                        newLocation: locationController.text.trim(),
+                        newProfit: '${profitController.text.trim()}%',
+                        newPassword: passwordController.text.trim(),
+                      );
+
+                      if (mounted) {
+                        _play(context, 'success');
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تطبيق التعديلات بنجاح ✅'), backgroundColor: Colors.green));
+                      }
+                    } catch (error) {
+                      _play(context, 'error');
+                      setStateDialog(() => isLoading = false);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل التعديل ❌: $error'), backgroundColor: Colors.red));
+                      }
+                    }
+                  },
+                  child: isLoading 
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('حفظ التعديلات', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            ),
+          );
+        }
+      ),
+    );
+  }
+
+  // ==========================================
+  // 3. تجميد الوكيل (مع صوت تبديل الحالة)
   // ==========================================
   void _toggleFreeze(Map<String, dynamic> agent, SystemProvider provider) {
     _play(context, 'click');
@@ -126,11 +222,12 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
       ));
     } catch (e) {
       _play(context, 'error');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل تغيير الحالة ❌: $e'), backgroundColor: Colors.red));
     }
   }
 
   // ==========================================
-  // 3. حذف الوكيل (مع صوت الحذف النهائي)
+  // 4. حذف الوكيل (تم إصلاح خطأ الـ await)
   // ==========================================
   void _deleteAgent(Map<String, dynamic> agent, SystemProvider provider) {
     _play(context, 'click');
@@ -139,19 +236,23 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          title: const Text('تأكيد الحذف النهائي', style: TextStyle(color: Colors.red)),
+          title: const Text('تأكيد الحذف النهائي', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
           content: Text('هل أنت متأكد من مسح بيانات الوكيل (${agent['name']}) نهائياً؟'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('تراجع')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () async {
+              onPressed: () {
                 try {
-                  await provider.deleteAgent(agent['phone']);
+                  // 👈 تم إزالة await من هنا ليتوافق مع المترجم
+                  provider.deleteAgent(agent['phone']); 
                   _play(context, 'success');
-                  if (mounted) Navigator.pop(context);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم الحذف النهائي من السيرفر 🗑️'), backgroundColor: Colors.red));
                 } catch (e) {
                   _play(context, 'error');
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل الحذف ❌: $e'), backgroundColor: Colors.red));
                 }
               },
               child: const Text('نعم، احذف', style: TextStyle(color: Colors.white)),
@@ -162,10 +263,17 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
     );
   }
 
+  void _showAgentDetails(Map<String, dynamic> agent) {
+    _play(context, 'click');
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => AgentProfileScreen(agentData: agent)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final systemProvider = Provider.of<SystemProvider>(context);
-    final uiProvider = Provider.of<UiProvider>(context, listen: false);
     final realAgentsList = systemProvider.agentsList; 
 
     final filteredAgents = realAgentsList.where((agent) => 
@@ -207,7 +315,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                     },
                     decoration: InputDecoration(
                       hintText: 'ابحث بالاسم أو الهاتف...',
-                      prefixIcon: const Icon(Icons.search),
+                      prefixIcon: const Icon(Icons.search, color: Colors.blueGrey),
                       filled: true,
                       fillColor: Theme.of(context).cardColor,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
@@ -219,7 +327,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
 
             Expanded(
               child: filteredAgents.isEmpty
-                  ? const Center(child: Text('لا يوجد وكلاء حالياً', style: TextStyle(color: Colors.grey)))
+                  ? const Center(child: Text('لا يوجد وكلاء مطابقين للبحث أو لم يتم إضافة وكلاء بعد.', style: TextStyle(color: Colors.grey)))
                   : ListView.builder(
                       itemCount: filteredAgents.length,
                       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -228,33 +336,53 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                         final isFrozen = agent['status'] == 'مجمد';
 
                         return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          elevation: 2,
+                          margin: const EdgeInsets.only(bottom: 15),
+                          elevation: 3,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(15),
-                            side: BorderSide(color: isFrozen ? Colors.red.withOpacity(0.5) : Colors.transparent),
+                            side: BorderSide(color: isFrozen ? Colors.red.withOpacity(0.3) : Colors.transparent, width: 1.5)
                           ),
-                          child: ListTile(
-                            onTap: () {
-                              _play(context, 'click');
-                              Navigator.push(context, MaterialPageRoute(builder: (context) => AgentProfileScreen(agentData: agent)));
-                            },
-                            contentPadding: const EdgeInsets.all(12),
-                            title: Text(agent['name'] ?? 'مجهول', style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Column(
                               children: [
-                                Text('الرصيد: ${agent['balance'] ?? 0} ريال', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                                Text('العمولة: ${agent['profitMargin'] ?? '0%'} | الهاتف: ${agent['phone']}', style: const TextStyle(fontSize: 12)),
-                              ],
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(icon: Icon(isFrozen ? Icons.play_arrow : Icons.pause, color: isFrozen ? Colors.green : Colors.orange), 
-                                  onPressed: () => _toggleFreeze(agent, systemProvider)),
-                                IconButton(icon: const Icon(Icons.delete_forever, color: Colors.red), 
-                                  onPressed: () => _deleteAgent(agent, systemProvider)),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text('${agent['name'] ?? 'مجهول'} - ${agent['networkName'] ?? 'بدون شبكة'}', 
+                                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, decoration: isFrozen ? TextDecoration.lineThrough : null),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          Text('الهاتف: ${agent['phone']} | العمولة: ${agent['profitMargin'] ?? '0%'}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                                          Text('الرصيد: ${agent['balance'] ?? 0} ريال | الموقع: ${agent['location'] ?? 'غير محدد'}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
+                                        ],
+                                      ),
+                                    ),
+                                    Chip(
+                                      label: Text(agent['status'] ?? 'غير محدد', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                                      backgroundColor: isFrozen ? Colors.red : Colors.green,
+                                    ),
+                                  ],
+                                ),
+                                const Divider(),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                  children: [
+                                    _buildActionButton(Icons.visibility, 'تفاصيل', Colors.blue, () => _showAgentDetails(agent)),
+                                    _buildActionButton(Icons.edit, 'تعديل', Colors.orange, () => _showEditAgentDialog(agent, systemProvider)),
+                                    _buildActionButton(
+                                      isFrozen ? Icons.play_arrow : Icons.pause,
+                                      isFrozen ? 'تنشيط' : 'تجميد',
+                                      isFrozen ? Colors.green : Colors.red,
+                                      () => _toggleFreeze(agent, systemProvider),
+                                    ),
+                                    _buildActionButton(Icons.delete_forever, 'حذف', Colors.red.shade900, () => _deleteAgent(agent, systemProvider)),
+                                  ],
+                                ),
                               ],
                             ),
                           ),
@@ -268,19 +396,30 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
     );
   }
 
-  Widget _buildTextField(String label, IconData icon, {TextEditingController? controller, bool isNumber = false}) {
+  Widget _buildTextField(String label, IconData icon, {TextEditingController? controller, bool isNumber = false, bool isReadOnly = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: TextField(
         controller: controller,
+        readOnly: isReadOnly,
         keyboardType: isNumber ? TextInputType.number : TextInputType.text,
         decoration: InputDecoration(
           labelText: label,
-          prefixIcon: Icon(icon),
+          prefixIcon: Icon(icon, color: isReadOnly ? Colors.grey : Colors.blueAccent),
+          filled: isReadOnly,
+          fillColor: isReadOnly ? Colors.grey.shade200 : null,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
           contentPadding: const EdgeInsets.symmetric(vertical: 10),
         ),
       ),
+    );
+  }
+
+  Widget _buildActionButton(IconData icon, String tooltip, Color color, VoidCallback onTap) {
+    return IconButton(
+      icon: Icon(icon, color: color),
+      tooltip: tooltip,
+      onPressed: onTap,
     );
   }
 }
