@@ -21,11 +21,11 @@ dependencies:
   intl: ^0.19.0         
   marquee: ^2.2.3       
   image_picker: ^1.1.2
-  firebase_storage: ^11.7.0
   path_provider: ^2.1.2
   excel: ^4.0.3
   google_fonts: ^6.1.0  
   audioplayers: ^5.2.1  
+  url_launcher: ^6.2.5  # 👈 تمت إضافة هذه المكتبة لفتح الواتساب والاتصال تلقائياً
 
 dev_dependencies:
   flutter_test:
