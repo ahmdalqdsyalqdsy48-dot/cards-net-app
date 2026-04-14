@@ -36,6 +36,7 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
   }
 
   void _showNotifications(BuildContext context, UiProvider uiProvider) {
+    uiProvider.playSound('click'); // 👈 صوت عند فتح الإشعارات
     final List<Map<String, dynamic>> currentNotifications = List.from(uiProvider.unreadNotifications);
 
     showDialog(
@@ -43,6 +44,7 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           title: const Row(children: [Icon(Icons.notifications_active, color: Colors.orange), SizedBox(width: 10), Text('الإشعارات الحديثة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))]),
           content: SizedBox(
             width: double.maxFinite,
@@ -55,11 +57,24 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
                       IconData icon = Icons.notifications; Color iconColor = Colors.blue;
                       if (notif['type'] == 'warning') { icon = Icons.warning; iconColor = Colors.red; }
                       if (notif['type'] == 'success') { icon = Icons.check_circle; iconColor = Colors.green; }
-                      return ListTile(leading: Icon(icon, color: iconColor), title: Text(notif['title'] ?? 'إشعار', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), subtitle: Text(notif['body'] ?? ''));
+                      return ListTile(
+                        leading: CircleAvatar(backgroundColor: iconColor.withOpacity(0.1), child: Icon(icon, color: iconColor, size: 20)), 
+                        title: Text(notif['title'] ?? 'إشعار', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), 
+                        subtitle: Text(notif['body'] ?? '', style: const TextStyle(fontSize: 12))
+                      );
                     },
                   ),
           ),
-          actions: [TextButton(onPressed: () { uiProvider.markNotificationsAsRead(); Navigator.pop(context); }, child: const Text('إغلاق'))],
+          actions: [
+            TextButton(
+              onPressed: () { 
+                uiProvider.playSound('click'); // 👈 صوت عند الإغلاق
+                uiProvider.markNotificationsAsRead(); 
+                Navigator.pop(context); 
+              }, 
+              child: const Text('مقروء وإغلاق', style: TextStyle(fontWeight: FontWeight.bold))
+            )
+          ],
         ),
       ),
     ).then((_) => uiProvider.markNotificationsAsRead());
@@ -76,18 +91,15 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
     final bool hasNotifications = uiProvider.hasNewNotifications; 
     final String liveNews = systemProvider.announcements.isNotEmpty ? systemProvider.announcements.join('   🔴   ') : 'مرحباً بك في نظام كروت نت...';
 
-    // 👈 اللون الذكي: الهيدر يأخذ لون الواجهة، والأيقونات والنصوص تأخذ لوناً معاكساً لضمان الوضوح
     final Color headerColor = isDark ? const Color(0xFF121212) : themeProvider.primaryColor;
     final Color iconTextColor = isDark ? Colors.white : themeProvider.adaptiveTextColor;
-
-    // قراءة ألوان الشريط المتحرك من الإعدادات (لتتحكم بها لاحقاً من قسم البنرات)
     final Color marqueeBg = Color(systemProvider.marqueeBgColor);
     final Color marqueeTextCol = Color(systemProvider.marqueeTextColor);
 
     return AppBar(
-      elevation: 0, // إزالة الظل ليندمج الهيدر
+      elevation: 0,
       backgroundColor: headerColor, 
-      iconTheme: IconThemeData(color: iconTextColor), // الأيقونات تتكيف ذكياً
+      iconTheme: IconThemeData(color: iconTextColor), 
       
       title: Row(
         mainAxisSize: MainAxisSize.min,
@@ -99,7 +111,14 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
       ),
       centerTitle: true,
       actions: [
-        IconButton(icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode), tooltip: 'تبديل السمة', onPressed: () => themeProvider.toggleTheme(!isDark)),
+        IconButton(
+          icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode), 
+          tooltip: 'تبديل السمة', 
+          onPressed: () {
+            uiProvider.playSound('click'); // 👈 تفعيل صوت تغيير السمة
+            themeProvider.toggleTheme(!isDark);
+          }
+        ),
         Padding(
           padding: const EdgeInsets.only(left: 8.0),
           child: Stack(
@@ -116,7 +135,6 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
         preferredSize: const Size.fromHeight(70),
         child: Column(
           children: [
-            // 👈 الشريط المتحرك (يقرأ إعداداته من النظام ليتوافق مع شاشة الإعلانات لاحقاً)
             if (systemProvider.showNewsBar)
               Container(
                 width: double.infinity, height: 25, color: marqueeBg, padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
@@ -140,13 +158,15 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
                 ),
               ),
             
-            // 👈 زر البحث (يفتح نافذة البحث الذكية)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: InkWell(
                 onTap: () {
-                  showSearch(context: context, delegate: SystemSearchDelegate());
+                  uiProvider.playSound('click'); // 👈 تفعيل صوت فتح البحث
+                  // تمرير uiProvider لمحرك البحث لكي يستخدم الأصوات
+                  showSearch(context: context, delegate: SystemSearchDelegate(uiProvider));
                 },
+                borderRadius: BorderRadius.circular(8),
                 child: Container(
                   height: 35, 
                   decoration: BoxDecoration(color: isDark ? Colors.grey.shade800 : Colors.white.withOpacity(0.9), borderRadius: BorderRadius.circular(8)),
@@ -173,7 +193,10 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
 // 🚀 محرك البحث الذكي للنظام (Search Delegate)
 // ==========================================
 class SystemSearchDelegate extends SearchDelegate<String> {
-  // خريطة للأقسام والكلمات الدلالية لسهولة التوجيه لاحقاً
+  final UiProvider uiProvider; // 👈 استلام محرك الصوت
+  
+  SystemSearchDelegate(this.uiProvider);
+
   final Map<String, String> searchMap = {
     'المركز المالي': 'إدارة الأموال والأرباح',
     'التقارير': 'التقارير الشاملة والتحليلات',
@@ -193,13 +216,25 @@ class SystemSearchDelegate extends SearchDelegate<String> {
   List<Widget>? buildActions(BuildContext context) {
     return [
       if (query.isNotEmpty)
-        IconButton(icon: const Icon(Icons.clear), onPressed: () => query = '')
+        IconButton(
+          icon: const Icon(Icons.clear), 
+          onPressed: () {
+            uiProvider.playSound('click'); // 👈 تفعيل صوت مسح البحث
+            query = '';
+          }
+        )
     ];
   }
 
   @override
   Widget? buildLeading(BuildContext context) {
-    return IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => close(context, ''));
+    return IconButton(
+      icon: const Icon(Icons.arrow_back), 
+      onPressed: () {
+        uiProvider.playSound('click'); // 👈 تفعيل صوت الرجوع
+        close(context, '');
+      }
+    );
   }
 
   @override
@@ -226,9 +261,9 @@ class SystemSearchDelegate extends SearchDelegate<String> {
             title: Text(key, style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text(searchMap[key]!),
             onTap: () {
+              uiProvider.playSound('click'); // 👈 تفعيل صوت اختيار النتيجة
               close(context, key);
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('سيتم نقلك إلى قسم: $key', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
-              // يمكننا لاحقاً برمجة عملية النقل (Navigator) بناءً على الـ key المختار
             },
           );
         },
