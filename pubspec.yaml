@@ -25,7 +25,7 @@ dependencies:
   path_provider: ^2.1.2
   excel: ^4.0.3
   google_fonts: ^6.1.0  
-  audioplayers: ^5.2.1  # 👈 تمت إضافة مكتبة تشغيل الأصوات هنا
+  audioplayers: ^5.2.1  
 
 dev_dependencies:
   flutter_test:
@@ -34,3 +34,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # 👇 تم إضافة هذا السطر لتعريف مجلد الأصوات للتطبيق لكي يقرأها
+  assets:
+    - assets/sounds/
