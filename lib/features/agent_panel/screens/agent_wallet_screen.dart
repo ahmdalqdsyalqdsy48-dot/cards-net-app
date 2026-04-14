@@ -1,9 +1,9 @@
+import 'dart:convert'; // 👈 ضروري لتشفير الصورة إلى Base64
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -25,7 +25,6 @@ class AgentWalletScreen extends StatefulWidget {
 class _AgentWalletScreenState extends State<AgentWalletScreen> {
   String _selectedFilter = 'الكل';
   bool _isBalanceHidden = false; 
-  bool _isUploadingReceipt = false;
 
   void _showSnack(String m, {bool isErr = false}) {
     if(!mounted) return;
@@ -36,51 +35,13 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
 
   void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
 
-  // دالة تشفير رقم الهاتف للخصوصية (مثال: 77*****89)
   String _maskPhone(String phone) {
     if (phone.length < 6) return phone;
     return '${phone.substring(0, 3)}****${phone.substring(phone.length - 2)}';
   }
 
   // ==========================================
-  // 1. رفع صورة السند 📸
-  // ==========================================
-  Future<void> _uploadReceiptImage(String docId) async {
-    _play('click');
-    final picker = ImagePicker();
-    final XFile? pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-
-    if (pickedFile == null) return;
-
-    setState(() => _isUploadingReceipt = true);
-    _showSnack('جاري رفع السند... ⏳');
-
-    try {
-      final Uint8List bytes = await pickedFile.readAsBytes();
-      String fileName = 'receipts/req_${docId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      Reference storageRef = FirebaseStorage.instance.ref().child(fileName);
-
-      UploadTask uploadTask = storageRef.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
-      TaskSnapshot snapshot = await uploadTask;
-      String downloadUrl = await snapshot.ref.getDownloadURL();
-
-      await FirebaseFirestore.instance.collection('recharge_requests').doc(docId).update({
-        'hasReceipt': true,
-        'receiptUrl': downloadUrl,
-      });
-
-      _play('success');
-      _showSnack('تم إرفاق السند بنجاح ✅');
-    } catch (e) {
-      _play('error');
-      _showSnack('فشل رفع السند: $e', isErr: true);
-    } finally {
-      if(mounted) setState(() => _isUploadingReceipt = false);
-    }
-  }
-
-  // ==========================================
-  // 2. نافذة طلب رصيد 
+  // 1. نافذة طلب رصيد (مع دمج السند كـ Base64) 📸
   // ==========================================
   void _showRequestBalanceDialog() {
     _play('click');
@@ -92,88 +53,128 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
 
     final amountController = TextEditingController();
     final refController = TextEditingController();
+    
+    String? base64Image; // 👈 متغير لحفظ الصورة كنص
 
     showDialog(
       context: context,
-      builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          backgroundColor: Theme.of(context).cardColor,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: const Text('طلب تغذية رصيد', style: TextStyle(fontWeight: FontWeight.bold)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('الحد الأدنى: ${sys.minimumChargeLimit} ريال', style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 15),
-                if (activeBanks.isNotEmpty)
-                  DropdownButtonFormField<String>(
-                    value: selectedBank,
-                    decoration: const InputDecoration(labelText: 'البنك المُحوَّل إليه', border: OutlineInputBorder()),
-                    items: activeBanks.map((bank) => DropdownMenuItem(value: bank['bankName'].toString(), child: Text(bank['bankName'].toString()))).toList(),
-                    onChanged: (val) { _play('click'); selectedBank = val!; },
-                  )
-                else
-                  const Text('لا توجد حسابات بنكية نشطة حالياً.', style: TextStyle(color: Colors.red)),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: amountController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'المبلغ المحول', prefixIcon: Icon(Icons.attach_money), border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: refController,
-                  decoration: const InputDecoration(labelText: 'رقم المرجع / العملية', prefixIcon: Icon(Icons.receipt), border: OutlineInputBorder()),
-                ),
-              ],
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            backgroundColor: Theme.of(context).cardColor,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            title: const Text('طلب تغذية رصيد', style: TextStyle(fontWeight: FontWeight.bold)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('الحد الأدنى: ${sys.minimumChargeLimit} ريال', style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 15),
+                  
+                  if (activeBanks.isNotEmpty)
+                    DropdownButtonFormField<String>(
+                      value: selectedBank,
+                      decoration: const InputDecoration(labelText: 'البنك المُحوَّل إليه', border: OutlineInputBorder()),
+                      items: activeBanks.map((bank) => DropdownMenuItem(value: bank['bankName'].toString(), child: Text(bank['bankName'].toString()))).toList(),
+                      onChanged: (val) { _play('click'); selectedBank = val!; },
+                    )
+                  else
+                    const Text('لا توجد حسابات بنكية نشطة حالياً.', style: TextStyle(color: Colors.red)),
+                  
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: amountController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'المبلغ المحول', prefixIcon: Icon(Icons.attach_money), border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: refController,
+                    decoration: const InputDecoration(labelText: 'رقم المرجع / العملية', prefixIcon: Icon(Icons.receipt), border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 15),
+
+                  // 👈 زر التقاط الصورة وتحويلها لـ Base64
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(border: Border.all(color: base64Image == null ? Colors.grey : Colors.green), borderRadius: BorderRadius.circular(10)),
+                    child: Column(
+                      children: [
+                        Icon(base64Image == null ? Icons.camera_alt : Icons.check_circle, color: base64Image == null ? Colors.grey : Colors.green, size: 30),
+                        const SizedBox(height: 5),
+                        ElevatedButton(
+                          onPressed: () async {
+                            _play('click');
+                            final picker = ImagePicker();
+                            // ضغط الصورة لتقليل حجم النص (مهم جداً لتجنب حدود Firestore)
+                            final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 40, maxWidth: 600);
+                            if (pickedFile != null) {
+                              final bytes = await pickedFile.readAsBytes();
+                              setStateDialog(() => base64Image = base64Encode(bytes));
+                              _showSnack('تم إرفاق السند بنجاح ✅');
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(backgroundColor: base64Image == null ? Colors.blueGrey : Colors.green),
+                          child: Text(base64Image == null ? 'إرفاق صورة السند 📸' : 'تغيير الصورة المرفقة', style: const TextStyle(color: Colors.white)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(onPressed: () { _play('click'); Navigator.pop(context); }, child: const Text('إلغاء')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-              onPressed: activeBanks.isEmpty ? null : () async {
-                double amount = double.tryParse(amountController.text) ?? 0;
-                double minLimit = double.tryParse(sys.minimumChargeLimit) ?? 0;
+            actions: [
+              TextButton(onPressed: () { _play('click'); Navigator.pop(context); }, child: const Text('إلغاء')),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                onPressed: activeBanks.isEmpty ? null : () async {
+                  double amount = double.tryParse(amountController.text) ?? 0;
+                  double minLimit = double.tryParse(sys.minimumChargeLimit) ?? 0;
 
-                if (amount < minLimit) {
-                  _play('error'); _showSnack('المبلغ أقل من الحد الأدنى المسموح به!', isErr: true); return;
-                }
-
-                if (amount > 0 && refController.text.isNotEmpty && selectedBank != null) {
-                  if (sys.isCurrencyAutoRounding) amount = amount.ceilToDouble();
-
-                  await FirebaseFirestore.instance.collection('recharge_requests').add({
-                    'agentPhone': sys.currentUserPhone,
-                    'agentName': sys.currentUserName,
-                    'amount': amount,
-                    'bankName': selectedBank,
-                    'reference': refController.text,
-                    'status': 'قيد الانتظار',
-                    'hasReceipt': false,
-                    'receiptUrl': null,
-                    'timestamp': FieldValue.serverTimestamp(),
-                  });
-
-                  if (mounted) {
-                    Navigator.pop(context); _play('success'); _showSnack('تم إرسال الطلب! قم بإرفاق السند من القائمة.');
+                  if (amount < minLimit) {
+                    _play('error'); _showSnack('المبلغ أقل من الحد الأدنى المسموح به!', isErr: true); return;
                   }
-                } else {
-                  _play('error'); _showSnack('يرجى إكمال البيانات', isErr: true);
-                }
-              },
-              child: const Text('إرسال الطلب', style: TextStyle(color: Colors.white)),
-            ),
-          ],
+                  if (base64Image == null) {
+                    _play('error'); _showSnack('يجب إرفاق صورة السند أولاً!', isErr: true); return;
+                  }
+
+                  if (amount > 0 && refController.text.isNotEmpty && selectedBank != null) {
+                    if (sys.isCurrencyAutoRounding) amount = amount.ceilToDouble();
+
+                    // حفظ الطلب مع الصورة المشفرة
+                    await FirebaseFirestore.instance.collection('recharge_requests').add({
+                      'agentPhone': sys.currentUserPhone,
+                      'agentName': sys.currentUserName,
+                      'amount': amount,
+                      'bankName': selectedBank,
+                      'reference': refController.text,
+                      'status': 'قيد الانتظار',
+                      'hasReceipt': true,
+                      'receiptBase64': base64Image, // 👈 حفظ الصورة كنص هنا
+                      'timestamp': FieldValue.serverTimestamp(),
+                    });
+
+                    if (mounted) {
+                      Navigator.pop(context); _play('success'); _showSnack('تم إرسال الطلب وهو قيد المراجعة ⏳');
+                    }
+                  } else {
+                    _play('error'); _showSnack('يرجى إكمال البيانات', isErr: true);
+                  }
+                },
+                child: const Text('إرسال الطلب', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   // ==========================================
-  // 3. تحويل رصيد بأمان (مرحلتين للخصوصية) 🛡️
+  // 2. تحويل رصيد بأمان (بخطوتين واضحتين) 🛡️
   // ==========================================
   void _showTransferToAnyUserDialog() {
     _play('click');
@@ -187,6 +188,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setStateDialog) {
           bool isSearching = false;
@@ -199,7 +201,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
             child: AlertDialog(
               backgroundColor: Theme.of(context).cardColor,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-              title: const Text('تحويل رصيد (مؤمن) 🛡️', style: TextStyle(fontWeight: FontWeight.bold)),
+              title: const Text('تحويل رصيد', style: TextStyle(fontWeight: FontWeight.bold)),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -210,10 +212,9 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
                       TextField(
                         controller: phoneController,
                         keyboardType: TextInputType.phone,
-                        decoration: const InputDecoration(labelText: 'رقم هاتف المستلم', prefixIcon: Icon(Icons.phone_android), border: OutlineInputBorder()),
+                        decoration: const InputDecoration(labelText: 'رقم المستلم', prefixIcon: Icon(Icons.phone_android), border: OutlineInputBorder()),
                       ),
                     ] else ...[
-                      // عرض بيانات المستلم مع تشفير الرقم
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.blue.withOpacity(0.3))),
@@ -245,13 +246,10 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
                 TextButton(
                   onPressed: () {
                     _play('click');
-                    if (isUserFound) {
-                      setStateDialog(() => isUserFound = false); // تراجع للبحث
-                    } else {
-                      Navigator.pop(context);
-                    }
+                    if (isUserFound) setStateDialog(() => isUserFound = false); 
+                    else Navigator.pop(context);
                   }, 
-                  child: Text(isUserFound ? 'تغيير الرقم' : 'إلغاء')
+                  child: Text(isUserFound ? 'تغيير الرقم' : 'إلغاء', style: const TextStyle(color: Colors.grey))
                 ),
                 
                 if (!isUserFound)
@@ -295,7 +293,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
                         _play('error'); _showSnack('كلمة المرور غير صحيحة! ❌', isErr: true); return;
                       }
                       if (amount <= 0 || amount > sys.currentUserBalance) {
-                        _play('error'); _showSnack('المبلغ غير متاح أو غير صحيح!', isErr: true); return;
+                        _play('error'); _showSnack('المبلغ غير متاح في رصيدك!', isErr: true); return;
                       }
 
                       setStateDialog(() => isSearching = true);
@@ -303,7 +301,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
                         WriteBatch batch = FirebaseFirestore.instance.batch();
                         batch.update(FirebaseFirestore.instance.collection('users').doc(sys.currentUserPhone), {'balance': FieldValue.increment(-amount)});
                         
-                        // التحقق من وجود حقل balance للمستلم، إن لم يكن موجوداً ننشئه مع المبلغ
                         var targetRef = FirebaseFirestore.instance.collection('users').doc(targetPhoneStr);
                         batch.set(targetRef, {'balance': FieldValue.increment(amount)}, SetOptions(merge: true));
                         
@@ -333,7 +330,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
   }
 
   // ==========================================
-  // 4. تأكيد الحذف ⚠️
+  // 3. تأكيد وإلغاء الطلب المعلق (زر واحد فقط) ⚠️
   // ==========================================
   void _confirmDeleteRequest(String docId) {
     _play('click');
@@ -350,11 +347,12 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () async {
+                // الحذف من قاعدة البيانات يلغيه من لوحة الإدارة تلقائياً
                 await FirebaseFirestore.instance.collection('recharge_requests').doc(docId).delete();
                 if (mounted) {
                   Navigator.pop(context);
                   _play('success');
-                  _showSnack('تم إلغاء الطلب بنجاح.');
+                  _showSnack('تم إلغاء الطلب ومسحه بنجاح.');
                 }
               },
               child: const Text('نعم، ألغِ الطلب', style: TextStyle(color: Colors.white)),
@@ -366,48 +364,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
   }
 
   // ==========================================
-  // 5. تعديل طلب معلق
-  // ==========================================
-  void _editPendingRequest(String docId, double currentAmount) {
-    _play('click');
-    final amountController = TextEditingController(text: currentAmount.toString());
-    
-    showDialog(
-      context: context,
-      builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          backgroundColor: Theme.of(context).cardColor,
-          title: const Text('تعديل مبلغ الطلب'),
-          content: TextField(
-            controller: amountController,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'المبلغ الجديد', border: OutlineInputBorder()),
-          ),
-          actions: [
-            TextButton(onPressed: () { _play('click'); Navigator.pop(context); }, child: const Text('إلغاء')),
-            ElevatedButton(
-              onPressed: () async {
-                double newAmount = double.tryParse(amountController.text) ?? 0;
-                if (newAmount > 0) {
-                  await FirebaseFirestore.instance.collection('recharge_requests').doc(docId).update({'amount': newAmount});
-                  if (mounted) {
-                    Navigator.pop(context);
-                    _play('success');
-                    _showSnack('تم تعديل المبلغ بنجاح ✅');
-                  }
-                }
-              },
-              child: const Text('حفظ التعديل'),
-            )
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ==========================================
-  // 6. كشف حساب الوكيل (PDF) 📄
+  // 4. كشف حساب الوكيل (PDF) 📄
   // ==========================================
   void _showPdfStatementDialog(SystemProvider sys, List<Map<String, dynamic>> realTransactions) {
     _play('click');
@@ -474,7 +431,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
 
   Future<void> _generateMyStatement(SystemProvider sys, List<Map<String, dynamic>> allTxn, DateTime start, DateTime end) async {
     _showSnack('جاري تجهيز كشف الحساب... ⏳');
-    
     final endInclusive = DateTime(end.year, end.month, end.day, 23, 59, 59); 
     final startInclusive = DateTime(start.year, start.month, start.day, 0, 0, 0);
 
@@ -561,7 +517,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
       return false;
     }).toList();
 
-    // 📊 حساب إحصائيات الدخل والمصروفات للشريط الذكي
+    // حساب إحصائيات الدخل والمصروفات للشريط الذكي
     double totalIncome = 0;
     double totalExpense = 0;
     for (var t in realTransactions) {
@@ -576,7 +532,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
     int incomeFlex = totalVolume == 0 ? 50 : ((totalIncome / totalVolume) * 100).toInt();
     int expenseFlex = totalVolume == 0 ? 50 : 100 - incomeFlex;
 
-    // اللون الذكي المتكيف لجميع البطاقات
     final Color cardColor = Theme.of(context).cardColor;
     final Color textColor = themeProvider.adaptiveTextColor;
 
@@ -590,17 +545,16 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        // إرجاع بنية الشاشة الأصلية للـ Scroll السليم (Column وبداخله Expanded ListView)
         child: Column(
           children: [
             // ==========================================
-            // ترويسة الرصيد (لون يتفاعل مع الثيم) 🎨
+            // ترويسة الرصيد (تتفاعل مع الوضع الليلي والنهاري)
             // ==========================================
             Container(
               width: double.infinity,
               padding: const EdgeInsets.only(top: 25, left: 25, right: 25, bottom: 25),
               decoration: BoxDecoration(
-                color: cardColor, // أبيض بالوضع النهاري/ داكن بالليلي أو المخصص
+                color: cardColor, 
                 borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(35), bottomRight: Radius.circular(35)),
                 boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 5))],
               ),
@@ -621,7 +575,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
                   ),
                   const SizedBox(height: 15),
                   
-                  // 📊 شريط الإحصائيات الذكي
+                  // شريط الإحصائيات 
                   Row(
                     children: [
                       const Icon(Icons.arrow_upward, color: Colors.green, size: 14),
@@ -643,68 +597,67 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
                   ),
 
                   const SizedBox(height: 25),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _buildQuickBtn(Icons.add_to_photos, 'طلب رصيد', Colors.green, _showRequestBalanceDialog),
-                      _buildQuickBtn(Icons.swap_horiz, 'تحويل رصيد', Colors.orange, _showTransferToAnyUserDialog),
-                      _buildQuickBtn(Icons.picture_as_pdf, 'كشف حساب', Colors.blue, () => _showPdfStatementDialog(sys, realTransactions)),
-                    ],
-                  )
+
+                  // ==========================================
+                  // مراقب الطلبات المعلقة ⏳ (يخفي زر الطلب إذا وجد)
+                  // ==========================================
+                  StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance.collection('recharge_requests')
+                        .where('agentPhone', isEqualTo: sys.currentUserPhone)
+                        .where('status', isEqualTo: 'قيد الانتظار')
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      bool hasPendingRequest = snapshot.hasData && snapshot.data!.docs.isNotEmpty;
+
+                      return Column(
+                        children: [
+                          if (hasPendingRequest) ...[
+                            // عرض بطاقة الطلب المعلق مع زر الإلغاء فقط
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.orange)),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('طلب شحن بقيمة: ${snapshot.data!.docs.first['amount']} ريال', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textColor)),
+                                        const Text('الطلب قيد المراجعة ⏳', style: TextStyle(color: Colors.orange, fontSize: 12)),
+                                      ],
+                                    ),
+                                  ),
+                                  ElevatedButton.icon(
+                                    onPressed: () => _confirmDeleteRequest(snapshot.data!.docs.first.id),
+                                    icon: const Icon(Icons.cancel, color: Colors.white, size: 16),
+                                    label: const Text('إلغاء الطلب', style: TextStyle(color: Colors.white, fontSize: 12)),
+                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(horizontal: 10)),
+                                  )
+                                ],
+                              ),
+                            ),
+                          ] else ...[
+                            // إظهار زر "طلب رصيد" فقط إذا لم يكن هناك طلب معلق
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                _buildQuickBtn(Icons.add_to_photos, 'طلب رصيد', Colors.green, _showRequestBalanceDialog),
+                                _buildQuickBtn(Icons.swap_horiz, 'تحويل رصيد', Colors.orange, _showTransferToAnyUserDialog),
+                                _buildQuickBtn(Icons.picture_as_pdf, 'كشف حساب', Colors.blue, () => _showPdfStatementDialog(sys, realTransactions)),
+                              ],
+                            ),
+                          ]
+                        ],
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
             
             // ==========================================
-            // متتبع الطلبات المعلقة ⏳
-            // ==========================================
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('recharge_requests')
-                  .where('agentPhone', isEqualTo: sys.currentUserPhone)
-                  .where('status', isEqualTo: 'قيد الانتظار')
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const SizedBox.shrink();
-                
-                return Container(
-                  color: Colors.orange.shade50,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Column(
-                    children: snapshot.data!.docs.map((doc) {
-                      var req = doc.data() as Map<String, dynamic>;
-                      bool hasReceipt = req['hasReceipt'] ?? false;
-
-                      return ListTile(
-                        leading: const CircularProgressIndicator(color: Colors.orange),
-                        title: Text('طلب شحن: ${req['amount']} ريال', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                        subtitle: Text(hasReceipt ? 'السند مرفق - قيد المراجعة' : 'يرجى إرفاق صورة السند 📸', style: TextStyle(color: hasReceipt ? Colors.green : Colors.orange, fontSize: 12)),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit, color: Colors.blue, size: 20),
-                              onPressed: () => _editPendingRequest(doc.id, double.tryParse(req['amount'].toString()) ?? 0),
-                            ),
-                            if (!hasReceipt)
-                              IconButton(
-                                icon: const Icon(Icons.camera_alt, color: Colors.teal, size: 20),
-                                onPressed: () => _uploadReceiptImage(doc.id), 
-                              ),
-                            IconButton(
-                              icon: const Icon(Icons.cancel, color: Colors.red, size: 20),
-                              onPressed: () => _confirmDeleteRequest(doc.id), 
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                );
-              },
-            ),
-
-            // ==========================================
-            // الفلتر والسجل
+            // الفلتر والسجل (مع التمرير السليم)
             // ==========================================
             Padding(
               padding: const EdgeInsets.all(16),
@@ -717,7 +670,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> {
               ),
             ),
 
-            // 👈 إرجاع Expanded و ListView الأصلية للحفاظ على التمرير السلس
             Expanded(
               child: realTransactions.isEmpty
                   ? const Center(child: Text('لا توجد عمليات مسجلة حالياً'))
