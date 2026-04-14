@@ -7,6 +7,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart'; 
 
 import '../../../core/providers/system_provider.dart'; 
+import '../../../core/providers/ui_provider.dart'; // 👈 استدعاء محرك الصوت
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart'; 
 
@@ -21,13 +22,19 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
   late TabController _tabController;
   String _searchQuery = ''; 
   
-  // 👈 متغيرات لمنع النقرات المزدوجة أثناء معالجة الطلبات
+  // متغيرات لمنع النقرات المزدوجة أثناء معالجة الطلبات
   final Set<String> _processingRequests = {};
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    // 👈 إضافة صوت عند التبديل بين التبويبات (طلبات الشحن، المحافظ، السجل)
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) {
+        Provider.of<UiProvider>(context, listen: false).playSound('click');
+      }
+    });
   }
 
   @override
@@ -36,10 +43,15 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     super.dispose();
   }
 
+  // دالة مساعدة لتشغيل الأصوات بسهولة
+  void _play(BuildContext context, String type) => 
+      Provider.of<UiProvider>(context, listen: false).playSound(type);
+
   // ==========================================
-  // النوافذ المنبثقة لطلبات الشحن (مع حماية التحميل)
+  // النوافذ المنبثقة لطلبات الشحن (مع حماية التحميل والأصوات)
   // ==========================================
   void _acceptRequest(Map<String, dynamic> req, SystemProvider provider) async {
+    _play(context, 'click'); // 👈 صوت نقرة زر التأكيد
     final docId = req['docId'];
     if (_processingRequests.contains(docId)) return; // منع التكرار
 
@@ -53,10 +65,12 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
         amount: double.parse(req['amount'].toString()),
       );
       if (mounted) {
+        _play(context, 'success'); // 👈 صوت إضافة الرصيد بنجاح
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تأكيد الشحن وإيداع المبلغ بنجاح ✅'), backgroundColor: Colors.green));
       }
     } catch (e) {
       if (mounted) {
+        _play(context, 'error'); // 👈 صوت فشل العملية
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
       }
     } finally {
@@ -65,12 +79,13 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
   }
 
   void _showRejectDialog(Map<String, dynamic> req, SystemProvider provider) {
+    _play(context, 'click');
     final reasonController = TextEditingController();
     final docId = req['docId'];
 
     showDialog(
       context: context,
-      barrierDismissible: false, // 👈 منع الإغلاق الخطأ
+      barrierDismissible: false, 
       builder: (context) => StatefulBuilder(
         builder: (context, setStateDialog) {
           bool isRejecting = false;
@@ -78,6 +93,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               title: const Text('رفض طلب الشحن ❌', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -87,7 +103,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                   TextField(
                     controller: reasonController,
                     decoration: InputDecoration(
-                      hintText: 'مثال: رقم المرجع خاطئ...',
+                      hintText: 'مثال: رقم المرجع غير صحيح...',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                     maxLines: 2,
@@ -96,20 +112,24 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
               ),
               actions: [
                 if (!isRejecting)
-                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+                  TextButton(onPressed: () { _play(context, 'click'); Navigator.pop(context); }, child: const Text('إلغاء')),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                   onPressed: isRejecting ? null : () async {
                     setStateDialog(() => isRejecting = true);
                     try {
                       await provider.rejectRechargeRequest(docId, reasonController.text);
                       if (mounted) {
+                        _play(context, 'success'); // صوت إتمام عملية الرفض بنجاح
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم رفض الطلب بنجاح.'), backgroundColor: Colors.red));
                       }
                     } catch (e) {
                       setStateDialog(() => isRejecting = false);
-                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
+                      if (mounted) {
+                        _play(context, 'error');
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
+                      }
                     }
                   },
                   child: isRejecting 
@@ -125,9 +145,10 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
   }
 
   // ==========================================
-  // النوافذ المنبثقة للمحافظ والتسوية (مع التحميل)
+  // النوافذ المنبثقة للمحافظ والتسوية
   // ==========================================
   void _showManualSettlementDialog(Map<String, dynamic> agent, SystemProvider provider) {
+    _play(context, 'click');
     int settlementType = 1; 
     final amountController = TextEditingController();
     final reasonController = TextEditingController();
@@ -142,6 +163,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               title: Text('تسوية يدوية لمحفظة: ${agent['name']}', style: const TextStyle(fontWeight: FontWeight.bold)),
               content: SingleChildScrollView(
                 child: Column(
@@ -153,14 +175,14 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                           child: RadioListTile(
                             title: const Text('إضافة 🟢', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
                             value: 1, groupValue: settlementType,
-                            onChanged: (val) => setStateDialog(() => settlementType = val as int),
+                            onChanged: (val) { _play(context, 'click'); setStateDialog(() => settlementType = val as int); },
                           ),
                         ),
                         Expanded(
                           child: RadioListTile(
                             title: const Text('خصم 🔴', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                             value: 2, groupValue: settlementType,
-                            onChanged: (val) => setStateDialog(() => settlementType = val as int),
+                            onChanged: (val) { _play(context, 'click'); setStateDialog(() => settlementType = val as int); },
                           ),
                         ),
                       ],
@@ -174,10 +196,15 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
               ),
               actions: [
                 if (!isProcessing)
-                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+                  TextButton(onPressed: () { _play(context, 'click'); Navigator.pop(context); }, child: const Text('إلغاء')),
                 ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: settlementType == 1 ? Colors.green : Colors.red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                   onPressed: isProcessing ? null : () async {
-                    if (amountController.text.isEmpty || reasonController.text.isEmpty) return;
+                    if (amountController.text.isEmpty || reasonController.text.isEmpty) {
+                      _play(context, 'error');
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء إدخال المبلغ والسبب!')));
+                      return;
+                    }
                     setStateDialog(() => isProcessing = true);
 
                     try {
@@ -192,17 +219,21 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                       );
 
                       if (mounted) {
+                        _play(context, 'success');
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت التسوية بنجاح ✅'), backgroundColor: Colors.green));
                       }
                     } catch (e) {
                       setStateDialog(() => isProcessing = false);
-                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
+                      if (mounted) {
+                        _play(context, 'error');
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
+                      }
                     }
                   },
                   child: isProcessing 
                       ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Text('تنفيذ التسوية'),
+                      : const Text('تنفيذ التسوية', style: TextStyle(color: Colors.white)),
                 ),
               ],
             ),
@@ -213,12 +244,14 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
   }
 
   void _showDangerLimitDialog(Map<String, dynamic> agent, SystemProvider provider) {
+    _play(context, 'click');
     final limitController = TextEditingController(text: (agent['dangerLimit'] ?? 0).toString());
     showDialog(
       context: context,
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Text('ضبط حد الخطر 🎛️', style: TextStyle(fontWeight: FontWeight.bold)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -236,16 +269,22 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            TextButton(onPressed: () { _play(context, 'click'); Navigator.pop(context); }, child: const Text('إلغاء')),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
               onPressed: () async {
-                await provider.updateDangerLimit(agent['phone'], double.parse(limitController.text));
-                if (mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث حد الخطر بنجاح.')));
+                try {
+                  await provider.updateDangerLimit(agent['phone'], double.parse(limitController.text));
+                  if (mounted) {
+                    _play(context, 'success');
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث حد الخطر بنجاح.')));
+                  }
+                } catch (e) {
+                  _play(context, 'error');
                 }
               }, 
-              child: const Text('حفظ الحد')
+              child: const Text('حفظ الحد', style: TextStyle(color: Colors.white))
             ),
           ],
         ),
@@ -257,6 +296,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
   // 📄 نافذة توليد كشف الحساب (PDF)
   // ==========================================
   void _showPdfStatementDialog(Map<String, dynamic> agent, SystemProvider provider) {
+    _play(context, 'click');
     DateTime? startDate;
     DateTime? endDate;
 
@@ -266,6 +306,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
         builder: (context, setStateDialog) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             title: Text('كشف حساب: ${agent['name']}', style: const TextStyle(fontWeight: FontWeight.bold)),
             content: SingleChildScrollView(
               child: Column(
@@ -277,9 +318,9 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      ActionChip(label: const Text('اليوم'), onPressed: () => setStateDialog(() { startDate = DateTime.now(); endDate = DateTime.now(); })),
-                      ActionChip(label: const Text('أسبوع'), onPressed: () => setStateDialog(() { startDate = DateTime.now().subtract(const Duration(days: 7)); endDate = DateTime.now(); })),
-                      ActionChip(label: const Text('شهر'), onPressed: () => setStateDialog(() { startDate = DateTime(DateTime.now().year, DateTime.now().month, 1); endDate = DateTime.now(); })),
+                      ActionChip(label: const Text('اليوم'), onPressed: () { _play(context, 'click'); setStateDialog(() { startDate = DateTime.now(); endDate = DateTime.now(); }); }),
+                      ActionChip(label: const Text('أسبوع'), onPressed: () { _play(context, 'click'); setStateDialog(() { startDate = DateTime.now().subtract(const Duration(days: 7)); endDate = DateTime.now(); }); }),
+                      ActionChip(label: const Text('شهر'), onPressed: () { _play(context, 'click'); setStateDialog(() { startDate = DateTime(DateTime.now().year, DateTime.now().month, 1); endDate = DateTime.now(); }); }),
                     ],
                   ),
                   const Divider(height: 20),
@@ -287,8 +328,9 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                   const SizedBox(height: 10),
                   OutlinedButton.icon(
                     onPressed: () async {
+                      _play(context, 'click');
                       final picked = await showDatePicker(context: context, initialDate: startDate ?? DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime.now());
-                      if (picked != null) setStateDialog(() => startDate = picked);
+                      if (picked != null) { _play(context, 'click'); setStateDialog(() => startDate = picked); }
                     },
                     icon: const Icon(Icons.calendar_today),
                     label: Text(startDate == null ? 'من تاريخ (البداية)' : DateFormat('yyyy-MM-dd').format(startDate!)),
@@ -296,8 +338,9 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                   const SizedBox(height: 10),
                   OutlinedButton.icon(
                     onPressed: () async {
+                      _play(context, 'click');
                       final picked = await showDatePicker(context: context, initialDate: endDate ?? DateTime.now(), firstDate: startDate ?? DateTime(2020), lastDate: DateTime.now());
-                      if (picked != null) setStateDialog(() => endDate = picked);
+                      if (picked != null) { _play(context, 'click'); setStateDialog(() => endDate = picked); }
                     },
                     icon: const Icon(Icons.calendar_today_outlined),
                     label: Text(endDate == null ? 'إلى تاريخ (النهاية)' : DateFormat('yyyy-MM-dd').format(endDate!)),
@@ -306,14 +349,16 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+              TextButton(onPressed: () { _play(context, 'click'); Navigator.pop(context); }, child: const Text('إلغاء')),
               ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                 onPressed: () async {
                   if (startDate == null || endDate == null) {
+                    _play(context, 'error');
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى تحديد فترة الكشف!'), backgroundColor: Colors.orange));
                     return;
                   }
+                  _play(context, 'click');
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري توليد الـ PDF... ⏳')));
                   await _generateAndDownloadPdf(agent, startDate!, endDate!, provider.transactionsLedger);
                   if (mounted) Navigator.pop(context);
@@ -387,6 +432,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     );
 
     await Printing.sharePdf(bytes: await pdf.save(), filename: 'statement_${agent['phone']}.pdf');
+    if (mounted) _play(context, 'success'); // صوت نجاح تصدير الـ PDF
   }
 
   @override
@@ -409,7 +455,10 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: TextField(
-                onChanged: (value) => setState(() => _searchQuery = value),
+                onChanged: (value) {
+                  if(value.length == 1) _play(context, 'click'); // نقرة خفيفة عند بدء البحث
+                  setState(() => _searchQuery = value);
+                },
                 decoration: InputDecoration(
                   hintText: 'بحث شامل بالاسم، أو رقم الهاتف...',
                   prefixIcon: const Icon(Icons.search, color: Colors.blueAccent),
@@ -470,7 +519,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
       itemBuilder: (context, index) {
         final req = requests[index];
         final docId = req['docId'];
-        final isProcessing = _processingRequests.contains(docId); // 👈 فحص حالة التحميل لهذا الطلب تحديداً
+        final isProcessing = _processingRequests.contains(docId); 
 
         return Card(
           elevation: 3,
@@ -496,10 +545,10 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                 const SizedBox(height: 10),
                 
                 OutlinedButton.icon(
-                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سيتم عرض صورة السند من السحابة هنا 📸'))),
+                  onPressed: () { _play(context, 'click'); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سيتم عرض صورة السند من السحابة هنا 📸'))); },
                   icon: const Icon(Icons.image, size: 18),
                   label: const Text('عرض صورة سند التحويل'),
-                  style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 40)),
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 40), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                 ),
                 const SizedBox(height: 10),
 
@@ -510,7 +559,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                         onPressed: isProcessing ? null : () => _acceptRequest(req, provider),
                         icon: isProcessing ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.check_circle, color: Colors.white, size: 18),
                         label: Text(isProcessing ? 'جاري...' : 'تأكيد الشحن', style: const TextStyle(color: Colors.white, fontSize: 13)),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -519,7 +568,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                         onPressed: isProcessing ? null : () => _showRejectDialog(req, provider),
                         icon: const Icon(Icons.cancel, color: Colors.white, size: 18),
                         label: const Text('رفض', style: TextStyle(color: Colors.white, fontSize: 13)),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                       ),
                     ),
                   ],
@@ -578,9 +627,9 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildIconButton(Icons.settings, 'تسوية يدوية', Colors.blue, () => _showManualSettlementDialog(agent, provider)),
-                    _buildIconButton(Icons.tune, 'حد الخطر', Colors.orange, () => _showDangerLimitDialog(agent, provider)),
-                    _buildIconButton(Icons.picture_as_pdf, 'كشف حساب', Colors.red, () => _showPdfStatementDialog(agent, provider)),
+                    _buildIconButton(Icons.settings, 'تسوية', Colors.blue, () => _showManualSettlementDialog(agent, provider)),
+                    _buildIconButton(Icons.tune, 'الخطر', Colors.orange, () => _showDangerLimitDialog(agent, provider)),
+                    _buildIconButton(Icons.picture_as_pdf, 'كشف', Colors.red, () => _showPdfStatementDialog(agent, provider)),
                   ],
                 ),
               ],
@@ -612,6 +661,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
 
         return Card(
           margin: const EdgeInsets.only(bottom: 8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: ListTile(
             leading: CircleAvatar(
               backgroundColor: color.withOpacity(0.1),
