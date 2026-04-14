@@ -1,6 +1,11 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:image_picker/image_picker.dart';
 
-// 👇 استدعاء جميع الشاشات الـ 10 الخاصة بالوكيل (اكتملت بنسبة 100%)
+// 👇 استدعاء جميع الشاشات الخاصة بالوكيل
 import '../screens/agent_dashboard_screen.dart';
 import '../screens/quick_pos_screen.dart';
 import '../screens/mikrotik_categories_screen.dart';
@@ -9,11 +14,16 @@ import '../screens/marketing_offers_screen.dart';
 import '../screens/agent_wallet_screen.dart'; 
 import '../screens/advanced_statement_screen.dart'; 
 import '../screens/analytics_reports_screen.dart'; 
-import '../screens/agent_support_screen.dart'; // 👈 الشاشة الجديدة للدعم
-import '../screens/agent_settings_screen.dart'; // 👈 الشاشة الجديدة للإعدادات
+import '../screens/agent_support_screen.dart'; 
+import '../screens/agent_settings_screen.dart'; 
 import '../../auth/screens/sso_login_screen.dart';
 
+import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/ui_provider.dart';
+import '../../../core/providers/theme_provider.dart';
+
 class CustomAgentDrawer extends StatefulWidget {
+  // تم الإبقاء على هذه المتغيرات لكي لا تنكسر الشاشات الـ 10 التي تستدعي هذا الملف
   final String agentName;
   final String phoneNumber;
   final String role;
@@ -34,65 +44,94 @@ class CustomAgentDrawer extends StatefulWidget {
 }
 
 class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
-  // متغيرات الحالة (State)
   bool _isBalanceHidden = false;
-  String? _currentLocalImageUrl; 
 
-  @override
-  void initState() {
-    super.initState();
-    _currentLocalImageUrl = widget.profileImageUrl;
-  }
+  void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
 
-  // آلية التنقل الحقيقية لفتح الشاشات
   void _navigateTo(BuildContext context, Widget screen) {
-    Navigator.pop(context); // إغلاق القائمة الجانبية
+    _play('click');
+    Navigator.pop(context); 
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (context) => screen),
     );
   }
 
-  // رسالة قريباً (أبقيناها كأداة مساعدة للمستقبل إذا أردت إضافة شاشات جديدة)
-  void _showComingSoonMessage(BuildContext context) {
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('قريباً.. هذه الميزة قيد التطوير 🚀', textDirection: TextDirection.rtl),
-        backgroundColor: Colors.blueGrey,
-      )
-    );
+  // ==========================================
+  // رفع وتغيير الصورة الشخصية (Base64) 📸
+  // ==========================================
+  Future<void> _updateProfileImage(SystemProvider sys) async {
+    _play('click');
+    final picker = ImagePicker();
+    // ضغط الصورة لتقليل حجم النص المحفوظ في قاعدة البيانات
+    final XFile? pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 30, maxWidth: 400);
+
+    if (pickedFile != null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري تحديث الصورة... ⏳', textDirection: TextDirection.rtl)));
+      try {
+        final Uint8List bytes = await pickedFile.readAsBytes();
+        String base64Image = base64Encode(bytes);
+
+        await FirebaseFirestore.instance.collection('users').doc(sys.currentUserPhone).update({
+          'profileImageBase64': base64Image,
+        });
+
+        _play('success');
+        if(mounted) {
+           Navigator.pop(context);
+           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث صورتك الشخصية بنجاح ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+        }
+      } catch (e) {
+        _play('error');
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل تحديث الصورة: $e', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+      }
+    }
   }
 
-  // ==========================================
-  // نافذة إدارة الصورة الشخصية
-  // ==========================================
-  void _showProfileImageActionDialog(BuildContext context) {
-    bool hasImage = _currentLocalImageUrl != null;
+  Future<void> _deleteProfileImage(SystemProvider sys) async {
+    _play('click');
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(sys.currentUserPhone).update({
+        'profileImageBase64': FieldValue.delete(),
+      });
+      _play('success');
+      if(mounted) {
+         Navigator.pop(context);
+         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف الصورة الشخصية.', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+      }
+    } catch (e) {
+      _play('error');
+    }
+  }
+
+  void _showProfileImageActionDialog(BuildContext context, SystemProvider sys, String? currentBase64) {
+    _play('click');
+    bool hasImage = currentBase64 != null && currentBase64.isNotEmpty;
 
     showDialog(
       context: context,
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
+          backgroundColor: Theme.of(context).cardColor,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Text('إدارة الصورة الشخصية', style: TextStyle(fontWeight: FontWeight.bold)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 150,
-                height: 150,
+                width: 130,
+                height: 130,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.grey.shade100,
-                  border: Border.all(color: Colors.blue.shade100, width: 3),
+                  color: Theme.of(context).primaryColor.withOpacity(0.1),
+                  border: Border.all(color: Colors.blueAccent.withOpacity(0.5), width: 3),
                   boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)],
                   image: hasImage 
-                      ? DecorationImage(image: NetworkImage(_currentLocalImageUrl!), fit: BoxFit.cover) 
+                      ? DecorationImage(image: MemoryImage(base64Decode(currentBase64)), fit: BoxFit.cover) 
                       : null,
                 ),
-                child: !hasImage ? const Icon(Icons.router, size: 80, color: Colors.blueGrey) : null,
+                child: !hasImage ? Icon(Icons.person, size: 70, color: Theme.of(context).primaryColor.withOpacity(0.5)) : null,
               ),
               const SizedBox(height: 25),
               
@@ -100,26 +139,17 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سيتم فتح المعرض لاختيار صورة جديدة.')));
-                    },
-                    icon: Icon(hasImage ? Icons.sync : Icons.add_photo_alternate, color: Colors.white, size: 18),
-                    label: Text(hasImage ? 'تغيير' : 'إضافة صورة', style: const TextStyle(color: Colors.white)),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade600),
+                    onPressed: () => _updateProfileImage(sys),
+                    icon: Icon(hasImage ? Icons.sync : Icons.add_photo_alternate, color: Colors.white, size: 16),
+                    label: Text(hasImage ? 'تغيير' : 'إضافة', style: const TextStyle(color: Colors.white, fontSize: 13)),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                   ),
                   if (hasImage) 
                     ElevatedButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          _currentLocalImageUrl = null; 
-                        });
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف الشعار بنجاح.'), backgroundColor: Colors.red));
-                      },
-                      icon: const Icon(Icons.delete_forever, color: Colors.white, size: 18),
-                      label: const Text('حذف', style: TextStyle(color: Colors.white)),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade400),
+                      onPressed: () => _deleteProfileImage(sys),
+                      icon: const Icon(Icons.delete_forever, color: Colors.white, size: 16),
+                      label: const Text('حذف', style: TextStyle(color: Colors.white, fontSize: 13)),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                     ),
                 ],
               ),
@@ -132,19 +162,28 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
 
   @override
   Widget build(BuildContext context) {
-    bool hasImage = _currentLocalImageUrl != null;
+    final sys = Provider.of<SystemProvider>(context);
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isDark = themeProvider.isDarkMode;
+    final textColor = themeProvider.adaptiveTextColor;
+
+    // 👈 قراءة البيانات الحية للوكيل بدلاً من البيانات الثابتة
+    final myData = sys.agentsList.firstWhere((a) => a['phone'] == sys.currentUserPhone, orElse: () => {});
+    final double liveBalance = double.tryParse(myData['balance']?.toString() ?? '0') ?? 0.0;
+    final String liveName = myData['name'] ?? widget.agentName;
+    final String? base64Image = myData['profileImageBase64'];
+    bool hasImage = base64Image != null && base64Image.isNotEmpty;
 
     return Drawer(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // ==========================================
-            // القائمة الجانبية المدمجة (Header + Items)
-            // ==========================================
             Expanded(
               child: ListView(
                 padding: EdgeInsets.zero,
+                physics: const BouncingScrollPhysics(),
                 children: [
                   // 1. الترويسة العلوية الفخمة
                   SafeArea(
@@ -152,31 +191,30 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                     child: Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-                      color: Colors.transparent, 
                       child: Column(
                         children: [
                           GestureDetector(
-                            onTap: () => _showProfileImageActionDialog(context),
+                            onTap: () => _showProfileImageActionDialog(context, sys, base64Image),
                             child: Container(
-                              width: 100, 
-                              height: 100,
+                              width: 90, 
+                              height: 90,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: Colors.blue.withOpacity(0.1),
-                                border: Border.all(color: Theme.of(context).primaryColor.withOpacity(0.3), width: 2),
+                                border: Border.all(color: Colors.blueAccent.withOpacity(0.3), width: 2),
                                 boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))],
                                 image: hasImage 
-                                    ? DecorationImage(image: NetworkImage(_currentLocalImageUrl!), fit: BoxFit.cover) 
+                                    ? DecorationImage(image: MemoryImage(base64Decode(base64Image)), fit: BoxFit.cover) 
                                     : null,
                               ),
-                              child: !hasImage ? Icon(Icons.router, size: 50, color: Theme.of(context).primaryColor.withOpacity(0.7)) : null,
+                              child: !hasImage ? Icon(Icons.person, size: 50, color: Theme.of(context).primaryColor.withOpacity(0.7)) : null,
                             ),
                           ),
                           const SizedBox(height: 15),
 
                           // البطاقة 1: اسم الوكيل
                           _buildGradientCard(
-                            text: widget.agentName,
+                            text: liveName,
                             icon: Icons.store,
                             colors: [Colors.blue.shade800, Colors.blue.shade500],
                           ),
@@ -188,22 +226,14 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                             colors: [Colors.teal.shade800, Colors.teal.shade500],
                           ),
 
-                          // البطاقة 3: الدور (وكيل)
-                          _buildGradientCard(
-                            text: widget.role,
-                            icon: Icons.admin_panel_settings,
-                            colors: [Colors.orange.shade800, Colors.orange.shade500],
-                          ),
-
-                          // البطاقة 4: المحفظة (مع ميزة الإخفاء)
+                          // البطاقة 3: المحفظة (الرصيد الحي)
                           GestureDetector(
                             onTap: () {
-                              setState(() {
-                                _isBalanceHidden = !_isBalanceHidden;
-                              });
+                              _play('click');
+                              setState(() => _isBalanceHidden = !_isBalanceHidden);
                             },
                             child: _buildGradientCard(
-                              text: _isBalanceHidden ? 'المحفظة: ******' : 'المحفظة: ${widget.currentBalance.toStringAsFixed(0)} ريال',
+                              text: _isBalanceHidden ? 'المحفظة: ******' : 'المحفظة: ${liveBalance.toStringAsFixed(0)} ريال',
                               icon: Icons.account_balance_wallet,
                               colors: [Colors.purple.shade800, Colors.purple.shade500],
                               trailingIcon: _isBalanceHidden ? Icons.visibility_off : Icons.visibility,
@@ -211,47 +241,47 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                           ),
                           
                           const SizedBox(height: 10),
-                          const Divider(height: 1),
+                          Divider(height: 1, color: isDark ? Colors.grey.shade800 : Colors.grey.shade300),
                         ],
                       ),
                     ),
                   ),
 
-                  // 2. أزرار الانتقال (جميعها مفعلة الآن!)
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('عمليات البيع والشبكة', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
-                  _buildDrawerItem(context, 'الرئيسية (غرفة القيادة)', Icons.dashboard, Colors.blue, const AgentDashboardScreen()),
-                  _buildDrawerItem(context, 'المتجر السريع (الكاشير)', Icons.point_of_sale, Colors.green, const QuickPosScreen()),
-                  _buildDrawerItem(context, 'إدارة الفئات والميكروتك', Icons.router, Colors.orange, const MikrotikCategoriesScreen()),
+                  // 2. أزرار الانتقال بين الشاشات
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('عمليات البيع والشبكة', style: TextStyle(color: textColor.withOpacity(0.5), fontSize: 11, fontWeight: FontWeight.bold))),
+                  _buildDrawerItem(context, 'الرئيسية (غرفة القيادة)', Icons.dashboard, Colors.blue, const AgentDashboardScreen(), textColor),
+                  _buildDrawerItem(context, 'المتجر السريع (الكاشير)', Icons.point_of_sale, Colors.green, const QuickPosScreen(), textColor),
+                  _buildDrawerItem(context, 'إدارة الفئات والميكروتك', Icons.router, Colors.orange, const MikrotikCategoriesScreen(), textColor),
                   
-                  const Divider(),
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الإدارة والتسويق', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
-                  _buildDrawerItem(context, 'إدارة نقاط البيع (البقالات)', Icons.storefront, Colors.purple, const SubAgentsScreen()),
-                  _buildDrawerItem(context, 'التسويق والعروض', Icons.campaign, Colors.pinkAccent, const MarketingOffersScreen()),
+                  Divider(color: isDark ? Colors.grey.shade800 : Colors.grey.shade200),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الإدارة والتسويق', style: TextStyle(color: textColor.withOpacity(0.5), fontSize: 11, fontWeight: FontWeight.bold))),
+                  _buildDrawerItem(context, 'إدارة نقاط البيع (البقالات)', Icons.storefront, Colors.purple, const SubAgentsScreen(), textColor),
+                  _buildDrawerItem(context, 'التسويق والعروض', Icons.campaign, Colors.pinkAccent, const MarketingOffersScreen(), textColor),
 
-                  const Divider(),
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('المالية والمحاسبة', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
-                  _buildDrawerItem(context, 'محفظة الوكيل', Icons.account_balance_wallet, Colors.teal, const AgentWalletScreen()),
-                  _buildDrawerItem(context, 'كشف الحساب المتقدم', Icons.receipt_long, Colors.cyan, const AdvancedStatementScreen()),
-                  _buildDrawerItem(context, 'التقارير التحليلية', Icons.analytics, Colors.redAccent, const AnalyticsReportsScreen()),
+                  Divider(color: isDark ? Colors.grey.shade800 : Colors.grey.shade200),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('المالية والمحاسبة', style: TextStyle(color: textColor.withOpacity(0.5), fontSize: 11, fontWeight: FontWeight.bold))),
+                  _buildDrawerItem(context, 'محفظة الوكيل', Icons.account_balance_wallet, Colors.teal, const AgentWalletScreen(), textColor),
+                  _buildDrawerItem(context, 'كشف الحساب المتقدم', Icons.receipt_long, Colors.cyan, const AdvancedStatementScreen(), textColor),
+                  _buildDrawerItem(context, 'التقارير التحليلية', Icons.analytics, Colors.redAccent, const AnalyticsReportsScreen(), textColor),
 
-                  const Divider(),
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الإعدادات والدعم', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
-                  // 👇 تم فتح الباب لشاشتي الدعم والإعدادات بنجاح!
-                  _buildDrawerItem(context, 'الدعم الفني الموحد', Icons.support_agent, Colors.indigo, const AgentSupportScreen()),
-                  _buildDrawerItem(context, 'إعدادات النظام الموسعة', Icons.settings, Colors.blueGrey, const AgentSettingsScreen()),
+                  Divider(color: isDark ? Colors.grey.shade800 : Colors.grey.shade200),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الإعدادات والدعم', style: TextStyle(color: textColor.withOpacity(0.5), fontSize: 11, fontWeight: FontWeight.bold))),
+                  _buildDrawerItem(context, 'الدعم الفني الموحد', Icons.support_agent, Colors.indigo, const AgentSupportScreen(), textColor),
+                  _buildDrawerItem(context, 'إعدادات النظام الموسعة', Icons.settings, Colors.blueGrey, const AgentSettingsScreen(), textColor),
                 ],
               ),
             ),
             
             // ==========================================
-            // 3. الفوتر (تسجيل الخروج ثابت في الأسفل)
+            // 3. الفوتر (تسجيل الخروج)
             // ==========================================
-            const Divider(height: 1),
+            Divider(height: 1, color: isDark ? Colors.grey.shade800 : Colors.grey.shade300),
             ListTile(
               dense: true,
               leading: const Icon(Icons.logout, color: Colors.red, size: 20),
               title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
               onTap: () {
+                _play('click');
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(builder: (context) => const SSOLoginScreen()),
@@ -259,15 +289,12 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                 );
               },
             ),
+            const SizedBox(height: 10),
           ],
         ),
       ),
     );
   }
-
-  // ==========================================
-  // أدوات مساعدة 
-  // ==========================================
 
   // بناء البطاقات المتدرجة الأنيقة 
   Widget _buildGradientCard({required String text, required IconData icon, required List<Color> colors, IconData? trailingIcon}) {
@@ -275,11 +302,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
       margin: const EdgeInsets.only(bottom: 8), 
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: colors,
-          begin: Alignment.topRight, 
-          end: Alignment.bottomLeft,
-        ),
+        gradient: LinearGradient(colors: colors, begin: Alignment.topRight, end: Alignment.bottomLeft),
         borderRadius: BorderRadius.circular(10), 
         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))], 
       ),
@@ -300,27 +323,15 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     );
   }
 
-  // بناء زر التنقل العادي الذي يفتح الشاشات
-  Widget _buildDrawerItem(BuildContext context, String title, IconData icon, Color iconColor, Widget targetScreen) {
+  // بناء زر التنقل العادي
+  Widget _buildDrawerItem(BuildContext context, String title, IconData icon, Color iconColor, Widget targetScreen, Color textColor) {
     return ListTile(
       dense: true,
       visualDensity: VisualDensity.compact,
       leading: Icon(icon, color: iconColor, size: 20),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 11, color: Colors.grey),
+      title: Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: textColor)),
+      trailing: Icon(Icons.arrow_forward_ios, size: 11, color: textColor.withOpacity(0.5)),
       onTap: () => _navigateTo(context, targetScreen),
-    );
-  }
-
-  // بناء زر التنقل للأقسام غير المكتملة (أداة مساعدة احتياطية للمستقبل)
-  Widget _buildComingSoonItem(BuildContext context, String title, IconData icon, Color iconColor) {
-    return ListTile(
-      dense: true,
-      visualDensity: VisualDensity.compact,
-      leading: Icon(icon, color: iconColor, size: 20),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 11, color: Colors.grey),
-      onTap: () => _showComingSoonMessage(context),
     );
   }
 }
