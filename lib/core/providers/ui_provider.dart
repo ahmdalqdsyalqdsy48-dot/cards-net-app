@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class UiProvider extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   
-  // 👈 1. إنشاء مشغلات منفصلة لكل نوع صوت حتى لا تقطع بعضها في الويب
+  // مشغلات منفصلة لكل نوع صوت حتى لا تقطع بعضها في الويب
   final AudioPlayer _clickPlayer = AudioPlayer();
   final AudioPlayer _successPlayer = AudioPlayer();
   final AudioPlayer _errorPlayer = AudioPlayer();
@@ -35,7 +35,7 @@ class UiProvider extends ChangeNotifier {
   bool get isSoundsEnabled => _soundsEnabled;
 
   // ==========================================
-  // 🎵 محرك الأصوات الديناميكي (نسخة الويب المحسنة)
+  // 🎵 محرك الأصوات الديناميكي (الأصوات المحلية 100%)
   // ==========================================
   Future<void> _loadSoundSettings() async {
     final prefs = await SharedPreferences.getInstance();
@@ -56,15 +56,15 @@ class UiProvider extends ChangeNotifier {
     if (!_soundsEnabled) return; 
 
     try {
+      // 👈 تم التعديل هنا: استخدام AssetSource ليقرأ الملفات من مشروعك مباشرة
       if (type == 'click') {
-        // 👈 صوت نقرة احترافي ومضمون عبر audioplayers
-        await _clickPlayer.play(UrlSource('https://actions.google.com/sounds/v1/ui/button_click.ogg'), volume: 0.5);
+        await _clickPlayer.play(AssetSource('sounds/click.mp3'), volume: 0.5);
       } else if (type == 'success') {
-        await _successPlayer.play(UrlSource('https://actions.google.com/sounds/v1/ui/succeed_bright.ogg'), volume: 1.0);
+        await _successPlayer.play(AssetSource('sounds/success.mp3'), volume: 1.0);
       } else if (type == 'error') {
-        await _errorPlayer.play(UrlSource('https://actions.google.com/sounds/v1/alarms/error_beep.ogg'), volume: 0.8);
+        await _errorPlayer.play(AssetSource('sounds/error.mp3'), volume: 0.8);
       } else if (type == 'notification') {
-        await _notifPlayer.play(UrlSource('https://actions.google.com/sounds/v1/alarms/message_alerts.ogg'), volume: 1.0);
+        await _notifPlayer.play(AssetSource('sounds/notification.mp3'), volume: 1.0);
       }
     } catch (e) {
       debugPrint('تحذير الصوت (طبيعي في المتصفحات قبل التفاعل): $e');
