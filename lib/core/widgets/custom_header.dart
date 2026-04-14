@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart'; 
 import 'package:marquee/marquee.dart'; 
+import 'package:cloud_firestore/cloud_firestore.dart'; 
+import 'package:intl/intl.dart' hide TextDirection; 
 
 import '../providers/theme_provider.dart'; 
 import '../providers/system_provider.dart'; 
@@ -35,15 +37,18 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
     super.dispose();
   }
 
-  void _showNotifications(BuildContext context, UiProvider uiProvider) {
-    uiProvider.playSound('click'); // 👈 صوت عند فتح الإشعارات
-    final List<Map<String, dynamic>> currentNotifications = List.from(uiProvider.unreadNotifications);
+  // 👈 تم تمرير systemProvider بدلاً من uiProvider لجلب البيانات الحقيقية
+  void _showNotifications(BuildContext context, UiProvider uiProvider, SystemProvider systemProvider) {
+    uiProvider.playSound('click'); 
+    final List<Map<String, dynamic>> currentNotifications = List.from(systemProvider.notifications);
+    final adaptiveTextColor = Provider.of<ThemeProvider>(context, listen: false).adaptiveTextColor;
 
     showDialog(
       context: context,
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
+          backgroundColor: Theme.of(context).cardColor, // 👈 متوافق مع الثيم
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           title: const Row(children: [Icon(Icons.notifications_active, color: Colors.orange), SizedBox(width: 10), Text('الإشعارات الحديثة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))]),
           content: SizedBox(
@@ -54,13 +59,27 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
                     shrinkWrap: true, itemCount: currentNotifications.length, separatorBuilder: (_, __) => Divider(color: Colors.grey.shade300),
                     itemBuilder: (context, index) {
                       final notif = currentNotifications[index];
+                      // تخصيص الأيقونة حسب محتوى الإشعار
                       IconData icon = Icons.notifications; Color iconColor = Colors.blue;
-                      if (notif['type'] == 'warning') { icon = Icons.warning; iconColor = Colors.red; }
-                      if (notif['type'] == 'success') { icon = Icons.check_circle; iconColor = Colors.green; }
+                      if (notif['title'].toString().contains('رفض') || notif['title'].toString().contains('طوارئ') || notif['title'].toString().contains('تحذير')) { icon = Icons.warning; iconColor = Colors.red; }
+                      if (notif['title'].toString().contains('نجاح') || notif['title'].toString().contains('موافقة') || notif['title'].toString().contains('تأكيد')) { icon = Icons.check_circle; iconColor = Colors.green; }
+                      
+                      String timeStr = 'الآن';
+                      if(notif['timestamp'] != null) {
+                         timeStr = DateFormat('yyyy-MM-dd hh:mm a').format((notif['timestamp'] as Timestamp).toDate());
+                      }
+
                       return ListTile(
                         leading: CircleAvatar(backgroundColor: iconColor.withOpacity(0.1), child: Icon(icon, color: iconColor, size: 20)), 
-                        title: Text(notif['title'] ?? 'إشعار', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), 
-                        subtitle: Text(notif['body'] ?? '', style: const TextStyle(fontSize: 12))
+                        title: Text(notif['title'] ?? 'إشعار', style: TextStyle(fontWeight: notif['isReadLocal'] ? FontWeight.normal : FontWeight.bold, fontSize: 14, color: adaptiveTextColor)), 
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(notif['body'] ?? '', style: TextStyle(fontSize: 12, color: adaptiveTextColor.withOpacity(0.8))),
+                            const SizedBox(height: 4),
+                            Text(timeStr, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                          ],
+                        )
                       );
                     },
                   ),
@@ -68,8 +87,8 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
           actions: [
             TextButton(
               onPressed: () { 
-                uiProvider.playSound('click'); // 👈 صوت عند الإغلاق
-                uiProvider.markNotificationsAsRead(); 
+                uiProvider.playSound('click'); 
+                systemProvider.markNotificationsAsRead(); // 👈 تصفير العداد في السيرفر
                 Navigator.pop(context); 
               }, 
               child: const Text('مقروء وإغلاق', style: TextStyle(fontWeight: FontWeight.bold))
@@ -77,7 +96,7 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
           ],
         ),
       ),
-    ).then((_) => uiProvider.markNotificationsAsRead());
+    ).then((_) => systemProvider.markNotificationsAsRead());
   }
 
   @override
@@ -88,7 +107,11 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
     
     final bool isDark = themeProvider.isDarkMode;
     final bool isOnline = uiProvider.isOnline; 
-    final bool hasNotifications = uiProvider.hasNewNotifications; 
+    
+    // 👈 القراءة من النظام الفعلي
+    final int unreadCount = systemProvider.unreadNotificationsCount;
+    final bool hasNotifications = unreadCount > 0; 
+
     final String liveNews = systemProvider.announcements.isNotEmpty ? systemProvider.announcements.join('   🔴   ') : 'مرحباً بك في نظام كروت نت...';
 
     final Color headerColor = isDark ? const Color(0xFF121212) : themeProvider.primaryColor;
@@ -115,18 +138,35 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
           icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode), 
           tooltip: 'تبديل السمة', 
           onPressed: () {
-            uiProvider.playSound('click'); // 👈 تفعيل صوت تغيير السمة
+            uiProvider.playSound('click'); 
             themeProvider.toggleTheme(!isDark);
           }
         ),
         Padding(
-          padding: const EdgeInsets.only(left: 8.0),
+          padding: const EdgeInsets.only(left: 8.0, right: 8.0),
           child: Stack(
             alignment: Alignment.center,
             children: [
-              IconButton(icon: const Icon(Icons.notifications_active), color: iconTextColor, tooltip: 'الإشعارات', onPressed: () => _showNotifications(context, uiProvider)),
+              IconButton(
+                icon: const Icon(Icons.notifications_active), 
+                color: iconTextColor, 
+                tooltip: 'الإشعارات', 
+                onPressed: () => _showNotifications(context, uiProvider, systemProvider) // 👈 تمرير النظام
+              ),
               if (hasNotifications)
-                Positioned(right: 8, top: 10, child: ScaleTransition(scale: _pulseAnimation, child: Container(width: 10, height: 10, decoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 1.5))))),
+                Positioned(
+                  right: 8, 
+                  top: 10, 
+                  child: ScaleTransition(
+                    scale: _pulseAnimation, 
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 1.5)),
+                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                      child: Text('$unreadCount', style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold), textAlign: TextAlign.center,),
+                    ),
+                  )
+                ),
             ],
           ),
         ),
@@ -162,8 +202,7 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: InkWell(
                 onTap: () {
-                  uiProvider.playSound('click'); // 👈 تفعيل صوت فتح البحث
-                  // تمرير uiProvider لمحرك البحث لكي يستخدم الأصوات
+                  uiProvider.playSound('click'); 
                   showSearch(context: context, delegate: SystemSearchDelegate(uiProvider));
                 },
                 borderRadius: BorderRadius.circular(8),
@@ -193,7 +232,7 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
 // 🚀 محرك البحث الذكي للنظام (Search Delegate)
 // ==========================================
 class SystemSearchDelegate extends SearchDelegate<String> {
-  final UiProvider uiProvider; // 👈 استلام محرك الصوت
+  final UiProvider uiProvider; 
   
   SystemSearchDelegate(this.uiProvider);
 
@@ -219,7 +258,7 @@ class SystemSearchDelegate extends SearchDelegate<String> {
         IconButton(
           icon: const Icon(Icons.clear), 
           onPressed: () {
-            uiProvider.playSound('click'); // 👈 تفعيل صوت مسح البحث
+            uiProvider.playSound('click'); 
             query = '';
           }
         )
@@ -231,7 +270,7 @@ class SystemSearchDelegate extends SearchDelegate<String> {
     return IconButton(
       icon: const Icon(Icons.arrow_back), 
       onPressed: () {
-        uiProvider.playSound('click'); // 👈 تفعيل صوت الرجوع
+        uiProvider.playSound('click'); 
         close(context, '');
       }
     );
@@ -261,7 +300,7 @@ class SystemSearchDelegate extends SearchDelegate<String> {
             title: Text(key, style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text(searchMap[key]!),
             onTap: () {
-              uiProvider.playSound('click'); // 👈 تفعيل صوت اختيار النتيجة
+              uiProvider.playSound('click'); 
               close(context, key);
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('سيتم نقلك إلى قسم: $key', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
             },
