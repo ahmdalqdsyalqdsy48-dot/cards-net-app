@@ -7,8 +7,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 
-// 👈 استدعاء العقل المدبر للألوان
+// 👈 استدعاء العقول المدبرة للألوان والأصوات
 import '../providers/theme_provider.dart';
+import '../providers/ui_provider.dart'; // 👈 تمت إضافة محرك الصوت هنا
 
 import '../../features/auth/screens/sso_login_screen.dart';
 
@@ -58,6 +59,8 @@ class _CustomDrawerState extends State<CustomDrawer> {
   }
 
   void _navigateTo(BuildContext context, Widget screen) {
+    // 👈 تشغيل صوت النقرة عند اختيار أي قسم من القائمة
+    Provider.of<UiProvider>(context, listen: false).playSound('click');
     Navigator.pop(context);
     Navigator.pushReplacement(
       context,
@@ -65,7 +68,6 @@ class _CustomDrawerState extends State<CustomDrawer> {
     );
   }
 
-  // 👈 تم إرجاع وتطوير دالتك الخاصة بالتنبيهات للحفاظ على تصميمك الأنيق
   void _showCandorSnackBar(BuildContext context, String message, {Color bgColor = Colors.orange, IconData icon = Icons.handyman}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -90,6 +92,9 @@ class _CustomDrawerState extends State<CustomDrawer> {
   // 🚀 المحرك الحقيقي لرفع الصورة من الاستوديو إلى Firebase
   // ========================================================
   Future<void> _pickAndUploadImage(BuildContext context) async {
+    final uiProvider = Provider.of<UiProvider>(context, listen: false);
+    uiProvider.playSound('click'); // 👈 صوت عند الضغط على زر الرفع
+
     final picker = ImagePicker();
     
     try {
@@ -125,15 +130,20 @@ class _CustomDrawerState extends State<CustomDrawer> {
         _isUploading = false;
       });
 
+      uiProvider.playSound('success'); // 👈 صوت النجاح عند اكتمال الرفع
       _showCandorSnackBar(context, 'تم تغيير الصورة الشخصية بنجاح! ✅', bgColor: Colors.green.shade700, icon: Icons.check_circle);
 
     } catch (e) {
       setState(() => _isUploading = false);
+      uiProvider.playSound('error'); // 👈 صوت الخطأ في حال الفشل
       _showCandorSnackBar(context, 'فشل رفع الصورة: $e', bgColor: Colors.red.shade700, icon: Icons.error);
     }
   }
 
   Future<void> _deleteProfileImage(BuildContext context) async {
+    final uiProvider = Provider.of<UiProvider>(context, listen: false);
+    uiProvider.playSound('click');
+
     try {
       setState(() => _isUploading = true);
       if (Navigator.canPop(context)) Navigator.pop(context);
@@ -146,14 +156,19 @@ class _CustomDrawerState extends State<CustomDrawer> {
         _currentLocalImageUrl = null;
         _isUploading = false;
       });
+
+      uiProvider.playSound('success'); // 👈 صوت النجاح عند الحذف
       _showCandorSnackBar(context, 'تم حذف الصورة بنجاح.', bgColor: Colors.blueGrey, icon: Icons.delete);
     } catch (e) {
       setState(() => _isUploading = false);
+      uiProvider.playSound('error'); // 👈 صوت الخطأ
     }
   }
 
   void _showProfileImageActionDialog(BuildContext context) {
+    Provider.of<UiProvider>(context, listen: false).playSound('click'); // 👈 صوت فتح نافذة الصورة
     bool hasImage = _currentLocalImageUrl != null && _currentLocalImageUrl!.isNotEmpty;
+    
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -203,6 +218,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
   Widget build(BuildContext context) {
     bool hasImage = _currentLocalImageUrl != null && _currentLocalImageUrl!.isNotEmpty;
     final themeProvider = Provider.of<ThemeProvider>(context); 
+    final uiProvider = Provider.of<UiProvider>(context, listen: false);
 
     return Drawer(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -252,7 +268,10 @@ class _CustomDrawerState extends State<CustomDrawer> {
                           _buildGradientCard(text: widget.role, icon: Icons.admin_panel_settings, colors: [Colors.orange.shade800, Colors.orange.shade500]),
                           
                           GestureDetector(
-                            onTap: () => setState(() => _isBalanceHidden = !_isBalanceHidden),
+                            onTap: () {
+                              uiProvider.playSound('click'); // 👈 صوت عند إظهار أو إخفاء الرصيد
+                              setState(() => _isBalanceHidden = !_isBalanceHidden);
+                            },
                             child: _buildGradientCard(
                               text: _isBalanceHidden ? '******' : widget.balanceOrPoints,
                               icon: Icons.account_balance_wallet,
@@ -302,6 +321,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
               leading: const Icon(Icons.logout, color: Colors.red, size: 20),
               title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
               onTap: () {
+                 uiProvider.playSound('click'); // 👈 صوت عند تسجيل الخروج
                  Navigator.pop(context);
                  Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const SSOLoginScreen()), (route) => false);
               },
