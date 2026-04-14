@@ -83,6 +83,9 @@ class SystemProvider extends ChangeNotifier {
   int _smsBalance = 0; 
   DateTimeRange? _dashboardDateRange; 
 
+  // 👈 إضافة قائمة الإشعارات
+  List<Map<String, dynamic>> _notifications = [];
+
   SystemProvider() {
     _initDatabaseSync();
   }
@@ -204,6 +207,28 @@ class SystemProvider extends ChangeNotifier {
     });
   }
 
+  // 👈 إضافة مستمع للإشعارات يعمل بمجرد تسجيل الدخول
+  void _listenToUserNotifications() {
+    if (_activeUserPhone == null) return;
+
+    // استهداف جميع الإشعارات الموجهة إما لرقم المستخدم أو الموجهة لجميع الوكلاء/المستخدمين بناءً على دوره
+    _db.collection('notifications')
+      .where('targetPhones', arrayContainsAny: [_activeUserPhone, 'all', _currentUserRole == 'agent' ? 'all_agents' : 'all_users'])
+      .orderBy('timestamp', descending: true)
+      .limit(30)
+      .snapshots()
+      .listen((snapshot) {
+        _notifications = snapshot.docs.map((doc) {
+          final data = doc.data();
+          // فحص حالة القراءة الخاصة بهذا المستخدم تحديداً إذا كان الإشعار جماعياً
+          List readBy = data['readBy'] ?? [];
+          bool isRead = readBy.contains(_activeUserPhone) || data['isRead'] == true;
+          return {'docId': doc.id, ...data, 'isReadLocal': isRead};
+        }).toList();
+        notifyListeners();
+    });
+  }
+
   void _runAutoRadar(List<Map<String, dynamic>> users) {
     final now = DateTime.now();
     WriteBatch batch = _db.batch();
@@ -285,6 +310,10 @@ class SystemProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get backupsList => _backupsList;
   List<Map<String, dynamic>> get bankAccounts => _bankAccounts;
   List<Map<String, dynamic>> get coupons => _coupons;
+
+  // 👈 إضافة جلب الإشعارات
+  List<Map<String, dynamic>> get notifications => _notifications;
+  int get unreadNotificationsCount => _notifications.where((n) => n['isReadLocal'] == false).length;
 
   void setDashboardDateRange(DateTimeRange? range) {
     _dashboardDateRange = range;
@@ -403,7 +432,7 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 🚀 5. دوال الإدارة والتحكم (تم التعديل وحل مشكلة البناء)
+  // 🚀 5. دوال الإدارة والتحكم 
   // ==========================================
   
   Future<void> updateAdvancedLoginSettings({
@@ -412,7 +441,6 @@ class SystemProvider extends ChangeNotifier {
     required String marqueeDir, required int marqueeTextCol, required int marqueeBgCol,
     required String appNameAlign, required String appNameFont, required int appNameColor,
   }) async {
-    // 👈 تحديث استباقي محلي (فوري)
     _appName = name; _appLogoUrl = logoUrl; _loginBgColor = bgColor;
     _loginCarouselImages = images; _loginWelcomeMessage = welcomeMsg; _carouselIntervalSeconds = intervalSeconds;
     _marqueeDirection = marqueeDir; _marqueeTextColor = marqueeTextCol; _marqueeBgColor = marqueeBgCol; 
@@ -554,6 +582,7 @@ class SystemProvider extends ChangeNotifier {
       } catch (e) {}
       _activeUserPhone = phone;
       _currentUserRole = 'super_admin'; 
+      _listenToUserNotifications(); // 👈 تفعيل مستمع الإشعارات بعد الدخول
       notifyListeners();
       return superAdminData; 
     }
@@ -569,6 +598,7 @@ class SystemProvider extends ChangeNotifier {
             _currentUserPermissions = Map<String, bool>.from(userData['permissions']);
           }
 
+          _listenToUserNotifications(); // 👈 تفعيل المستمع
           notifyListeners();
           logAction(action: 'تسجيل دخول', details: 'تم تسجيل الدخول بواسطة: ${userData['name']}', severity: 'normal');
           return userData;
@@ -588,6 +618,7 @@ class SystemProvider extends ChangeNotifier {
       });
       _activeUserPhone = phone;
       _currentUserRole = role; 
+      _listenToUserNotifications(); // 👈 تفعيل المستمع
       notifyListeners();
     } catch (e) { throw 'فشل تسجيل المستخدم: $e'; }
   }
@@ -608,6 +639,9 @@ class SystemProvider extends ChangeNotifier {
           'hiddenSections': [], 
         });
         logAction(action: 'إضافة وكيل جديد', details: 'تم إضافة وكيل جديد باسم "$name" ورقم $phone', severity: 'medium');
+        
+        // 👈 إرسال إشعار ترحيبي للوكيل
+        _sendNotification(targetPhones: [phone], title: 'أهلاً بك كوكيل جديد! 🎉', body: 'تم تفعيل حسابك كوكيل معتمد في النظام.');
       } else { throw 'رقم الهاتف مسجل مسبقاً في النظام!'; }
     } catch (e) { throw 'حدث خطأ: $e'; }
   }
@@ -663,12 +697,45 @@ class SystemProvider extends ChangeNotifier {
       batch.update(requestRef, {'status': 'مقبول'});
       DocumentReference transactionRef = _db.collection('transactions').doc();
       batch.set(transactionRef, {'agentPhone': agentPhone, 'agentName': agentName, 'type': 'إيداع حوالة', 'amount': amount, 'timestamp': FieldValue.serverTimestamp()});
+      
+      // 👈 إرسال إشعار للوكيل
+      DocumentReference notifRef = _db.collection('notifications').doc();
+      batch.set(notifRef, {
+        'targetPhones': [agentPhone],
+        'title': 'تمت الموافقة على الشحن 💸',
+        'body': 'تمت إضافة مبلغ $amount ريال إلى محفظتك بنجاح.',
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'readBy': [],
+      });
+
       await batch.commit(); 
     } catch (e) { throw 'فشل في قبول الشحن: $e'; }
   }
 
   Future<void> rejectRechargeRequest(String requestId, String reason) async {
-    await _db.collection('recharge_requests').doc(requestId).update({'status': 'مرفوض', 'rejectReason': reason});
+    try {
+      final reqDoc = await _db.collection('recharge_requests').doc(requestId).get();
+      if(reqDoc.exists){
+         String agentPhone = reqDoc.data()!['agentPhone'];
+         
+         WriteBatch batch = _db.batch();
+         batch.update(reqDoc.reference, {'status': 'مرفوض', 'rejectReason': reason});
+         
+         // 👈 إرسال إشعار للوكيل بالرفض والسبب
+         DocumentReference notifRef = _db.collection('notifications').doc();
+         batch.set(notifRef, {
+           'targetPhones': [agentPhone],
+           'title': 'تم رفض طلب الشحن ❌',
+           'body': 'السبب: $reason',
+           'timestamp': FieldValue.serverTimestamp(),
+           'isRead': false,
+           'readBy': [],
+         });
+
+         await batch.commit();
+      }
+    } catch(e){}
   }
 
   Future<void> manualSettlement({required String agentPhone, required String agentName, required double amount, required String reason}) async {
@@ -678,8 +745,47 @@ class SystemProvider extends ChangeNotifier {
       batch.update(agentRef, {'balance': FieldValue.increment(amount)});
       DocumentReference transactionRef = _db.collection('transactions').doc();
       batch.set(transactionRef, {'agentPhone': agentPhone, 'agentName': agentName, 'type': amount > 0 ? 'تسوية يدوية (إضافة)' : 'تسوية يدوية (خصم)', 'amount': amount, 'reason': reason, 'timestamp': FieldValue.serverTimestamp()});
+      
+      // 👈 إرسال إشعار للوكيل بالتسوية
+      DocumentReference notifRef = _db.collection('notifications').doc();
+      batch.set(notifRef, {
+        'targetPhones': [agentPhone],
+        'title': 'تسوية يدوية لمحفظتك ⚙️',
+        'body': 'تم ${amount > 0 ? "إضافة" : "خصم"} مبلغ ${amount.abs()} ريال.\nالسبب: $reason',
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'readBy': [],
+      });
+
       await batch.commit();
     } catch (e) { throw 'فشل التسوية اليدوية: $e'; }
+  }
+
+  // 👈 دالة مساعدة لإنشاء إشعارات
+  Future<void> _sendNotification({required List<String> targetPhones, required String title, required String body}) async {
+    await _db.collection('notifications').add({
+      'targetPhones': targetPhones,
+      'title': title,
+      'body': body,
+      'timestamp': FieldValue.serverTimestamp(),
+      'isRead': false,
+      'readBy': [],
+    });
+  }
+
+  // 👈 دالة لجعل الإشعارات "مقروءة" عندما يضغط المستخدم على الجرس
+  Future<void> markNotificationsAsRead() async {
+    if (_activeUserPhone == null) return;
+    
+    WriteBatch batch = _db.batch();
+    for (var notif in _notifications) {
+      if (notif['isReadLocal'] == false) {
+        DocumentReference ref = _db.collection('notifications').doc(notif['docId']);
+        // إضافة رقم المستخدم لقائمة من قرأ الإشعار
+        batch.update(ref, {'readBy': FieldValue.arrayUnion([_activeUserPhone])});
+      }
+    }
+    await batch.commit();
   }
 
   Future<void> applySubscriptionPlan({required int targetingFilter, required String planName, required double planPrice, required int durationMonths, String? targetAgentPhone}) async {
@@ -693,9 +799,11 @@ class SystemProvider extends ChangeNotifier {
           DocumentReference ref = _db.collection('users').doc(agent['phone']);
           batch.update(ref, {'subPlan': planName, 'subPrice': planPrice, 'subExpiry': formattedExpiry, 'subStatus': 'نشط'});
         }
+        _sendNotification(targetPhones: ['all_agents'], title: 'تحديث الباقة 🎁', body: 'تم تجديد باقتك إلى "$planName" بنجاح.');
       } else if (targetingFilter == 2 && targetAgentPhone != null) {
         DocumentReference ref = _db.collection('users').doc(targetAgentPhone);
         batch.update(ref, {'subPlan': planName, 'subPrice': planPrice, 'subExpiry': formattedExpiry, 'subStatus': 'نشط'});
+        _sendNotification(targetPhones: [targetAgentPhone], title: 'تحديث الباقة 🎁', body: 'تم تجديد باقتك إلى "$planName" بنجاح.');
       }
       await batch.commit();
     } catch (e) { throw 'حدث خطأ: $e'; }
@@ -715,6 +823,9 @@ class SystemProvider extends ChangeNotifier {
          'type': sendMethod, 'content': 'تم إصدار كوبون جديد: $code بخصم $discountDetails',
          'target': 'all_agents', 'timestamp': FieldValue.serverTimestamp(), 'status': 'sent'
       });
+      
+      // إشعار فوري داخل التطبيق
+      _sendNotification(targetPhones: ['all_agents'], title: 'كوبون جديد متاح! 🎟️', body: 'استخدم الكود $code للحصول على $discountDetails');
     } catch (e) { throw 'فشل إنشاء الكوبون: $e'; }
   }
 
@@ -727,6 +838,7 @@ class SystemProvider extends ChangeNotifier {
   Future<void> updateAgentGracePeriod(String agentPhone, String newExpiryDate) async {
     try {
       await _db.collection('users').doc(agentPhone).update({'subExpiry': newExpiryDate, 'subStatus': 'إنذار'});
+      _sendNotification(targetPhones: [agentPhone], title: 'تنبيه فترة السماح ⚠️', body: 'تم تعديل تاريخ انتهاء باقتك إلى $newExpiryDate');
     } catch (e) { throw 'فشل التحديث: $e'; }
   }
 
@@ -734,6 +846,7 @@ class SystemProvider extends ChangeNotifier {
     try {
       String newStatus = currentStatus == 'موقوف مؤقتاً' ? 'نشط' : 'موقوف مؤقتاً';
       await _db.collection('users').doc(agentPhone).update({'subStatus': newStatus});
+      _sendNotification(targetPhones: [agentPhone], title: 'حالة الحساب', body: 'تم تحويل حالة حسابك إلى: $newStatus');
     } catch (e) { throw 'فشل التغيير: $e'; }
   }
 
