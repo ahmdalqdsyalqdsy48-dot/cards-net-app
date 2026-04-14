@@ -1,15 +1,14 @@
+import 'dart:convert'; // 👈 ضروري للتعامل مع صور Base64
+import 'dart:typed_data'; 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:typed_data'; 
 
-// 👇 استدعاء مكتبات الصور والتخزين السحابي
 import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 
 // 👈 استدعاء العقول المدبرة للألوان والأصوات
 import '../providers/theme_provider.dart';
-import '../providers/ui_provider.dart'; // 👈 تمت إضافة محرك الصوت هنا
+import '../providers/ui_provider.dart'; 
 
 import '../../features/auth/screens/sso_login_screen.dart';
 
@@ -32,7 +31,7 @@ class CustomDrawer extends StatefulWidget {
   final String phoneNumber;
   final String role;
   final String balanceOrPoints;
-  final String? profileImageUrl;
+  final String? profileImageUrl; // تم الإبقاء عليه لعدم كسر الشاشات الأخرى
 
   const CustomDrawer({
     super.key,
@@ -49,17 +48,9 @@ class CustomDrawer extends StatefulWidget {
 
 class _CustomDrawerState extends State<CustomDrawer> {
   bool _isBalanceHidden = false;
-  String? _currentLocalImageUrl;
   bool _isUploading = false; 
 
-  @override
-  void initState() {
-    super.initState();
-    _currentLocalImageUrl = widget.profileImageUrl;
-  }
-
   void _navigateTo(BuildContext context, Widget screen) {
-    // 👈 تشغيل صوت النقرة عند اختيار أي قسم من القائمة
     Provider.of<UiProvider>(context, listen: false).playSound('click');
     Navigator.pop(context);
     Navigator.pushReplacement(
@@ -69,6 +60,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
   }
 
   void _showCandorSnackBar(BuildContext context, String message, {Color bgColor = Colors.orange, IconData icon = Icons.handyman}) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Directionality(
@@ -89,19 +81,19 @@ class _CustomDrawerState extends State<CustomDrawer> {
   }
 
   // ========================================================
-  // 🚀 المحرك الحقيقي لرفع الصورة من الاستوديو إلى Firebase
+  // 🚀 المحرك الحقيقي لرفع الصورة كـ Base64
   // ========================================================
   Future<void> _pickAndUploadImage(BuildContext context) async {
     final uiProvider = Provider.of<UiProvider>(context, listen: false);
-    uiProvider.playSound('click'); // 👈 صوت عند الضغط على زر الرفع
+    uiProvider.playSound('click'); 
 
     final picker = ImagePicker();
     
     try {
       final XFile? pickedFile = await picker.pickImage(
         source: ImageSource.gallery,
-        maxWidth: 800, 
-        imageQuality: 80,
+        maxWidth: 400, // ضغط الصورة 
+        imageQuality: 40,
       );
 
       if (pickedFile == null) return; 
@@ -109,34 +101,24 @@ class _CustomDrawerState extends State<CustomDrawer> {
       setState(() => _isUploading = true);
       if (Navigator.canPop(context)) Navigator.pop(context); 
       
-      _showCandorSnackBar(context, 'جاري الرفع إلى السيرفر... ⏳', bgColor: Colors.orange.shade700, icon: Icons.cloud_upload);
+      _showCandorSnackBar(context, 'جاري حفظ الصورة... ⏳', bgColor: Colors.orange.shade700, icon: Icons.cloud_upload);
 
       final Uint8List bytes = await pickedFile.readAsBytes();
+      String base64Image = base64Encode(bytes); // تشفير الصورة
 
-      String fileName = 'profiles/${widget.phoneNumber}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      Reference storageRef = FirebaseStorage.instance.ref().child(fileName);
+      await FirebaseFirestore.instance.collection('users').doc(widget.phoneNumber).set({
+        'profileImageBase64': base64Image,
+      }, SetOptions(merge: true));
 
-      UploadTask uploadTask = storageRef.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
-      TaskSnapshot snapshot = await uploadTask;
+      setState(() => _isUploading = false);
 
-      String downloadUrl = await snapshot.ref.getDownloadURL();
-
-      await FirebaseFirestore.instance.collection('users').doc(widget.phoneNumber).update({
-        'profileImageUrl': downloadUrl,
-      });
-
-      setState(() {
-        _currentLocalImageUrl = downloadUrl;
-        _isUploading = false;
-      });
-
-      uiProvider.playSound('success'); // 👈 صوت النجاح عند اكتمال الرفع
+      uiProvider.playSound('success'); 
       _showCandorSnackBar(context, 'تم تغيير الصورة الشخصية بنجاح! ✅', bgColor: Colors.green.shade700, icon: Icons.check_circle);
 
     } catch (e) {
       setState(() => _isUploading = false);
-      uiProvider.playSound('error'); // 👈 صوت الخطأ في حال الفشل
-      _showCandorSnackBar(context, 'فشل رفع الصورة: $e', bgColor: Colors.red.shade700, icon: Icons.error);
+      uiProvider.playSound('error'); 
+      _showCandorSnackBar(context, 'فشل تحديث الصورة: $e', bgColor: Colors.red.shade700, icon: Icons.error);
     }
   }
 
@@ -149,44 +131,42 @@ class _CustomDrawerState extends State<CustomDrawer> {
       if (Navigator.canPop(context)) Navigator.pop(context);
 
       await FirebaseFirestore.instance.collection('users').doc(widget.phoneNumber).update({
-        'profileImageUrl': FieldValue.delete(),
+        'profileImageBase64': FieldValue.delete(),
       });
 
-      setState(() {
-        _currentLocalImageUrl = null;
-        _isUploading = false;
-      });
+      setState(() => _isUploading = false);
 
-      uiProvider.playSound('success'); // 👈 صوت النجاح عند الحذف
+      uiProvider.playSound('success'); 
       _showCandorSnackBar(context, 'تم حذف الصورة بنجاح.', bgColor: Colors.blueGrey, icon: Icons.delete);
     } catch (e) {
       setState(() => _isUploading = false);
-      uiProvider.playSound('error'); // 👈 صوت الخطأ
+      uiProvider.playSound('error'); 
     }
   }
 
-  void _showProfileImageActionDialog(BuildContext context) {
-    Provider.of<UiProvider>(context, listen: false).playSound('click'); // 👈 صوت فتح نافذة الصورة
-    bool hasImage = _currentLocalImageUrl != null && _currentLocalImageUrl!.isNotEmpty;
+  void _showProfileImageActionDialog(BuildContext context, String? currentBase64) {
+    Provider.of<UiProvider>(context, listen: false).playSound('click'); 
+    bool hasImage = currentBase64 != null && currentBase64.isNotEmpty;
     
     showDialog(
       context: context,
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
+          backgroundColor: Theme.of(context).cardColor,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Text('إدارة الصورة الشخصية', style: TextStyle(fontWeight: FontWeight.bold)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 150, height: 150,
+                width: 130, height: 130,
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle, color: Colors.grey.shade100, border: Border.all(color: Colors.blue.shade100, width: 3),
+                  shape: BoxShape.circle, color: Theme.of(context).primaryColor.withOpacity(0.1), border: Border.all(color: Colors.blue.shade100, width: 3),
                   boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)],
-                  image: hasImage ? DecorationImage(image: NetworkImage(_currentLocalImageUrl!), fit: BoxFit.cover) : null,
+                  image: hasImage ? DecorationImage(image: MemoryImage(base64Decode(currentBase64)), fit: BoxFit.cover) : null,
                 ),
-                child: !hasImage ? const Icon(Icons.person, size: 100, color: Colors.blueGrey) : null,
+                child: !hasImage ? const Icon(Icons.person, size: 80, color: Colors.blueGrey) : null,
               ),
               const SizedBox(height: 25),
               Row(
@@ -194,15 +174,15 @@ class _CustomDrawerState extends State<CustomDrawer> {
                 children: [
                   ElevatedButton.icon(
                     onPressed: () => _pickAndUploadImage(context), 
-                    icon: Icon(hasImage ? Icons.sync : Icons.add_photo_alternate, color: Colors.white, size: 18),
-                    label: Text(hasImage ? 'تغيير' : 'إضافة صورة', style: const TextStyle(color: Colors.white)),
+                    icon: Icon(hasImage ? Icons.sync : Icons.add_photo_alternate, color: Colors.white, size: 16),
+                    label: Text(hasImage ? 'تغيير' : 'إضافة', style: const TextStyle(color: Colors.white, fontSize: 13)),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade600),
                   ),
                   if (hasImage) 
                     ElevatedButton.icon(
                       onPressed: () => _deleteProfileImage(context), 
-                      icon: const Icon(Icons.delete_forever, color: Colors.white, size: 18),
-                      label: const Text('حذف', style: TextStyle(color: Colors.white)),
+                      icon: const Icon(Icons.delete_forever, color: Colors.white, size: 16),
+                      label: const Text('حذف', style: TextStyle(color: Colors.white, fontSize: 13)),
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade400),
                     ),
                 ],
@@ -216,7 +196,6 @@ class _CustomDrawerState extends State<CustomDrawer> {
 
   @override
   Widget build(BuildContext context) {
-    bool hasImage = _currentLocalImageUrl != null && _currentLocalImageUrl!.isNotEmpty;
     final themeProvider = Provider.of<ThemeProvider>(context); 
     final uiProvider = Provider.of<UiProvider>(context, listen: false);
 
@@ -229,60 +208,76 @@ class _CustomDrawerState extends State<CustomDrawer> {
             Expanded(
               child: ListView(
                 padding: EdgeInsets.zero,
+                physics: const BouncingScrollPhysics(),
                 children: [
                   SafeArea(
                     bottom: false,
-                    child: Container(
-                      width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-                      color: Colors.transparent,
-                      child: Column(
-                        children: [
-                          GestureDetector(
-                            onTap: () => _showProfileImageActionDialog(context),
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                Container(
-                                  width: 100, height: 100,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle, color: themeProvider.primaryColor.withOpacity(0.1),
-                                    border: Border.all(color: themeProvider.primaryColor.withOpacity(0.3), width: 2),
-                                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))],
-                                    image: hasImage ? DecorationImage(image: NetworkImage(_currentLocalImageUrl!), fit: BoxFit.cover) : null,
-                                  ),
-                                  child: !hasImage ? Icon(Icons.person, size: 60, color: themeProvider.primaryColor.withOpacity(0.7)) : null,
+                    child: StreamBuilder<DocumentSnapshot>(
+                      // 👈 قراءة حية للصورة الشخصية للمالك من السيرفر
+                      stream: FirebaseFirestore.instance.collection('users').doc(widget.phoneNumber).snapshots(),
+                      builder: (context, snapshot) {
+                        String? base64Image;
+                        if (snapshot.hasData && snapshot.data!.exists) {
+                          final data = snapshot.data!.data() as Map<String, dynamic>?;
+                          if (data != null && data.containsKey('profileImageBase64')) {
+                            base64Image = data['profileImageBase64'];
+                          }
+                        }
+                        bool hasImage = base64Image != null && base64Image.isNotEmpty;
+
+                        return Container(
+                          width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+                          color: Colors.transparent,
+                          child: Column(
+                            children: [
+                              GestureDetector(
+                                onTap: () => _showProfileImageActionDialog(context, base64Image),
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    Container(
+                                      width: 100, height: 100,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle, color: themeProvider.primaryColor.withOpacity(0.1),
+                                        border: Border.all(color: themeProvider.primaryColor.withOpacity(0.3), width: 2),
+                                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))],
+                                        image: hasImage ? DecorationImage(image: MemoryImage(base64Decode(base64Image!)), fit: BoxFit.cover) : null,
+                                      ),
+                                      child: !hasImage ? Icon(Icons.person, size: 60, color: themeProvider.primaryColor.withOpacity(0.7)) : null,
+                                    ),
+                                    if (_isUploading)
+                                      Container(
+                                        width: 100, height: 100,
+                                        decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.black.withOpacity(0.5)),
+                                        child: const CircularProgressIndicator(color: Colors.white),
+                                      ),
+                                  ],
                                 ),
-                                if (_isUploading)
-                                  Container(
-                                    width: 100, height: 100,
-                                    decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.black.withOpacity(0.5)),
-                                    child: const CircularProgressIndicator(color: Colors.white),
-                                  ),
-                              ],
-                            ),
+                              ),
+                              const SizedBox(height: 15),
+                              
+                              _buildGradientCard(text: widget.userName, icon: Icons.badge, colors: [Colors.blue.shade800, Colors.blue.shade500]),
+                              _buildGradientCard(text: widget.phoneNumber, icon: Icons.phone, colors: [Colors.teal.shade800, Colors.teal.shade500]),
+                              _buildGradientCard(text: widget.role, icon: Icons.admin_panel_settings, colors: [Colors.orange.shade800, Colors.orange.shade500]),
+                              
+                              GestureDetector(
+                                onTap: () {
+                                  uiProvider.playSound('click'); 
+                                  setState(() => _isBalanceHidden = !_isBalanceHidden);
+                                },
+                                child: _buildGradientCard(
+                                  text: _isBalanceHidden ? '******' : widget.balanceOrPoints,
+                                  icon: Icons.account_balance_wallet,
+                                  colors: [Colors.purple.shade800, Colors.purple.shade500],
+                                  trailingIcon: _isBalanceHidden ? Icons.visibility_off : Icons.visibility,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Divider(height: 1, color: themeProvider.adaptiveTextColor.withOpacity(0.2)),
+                            ],
                           ),
-                          const SizedBox(height: 15),
-                          
-                          _buildGradientCard(text: widget.userName, icon: Icons.badge, colors: [Colors.blue.shade800, Colors.blue.shade500]),
-                          _buildGradientCard(text: widget.phoneNumber, icon: Icons.phone, colors: [Colors.teal.shade800, Colors.teal.shade500]),
-                          _buildGradientCard(text: widget.role, icon: Icons.admin_panel_settings, colors: [Colors.orange.shade800, Colors.orange.shade500]),
-                          
-                          GestureDetector(
-                            onTap: () {
-                              uiProvider.playSound('click'); // 👈 صوت عند إظهار أو إخفاء الرصيد
-                              setState(() => _isBalanceHidden = !_isBalanceHidden);
-                            },
-                            child: _buildGradientCard(
-                              text: _isBalanceHidden ? '******' : widget.balanceOrPoints,
-                              icon: Icons.account_balance_wallet,
-                              colors: [Colors.purple.shade800, Colors.purple.shade500],
-                              trailingIcon: _isBalanceHidden ? Icons.visibility_off : Icons.visibility,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Divider(height: 1, color: themeProvider.adaptiveTextColor.withOpacity(0.2)),
-                        ],
-                      ),
+                        );
+                      }
                     ),
                   ),
                   
@@ -321,7 +316,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
               leading: const Icon(Icons.logout, color: Colors.red, size: 20),
               title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
               onTap: () {
-                 uiProvider.playSound('click'); // 👈 صوت عند تسجيل الخروج
+                 uiProvider.playSound('click'); 
                  Navigator.pop(context);
                  Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const SSOLoginScreen()), (route) => false);
               },
