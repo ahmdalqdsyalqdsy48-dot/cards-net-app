@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // 👈 1. استدعاء مكتبة العقل المدبر
+import 'package:provider/provider.dart'; 
 
-// استدعاء مزودات النظام والألوان التي أنشأناها
 import '../../../core/providers/theme_provider.dart';
-import '../../../core/providers/system_provider.dart'; // 👈 2. استدعاء الخادم المحلي الشامل
+import '../../../core/providers/system_provider.dart'; 
 
 // الاستدعاءات الخاصة بالشاشات
 import '../screens/user_dashboard_screen.dart'; 
@@ -17,8 +16,6 @@ import '../screens/user_settings_screen.dart';
 import '../../auth/screens/sso_login_screen.dart';
 
 class CustomUserDrawer extends StatefulWidget {
-  // 💡 تركنا هذه المتغيرات لكي لا تظهر أخطاء في الشاشات القديمة التي تستدعي القائمة
-  // لكننا سنتجاهلها في الداخل ونستخدم البيانات الحقيقية من الخادم
   final String userName;
   final String phoneNumber;
   final String? profileImageUrl;
@@ -35,7 +32,6 @@ class CustomUserDrawer extends StatefulWidget {
 }
 
 class _CustomUserDrawerState extends State<CustomUserDrawer> {
-  // متغيرات الحالة (State) للتحكم في الواجهة
   bool _isBalanceHidden = false;
   String? _currentLocalImageUrl; 
 
@@ -45,7 +41,6 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
     _currentLocalImageUrl = widget.profileImageUrl;
   }
 
-  // دالة الانتقال بين الشاشات
   void _navigateTo(BuildContext context, Widget screen) {
     Navigator.pop(context); 
     Navigator.pushReplacement(
@@ -54,7 +49,6 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
     );
   }
 
-  // نافذة الباركود (QR Code) - تم تحديثها لتستقبل الرقم الحقيقي
   void _showQRCodeDialog(BuildContext context, String realPhone) {
     showDialog(
       context: context,
@@ -68,7 +62,6 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
             const SizedBox(height: 20),
             Icon(Icons.qr_code_2, size: 150, color: Theme.of(context).primaryColor),
             const SizedBox(height: 20),
-            // عرض رقم الهاتف الحقيقي المسجل في النظام
             Text(realPhone, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 2)),
           ],
         ),
@@ -79,7 +72,6 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
     );
   }
 
-  // نافذة إدارة الصورة الشخصية
   void _showProfileImageActionDialog(BuildContext context) {
     bool hasImage = _currentLocalImageUrl != null;
 
@@ -144,14 +136,15 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
   Widget build(BuildContext context) {
     bool hasImage = _currentLocalImageUrl != null;
     
-    // 👇 3. الاستماع للخادم المحلي ومزود الألوان
     final themeProvider = Provider.of<ThemeProvider>(context);
     final systemProvider = Provider.of<SystemProvider>(context);
     final primaryColor = themeProvider.primaryColor;
 
-    // ✨ جلب البيانات الحقيقية من الذاكرة بدلاً من المتغيرات الثابتة
     final String dynamicUserName = systemProvider.currentUserName;
     final String dynamicUserPhone = systemProvider.currentUserPhone;
+    
+    // 👈 تحديد هوية الزائر
+    final bool isPos = systemProvider.currentUserRole == 'pos';
 
     return Drawer(
       child: Directionality(
@@ -163,7 +156,7 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                 padding: EdgeInsets.zero,
                 children: [
                   // ==========================================
-                  // 1. الترويسة العلوية الفخمة (بنظام البطاقات)
+                  // 1. الترويسة العلوية 
                   // ==========================================
                   SafeArea(
                     bottom: false,
@@ -180,7 +173,6 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                                 alignment: Alignment.centerLeft,
                                 child: IconButton(
                                   icon: Icon(Icons.qr_code_scanner, color: primaryColor, size: 28),
-                                  // تمرير الرقم الحقيقي للنافذة المنبثقة
                                   onPressed: () => _showQRCodeDialog(context, dynamicUserPhone),
                                 ),
                               ),
@@ -205,27 +197,25 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                           ),
                           const SizedBox(height: 15),
 
-                          // عرض الاسم الحقيقي هنا
                           _buildGradientCard(
                             text: dynamicUserName, 
                             icon: Icons.person,
                             colors: [Colors.blue.shade800, Colors.blue.shade500],
                           ),
 
-                          // عرض رقم الهاتف الحقيقي هنا
                           _buildGradientCard(
                             text: dynamicUserPhone, 
                             icon: Icons.phone,
                             colors: [Colors.teal.shade800, Colors.teal.shade500],
                           ),
 
+                          // 👈 تغيير الشارة بناءً على الهوية
                           _buildGradientCard(
-                            text: 'المستوى: عضو ذهبي 🥇',
-                            icon: Icons.stars,
-                            colors: [Colors.orange.shade800, Colors.orange.shade500],
+                            text: isPos ? 'نقطة بيع معتمدة 🏪' : 'المستوى: عضو ذهبي 🥇',
+                            icon: isPos ? Icons.verified : Icons.stars,
+                            colors: isPos ? [Colors.purple.shade800, Colors.purple.shade500] : [Colors.orange.shade800, Colors.orange.shade500],
                           ),
 
-                          // 👇 4. قراءة الرصيد الحقيقي من الخادم المحلي الشامل (SystemProvider)
                           GestureDetector(
                             onTap: () {
                               setState(() {
@@ -233,9 +223,10 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                               });
                             },
                             child: _buildGradientCard(
-                              text: _isBalanceHidden ? 'المحفظة: ******' : 'المحفظة: ${systemProvider.currentUserBalance.toStringAsFixed(0)} ريال',
+                              // 👈 تغيير المسمى بناءً على الهوية
+                              text: _isBalanceHidden ? 'الرصيد: ******' : '${isPos ? "الرصيد العام" : "المحفظة"}: ${systemProvider.currentUserBalance.toStringAsFixed(0)} ريال',
                               icon: Icons.account_balance_wallet,
-                              colors: [Colors.purple.shade800, Colors.purple.shade500],
+                              colors: isPos ? [Colors.deepPurple.shade800, Colors.deepPurple.shade500] : [Colors.indigo.shade800, Colors.indigo.shade500],
                               trailingIcon: _isBalanceHidden ? Icons.visibility_off : Icons.visibility,
                             ),
                           ),
@@ -248,17 +239,28 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                   ),
 
                   // ==========================================
-                  // 2. خيارات القائمة الفائقة
+                  // 2. خيارات القائمة المخصصة
                   // ==========================================
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Text('المالية والمشتريات', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
+                  
                   _buildDrawerItem(context, 'الرئيسية', Icons.dashboard, Colors.blue, const UserDashboardScreen()),
-                  _buildDrawerItem(context, 'المحفظة الذكية والتحويلات', Icons.account_balance_wallet, Colors.teal, const UserWalletScreen()),
-                  _buildDrawerItem(context, 'سوق الشبكات ونقاط البيع', Icons.storefront, Colors.orange, const NetworkStoreScreen()),
-                  _buildDrawerItem(context, 'كروتي ومشترياتي', Icons.receipt_long, Colors.green, const MyCardsScreen()),
+                  
+                  // 👈 الزبون العادي يحتاج إدارة المحافظ المتعددة، البقالة لا تحتاجها
+                  if (!isPos)
+                    _buildDrawerItem(context, 'المحفظة الذكية والتحويلات', Icons.account_balance_wallet, Colors.teal, const UserWalletScreen()),
+                  
+                  _buildDrawerItem(context, isPos ? 'سوق الجملة للشبكات' : 'سوق الشبكات ونقاط البيع', Icons.storefront, Colors.orange, const NetworkStoreScreen()),
+                  
+                  // 👈 تسمية مختلفة للبقالات
+                  _buildDrawerItem(context, isPos ? 'سجل المبيعات والكروت' : 'كروتي ومشترياتي', Icons.receipt_long, isPos ? Colors.purple : Colors.green, const MyCardsScreen()),
                   
                   const Divider(),
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Text('الامتيازات والسجلات', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
-                  _buildDrawerItem(context, 'برنامج الولاء والمكافآت', Icons.stars, Colors.amber.shade700, const RewardsScreen()),
+                  
+                  // 👈 إخفاء المكافآت عن البقالات
+                  if (!isPos)
+                    _buildDrawerItem(context, 'برنامج الولاء والمكافآت', Icons.stars, Colors.amber.shade700, const RewardsScreen()),
+                  
                   _buildDrawerItem(context, 'سجل العمليات المالية', Icons.history, Colors.indigo, const UserTransactionsScreen()),
                   
                   const Divider(),
