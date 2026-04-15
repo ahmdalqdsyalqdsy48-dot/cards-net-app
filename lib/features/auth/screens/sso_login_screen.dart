@@ -7,7 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/providers/system_provider.dart';
-import '../../../core/providers/ui_provider.dart'; // 👈 استدعاء مزود الأصوات
+import '../../../core/providers/ui_provider.dart'; 
 
 import '../../super_admin/screens/super_admin_dashboard.dart';
 import '../../agent_panel/screens/agent_dashboard_screen.dart';
@@ -86,14 +86,14 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   // ==========================================
   Future<void> _processLogin() async {
     FocusScope.of(context).unfocus();
-    final uiProvider = Provider.of<UiProvider>(context, listen: false); // 👈 لربط الأصوات
-    uiProvider.playSound('click'); // 👈 صوت النقر
+    final uiProvider = Provider.of<UiProvider>(context, listen: false); 
+    uiProvider.playSound('click'); 
 
     String phone = phoneController.text.trim();
     String password = passwordController.text.trim();
 
     if (phone.isEmpty || password.isEmpty) {
-      uiProvider.playSound('error'); // 👈 صوت الخطأ
+      uiProvider.playSound('error'); 
       _showErrorSnackBar('يرجى إدخال رقم الهاتف وكلمة المرور.');
       return;
     }
@@ -101,7 +101,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     setState(() => isLoading = true);
     final systemProvider = Provider.of<SystemProvider>(context, listen: false);
     
-    // 👈 تجاوز وضع الصيانة فقط لمالك النظام (إذا كان رقمه 774578241)
+    // تجاوز وضع الصيانة فقط لمالك النظام
     if (systemProvider.isMaintenanceMode && phone != '774578241') {
       setState(() => isLoading = false);
       uiProvider.playSound('error');
@@ -118,17 +118,17 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       String userRole = userData['role']; 
       
       Provider.of<ThemeProvider>(context, listen: false).setUser(userRole, phone);
-      uiProvider.playSound('success'); // 👈 صوت الدخول الناجح
+      uiProvider.playSound('success'); 
       
       if (userRole == 'super_admin' || userRole == 'staff') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SuperAdminDashboard()));
       } else if (userRole == 'agent') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const AgentDashboardScreen()));
-      } else if (userRole == 'user') {
+      } else if (userRole == 'user' || userRole == 'pos') { // 👈 التعديل السحري هنا لدعم البقالات
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
       }
     } else {
-      uiProvider.playSound('error'); // 👈 صوت فشل الدخول
+      uiProvider.playSound('error'); 
       _showErrorSnackBar('رقم الهاتف غير مسجل أو كلمة المرور خاطئة!');
     }
   }
@@ -311,7 +311,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                   ),
                 ),
                 
-                // 👈 شريط الأخبار محمي بشرط الظهور (showNewsBar)
+                // شريط الأخبار محمي بشرط الظهور (showNewsBar)
                 if (systemProvider.showNewsBar)
                   Container(
                     width: double.infinity, height: 35, 
@@ -484,7 +484,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     );
   }
 
-  // 👈 نافذة دخول طوارئ تظهر للمالك فقط إذا كان النظام تحت الصيانة
+  // نافذة دخول طوارئ تظهر للمالك فقط إذا كان النظام تحت الصيانة
   void _showEmergencyLoginDialog() {
     showDialog(
       context: context,
