@@ -22,7 +22,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
 
   // ==========================================
-  // 1. نافذة طلب الشحن المباشر (لو رصيد المحفظة صفر) 💸
+  // 1. نافذة طلب الشحن المباشر (لو الرصيد لا يكفي) 💸
   // ==========================================
   void _showRechargeDialog(String agentPhone, String agentName) {
     _play('click');
@@ -70,7 +70,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                       _play('success');
                       if (mounted) {
                         Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال طلب الشحن للوكيل بنجاح ⏳', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال طلب الشحن بنجاح ⏳', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
                       }
                     } catch (e) {
                       setStateDialog(() => isSubmitting = false);
@@ -93,17 +93,18 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   }
 
   // ==========================================
-  // 2. نافذة إتمام الشراء المخصصة 💳
+  // 2. نافذة إتمام الشراء المخصصة (تعالج الزبون والبقالة) 💳
   // ==========================================
-  void _showPurchaseBottomSheet(BuildContext context, String title, double price, String agentPhone, String agentName) {
+  void _showPurchaseBottomSheet(BuildContext context, String title, double price, String agentPhone, String agentName, bool isPos) {
     _play('click');
     bool isPurchased = false;
     String generatedPin = '1234-5678-${DateTime.now().millisecondsSinceEpoch.toString().substring(9)}'; 
     
     final systemProvider = Provider.of<SystemProvider>(context, listen: false);
-    // 👈 السحر هنا: نجلب رصيد الزبون الخاص بهذا الوكيل تحديداً!
-    double walletBalance = systemProvider.getWalletBalance(agentPhone);
-    bool canAfford = walletBalance >= price;
+    
+    // 👈 السحر المالي: إذا كان بقالة يقرأ الرصيد العام، وإذا زبون يقرأ محفظة الوكيل المحددة!
+    double availableBalance = isPos ? systemProvider.currentUserBalance : systemProvider.getWalletBalance(agentPhone);
+    bool canAfford = availableBalance >= price;
 
     showModalBottomSheet(
       context: context,
@@ -132,7 +133,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                       Text('هل أنت متأكد من شراء كرت ($title)؟', textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
                       const SizedBox(height: 20),
                       
-                      // 👈 عرض الرصيد المخصص لدى هذا الوكيل
+                      // 👈 عرض الرصيد الصحيح بناءً على الهوية
                       Container(
                         padding: const EdgeInsets.all(15),
                         decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.blue.withOpacity(0.3))),
@@ -142,11 +143,11 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('رصيدك المتاح لدى:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                                Text('الوكيل $agentName', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                                Text(isPos ? 'رصيدك العام كبقالة:' : 'رصيدك المتاح لدى:', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                Text(isPos ? 'نقطة بيع معتمدة' : 'الوكيل $agentName', style: const TextStyle(color: Colors.grey, fontSize: 11)),
                               ],
                             ),
-                            Text('${walletBalance.toStringAsFixed(0)} ريال', style: TextStyle(fontWeight: FontWeight.bold, color: canAfford ? Colors.blue : Colors.red, fontSize: 16)),
+                            Text('${availableBalance.toStringAsFixed(0)} ريال', style: TextStyle(fontWeight: FontWeight.bold, color: canAfford ? Colors.blue : Colors.red, fontSize: 16)),
                           ],
                         ),
                       ),
@@ -173,7 +174,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                             style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                             onPressed: () {
                               _play('click');
-                              // 👇 استدعاء دالة الشراء بالهيكلة الجديدة
                               bool success = systemProvider.userBuyCard(price, title, agentPhone);
                               
                               if (success) {
@@ -182,7 +182,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                               } else {
                                 _play('error');
                                 Navigator.pop(context); 
-                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('فشلت العملية، تأكد من الرصيد!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('فشلت العملية، تأكد من الرصيد أو المخزون!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
                               }
                             },
                             child: const Text('تأكيد وشراء الآن', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
@@ -249,34 +249,40 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
+    
+    // 👈 قراءة هوية الزائر (هل هو بقالة أم زبون عادي)
+    final bool isPos = sys.currentUserRole == 'pos';
+    
+    // 👈 جلب بيانات المستخدم الحالي لفهم صلاحياته
+    Map<String, dynamic> currentUserData = {};
+    if (sys.currentUserPhone.isNotEmpty) {
+      currentUserData = sys.usersList.firstWhere((u) => u['phone'] == sys.currentUserPhone, orElse: () => {});
+    }
+    
+    final List<dynamic> allowedCats = currentUserData['allowedCategories'] ?? [];
+    final String parentAgentPhone = currentUserData['parentAgent'] ?? '';
 
     return DefaultTabController(
       length: 2,
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: const CustomHeader(title: 'سوق الشبكات ونقاط البيع'),
-        drawer: CustomUserDrawer(
-          userName: sys.currentUserName, 
-          phoneNumber: sys.currentUserPhone, 
-        ),
+        drawer: CustomUserDrawer(userName: sys.currentUserName, phoneNumber: sys.currentUserPhone),
         body: Directionality(
           textDirection: TextDirection.rtl,
           child: Column(
             children: [
-              // ==========================================
-              // 1. شريط البحث الذكي
-              // ==========================================
+              // شريط البحث المطور
               Container(
-                color: Colors.blue.shade800,
+                color: isPos ? Colors.purple.shade800 : Colors.blue.shade800,
                 padding: const EdgeInsets.all(16),
                 child: TextField(
-                  onChanged: (value) => setState(() { _searchQuery = value; }), 
+                  onChanged: (value) => setState(() { _searchQuery = value.trim().toLowerCase(); }), 
                   style: const TextStyle(color: Colors.black),
                   decoration: InputDecoration(
-                    hintText: 'ابحث عن شبكة أو بقالة أو منطقة...',
-                    prefixIcon: const Icon(Icons.search, color: Colors.blue),
-                    filled: true,
-                    fillColor: Colors.white,
+                    hintText: isPos ? 'ابحث في شبكتك المعتمدة...' : 'ابحث عن شبكة أو بقالة أو منطقة...',
+                    prefixIcon: Icon(Icons.search, color: isPos ? Colors.purple : Colors.blue),
+                    filled: true, fillColor: Colors.white,
                     contentPadding: const EdgeInsets.symmetric(vertical: 0),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
                   ),
@@ -284,12 +290,10 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
               ),
 
               Container(
-                color: Colors.blue.shade800,
+                color: isPos ? Colors.purple.shade800 : Colors.blue.shade800,
                 child: const TabBar(
-                  labelColor: Colors.white,
-                  unselectedLabelColor: Colors.white54,
-                  indicatorColor: Colors.orange,
-                  indicatorWeight: 4,
+                  labelColor: Colors.white, unselectedLabelColor: Colors.white54,
+                  indicatorColor: Colors.orange, indicatorWeight: 4,
                   tabs: [
                     Tab(icon: Icon(Icons.wifi), text: 'الشبكات المتاحة 📡'),
                     Tab(icon: Icon(Icons.store), text: 'نقاط البيع 🏪'),
@@ -297,25 +301,25 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                 ),
               ),
 
-              // ==========================================
-              // 3. قراءة البيانات من السيرفر (StreamBuilder) 📡
-              // ==========================================
               Expanded(
                 child: TabBarView(
                   children: [
-                    // --- التبويب الأول: الشبكات ---
+                    // ==========================================
+                    // التبويب الأول: الشبكات (مع فلترة البقالة)
+                    // ==========================================
                     StreamBuilder<QuerySnapshot>(
-                      stream: _db.collection('networks').snapshots(),
+                      // 👈 إذا كان بقالة، نجلب شبكات وكيله فقط. إذا زبون عادي، نجلب الكل.
+                      stream: isPos 
+                          ? _db.collection('networks').where('agentPhone', isEqualTo: parentAgentPhone).snapshots()
+                          : _db.collection('networks').snapshots(),
                       builder: (context, snapshot) {
                         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
                         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text('لا توجد شبكات معروضة حالياً.', style: TextStyle(color: Colors.grey)));
 
-                        // فلترة البحث
                         var networks = snapshot.data!.docs.where((doc) {
                           var net = doc.data() as Map<String, dynamic>;
-                          String searchLower = _searchQuery.toLowerCase();
-                          return (net['name']?.toString().toLowerCase().contains(searchLower) ?? false) || 
-                                 (net['location']?.toString().toLowerCase().contains(searchLower) ?? false);
+                          return (net['name']?.toString().toLowerCase().contains(_searchQuery) ?? false) || 
+                                 (net['location']?.toString().toLowerCase().contains(_searchQuery) ?? false);
                         }).toList();
 
                         if (networks.isEmpty) return const Center(child: Text('لا توجد شبكات مطابقة للبحث'));
@@ -325,25 +329,25 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                           itemCount: networks.length,
                           itemBuilder: (context, index) {
                             var net = networks[index].data() as Map<String, dynamic>;
-                            return _buildNetworkCard(net);
+                            return _buildNetworkCard(net, isPos, allowedCats);
                           },
                         );
                       },
                     ),
                     
-                    // --- التبويب الثاني: نقاط البيع ---
+                    // ==========================================
+                    // التبويب الثاني: نقاط البيع الأخرى
+                    // ==========================================
                     StreamBuilder<QuerySnapshot>(
                       stream: _db.collection('points_of_sale').snapshots(),
                       builder: (context, snapshot) {
                         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
                         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text('لا توجد نقاط بيع معروضة حالياً.', style: TextStyle(color: Colors.grey)));
 
-                        // فلترة البحث
                         var posList = snapshot.data!.docs.where((doc) {
                           var pos = doc.data() as Map<String, dynamic>;
-                          String searchLower = _searchQuery.toLowerCase();
-                          return (pos['name']?.toString().toLowerCase().contains(searchLower) ?? false) || 
-                                 (pos['location']?.toString().toLowerCase().contains(searchLower) ?? false);
+                          return (pos['name']?.toString().toLowerCase().contains(_searchQuery) ?? false) || 
+                                 (pos['location']?.toString().toLowerCase().contains(_searchQuery) ?? false);
                         }).toList();
 
                         if (posList.isEmpty) return const Center(child: Text('لا توجد نقاط بيع مطابقة للبحث'));
@@ -353,7 +357,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                           itemCount: posList.length,
                           itemBuilder: (context, index) {
                             var pos = posList[index].data() as Map<String, dynamic>;
-                            return _buildPoSCard(pos);
+                            return _buildPoSCard(pos, isPos);
                           },
                         );
                       },
@@ -369,10 +373,19 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   }
 
   // ==========================================
-  // تصميم بطاقة "الشبكة" 
+  // تصميم بطاقة "الشبكة" المفلترة للبقالة
   // ==========================================
-  Widget _buildNetworkCard(Map<String, dynamic> network) {
+  Widget _buildNetworkCard(Map<String, dynamic> network, bool isPos, List allowedCats) {
     List categories = network['categories'] ?? [];
+    
+    // 👈 فلترة الفئات إذا كان الزائر بقالة (بحسب الصلاحيات التي منحها الوكيل)
+    if (isPos) {
+      categories = categories.where((cat) => allowedCats.contains(cat['id'])).toList();
+    }
+    
+    // إذا لم يتبقَ أي فئات مسموحة، لا نظهر هذه الشبكة إطلاقاً
+    if (categories.isEmpty) return const SizedBox.shrink();
+
     String agentPhone = network['agentPhone'] ?? '';
     String agentName = network['agentName'] ?? 'مجهول';
 
@@ -382,7 +395,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
       margin: const EdgeInsets.only(bottom: 15),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: ExpansionTile(
-        leading: const CircleAvatar(backgroundColor: Colors.blue, child: Icon(Icons.router, color: Colors.white)),
+        leading: CircleAvatar(backgroundColor: isPos ? Colors.purple : Colors.blue, child: const Icon(Icons.router, color: Colors.white)),
         title: Text(network['name'] ?? 'بدون اسم', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         subtitle: Text('📍 ${network['location'] ?? ''}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
         children: [
@@ -392,6 +405,10 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
             child: Column(
               children: categories.map((cat) {
                 double price = (cat['price'] ?? 0).toDouble();
+                // 👈 قراءة المخزون الحقيقي من المايكروتيك
+                int stock = cat['stock'] ?? cat['available'] ?? 0;
+                bool isAvailable = stock > 0;
+
                 return Container(
                   margin: const EdgeInsets.only(bottom: 10),
                   padding: const EdgeInsets.all(12),
@@ -402,14 +419,16 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(cat['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+                          Text(cat['name'] ?? '', style: TextStyle(fontWeight: FontWeight.bold, color: isPos ? Colors.purple : Colors.orange)),
                           Text('السعة: ${cat['capacity']} | الوقت: ${cat['time']}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                          // 👈 عرض المخزون الحقيقي هنا
+                          Text('المخزون: $stock كرت', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isAvailable ? Colors.green : Colors.red)),
                         ],
                       ),
                       ElevatedButton(
-                        onPressed: () => _showPurchaseBottomSheet(context, '${network['name']} - ${cat['name']}', price, agentPhone, agentName),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade800, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-                        child: Text('شراء ($price)', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        onPressed: isAvailable ? () => _showPurchaseBottomSheet(context, '${network['name']} - ${cat['name']}', price, agentPhone, agentName, isPos) : null,
+                        style: ElevatedButton.styleFrom(backgroundColor: isAvailable ? (isPos ? Colors.purple : Colors.blue.shade800) : Colors.grey, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                        child: Text(isAvailable ? 'شراء ($price)' : 'نفدت الكمية', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
                       )
                     ],
                   ),
@@ -423,9 +442,9 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   }
 
   // ==========================================
-  // تصميم بطاقة "نقطة البيع"
+  // تصميم بطاقة "نقطة البيع" للزبون العادي
   // ==========================================
-  Widget _buildPoSCard(Map<String, dynamic> pos) {
+  Widget _buildPoSCard(Map<String, dynamic> pos, bool isCurrentPos) {
     List stock = pos['stock'] ?? [];
     String ownerName = pos['ownerName'] ?? 'مجهول';
     String ownerPhone = pos['ownerPhone'] ?? '';
@@ -448,6 +467,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
               children: [
                 const Text('الكروت المتاحة في هذه البقالة:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
                 const SizedBox(height: 10),
+                if (stock.isEmpty) const Text('لا يوجد كروت معروضة للبيع حالياً.', style: TextStyle(fontSize: 12, color: Colors.red)),
                 ...stock.map((item) {
                   int available = item['available'] ?? 0;
                   double price = (item['price'] ?? 0).toDouble();
@@ -465,14 +485,14 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text('${item['network']} - ${item['category']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                              Text('المخزون: $available كرت', style: TextStyle(fontSize: 11, color: isAvailable ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
+                              Text('المتاح: $available كرت', style: TextStyle(fontSize: 11, color: isAvailable ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ),
                         ElevatedButton(
-                          onPressed: isAvailable ? () => _showPurchaseBottomSheet(context, 'من ${pos['name']} (${item['network']})', price, ownerPhone, ownerName) : null,
+                          onPressed: isAvailable ? () => _showPurchaseBottomSheet(context, 'من ${pos['name']} (${item['network']})', price, ownerPhone, ownerName, isCurrentPos) : null,
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-                          child: Text(isAvailable ? 'شراء ($price)' : 'نفد الكمية', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                          child: Text(isAvailable ? 'شراء ($price)' : 'نفدت الكمية', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
                         )
                       ],
                     ),
