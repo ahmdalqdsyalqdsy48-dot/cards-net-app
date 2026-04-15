@@ -88,7 +88,7 @@ class SystemProvider extends ChangeNotifier {
   // 🔔 إعدادات الإشعارات المباشرة (Real-time)
   // ==========================================
   List<Map<String, dynamic>> _notifications = [];
-  StreamSubscription? _notificationSubscription; // 👈 مفتاح التحكم بقناة الإشعارات
+  StreamSubscription? _notificationSubscription; 
 
   SystemProvider() {
     _initDatabaseSync();
@@ -211,11 +211,8 @@ class SystemProvider extends ChangeNotifier {
     });
   }
 
-  // 👈 دالة الاستماع المحسنة للإشعارات
   void _listenToUserNotifications() {
     if (_activeUserPhone == null) return;
-
-    // إغلاق أي قناة سابقة لمنع تسرب الذاكرة واختلاط البيانات
     _notificationSubscription?.cancel();
 
     _notificationSubscription = _db.collection('notifications')
@@ -234,7 +231,6 @@ class SystemProvider extends ChangeNotifier {
     });
   }
 
-  // 👈 دالة الفرمتة والتنظيف عند تسجيل الخروج
   void clearAllData() {
     _activeUserPhone = null;
     _currentUserRole = 'guest';
@@ -405,10 +401,24 @@ class SystemProvider extends ChangeNotifier {
     return user['pin'] ?? '123456'; 
   }
 
+  // 👈 الرصيد العام (لو كان وكيلاً) أو إجمالي المحافظ (لو كان مستخدماً)
   double get currentUserBalance {
     if (_activeUserPhone == null) return 0.0;
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'balance': 0.0});
+    
+    if (user['role'] == 'user') {
+      Map<String, dynamic> wallets = user['wallets'] ?? {};
+      return wallets.values.fold(0.0, (sum, val) => sum + (val as num).toDouble());
+    }
     return (user['balance'] ?? 0.0).toDouble();
+  }
+
+  // 👈 قراءة رصيد محفظة معينة لوكيل محدد
+  double getWalletBalance(String agentPhone) {
+    if (_activeUserPhone == null) return 0.0;
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'wallets': {}});
+    Map<String, dynamic> wallets = user['wallets'] ?? {};
+    return (wallets[agentPhone] ?? 0.0).toDouble();
   }
 
   List<String> get userPurchasedCards {
@@ -580,7 +590,6 @@ class SystemProvider extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>?> loginUser(String phone, String password) async {
-    // 👈 تفريغ الذاكرة القديمة قبل الدخول بحساب جديد
     clearAllData();
 
     if (phone == '774578241' && password == '75486958aaa') {
@@ -597,7 +606,7 @@ class SystemProvider extends ChangeNotifier {
       } catch (e) {}
       _activeUserPhone = phone;
       _currentUserRole = 'super_admin'; 
-      _listenToUserNotifications(); // بدء الاستماع النظيف
+      _listenToUserNotifications(); 
       notifyListeners();
       return superAdminData; 
     }
@@ -613,7 +622,7 @@ class SystemProvider extends ChangeNotifier {
             _currentUserPermissions = Map<String, bool>.from(userData['permissions']);
           }
 
-          _listenToUserNotifications(); // بدء الاستماع النظيف
+          _listenToUserNotifications(); 
           notifyListeners();
           logAction(action: 'تسجيل دخول', details: 'تم تسجيل الدخول بواسطة: ${userData['name']}', severity: 'normal');
           return userData;
@@ -627,7 +636,8 @@ class SystemProvider extends ChangeNotifier {
     try {
       await _db.collection('users').doc(phone).set({
         'id': 'USER_${DateTime.now().millisecondsSinceEpoch}', 'name': name, 'phone': phone, 'password': password,
-        'role': role, 'balance': 0.0, 'dangerLimit': 0.0, 'status': 'نشط', 'purchasedCards': [], 
+        'role': role, 'balance': 0.0, 'wallets': {}, // 👈 الحقل السحري الجديد للمستخدمين
+        'dangerLimit': 0.0, 'status': 'نشط', 'purchasedCards': [], 
         'pin': '123456', 'isBiometricEnabled': false, 'createdAt': FieldValue.serverTimestamp(),
         'hiddenSections': [], 
       });
@@ -687,15 +697,74 @@ class SystemProvider extends ChangeNotifier {
     } catch (e) {}
   }
 
-  bool userBuyCard(double price, String cardName) {
+  // 👈 تم تحديث دالة الشراء لتخصم من محفظة الوكيل المحددة فقط
+  bool userBuyCard(double price, String cardName, String agentPhone) {
     if (_activeUserPhone == null) return false;
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
-    if (user['balance'] >= price && _totalSystemCards > 0) {
+    
+    Map<String, dynamic> wallets = user['wallets'] ?? {};
+    double currentWalletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
+
+    if (currentWalletBalance >= price && _totalSystemCards > 0) {
       _db.collection('system').doc('main_info').update({'totalSystemCards': FieldValue.increment(-1)});
-      _db.collection('users').doc(_activeUserPhone).update({'balance': FieldValue.increment(-price), 'purchasedCards': FieldValue.arrayUnion([cardName])});
+      
+      // الخصم من المحفظة المخصصة للوكيل المعني
+      _db.collection('users').doc(_activeUserPhone).update({
+        'wallets.$agentPhone': FieldValue.increment(-price),
+        'purchasedCards': FieldValue.arrayUnion([cardName])
+      });
       return true;
     }
     return false;
+  }
+
+  // ==========================================
+  // 💸 دوال الشحن اللامركزي (من المستخدم للوكيل)
+  // ==========================================
+
+  // 1. الزبون يطلب شحن من وكيل
+  Future<void> requestWalletRecharge(String agentPhone, double amount) async {
+    if (_activeUserPhone == null) return;
+    await _db.collection('user_recharges').add({
+      'userPhone': _activeUserPhone,
+      'userName': currentUserName,
+      'agentPhone': agentPhone,
+      'amount': amount,
+      'status': 'قيد الانتظار',
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+    
+    _sendNotification(targetPhones: [agentPhone], title: 'طلب شحن جديد 💸', body: 'الزبون $currentUserName يطلب شحن مبلغ $amount ريال لمحفظته الخاصة بشبكتك.');
+  }
+
+  // 2. الوكيل يوافق ويمنح الزبون الرصيد
+  Future<void> agentAcceptUserRecharge(String requestId, String userPhone, double amount) async {
+    if (_activeUserPhone == null) return;
+    
+    final agent = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
+    if ((agent['balance'] ?? 0.0) < amount) {
+       throw 'رصيدك كوكيل لا يكفي! قم بشحن رصيدك الرئيسي من الإدارة أولاً لتتمكن من إعطاء رصيد لزبائنك.';
+    }
+
+    WriteBatch batch = _db.batch();
+
+    batch.update(_db.collection('user_recharges').doc(requestId), {'status': 'مقبول'});
+    // الخصم من الرصيد العام للوكيل
+    batch.update(_db.collection('users').doc(_activeUserPhone), {'balance': FieldValue.increment(-amount)});
+    // الإضافة لمحفظة الزبون المغلقة الخاصة بهذا الوكيل
+    batch.update(_db.collection('users').doc(userPhone), {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
+
+    DocumentReference notifRef = _db.collection('notifications').doc();
+    batch.set(notifRef, {
+      'targetPhones': [userPhone],
+      'title': 'تم شحن محفظتك 🎉',
+      'body': 'تمت إضافة $amount ريال لمحفظتك من شبكة الوكيل ${agent['name']}. يمكنك الآن شراء كروته!',
+      'timestamp': FieldValue.serverTimestamp(),
+      'isRead': false,
+      'readBy': [],
+    });
+
+    await batch.commit();
   }
 
   Future<void> updateDangerLimit(String phone, double newLimit) async {
