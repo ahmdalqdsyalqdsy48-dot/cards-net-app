@@ -1,3 +1,4 @@
+import 'dart:async'; // 👈 ضروري للتحكم في قنوات الاستماع (Streams)
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 
@@ -83,8 +84,11 @@ class SystemProvider extends ChangeNotifier {
   int _smsBalance = 0; 
   DateTimeRange? _dashboardDateRange; 
 
-  // 👈 إضافة قائمة الإشعارات
+  // ==========================================
+  // 🔔 إعدادات الإشعارات المباشرة (Real-time)
+  // ==========================================
   List<Map<String, dynamic>> _notifications = [];
+  StreamSubscription? _notificationSubscription; // 👈 مفتاح التحكم بقناة الإشعارات
 
   SystemProvider() {
     _initDatabaseSync();
@@ -207,26 +211,38 @@ class SystemProvider extends ChangeNotifier {
     });
   }
 
-  // 👈 إضافة مستمع للإشعارات يعمل بمجرد تسجيل الدخول
+  // 👈 دالة الاستماع المحسنة للإشعارات
   void _listenToUserNotifications() {
     if (_activeUserPhone == null) return;
 
-    // استهداف جميع الإشعارات الموجهة إما لرقم المستخدم أو الموجهة لجميع الوكلاء/المستخدمين بناءً على دوره
-    _db.collection('notifications')
-      .where('targetPhones', arrayContainsAny: [_activeUserPhone, 'all', _currentUserRole == 'agent' ? 'all_agents' : 'all_users'])
+    // إغلاق أي قناة سابقة لمنع تسرب الذاكرة واختلاط البيانات
+    _notificationSubscription?.cancel();
+
+    _notificationSubscription = _db.collection('notifications')
+      .where('targetPhones', arrayContainsAny: [_activeUserPhone, 'all', _currentUserRole == 'agent' ? 'all_agents' : 'all_staff'])
       .orderBy('timestamp', descending: true)
       .limit(30)
       .snapshots()
       .listen((snapshot) {
         _notifications = snapshot.docs.map((doc) {
           final data = doc.data();
-          // فحص حالة القراءة الخاصة بهذا المستخدم تحديداً إذا كان الإشعار جماعياً
           List readBy = data['readBy'] ?? [];
           bool isRead = readBy.contains(_activeUserPhone) || data['isRead'] == true;
           return {'docId': doc.id, ...data, 'isReadLocal': isRead};
         }).toList();
         notifyListeners();
     });
+  }
+
+  // 👈 دالة الفرمتة والتنظيف عند تسجيل الخروج
+  void clearAllData() {
+    _activeUserPhone = null;
+    _currentUserRole = 'guest';
+    _currentUserPermissions = {};
+    _notifications = [];
+    _notificationSubscription?.cancel(); 
+    _notificationSubscription = null;
+    notifyListeners();
   }
 
   void _runAutoRadar(List<Map<String, dynamic>> users) {
@@ -311,7 +327,6 @@ class SystemProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get bankAccounts => _bankAccounts;
   List<Map<String, dynamic>> get coupons => _coupons;
 
-  // 👈 إضافة جلب الإشعارات
   List<Map<String, dynamic>> get notifications => _notifications;
   int get unreadNotificationsCount => _notifications.where((n) => n['isReadLocal'] == false).length;
 
@@ -565,8 +580,8 @@ class SystemProvider extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>?> loginUser(String phone, String password) async {
-    _currentUserPermissions = {};
-    _currentUserRole = 'guest';
+    // 👈 تفريغ الذاكرة القديمة قبل الدخول بحساب جديد
+    clearAllData();
 
     if (phone == '774578241' && password == '75486958aaa') {
       final superAdminData = {
@@ -582,7 +597,7 @@ class SystemProvider extends ChangeNotifier {
       } catch (e) {}
       _activeUserPhone = phone;
       _currentUserRole = 'super_admin'; 
-      _listenToUserNotifications(); // 👈 تفعيل مستمع الإشعارات بعد الدخول
+      _listenToUserNotifications(); // بدء الاستماع النظيف
       notifyListeners();
       return superAdminData; 
     }
@@ -598,7 +613,7 @@ class SystemProvider extends ChangeNotifier {
             _currentUserPermissions = Map<String, bool>.from(userData['permissions']);
           }
 
-          _listenToUserNotifications(); // 👈 تفعيل المستمع
+          _listenToUserNotifications(); // بدء الاستماع النظيف
           notifyListeners();
           logAction(action: 'تسجيل دخول', details: 'تم تسجيل الدخول بواسطة: ${userData['name']}', severity: 'normal');
           return userData;
@@ -618,7 +633,7 @@ class SystemProvider extends ChangeNotifier {
       });
       _activeUserPhone = phone;
       _currentUserRole = role; 
-      _listenToUserNotifications(); // 👈 تفعيل المستمع
+      _listenToUserNotifications(); 
       notifyListeners();
     } catch (e) { throw 'فشل تسجيل المستخدم: $e'; }
   }
@@ -640,7 +655,6 @@ class SystemProvider extends ChangeNotifier {
         });
         logAction(action: 'إضافة وكيل جديد', details: 'تم إضافة وكيل جديد باسم "$name" ورقم $phone', severity: 'medium');
         
-        // 👈 إرسال إشعار ترحيبي للوكيل
         _sendNotification(targetPhones: [phone], title: 'أهلاً بك كوكيل جديد! 🎉', body: 'تم تفعيل حسابك كوكيل معتمد في النظام.');
       } else { throw 'رقم الهاتف مسجل مسبقاً في النظام!'; }
     } catch (e) { throw 'حدث خطأ: $e'; }
@@ -698,7 +712,6 @@ class SystemProvider extends ChangeNotifier {
       DocumentReference transactionRef = _db.collection('transactions').doc();
       batch.set(transactionRef, {'agentPhone': agentPhone, 'agentName': agentName, 'type': 'إيداع حوالة', 'amount': amount, 'timestamp': FieldValue.serverTimestamp()});
       
-      // 👈 إرسال إشعار للوكيل
       DocumentReference notifRef = _db.collection('notifications').doc();
       batch.set(notifRef, {
         'targetPhones': [agentPhone],
@@ -722,7 +735,6 @@ class SystemProvider extends ChangeNotifier {
          WriteBatch batch = _db.batch();
          batch.update(reqDoc.reference, {'status': 'مرفوض', 'rejectReason': reason});
          
-         // 👈 إرسال إشعار للوكيل بالرفض والسبب
          DocumentReference notifRef = _db.collection('notifications').doc();
          batch.set(notifRef, {
            'targetPhones': [agentPhone],
@@ -746,7 +758,6 @@ class SystemProvider extends ChangeNotifier {
       DocumentReference transactionRef = _db.collection('transactions').doc();
       batch.set(transactionRef, {'agentPhone': agentPhone, 'agentName': agentName, 'type': amount > 0 ? 'تسوية يدوية (إضافة)' : 'تسوية يدوية (خصم)', 'amount': amount, 'reason': reason, 'timestamp': FieldValue.serverTimestamp()});
       
-      // 👈 إرسال إشعار للوكيل بالتسوية
       DocumentReference notifRef = _db.collection('notifications').doc();
       batch.set(notifRef, {
         'targetPhones': [agentPhone],
@@ -761,7 +772,6 @@ class SystemProvider extends ChangeNotifier {
     } catch (e) { throw 'فشل التسوية اليدوية: $e'; }
   }
 
-  // 👈 دالة مساعدة لإنشاء إشعارات
   Future<void> _sendNotification({required List<String> targetPhones, required String title, required String body}) async {
     await _db.collection('notifications').add({
       'targetPhones': targetPhones,
@@ -773,7 +783,6 @@ class SystemProvider extends ChangeNotifier {
     });
   }
 
-  // 👈 دالة لجعل الإشعارات "مقروءة" عندما يضغط المستخدم على الجرس
   Future<void> markNotificationsAsRead() async {
     if (_activeUserPhone == null) return;
     
@@ -781,7 +790,6 @@ class SystemProvider extends ChangeNotifier {
     for (var notif in _notifications) {
       if (notif['isReadLocal'] == false) {
         DocumentReference ref = _db.collection('notifications').doc(notif['docId']);
-        // إضافة رقم المستخدم لقائمة من قرأ الإشعار
         batch.update(ref, {'readBy': FieldValue.arrayUnion([_activeUserPhone])});
       }
     }
@@ -824,7 +832,6 @@ class SystemProvider extends ChangeNotifier {
          'target': 'all_agents', 'timestamp': FieldValue.serverTimestamp(), 'status': 'sent'
       });
       
-      // إشعار فوري داخل التطبيق
       _sendNotification(targetPhones: ['all_agents'], title: 'كوبون جديد متاح! 🎟️', body: 'استخدم الكود $code للحصول على $discountDetails');
     } catch (e) { throw 'فشل إنشاء الكوبون: $e'; }
   }
