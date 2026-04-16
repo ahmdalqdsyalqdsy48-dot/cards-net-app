@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:math'; // 👈 ضرورية لتوليد أرقام الكروت العشوائية
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -188,14 +189,13 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
                             _play('click');
                             setModalState(() => isSubmitting = true);
                             try {
-                              // 👇 إضافة الفئة داخل مصفوفة الشبكة المحددة في فايربيز
                               var newCategory = {
                                 'id': DateTime.now().millisecondsSinceEpoch.toString(),
                                 'name': newName,
                                 'time': newTime.isNotEmpty ? newTime : 'غير محدد',
                                 'capacity': newCapacity.isNotEmpty ? newCapacity : 'مفتوح',
                                 'price': int.tryParse(newPrice) ?? 0,
-                                'color': selectedColor.value, // حفظ كود اللون
+                                'color': selectedColor.value, 
                                 'stock': 0, // المخزون يبدأ بصفر حتى يتم التوليد
                               };
 
@@ -241,7 +241,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
         role: 'وكيل معتمد (Agent)',
         currentBalance: sys.currentUserBalance,
       ),
-      // 👇 StreamBuilder رئيسي يجلب شبكات الوكيل الحالي لتغذية جميع التبويبات
       body: StreamBuilder<QuerySnapshot>(
         stream: _db.collection('networks').where('agentPhone', isEqualTo: sys.currentUserPhone).snapshots(),
         builder: (context, snapshot) {
@@ -280,7 +279,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
                       _buildServersTab(sys, agentNetworks),
                       _buildCategoriesTab(agentNetworks),
                       _buildDiscountTiersTab(),
-                      _buildGenerateCardsTab(agentNetworks),
+                      _buildGenerateCardsTab(sys, agentNetworks), // تمرير sys 
                     ],
                   ),
                 ),
@@ -416,12 +415,11 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
   }
 
   // ==========================================
-  // تبويب التوليد (محاكاة الاتصال بالمايكروتيك)
+  // تبويب التوليد (محاكاة الاتصال بالمايكروتيك + إنشاء الكروت الفعلي)
   // ==========================================
-  Widget _buildGenerateCardsTab(List<QueryDocumentSnapshot> networks) {
+  Widget _buildGenerateCardsTab(SystemProvider sys, List<QueryDocumentSnapshot> networks) {
     if (networks.isEmpty) return const Center(child: Text('يجب إضافة شبكة وفئات أولاً!'));
 
-    // استخراج كل الفئات مع معرّف الشبكة الخاص بها ليظهر في القائمة
     List<Map<String, dynamic>> allCategories = [];
     for (var net in networks) {
       String netId = net.id;
@@ -439,7 +437,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.blue)),
-            child: const Text('🔌 عند الضغط على توليد، سيقوم النظام بالاتصال بسيرفر المايكروتيك الخاص بك لتوليد الكروت وسحبها لمحفظة المتجر لتصبح متاحة لزبائنك.', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            child: const Text('🔌 عند الضغط على توليد، سيقوم النظام بتوليد الكروت وحفظها في قاعدة البيانات لتكون متاحة للبيع الفوري في سوق الشبكات.', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
           ),
           const SizedBox(height: 20),
           DropdownButtonFormField<String>(
@@ -455,7 +453,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
           TextField(
             controller: _generateAmountController,
             keyboardType: TextInputType.number,
-            decoration: InputDecoration(labelText: 'الكمية المطلوب توليدها (مثال: 100)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.format_list_numbered)),
+            decoration: InputDecoration(labelText: 'الكمية المطلوب توليدها (الحد الأقصى: 400)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.format_list_numbered)),
           ),
           const SizedBox(height: 30),
           SizedBox(
@@ -464,33 +462,66 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
               onPressed: () async {
                 if (_selectedCategoryToGenerate != null && _generateAmountController.text.isNotEmpty) {
                   int amount = int.tryParse(_generateAmountController.text) ?? 0;
+                  
+                  // حماية: الفايربيز لا يقبل اكثر من 500 عملية في الباتش الواحد
+                  if (amount > 400) {
+                     _play('error');
+                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الحد الأقصى للتوليد في الدفعة الواحدة هو 400 كرت!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                     return;
+                  }
+
                   if (amount > 0) {
                     _play('click');
                     
-                    // تحليل الـ ID المدمج لمعرفة الشبكة والفئة
                     List<String> parts = _selectedCategoryToGenerate!.split('_');
                     String netId = parts[0];
                     String catId = parts[1];
 
                     try {
-                      // 1. جلب بيانات الشبكة لتحديث المخزون
                       DocumentReference netRef = _db.collection('networks').doc(netId);
                       DocumentSnapshot netDoc = await netRef.get();
                       List cats = List.from((netDoc.data() as Map)['categories']);
+                      String netName = (netDoc.data() as Map)['name'];
                       
-                      // 2. تحديث المخزون للفئة المطلوبة
                       int index = cats.indexWhere((c) => c['id'] == catId);
+                      
                       if (index != -1) {
+                        String catName = cats[index]['name'];
+                        String cardTitle = '$netName - $catName';
+
+                        // 👈 السحر هنا: توليد الكروت الفعلية ورفعها
+                        WriteBatch batch = _db.batch();
+                        
+                        for (int i = 0; i < amount; i++) {
+                           // توليد PIN قوي: 12 رقم عشوائي
+                           String pin = '${Random().nextInt(9000)+1000}-${Random().nextInt(9000)+1000}-${Random().nextInt(9000)+1000}';
+                           
+                           DocumentReference cardRef = _db.collection('cards').doc();
+                           batch.set(cardRef, {
+                             'pin': pin,
+                             'networkId': netId,
+                             'categoryId': catId,
+                             'cardTitle': cardTitle,
+                             'agentPhone': sys.currentUserPhone,
+                             'status': 'متاح',
+                             'createdAt': FieldValue.serverTimestamp(),
+                           });
+                        }
+
+                        // تحديث رقم المخزون في الفئة لتنعكس في الواجهة
                         cats[index]['stock'] += amount;
-                        await netRef.update({'categories': cats});
+                        batch.update(netRef, {'categories': cats});
+                        
+                        // تنفيذ الرفع
+                        await batch.commit();
                         
                         _play('success');
                         _generateAmountController.clear();
-                        if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم توليد وإضافة $amount كرت بنجاح! متاحة الآن للزبائن ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                        if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم توليد وإضافة $amount كرت حقيقي بنجاح! متاح الآن للزبائن ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
                       }
                     } catch (e) {
                       _play('error');
-                      if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('فشلت العملية', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                      if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('فشلت العملية، يرجى المحاولة لاحقاً', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
                     }
                   }
                 } else {
