@@ -93,7 +93,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   }
 
   // ==========================================
-  // 2. نافذة إتمام الشراء المخصصة (تعالج الزبون والبقالة) 💳
+  // 2. نافذة إتمام الشراء المخصصة 💳
   // ==========================================
   void _showPurchaseBottomSheet(BuildContext context, String title, double price, String agentPhone, String agentName, bool isPos) {
     _play('click');
@@ -102,9 +102,19 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     
     final systemProvider = Provider.of<SystemProvider>(context, listen: false);
     
-    // 👈 السحر المالي: إذا كان بقالة يقرأ الرصيد العام، وإذا زبون يقرأ محفظة الوكيل المحددة!
-    double availableBalance = isPos ? systemProvider.currentUserBalance : systemProvider.getWalletBalance(agentPhone);
-    bool canAfford = availableBalance >= price;
+    // 👈 السحر المالي: حساب القدرة الشرائية (رصيد المحفظة + الحد الائتماني من هذا الوكيل)
+    double walletBalance = systemProvider.getWalletBalance(agentPhone);
+    double creditLimit = 0.0;
+    
+    if (isPos) {
+      Map<String, dynamic> currentUserData = systemProvider.usersList.firstWhere((u) => u['phone'] == systemProvider.currentUserPhone, orElse: () => {});
+      Map<String, dynamic> relations = currentUserData['agent_relations'] ?? {};
+      Map<String, dynamic> myRel = relations[agentPhone] ?? {};
+      creditLimit = (myRel['creditLimit'] ?? 0.0).toDouble();
+    }
+    
+    double totalPurchasingPower = walletBalance + creditLimit;
+    bool canAfford = totalPurchasingPower >= price;
 
     showModalBottomSheet(
       context: context,
@@ -133,7 +143,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                       Text('هل أنت متأكد من شراء كرت ($title)؟', textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
                       const SizedBox(height: 20),
                       
-                      // 👈 عرض الرصيد الصحيح بناءً على الهوية
+                      // 👈 عرض الرصيد الصحيح 
                       Container(
                         padding: const EdgeInsets.all(15),
                         decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.blue.withOpacity(0.3))),
@@ -143,11 +153,13 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(isPos ? 'رصيدك العام كبقالة:' : 'رصيدك المتاح لدى:', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                                Text(isPos ? 'نقطة بيع معتمدة' : 'الوكيل $agentName', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                                const Text('رصيدك المتاح لدى:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                Text('الوكيل $agentName', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                                if (isPos && creditLimit > 0)
+                                  Text('+ دين مسموح: $creditLimit', style: const TextStyle(color: Colors.purple, fontSize: 10, fontWeight: FontWeight.bold)),
                               ],
                             ),
-                            Text('${availableBalance.toStringAsFixed(0)} ريال', style: TextStyle(fontWeight: FontWeight.bold, color: canAfford ? Colors.blue : Colors.red, fontSize: 16)),
+                            Text('${totalPurchasingPower.toStringAsFixed(0)} ريال', style: TextStyle(fontWeight: FontWeight.bold, color: canAfford ? Colors.blue : Colors.red, fontSize: 16)),
                           ],
                         ),
                       ),
@@ -174,6 +186,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                             style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                             onPressed: () {
                               _play('click');
+                              // 👇 استدعاء دالة الشراء 
                               bool success = systemProvider.userBuyCard(price, title, agentPhone);
                               
                               if (success) {
@@ -182,7 +195,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                               } else {
                                 _play('error');
                                 Navigator.pop(context); 
-                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('فشلت العملية، تأكد من الرصيد أو المخزون!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('فشلت العملية، تأكد من الرصيد!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
                               }
                             },
                             child: const Text('تأكيد وشراء الآن', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
@@ -259,20 +272,26 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
       currentUserData = sys.usersList.firstWhere((u) => u['phone'] == sys.currentUserPhone, orElse: () => {});
     }
     
-    final List<dynamic> allowedCats = currentUserData['allowedCategories'] ?? [];
-    final String parentAgentPhone = currentUserData['parentAgent'] ?? '';
+    // جلب مصفوفة الوكلاء الذين تتعامل معهم البقالة وعلاقاتها
+    final List<dynamic> posAgents = currentUserData['pos_agents'] ?? [];
+    final Map<String, dynamic> agentRelations = currentUserData['agent_relations'] ?? {};
 
     return DefaultTabController(
       length: 2,
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: const CustomHeader(title: 'سوق الشبكات ونقاط البيع'),
-        drawer: CustomUserDrawer(userName: sys.currentUserName, phoneNumber: sys.currentUserPhone),
+        drawer: CustomUserDrawer(
+          userName: sys.currentUserName, 
+          phoneNumber: sys.currentUserPhone, 
+        ),
         body: Directionality(
           textDirection: TextDirection.rtl,
           child: Column(
             children: [
-              // شريط البحث المطور
+              // ==========================================
+              // 1. شريط البحث الذكي
+              // ==========================================
               Container(
                 color: isPos ? Colors.purple.shade800 : Colors.blue.shade800,
                 padding: const EdgeInsets.all(16),
@@ -280,9 +299,10 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                   onChanged: (value) => setState(() { _searchQuery = value.trim().toLowerCase(); }), 
                   style: const TextStyle(color: Colors.black),
                   decoration: InputDecoration(
-                    hintText: isPos ? 'ابحث في شبكتك المعتمدة...' : 'ابحث عن شبكة أو بقالة أو منطقة...',
+                    hintText: isPos ? 'ابحث في شبكات مورديك...' : 'ابحث عن شبكة أو بقالة أو منطقة...',
                     prefixIcon: Icon(Icons.search, color: isPos ? Colors.purple : Colors.blue),
-                    filled: true, fillColor: Colors.white,
+                    filled: true,
+                    fillColor: Colors.white,
                     contentPadding: const EdgeInsets.symmetric(vertical: 0),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
                   ),
@@ -292,8 +312,10 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
               Container(
                 color: isPos ? Colors.purple.shade800 : Colors.blue.shade800,
                 child: const TabBar(
-                  labelColor: Colors.white, unselectedLabelColor: Colors.white54,
-                  indicatorColor: Colors.orange, indicatorWeight: 4,
+                  labelColor: Colors.white,
+                  unselectedLabelColor: Colors.white54,
+                  indicatorColor: Colors.orange,
+                  indicatorWeight: 4,
                   tabs: [
                     Tab(icon: Icon(Icons.wifi), text: 'الشبكات المتاحة 📡'),
                     Tab(icon: Icon(Icons.store), text: 'نقاط البيع 🏪'),
@@ -301,21 +323,27 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                 ),
               ),
 
+              // ==========================================
+              // 3. قراءة البيانات من السيرفر (StreamBuilder) 📡
+              // ==========================================
               Expanded(
                 child: TabBarView(
                   children: [
-                    // ==========================================
-                    // التبويب الأول: الشبكات (مع فلترة البقالة)
-                    // ==========================================
+                    // --- التبويب الأول: الشبكات ---
                     StreamBuilder<QuerySnapshot>(
-                      // 👈 إذا كان بقالة، نجلب شبكات وكيله فقط. إذا زبون عادي، نجلب الكل.
-                      stream: isPos 
-                          ? _db.collection('networks').where('agentPhone', isEqualTo: parentAgentPhone).snapshots()
+                      // 👈 إذا كان بقالة، نجلب شبكات الوكلاء المرتبطين به فقط!
+                      stream: (isPos && posAgents.isNotEmpty)
+                          ? _db.collection('networks').where('agentPhone', whereIn: posAgents.take(10).toList()).snapshots()
                           : _db.collection('networks').snapshots(),
                       builder: (context, snapshot) {
                         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                        
+                        // إذا كان بقالة وليس لديه موردين (وكلاء)
+                        if (isPos && posAgents.isEmpty) return const Center(child: Text('لم يتم ربطك بأي وكيل حتى الآن.', style: TextStyle(color: Colors.grey)));
+
                         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text('لا توجد شبكات معروضة حالياً.', style: TextStyle(color: Colors.grey)));
 
+                        // فلترة البحث
                         var networks = snapshot.data!.docs.where((doc) {
                           var net = doc.data() as Map<String, dynamic>;
                           return (net['name']?.toString().toLowerCase().contains(_searchQuery) ?? false) || 
@@ -329,21 +357,20 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                           itemCount: networks.length,
                           itemBuilder: (context, index) {
                             var net = networks[index].data() as Map<String, dynamic>;
-                            return _buildNetworkCard(net, isPos, allowedCats);
+                            return _buildNetworkCard(net, isPos, agentRelations);
                           },
                         );
                       },
                     ),
                     
-                    // ==========================================
-                    // التبويب الثاني: نقاط البيع الأخرى
-                    // ==========================================
+                    // --- التبويب الثاني: نقاط البيع ---
                     StreamBuilder<QuerySnapshot>(
                       stream: _db.collection('points_of_sale').snapshots(),
                       builder: (context, snapshot) {
                         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
                         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text('لا توجد نقاط بيع معروضة حالياً.', style: TextStyle(color: Colors.grey)));
 
+                        // فلترة البحث
                         var posList = snapshot.data!.docs.where((doc) {
                           var pos = doc.data() as Map<String, dynamic>;
                           return (pos['name']?.toString().toLowerCase().contains(_searchQuery) ?? false) || 
@@ -373,21 +400,22 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   }
 
   // ==========================================
-  // تصميم بطاقة "الشبكة" المفلترة للبقالة
+  // تصميم بطاقة "الشبكة" 
   // ==========================================
-  Widget _buildNetworkCard(Map<String, dynamic> network, bool isPos, List allowedCats) {
+  Widget _buildNetworkCard(Map<String, dynamic> network, bool isPos, Map<String, dynamic> agentRelations) {
     List categories = network['categories'] ?? [];
-    
-    // 👈 فلترة الفئات إذا كان الزائر بقالة (بحسب الصلاحيات التي منحها الوكيل)
-    if (isPos) {
-      categories = categories.where((cat) => allowedCats.contains(cat['id'])).toList();
-    }
-    
-    // إذا لم يتبقَ أي فئات مسموحة، لا نظهر هذه الشبكة إطلاقاً
-    if (categories.isEmpty) return const SizedBox.shrink();
-
     String agentPhone = network['agentPhone'] ?? '';
     String agentName = network['agentName'] ?? 'مجهول';
+
+    // 👈 فلترة الفئات إذا كان الزائر بقالة (كل وكيل له فئات مسموحة خاصة به)
+    if (isPos) {
+      Map<String, dynamic> myRelationWithThisAgent = agentRelations[agentPhone] ?? {};
+      List<dynamic> allowedCatsForThisAgent = myRelationWithThisAgent['allowedCategories'] ?? [];
+      categories = categories.where((cat) => allowedCatsForThisAgent.contains(cat['id'])).toList();
+    }
+
+    // إذا لم يتبقَ أي فئات مسموحة لهذه البقالة في هذه الشبكة، لا تظهر الشبكة!
+    if (categories.isEmpty) return const SizedBox.shrink();
 
     return Card(
       elevation: 3,
@@ -405,7 +433,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
             child: Column(
               children: categories.map((cat) {
                 double price = (cat['price'] ?? 0).toDouble();
-                // 👈 قراءة المخزون الحقيقي من المايكروتيك
+                // 👈 قراءة المخزون الحقيقي المتبقي في السيرفر
                 int stock = cat['stock'] ?? cat['available'] ?? 0;
                 bool isAvailable = stock > 0;
 
@@ -421,7 +449,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                         children: [
                           Text(cat['name'] ?? '', style: TextStyle(fontWeight: FontWeight.bold, color: isPos ? Colors.purple : Colors.orange)),
                           Text('السعة: ${cat['capacity']} | الوقت: ${cat['time']}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                          // 👈 عرض المخزون الحقيقي هنا
+                          // عرض حالة المخزون
                           Text('المخزون: $stock كرت', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isAvailable ? Colors.green : Colors.red)),
                         ],
                       ),
@@ -442,7 +470,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   }
 
   // ==========================================
-  // تصميم بطاقة "نقطة البيع" للزبون العادي
+  // تصميم بطاقة "نقطة البيع"
   // ==========================================
   Widget _buildPoSCard(Map<String, dynamic> pos, bool isCurrentPos) {
     List stock = pos['stock'] ?? [];
