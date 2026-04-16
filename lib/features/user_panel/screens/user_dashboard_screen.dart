@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 // import 'package:url_launcher/url_launcher.dart'; // 👈 (اختياري) يمكنك تفعيلها لمشاركة الكروت عبر واتساب لاحقاً
 
 import '../../../core/providers/system_provider.dart'; 
-import '../../../core/providers/ui_provider.dart'; // 👈 لإضافة أصوات التفاعل
+import '../../../core/providers/ui_provider.dart'; 
 import '../../../core/widgets/custom_header.dart'; 
 import '../widgets/custom_user_drawer.dart';
 
@@ -44,7 +44,9 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
     final bool isPos = role == 'pos'; // تحديد الهوية
 
     final double realBalance = systemProvider.currentUserBalance;
-    final List<String> purchasedCards = systemProvider.userPurchasedCards;
+    
+    // 👈 الإصلاح الجوهري للكومبايلر: قراءة الفاتورة التفصيلية كـ Map بدلاً من نص
+    final List<Map<String, dynamic>> purchasedCards = systemProvider.userPurchasedCards;
     final bool hasActiveCard = purchasedCards.isNotEmpty;
 
     return Scaffold(
@@ -94,7 +96,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                     
                     // 👈 زر خاص للبقالات فقط، أو زر مكافآت للمستخدم العادي
                     if (isPos)
-                      _buildQuickActionBtn(Icons.bar_chart, 'مبيعاتي (قريباً)', Colors.blueGrey, () {
+                      _buildQuickActionBtn(Icons.bar_chart, 'مبيعاتي', Colors.blueGrey, () {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('شاشة تقارير البقالة قيد التطوير 🛠️')));
                       })
                     else
@@ -105,7 +107,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
 
               const SizedBox(height: 25),
 
-              // 3. قسم الكرت النشط (يظهر فقط إذا كان هناك كرت تم شراؤه)
+              // 3. قسم الكرت النشط (يقرأ أحدث كرت فعلي مسحوب)
               if (hasActiveCard) _buildActiveCardSection(isDark, purchasedCards.last, isPos),
 
               // 4. قسم العروض الإعلانية
@@ -134,7 +136,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: isPos ? [Colors.purple.shade900, Colors.purple.shade600] : [Colors.blue.shade900, Colors.blue.shade500], // 👈 تغيير اللون للبقالة
+          colors: isPos ? [Colors.purple.shade900, Colors.purple.shade600] : [Colors.blue.shade900, Colors.blue.shade500], 
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -191,10 +193,13 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   // ==========================================
-  // بناء قسم الكرت النشط (مطوّر للنسخ والمشاركة)
+  // بناء قسم الكرت النشط (مطوّر لقراءة الفاتورة الحقيقية)
   // ==========================================
-  Widget _buildActiveCardSection(bool isDark, String lastPurchasedCardName, bool isPos) {
-    final mockPin = '8472-9102-${DateTime.now().millisecondsSinceEpoch.toString().substring(9)}';
+  Widget _buildActiveCardSection(bool isDark, Map<String, dynamic> lastCardData, bool isPos) {
+    
+    // استخراج البيانات الحقيقية من كائن الفاتورة
+    final String title = lastCardData['title'] ?? 'كرت غير معروف';
+    final String actualPin = lastCardData['pin'] ?? 'غير متوفر';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -217,7 +222,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(child: Text(lastPurchasedCardName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green), overflow: TextOverflow.ellipsis)),
+                  Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green), overflow: TextOverflow.ellipsis)),
                   const Icon(Icons.check_circle, color: Colors.green),
                 ],
               ),
@@ -226,7 +231,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('رقم الكرت (PIN):', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  Text(mockPin, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: 2)),
+                  Text(actualPin, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: 2)),
                 ],
               ),
               const SizedBox(height: 10),
@@ -238,11 +243,11 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                   // 👈 أزرار النسخ والمشاركة
                   Row(
                     children: [
-                      if (isPos) // زر المشاركة مفيد للبقالة لإرسال الكرت للزبون
+                      if (isPos) 
                         IconButton(
                           onPressed: () {
                             Provider.of<UiProvider>(context, listen: false).playSound('click');
-                            // launchUrl(Uri.parse('https://wa.me/?text=رقم الكرت: $mockPin'));
+                            // launchUrl(Uri.parse('https://wa.me/?text=رقم الكرت: $actualPin'));
                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ميزة المشاركة جاهزة للربط', textDirection: TextDirection.rtl)));
                           }, 
                           icon: const Icon(Icons.share, size: 18, color: Colors.teal), padding: EdgeInsets.zero, constraints: const BoxConstraints(),
@@ -251,7 +256,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                       IconButton(
                         onPressed: () {
                           Provider.of<UiProvider>(context, listen: false).playSound('success');
-                          Clipboard.setData(ClipboardData(text: mockPin));
+                          Clipboard.setData(ClipboardData(text: actualPin));
                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم النسخ بنجاح ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
                         }, 
                         icon: const Icon(Icons.copy, size: 18, color: Colors.blue), padding: EdgeInsets.zero, constraints: const BoxConstraints(),
@@ -277,7 +282,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   // ==========================================
-  // بناء قسم العروض
+  // بناء قسم العروض الإعلانية الترويجية
   // ==========================================
   Widget _buildPromoSection() {
     return SizedBox(
@@ -298,7 +303,10 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
     return Container(
       width: 280,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(gradient: LinearGradient(colors: [c1, c2]), borderRadius: BorderRadius.circular(15)),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [c1, c2]),
+        borderRadius: BorderRadius.circular(15),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
