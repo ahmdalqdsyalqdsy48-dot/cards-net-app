@@ -98,7 +98,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   void _showPurchaseBottomSheet(BuildContext context, String title, double price, String agentPhone, String agentName, bool isPos) {
     _play('click');
     bool isPurchased = false;
-    bool isSubmittingPurchase = false; // 👈 حماية من النقر المزدوج أثناء الشراء
+    bool isSubmittingPurchase = false; // 👈 حماية من النقر المزدوج
     String actualPinFetched = ''; // 👈 لاستقبال الكرت الحقيقي
     
     final systemProvider = Provider.of<SystemProvider>(context, listen: false);
@@ -185,15 +185,15 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                             style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                             onPressed: isSubmittingPurchase ? null : () async {
                               _play('click');
-                              setModalState(() => isSubmittingPurchase = true); // 👈 إظهار التحميل
+                              setModalState(() => isSubmittingPurchase = true); // 👈 إظهار التحميل ومنع النقر المزدوج
                               
                               try {
-                                // 👇 الاتصال بالعقل المدبر وإجراء الشراء الحقيقي
+                                // 👇 الاتصال بالسيرفر لإجراء الشراء الحقيقي
                                 String realPin = await systemProvider.executeRealPurchase(price, title, agentPhone);
                                 _play('success');
                                 
                                 setModalState(() { 
-                                  actualPinFetched = realPin; // تخزين الكرت الحقيقي
+                                  actualPinFetched = realPin; // 👈 تخزين الكرت الحقيقي
                                   isPurchased = true; 
                                   isSubmittingPurchase = false;
                                 }); 
