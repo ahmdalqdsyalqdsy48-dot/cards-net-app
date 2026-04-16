@@ -5,8 +5,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class SystemProvider extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  double _adminMainBalance = 10000000.0; 
-  int _totalSystemCards = 5000; 
+  // تم تصفير الأرصدة الوهمية لتعتمد على السيرفر الفعلي
+  double _adminMainBalance = 0.0; 
+  int _totalSystemCards = 0; 
   String? _activeUserPhone; 
   double _newsScrollSpeed = 40.0; 
 
@@ -98,9 +99,9 @@ class SystemProvider extends ChangeNotifier {
     _db.collection('system').doc('main_info').snapshots().listen((snapshot) {
       if (snapshot.exists) {
         final data = snapshot.data()!;
-        _adminMainBalance = (data['adminMainBalance'] ?? 10000000.0).toDouble();
-        _totalSystemCards = data['totalSystemCards'] ?? 5000;
-        _announcements = List<String>.from(data['announcements'] ?? ['أهلاً بك في شبكة كروت نت...']);
+        _adminMainBalance = (data['adminMainBalance'] ?? 0.0).toDouble();
+        _totalSystemCards = data['totalSystemCards'] ?? 0;
+        _announcements = List<String>.from(data['announcements'] ?? []);
         _newsScrollSpeed = (data['newsScrollSpeed'] ?? 40.0).toDouble();
         
         _isMaintenanceMode = data['isMaintenanceMode'] ?? false;
@@ -385,12 +386,12 @@ class SystemProvider extends ChangeNotifier {
   }
 
   String get currentUserName {
-    if (_activeUserPhone == null) return 'مستخدم غير معروف';
-    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'name': 'مستخدم غير معروف'});
-    return user['name'] ?? 'مستخدم غير معروف';
+    if (_activeUserPhone == null) return '';
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'name': ''});
+    return user['name'] ?? '';
   }
 
-  String get currentUserPhone => _activeUserPhone ?? 'لا يوجد رقم';
+  String get currentUserPhone => _activeUserPhone ?? '';
 
   bool hasPermission(String permissionName) {
     if (_currentUserRole == 'super_admin') return true; 
@@ -403,12 +404,9 @@ class SystemProvider extends ChangeNotifier {
     return user['pin'] ?? '123456'; 
   }
 
-  // 👈 الرصيد العام المعروض للزبون أو البقالة (مجموع كل المحافظ)
   double get currentUserBalance {
     if (_activeUserPhone == null) return 0.0;
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'balance': 0.0});
-    
-    // البقالة والزبون العادي أصبحا يستخدمان نظام المحافظ
     if (user['role'] == 'user' || user['role'] == 'pos') {
       Map<String, dynamic> wallets = user['wallets'] ?? {};
       return wallets.values.fold(0.0, (sum, val) => sum + (val as num).toDouble());
@@ -416,7 +414,6 @@ class SystemProvider extends ChangeNotifier {
     return (user['balance'] ?? 0.0).toDouble();
   }
 
-  // 👈 قراءة المحفظة المخصصة لوكيل محدد
   double getWalletBalance(String agentPhone) {
     if (_activeUserPhone == null) return 0.0;
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'wallets': {}});
@@ -424,10 +421,23 @@ class SystemProvider extends ChangeNotifier {
     return (wallets[agentPhone] ?? 0.0).toDouble();
   }
 
-  List<String> get userPurchasedCards {
+  // 👈 دالة القراءة المحدثة لتتوافق مع الفاتورة التفصيلية
+  List<Map<String, dynamic>> get userPurchasedCards {
     if (_activeUserPhone == null) return [];
-    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'purchasedCards': <String>[]});
-    return List<String>.from(user['purchasedCards'] ?? []);
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'purchasedCards': []});
+    
+    // تحويل آمن للمصفوفة
+    var rawList = user['purchasedCards'] ?? [];
+    List<Map<String, dynamic>> structuredList = [];
+    for (var item in rawList) {
+      if (item is Map) {
+        structuredList.add(Map<String, dynamic>.from(item));
+      } else if (item is String) {
+        // حماية ودعم للبيانات القديمة التي كانت تحفظ نصاً فقط
+        structuredList.add({'title': item, 'pin': 'بيانات قديمة', 'price': 0.0, 'date': ''});
+      }
+    }
+    return structuredList;
   }
 
   List<String> get currentUserHiddenSections {
@@ -603,9 +613,7 @@ class SystemProvider extends ChangeNotifier {
       };
       try {
         _db.collection('users').doc('774578241').set(superAdminData, SetOptions(merge: true));
-        _db.collection('system').doc('main_info').set({
-          'adminMainBalance': 10000000.0, 'totalSystemCards': 5000,
-        }, SetOptions(merge: true));
+        // تم حذف البيانات الوهمية من الإعدادات العامة لكي لا تؤثر على الإنتاج الفعلي
       } catch (e) {}
       _activeUserPhone = phone;
       _currentUserRole = 'super_admin'; 
@@ -700,33 +708,90 @@ class SystemProvider extends ChangeNotifier {
     } catch (e) {}
   }
 
-  // 👈 دالة الشراء المحدثة الذكية (تدعم الحد الائتماني للبقالة، واستخدام المحافظ للجميع)
-  bool userBuyCard(double price, String cardName, String agentPhone) {
-    if (_activeUserPhone == null) return false;
-    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
-    
-    Map<String, dynamic> wallets = user['wallets'] ?? {};
-    double currentWalletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
-    
-    // فحص: هل المشتري بقالة؟ وما هو الحد الائتماني المسموح من هذا الوكيل؟
-    double creditLimit = 0.0;
-    if (user['role'] == 'pos') {
-       Map<String, dynamic> relations = user['agent_relations'] ?? {};
-       Map<String, dynamic> myRel = relations[agentPhone] ?? {};
-       creditLimit = (myRel['creditLimit'] ?? 0.0).toDouble();
+  // ==========================================
+  // 🛒 دالة الشراء الحقيقية (الإنتاج الفعلي)
+  // ==========================================
+  
+  // 👈 هذه الدالة المحدثة التي تقوم بسحب الكرت من المخزون وحفظ الفاتورة
+  Future<String> executeRealPurchase(double price, String cardTitle, String agentPhone) async {
+    if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً لإتمام الشراء.';
+
+    final userRef = _db.collection('users').doc(_activeUserPhone);
+
+    // 1. البحث عن كرت حقيقي متاح (غير مستخدم) في سيرفر الوكيل المحدد
+    final availableCardsQuery = await _db.collection('cards')
+        .where('agentPhone', isEqualTo: agentPhone)
+        .where('cardTitle', isEqualTo: cardTitle) 
+        .where('status', isEqualTo: 'متاح')
+        .limit(1)
+        .get();
+
+    if (availableCardsQuery.docs.isEmpty) {
+      throw 'عذراً، لقد نفدت الكمية الحقيقية من هذا الكرت! يرجى المحاولة لاحقاً.';
     }
 
-    // السماح بالشراء إذا كان الرصيد الفعلي + الدين المسموح يكفي ثمن الكرت
-    if ((currentWalletBalance + creditLimit) >= price && _totalSystemCards > 0) {
-      _db.collection('system').doc('main_info').update({'totalSystemCards': FieldValue.increment(-1)});
-      
-      _db.collection('users').doc(_activeUserPhone).update({
-        'wallets.$agentPhone': FieldValue.increment(-price), // يخصم من المحفظة حتى لو وصل للسالب (دين)
-        'purchasedCards': FieldValue.arrayUnion([cardName])
+    final cardDoc = availableCardsQuery.docs.first;
+    final String actualPin = cardDoc.data()['pin'] ?? 'رقم غير معروف';
+    final String cardId = cardDoc.id;
+
+    // 2. استخدام نظام المعاملات (Transaction) لحماية الأموال وضمان عدم حدوث تضارب
+    await _db.runTransaction((transaction) async {
+      // أ. التحقق من الرصيد داخل الـ Transaction
+      final userSnapshot = await transaction.get(userRef);
+      if (!userSnapshot.exists) throw 'حدث خطأ: حساب المستخدم غير موجود.';
+
+      final userData = userSnapshot.data()!;
+      Map<String, dynamic> wallets = userData['wallets'] ?? {};
+      double currentWalletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
+
+      double creditLimit = 0.0;
+      if (userData['role'] == 'pos') {
+         Map<String, dynamic> relations = userData['agent_relations'] ?? {};
+         Map<String, dynamic> myRel = relations[agentPhone] ?? {};
+         creditLimit = (myRel['creditLimit'] ?? 0.0).toDouble();
+      }
+
+      if ((currentWalletBalance + creditLimit) < price) {
+        throw 'الرصيد أو الحد الائتماني المسموح لا يكفي لإتمام العملية.';
+      }
+
+      // ب. الخصم المالي
+      transaction.update(userRef, {
+        'wallets.$agentPhone': FieldValue.increment(-price),
       });
-      return true;
-    }
-    return false;
+
+      // ج. تغيير حالة الكرت من (متاح) إلى (مباع) وربطه بالمشتري
+      transaction.update(_db.collection('cards').doc(cardId), {
+        'status': 'مباع',
+        'buyerPhone': _activeUserPhone,
+        'soldAt': FieldValue.serverTimestamp(),
+      });
+
+      // د. حفظ تفاصيل الفاتورة الدقيقة في حساب المستخدم
+      final Map<String, dynamic> purchaseInvoice = {
+        'title': cardTitle,
+        'pin': actualPin,
+        'price': price,
+        'agentPhone': agentPhone,
+        'date': DateTime.now().toIso8601String(),
+      };
+
+      transaction.update(userRef, {
+        'purchasedCards': FieldValue.arrayUnion([purchaseInvoice])
+      });
+
+      // هـ. تحديث الإحصائيات العامة (اختياري)
+      transaction.update(_db.collection('system').doc('main_info'), {
+        'totalSystemCards': FieldValue.increment(-1)
+      });
+      
+      // ملاحظة: تم تجاهل إنقاص 'stock' مباشرة من مصفوفة 'categories' داخل 'networks' هنا 
+      // لتعقيد قراءة وكتابة المصفوفات المتداخلة في المعاملات. النظام سيعتمد على قراءة الكروت 
+      // التي حالتها "متاح" مباشرة كمخزون حي لتفادي الأخطاء.
+    });
+
+    // 3. إعادة رقم الكرت الفعلي لعرضه للمستخدم في الشاشة
+    return actualPin;
   }
 
   // ==========================================
@@ -753,7 +818,7 @@ class SystemProvider extends ChangeNotifier {
 
       WriteBatch batch = _db.batch();
 
-      // 👈 السحر هنا: إضافة الوكيل إلى سجل علاقات البقالة (agent_relations)
+      // إضافة الوكيل إلى سجل علاقات البقالة (agent_relations)
       batch.update(doc.reference, {
         'role': 'pos',
         'storeName': storeName,
