@@ -1,145 +1,149 @@
-const functions = require('firebase-functions');
-const admin = require('firebase-admin');
-const { google } = require('googleapis');
-const { RouterOSAPI } = require('node-routeros'); // 👈 إضافة مكتبة الميكروتيك
+const express = require('express');
+const cors = require('cors');
+const { initializeApp } = require('firebase/app');
+const { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, serverTimestamp, writeBatch, onSnapshot } = require('firebase/firestore');
+const { getAuth, signInWithEmailAndPassword } = require('firebase/auth');
+const { getStorage, ref, uploadString } = require('firebase/storage');
+const { RouterOSAPI } = require('node-routeros');
+const cron = require('node-cron');
 
-admin.initializeApp();
-const db = admin.firestore();
+const app = express();
+app.use(cors({ origin: true }));
+app.use(express.json());
+
+// 1. إعدادات مشروعك
+const firebaseConfig = {
+  apiKey: "AIzaSyDdZzU6VXrmmk9Ul99GTN5RLtza95tLkVE",
+  authDomain: "netcardsapp.firebaseapp.com",
+  projectId: "netcardsapp",
+  storageBucket: "netcardsapp.firebasestorage.app",
+  messagingSenderId: "100057914511",
+  appId: "1:100057914511:web:75b015601ca5cb836724fa"
+};
+
+// 2. تهيئة فايربيز
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
+const auth = getAuth(firebaseApp);
+const storage = getStorage(firebaseApp);
+
+// 3. دالة تسجيل دخول السيرفر
+async function serverLogin() {
+    const email = process.env.SERVER_EMAIL || "server@netcardsapp.com";
+    const password = process.env.SERVER_PASSWORD || "password123456";
+    return signInWithEmailAndPassword(auth, email, password);
+}
 
 // ==========================================
-// 📡 أولاً: محرك توليد كروت الميكروتيك الحقيقي
+// 📡 محرك توليد كروت الميكروتيك
 // ==========================================
-exports.generateMikrotikCards = functions.https.onCall(async (data, context) => {
-    const { networkId, categoryId, amount, agentPhone } = data;
-
-    if (!networkId || !categoryId || !amount) {
-        throw new functions.https.HttpsError('invalid-argument', 'بيانات ناقصة.');
-    }
+app.post('/generateMikrotikCards', async (req, res) => {
+    const { networkId, categoryId, amount, agentPhone } = req.body;
 
     try {
-        // 1. جلب بيانات الشبكة من الفايربيز
-        const netDoc = await db.collection('networks').doc(networkId).get();
-        if (!netDoc.exists) throw new Error('الشبكة غير موجودة');
+        await serverLogin();
+
+        const netRef = doc(db, 'networks', networkId);
+        const netDoc = await getDoc(netRef);
+        if (!netDoc.exists()) throw new Error('الشبكة غير موجودة');
 
         const netData = netDoc.data();
         const categories = netData.categories || [];
         const catIndex = categories.findIndex(c => c.id === categoryId);
         const category = categories[catIndex];
 
-        // 2. فتح اتصال حقيقي بجهاز الميكروتيك
-        const api = new RouterOSAPI({
-            host: netData.ip,
-            user: netData.apiUser,
-            password: netData.apiPassword,
-            port: parseInt(netData.apiPort) || 8728,
-            timeout: 15
-        });
-
+        const api = new RouterOSAPI({ host: netData.ip, user: netData.apiUser, password: netData.apiPassword, port: parseInt(netData.apiPort) || 8728, timeout: 15 });
         await api.connect();
-
-        const batch = db.batch();
-        const cardTitle = `${netData.name} - ${category.name}`;
-
-        // 3. حلقة التوليد (الميكروتيك + الفايربيز)
+        
+        const batch = writeBatch(db);
+        const generatedPins = [];
+        
         for (let i = 0; i < amount; i++) {
             const pin = Math.floor(10000000 + Math.random() * 90000000).toString(); 
+            await api.write('/ip/hotspot/user/add', [`=name=${pin}`, `=password=${pin}`, `=profile=${category.name}`, `=comment=App-Gen-${agentPhone}`]);
 
-            // إضافة المستخدم داخل الميكروتيك فعلياً
-            await api.write('/ip/hotspot/user/add', [
-                `=name=${pin}`,
-                `=password=${pin}`,
-                `=profile=${category.name}`,
-                `=comment=App-Gen-${agentPhone}`
-            ]);
-
-            // إضافة الكرت لقاعدة بيانات التطبيق للبيع
-            const cardRef = db.collection('cards').doc();
-            batch.set(cardRef, {
-                pin: pin,
-                networkId: networkId,
-                categoryId: categoryId,
-                cardTitle: cardTitle,
-                agentPhone: agentPhone,
-                status: 'متاح',
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
-            });
+            const cardRef = doc(collection(db, 'cards'));
+            batch.set(cardRef, { pin, networkId, categoryId, cardTitle: `${netData.name} - ${category.name}`, agentPhone, status: 'متاح', createdAt: serverTimestamp() });
+            generatedPins.push(pin);
         }
 
-        api.close(); // إغلاق الاتصال بالراوتر
-
-        // 4. تحديث المخزون في واجهة التطبيق
+        api.close();
         categories[catIndex].stock = (categories[catIndex].stock || 0) + parseInt(amount);
-        batch.update(db.collection('networks').doc(networkId), { categories: categories });
-
+        batch.update(netRef, { categories });
         await batch.commit();
 
-        return { success: true, message: `تم بنجاح توليد ${amount} كرت في الراوتر وحفظها في التطبيق.` };
-
+        res.json({ success: true, message: `تم توليد ${amount} كرت بنجاح.`, pins: generatedPins });
     } catch (error) {
         console.error("Mikrotik Error:", error);
-        throw new functions.https.HttpsError('internal', `خطأ في الميكروتيك: ${error.message}`);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
 // ==========================================
-// ☁️ ثانياً: نظام النسخ الاحتياطي (كودك القديم)
+// ☁️ محرك النسخ الاحتياطي (إلى Firebase Storage)
 // ==========================================
-
-const auth = new google.auth.GoogleAuth({
-    scopes: ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive'],
-});
-const drive = google.drive({ version: 'v3', auth });
-const DRIVE_FOLDER_ID = '1moLLVojVAaYVUAripWiUOr9dBR5RzJy0'; 
-
-async function performBackup(db, prefix) {
+async function performBackup(prefix) {
     try {
+        await serverLogin();
         console.log(`[${prefix}] بدء عملية النسخ الاحتياطي...`);
-        const usersSnap = await db.collection('users').get();
+
+        const usersSnap = await getDocs(collection(db, 'users'));
         const usersData = usersSnap.docs.map(doc => doc.data());
-        const transactionsSnap = await db.collection('transactions').get();
-        const transactionsData = transactionsSnap.docs.map(doc => doc.data());
+        
+        const transSnap = await getDocs(collection(db, 'transactions'));
+        const transactionsData = transSnap.docs.map(doc => doc.data());
 
         const fullData = {
-            backup_info: { type: prefix, timestamp: new Date().toISOString(), folder_id: DRIVE_FOLDER_ID },
+            backup_info: { type: prefix, timestamp: new Date().toISOString() },
             data: { users: usersData, transactions: transactionsData }
         };
 
         const now = new Date();
         const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Riyadh' }).replace(':', '-');
         const dateStr = now.toISOString().split('T')[0];
-        const fileName = `NetCards_${prefix}_Backup_${dateStr}_${timeStr}.json`;
+        const fileName = `backups/NetCards_${prefix}_Backup_${dateStr}_${timeStr}.json`;
+
+        // الرفع إلى Firebase Storage
+        const storageRef = ref(storage, fileName);
+        await uploadString(storageRef, JSON.stringify(fullData), 'raw', { contentType: 'application/json' });
         
-        await drive.files.create({
-            requestBody: { name: fileName, mimeType: 'application/json', parents: [DRIVE_FOLDER_ID] },
-            media: { mimeType: 'application/json', body: JSON.stringify(fullData) },
-        });
-        console.log(`✅ تم بنجاح رفع الملف: ${fileName}`);
+        console.log(`✅ تم بنجاح رفع الملف إلى مساحة التخزين: ${fileName}`);
     } catch (error) {
         console.error('❌ فشل في عملية الرفع:', error);
     }
 }
 
-exports.automatedBackupEngine = functions.pubsub.schedule('* * * * *')
-    .timeZone('Asia/Riyadh')
-    .onRun(async (context) => {
-        const configDoc = await db.collection('system').doc('backup_settings').get();
-        if (!configDoc.exists) return null;
-        const { isAutoBackupEnabled, backupTime } = configDoc.data();
-        const now = new Date();
-        const currentTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Riyadh' });
-        if (isAutoBackupEnabled && currentTime === backupTime) {
-            await performBackup(db, 'Auto');
+// ⏰ فحص النسخ التلقائي (كل دقيقة)
+cron.schedule('* * * * *', async () => {
+    try {
+        await serverLogin();
+        const configDoc = await getDoc(doc(db, 'system', 'backup_settings'));
+        if (configDoc.exists()) {
+            const { isAutoBackupEnabled, backupTime } = configDoc.data();
+            const currentTime = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Riyadh' });
+            if (isAutoBackupEnabled && currentTime === backupTime) {
+                await performBackup('Auto');
+            }
         }
-        return null;
-    });
+    } catch(e) { }
+});
 
-exports.manualBackupTrigger = functions.firestore
-    .document('system/backup_settings')
-    .onUpdate(async (change, context) => {
-        const newValue = change.after.data();
-        const previousValue = change.before.data();
-        if (newValue.manualTrigger && (!previousValue.manualTrigger || newValue.manualTrigger.toMillis() !== previousValue.manualTrigger.toMillis())) {
-            await performBackup(db, 'Manual');
+// ⚡ مراقبة زر النسخ اليدوي من التطبيق
+let lastTriggerTime = null;
+onSnapshot(doc(db, 'system', 'backup_settings'), async (docSnap) => {
+    if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.manualTrigger) {
+            const triggerValue = data.manualTrigger.toMillis ? data.manualTrigger.toMillis() : data.manualTrigger;
+            if (lastTriggerTime !== triggerValue) {
+                lastTriggerTime = triggerValue;
+                await performBackup('Manual');
+            }
         }
-        return null;
-    });
+    }
+});
+
+app.get('/', (req, res) => res.send('🚀 Mikrotik & Backup Server is LIVE!'));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => console.log(`✅ Server running on port ${PORT}`));
