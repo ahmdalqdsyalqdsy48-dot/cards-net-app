@@ -79,7 +79,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> with SingleTickerProv
   }
 
   // ==========================================
-  // 💰 نافذة التغذية المباشرة (استخدام حقيقي)
+  // 💰 نافذة التغذية المباشرة للمحفظة
   // ==========================================
   void _showTransferModal(SystemProvider sys, String posPhone, String posName, double agentBalance) {
     _play('click');
@@ -93,7 +93,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> with SingleTickerProv
           textDirection: TextDirection.rtl,
           child: AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-            title: Text('تغذية حساب: $posName', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            title: Text('تغذية محفظة: $posName', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -138,7 +138,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> with SingleTickerProv
   }
 
   // ==========================================
-  // ⚙️ نافذة الإضافة/التعديل المكتملة
+  // ⚙️ نافذة الإضافة/التعديل (مع دعم الوكلاء المتعددين)
   // ==========================================
   void _showAddOrEditPosModal(SystemProvider sys, {Map<String, dynamic>? existingPos, String? initialPhone}) async {
     _play('click');
@@ -146,9 +146,14 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> with SingleTickerProv
     String phone = initialPhone ?? existingPos?['phone'] ?? '';
     String name = existingPos?['storeName'] ?? '';
     String location = existingPos?['location'] ?? '';
-    String commission = existingPos?['commission']?.replaceAll('%', '') ?? '0';
-    double limit = (existingPos?['creditLimit'] ?? 0.0).toDouble();
-    List<String> allowedCats = List<String>.from(existingPos?['allowedCategories'] ?? []);
+
+    // 👈 قراءة بيانات البقالة المرتبطة بهذا الوكيل تحديداً
+    Map<String, dynamic> relations = existingPos?['agent_relations'] ?? {};
+    Map<String, dynamic> myRelation = relations[sys.currentUserPhone] ?? {};
+
+    String commission = myRelation['commission']?.replaceAll('%', '') ?? '0';
+    double limit = (myRelation['creditLimit'] ?? 0.0).toDouble();
+    List<String> allowedCats = List<String>.from(myRelation['allowedCategories'] ?? []);
     bool isSubmitting = false;
 
     // جلب الفئات من سيرفر المايكروتيك الخاص بهذا الوكيل
@@ -296,7 +301,6 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> with SingleTickerProv
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // 👈 بناء شريط علوي مع ألوان قوية ونصوص واضحة (علاج المشكلة #2)
             Container(
               color: isDark ? Colors.grey.shade900 : Colors.purple.shade800,
               child: Column(
@@ -304,7 +308,6 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> with SingleTickerProv
                   Padding(
                     padding: const EdgeInsets.all(12),
                     child: Row(children: [
-                      // 👈 شريط البحث المعالج
                       Expanded(child: TextField(onChanged: (v) => setState(() => _searchQuery = v.trim().toLowerCase()), decoration: InputDecoration(hintText: 'بحث برقم أو اسم البقالة...', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none), contentPadding: const EdgeInsets.symmetric(horizontal: 15)))),
                       const SizedBox(width: 8),
                       Container(
@@ -319,10 +322,10 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> with SingleTickerProv
                   ),
                   TabBar(
                     controller: _tabController,
-                    labelColor: Colors.white, // أبيض صريح
-                    unselectedLabelColor: Colors.white70, // أبيض بوضوح 70% بدلاً من 54%
+                    labelColor: Colors.white, 
+                    unselectedLabelColor: Colors.white70, 
                     indicatorColor: Colors.orange, indicatorWeight: 4,
-                    labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), // خط عريض
+                    labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), 
                     tabs: const [Tab(text: 'البقالات 🏪'), Tab(text: 'طلبات الشحن 📥'), Tab(text: 'الديون (الآجل) 🧾')],
                   ),
                 ],
@@ -344,11 +347,12 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> with SingleTickerProv
   }
 
   // ==========================================
-  // التبويب 1: البقالات النشطة (إصلاح البحث والفلترة)
+  // التبويب 1: البقالات النشطة 
   // ==========================================
   Widget _buildActivePosTab(SystemProvider sys) {
     return StreamBuilder<QuerySnapshot>(
-      stream: _db.collection('users').where('role', isEqualTo: 'pos').where('parentAgent', isEqualTo: sys.currentUserPhone).snapshots(),
+      // 👈 السحر هنا: نبحث في البقالات التي تتضمن الوكيل الحالي في علاقاتها
+      stream: _db.collection('users').where('role', isEqualTo: 'pos').where('pos_agents', arrayContains: sys.currentUserPhone).snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         
@@ -357,15 +361,17 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> with SingleTickerProv
           String sName = (data['storeName'] ?? '').toLowerCase();
           String oName = (data['name'] ?? '').toLowerCase();
           String phone = data['phone'] ?? '';
-          double bal = (data['balance'] ?? 0).toDouble();
+          
+          // 👈 نقرأ رصيد البقالة في محفظة الوكيل الحالي
+          Map<String, dynamic> wallets = data['wallets'] ?? {};
+          double posWalletBal = (wallets[sys.currentUserPhone] ?? 0.0).toDouble();
+
           String status = data['status'] ?? 'نشط';
 
-          // 👈 معالجة البحث بشكل دقيق
           bool matchesSearch = _searchQuery.isEmpty || sName.contains(_searchQuery) || oName.contains(_searchQuery) || phone.contains(_searchQuery);
           
-          // 👈 معالجة الفلتر برمجياً
           bool matchesFilter = true;
-          if (_selectedFilter == 'منخفض') { matchesFilter = bal < 1000; } 
+          if (_selectedFilter == 'منخفض') { matchesFilter = posWalletBal < 1000; } 
           else if (_selectedFilter != 'الكل') { matchesFilter = status == _selectedFilter; }
 
           return matchesSearch && matchesFilter;
@@ -379,7 +385,16 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> with SingleTickerProv
           itemBuilder: (context, i) {
             var pos = docs[i].data() as Map<String, dynamic>;
             bool isFrozen = pos['status'] == 'مجمّد';
-            bool isLow = (pos['balance'] ?? 0) < 1000;
+            
+            // قراءة البيانات الخاصة بهذا الوكيل تحديداً
+            Map<String, dynamic> wallets = pos['wallets'] ?? {};
+            double posWalletBal = (wallets[sys.currentUserPhone] ?? 0.0).toDouble();
+            bool isLow = posWalletBal < 1000;
+
+            Map<String, dynamic> relations = pos['agent_relations'] ?? {};
+            Map<String, dynamic> myRel = relations[sys.currentUserPhone] ?? {};
+            double creditLimit = (myRel['creditLimit'] ?? 0.0).toDouble();
+            String commission = myRel['commission'] ?? '0%';
 
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
@@ -403,7 +418,6 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> with SingleTickerProv
                             ],
                           ),
                         ),
-                        // 👈 زر التعديل يعمل الان
                         IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showAddOrEditPosModal(sys, existingPos: pos)),
                       ],
                     ),
@@ -411,18 +425,16 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> with SingleTickerProv
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('الرصيد المتاح:', style: TextStyle(fontSize: 11, color: Colors.grey)), Text('${pos['balance'] ?? 0} ريال', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: isLow ? Colors.red : Colors.black87))]),
-                        Column(crossAxisAlignment: CrossAxisAlignment.center, children: [const Text('الحد الائتماني:', style: TextStyle(fontSize: 11, color: Colors.grey)), Text('${pos['creditLimit'] ?? 0} ريال', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue))]),
-                        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [const Text('العمولة:', style: TextStyle(fontSize: 11, color: Colors.grey)), Text('${pos['commission'] ?? '0%'}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.purple))]),
+                        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('رصيد المحفظة:', style: TextStyle(fontSize: 11, color: Colors.grey)), Text('$posWalletBal ريال', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: isLow ? Colors.red : Colors.black87))]),
+                        Column(crossAxisAlignment: CrossAxisAlignment.center, children: [const Text('الحد الائتماني:', style: TextStyle(fontSize: 11, color: Colors.grey)), Text('$creditLimit ريال', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue))]),
+                        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [const Text('العمولة:', style: TextStyle(fontSize: 11, color: Colors.grey)), Text(commission, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.purple))]),
                       ],
                     ),
                     const SizedBox(height: 10),
                     Row(
                       children: [
-                        // 👈 زر التغذية يعمل الان
-                        Expanded(flex: 2, child: ElevatedButton.icon(onPressed: isFrozen ? null : () => _showTransferModal(sys, pos['phone'], pos['storeName'] ?? '', sys.currentUserBalance), icon: const Icon(Icons.add_card, size: 16, color: Colors.white), label: const Text('تغذية رصيد', style: TextStyle(color: Colors.white, fontSize: 12)), style: ElevatedButton.styleFrom(backgroundColor: Colors.purple))),
+                        Expanded(flex: 2, child: ElevatedButton.icon(onPressed: isFrozen ? null : () => _showTransferModal(sys, pos['phone'], pos['storeName'] ?? '', sys.currentUserBalance), icon: const Icon(Icons.add_card, size: 16, color: Colors.white), label: const Text('تغذية محفظتها', style: TextStyle(color: Colors.white, fontSize: 12)), style: ElevatedButton.styleFrom(backgroundColor: Colors.purple))),
                         const SizedBox(width: 8),
-                        // 👈 زر التجميد والتنشيط يعمل الان
                         Expanded(flex: 1, child: OutlinedButton(
                           onPressed: () { _play('click'); _db.collection('users').doc(pos['phone']).update({'status': isFrozen ? 'نشط' : 'مجمّد'}); },
                           style: OutlinedButton.styleFrom(foregroundColor: isFrozen ? Colors.green : Colors.red, side: BorderSide(color: isFrozen ? Colors.green : Colors.red)),
@@ -441,7 +453,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> with SingleTickerProv
   }
 
   // ==========================================
-  // التبويب 2: طلبات الشحن (الترقية الآلية)
+  // التبويب 2: طلبات الشحن 
   // ==========================================
   Widget _buildRequestsTab(SystemProvider sys) {
     return Column(
@@ -473,7 +485,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> with SingleTickerProv
                   var req = requests[i].data() as Map<String, dynamic>;
                   String reqId = requests[i].id;
                   double reqAmount = (req['amount'] ?? 0).toDouble();
-                  bool isVip = reqAmount >= _vipThreshold; // 👈 التحقق
+                  bool isVip = reqAmount >= _vipThreshold; 
 
                   return Card(
                     color: isVip ? Colors.amber.shade50 : Colors.white,
@@ -496,13 +508,11 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> with SingleTickerProv
                             children: [
                               Expanded(child: OutlinedButton(onPressed: () { _play('click'); _db.collection('user_recharges').doc(reqId).update({'status': 'مرفوض'}); }, style: OutlinedButton.styleFrom(foregroundColor: Colors.red), child: const Text('رفض'))),
                               const SizedBox(width: 10),
-                              // 👈 زر الموافقة المبرمج مع الترقية التلقائية
                               Expanded(flex: 2, child: ElevatedButton(
                                 onPressed: () async {
                                   _play('click');
                                   try {
                                     await sys.agentAcceptUserRecharge(reqId, req['userPhone'], reqAmount);
-                                    // 👈 السحر هنا: إذا كان VIP، يتم ترقيته تلقائياً باستخدام البيانات المتوفرة مؤقتاً
                                     if (isVip) {
                                       await sys.upgradeUserToPos(posPhone: req['userPhone'], storeName: 'محل ${req['userName']}', location: 'غير محدد', creditLimit: 0.0, commission: _autoVipCommission, allowedCategories: []);
                                       if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تمت الموافقة وترقية الزبون إلى نقطة بيع بنسبة خصم $_autoVipCommission تلقائياً! 🌟', textDirection: TextDirection.rtl), backgroundColor: Colors.amber.shade800, duration: const Duration(seconds: 4)));
@@ -531,29 +541,38 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> with SingleTickerProv
   }
 
   // ==========================================
-  // التبويب 3: سجل الديون والمطالبات (الزر شغال)
+  // التبويب 3: سجل الديون
   // ==========================================
   Widget _buildDebtTab(SystemProvider sys) {
     return StreamBuilder<QuerySnapshot>(
-      stream: _db.collection('users').where('role', isEqualTo: 'pos').where('parentAgent', isEqualTo: sys.currentUserPhone).where('balance', isLessThan: 0).snapshots(),
+      // 👈 نبحث عن البقالات المربوطة بالوكيل والتي محفظتها معه بالسالب!
+      stream: _db.collection('users').where('role', isEqualTo: 'pos').where('pos_agents', arrayContains: sys.currentUserPhone).snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        var docs = snapshot.data!.docs;
+        
+        // تصفية إضافية لإظهار من رصيد محفظته مع هذا الوكيل أقل من صفر (مديون)
+        var docs = snapshot.data!.docs.where((d) {
+          var data = d.data() as Map<String, dynamic>;
+          Map<String, dynamic> wallets = data['wallets'] ?? {};
+          double bal = (wallets[sys.currentUserPhone] ?? 0.0).toDouble();
+          return bal < 0; 
+        }).toList();
+
         if (docs.isEmpty) return const Center(child: Text('لا توجد ديون مسجلة. 👏', style: TextStyle(color: Colors.grey)));
 
         return ListView.builder(
           padding: const EdgeInsets.all(12), itemCount: docs.length,
           itemBuilder: (context, i) {
             var pos = docs[i].data() as Map<String, dynamic>;
-            double debtAmount = (pos['balance'] ?? 0).toDouble().abs(); // تحويل السالب لموجب للعرض
+            Map<String, dynamic> wallets = pos['wallets'] ?? {};
+            double debtAmount = (wallets[sys.currentUserPhone] ?? 0.0).toDouble().abs(); // سالب إلى موجب
 
             return Card(
               shape: const Border(right: BorderSide(color: Colors.red, width: 4)),
               child: ListTile(
                 leading: const Icon(Icons.warning, color: Colors.orange),
                 title: Text(pos['storeName'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('الدين المتراكم: $debtAmount ريال', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                // 👈 زر سداد الدين يعمل الان
+                subtitle: Text('الدين المستحق: $debtAmount ريال', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                 trailing: ElevatedButton(
                   onPressed: () => _showRepaymentModal(sys, pos['phone'], pos['storeName'] ?? ''),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey, padding: const EdgeInsets.symmetric(horizontal: 10)),
