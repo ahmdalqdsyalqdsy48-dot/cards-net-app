@@ -326,7 +326,7 @@ class SystemProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get notifications => _notifications;
   int get unreadNotificationsCount => _notifications.where((n) => n['isReadLocal'] == false).length;
 
-  String get currentUserRole => _currentUserRole; // 👈 إضافة Getter للدور لمعرفة إذا كان pos
+  String get currentUserRole => _currentUserRole; 
 
   void setDashboardDateRange(DateTimeRange? range) {
     _dashboardDateRange = range;
@@ -403,19 +403,20 @@ class SystemProvider extends ChangeNotifier {
     return user['pin'] ?? '123456'; 
   }
 
-  // الرصيد العام
+  // 👈 الرصيد العام المعروض للزبون أو البقالة (مجموع كل المحافظ)
   double get currentUserBalance {
     if (_activeUserPhone == null) return 0.0;
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'balance': 0.0});
     
-    // إذا كان مستخدماً عادياً، نجمع محافظه الخاصة بالوكلاء. إذا كان نقطة بيع (pos) نعتمد رصيده العام
-    if (user['role'] == 'user') {
+    // البقالة والزبون العادي أصبحا يستخدمان نظام المحافظ
+    if (user['role'] == 'user' || user['role'] == 'pos') {
       Map<String, dynamic> wallets = user['wallets'] ?? {};
       return wallets.values.fold(0.0, (sum, val) => sum + (val as num).toDouble());
     }
     return (user['balance'] ?? 0.0).toDouble();
   }
 
+  // 👈 قراءة المحفظة المخصصة لوكيل محدد
   double getWalletBalance(String agentPhone) {
     if (_activeUserPhone == null) return 0.0;
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'wallets': {}});
@@ -699,41 +700,40 @@ class SystemProvider extends ChangeNotifier {
     } catch (e) {}
   }
 
+  // 👈 دالة الشراء المحدثة الذكية (تدعم الحد الائتماني للبقالة، واستخدام المحافظ للجميع)
   bool userBuyCard(double price, String cardName, String agentPhone) {
     if (_activeUserPhone == null) return false;
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
     
-    // إذا كان المشتري نقطة بيع (بقالة)، نخصم من رصيدها العام، وإلا نخصم من محفظة الزبون المغلقة
+    Map<String, dynamic> wallets = user['wallets'] ?? {};
+    double currentWalletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
+    
+    // فحص: هل المشتري بقالة؟ وما هو الحد الائتماني المسموح من هذا الوكيل؟
+    double creditLimit = 0.0;
     if (user['role'] == 'pos') {
-       if (user['balance'] >= price && _totalSystemCards > 0) {
-          _db.collection('system').doc('main_info').update({'totalSystemCards': FieldValue.increment(-1)});
-          _db.collection('users').doc(_activeUserPhone).update({
-            'balance': FieldValue.increment(-price),
-            'purchasedCards': FieldValue.arrayUnion([cardName])
-          });
-          return true;
-       }
-    } else {
-      Map<String, dynamic> wallets = user['wallets'] ?? {};
-      double currentWalletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
+       Map<String, dynamic> relations = user['agent_relations'] ?? {};
+       Map<String, dynamic> myRel = relations[agentPhone] ?? {};
+       creditLimit = (myRel['creditLimit'] ?? 0.0).toDouble();
+    }
 
-      if (currentWalletBalance >= price && _totalSystemCards > 0) {
-        _db.collection('system').doc('main_info').update({'totalSystemCards': FieldValue.increment(-1)});
-        _db.collection('users').doc(_activeUserPhone).update({
-          'wallets.$agentPhone': FieldValue.increment(-price),
-          'purchasedCards': FieldValue.arrayUnion([cardName])
-        });
-        return true;
-      }
+    // السماح بالشراء إذا كان الرصيد الفعلي + الدين المسموح يكفي ثمن الكرت
+    if ((currentWalletBalance + creditLimit) >= price && _totalSystemCards > 0) {
+      _db.collection('system').doc('main_info').update({'totalSystemCards': FieldValue.increment(-1)});
+      
+      _db.collection('users').doc(_activeUserPhone).update({
+        'wallets.$agentPhone': FieldValue.increment(-price), // يخصم من المحفظة حتى لو وصل للسالب (دين)
+        'purchasedCards': FieldValue.arrayUnion([cardName])
+      });
+      return true;
     }
     return false;
   }
 
   // ==========================================
-  // 🏪 دوال البقالات ونقاط البيع (الترقية والتعديل والسداد)
+  // 🏪 دوال البقالات متعددة الوكلاء 
   // ==========================================
 
-  // 1. ترقية زبون عادي إلى بقالة
+  // 1. ترقية زبون إلى بقالة وربطه بالوكيل الحالي (أو تحديث بياناته إذا كان بقالة مسبقاً)
   Future<void> upgradeUserToPos({
     required String posPhone, 
     required String storeName, 
@@ -748,31 +748,36 @@ class SystemProvider extends ChangeNotifier {
       if (!doc.exists) throw 'الرقم غير مسجل كزبون مسبقاً.';
       
       final userData = doc.data()!;
-      if (userData['role'] == 'pos') throw 'هذا الرقم مسجل كبقالة مسبقاً.';
-      if (userData['role'] != 'user') throw 'لا يمكن ترقية هذا الحساب.';
+      // إذا كان وكيل أو إدارة لا نرقيه
+      if (userData['role'] != 'user' && userData['role'] != 'pos') throw 'لا يمكن تعديل صلاحية هذا الحساب.';
 
       WriteBatch batch = _db.batch();
 
+      // 👈 السحر هنا: إضافة الوكيل إلى سجل علاقات البقالة (agent_relations)
       batch.update(doc.reference, {
         'role': 'pos',
         'storeName': storeName,
         'location': location,
-        'parentAgent': _activeUserPhone,
-        'creditLimit': creditLimit,
-        'commission': commission,
-        'allowedCategories': allowedCategories,
+        'pos_agents': FieldValue.arrayUnion([_activeUserPhone]), // مصفوفة الوكلاء
+        'agent_relations.$_activeUserPhone': {
+           'creditLimit': creditLimit,
+           'commission': commission,
+           'allowedCategories': allowedCategories,
+        }
       });
 
+      // إضافة البقالة للجمهور (سوق الشبكات)
       batch.set(_db.collection('points_of_sale').doc(posPhone), {
         'phone': posPhone, 'name': storeName, 'location': location,
-        'ownerName': userData['name'], 'parentAgent': _activeUserPhone, 
-        'stock': [], 'status': 'نشط', 'createdAt': FieldValue.serverTimestamp(),
-      });
+        'ownerName': userData['name'],
+        'pos_agents': FieldValue.arrayUnion([_activeUserPhone]), 
+        'status': 'نشط', 
+      }, SetOptions(merge: true));
 
       batch.set(_db.collection('notifications').doc(), {
         'targetPhones': [posPhone],
-        'title': 'ترقية الحساب 🏪',
-        'body': 'تم اعتماد حسابك كنقطة بيع رسمية. يمكنك الآن بيع الكروت المخصصة لك!',
+        'title': 'اعتماد نقطة بيع 🏪',
+        'body': 'تم ربط حسابك بالوكيل $currentUserName بأسعار الجملة بنجاح.',
         'timestamp': FieldValue.serverTimestamp(), 'isRead': false, 'readBy': [],
       });
 
@@ -780,7 +785,7 @@ class SystemProvider extends ChangeNotifier {
     } catch (e) { throw e.toString(); }
   }
 
-  // 2. تعديل بيانات البقالة (متضمنة الفئات والموقع)
+  // 2. تعديل بيانات علاقة الوكيل بالبقالة
   Future<void> updatePosDetails({
     required String posPhone,
     required String storeName,
@@ -789,15 +794,16 @@ class SystemProvider extends ChangeNotifier {
     required String commission,
     required List<String> allowedCategories,
   }) async {
+    if (_activeUserPhone == null) return;
     try {
       WriteBatch batch = _db.batch();
       
       batch.update(_db.collection('users').doc(posPhone), {
         'storeName': storeName, 
         'location': location,
-        'creditLimit': creditLimit, 
-        'commission': commission,
-        'allowedCategories': allowedCategories,
+        'agent_relations.$_activeUserPhone.creditLimit': creditLimit, 
+        'agent_relations.$_activeUserPhone.commission': commission,
+        'agent_relations.$_activeUserPhone.allowedCategories': allowedCategories,
       });
       
       batch.update(_db.collection('points_of_sale').doc(posPhone), {
@@ -809,7 +815,7 @@ class SystemProvider extends ChangeNotifier {
     } catch (e) { throw 'فشل التعديل: $e'; }
   }
 
-  // 3. تغذية رصيد البقالة العادي (سلف أو آجل مسبق)
+  // 3. الوكيل يغذي محفظة البقالة الخاصة به
   Future<void> fundSubAgent(String posPhone, double amount) async {
      if (_activeUserPhone == null) return;
      
@@ -819,26 +825,27 @@ class SystemProvider extends ChangeNotifier {
      WriteBatch batch = _db.batch();
      
      batch.update(agentDoc.reference, {'balance': FieldValue.increment(-amount)});
-     batch.update(_db.collection('users').doc(posPhone), {'balance': FieldValue.increment(amount)});
+     // الإضافة إلى المحفظة المخصصة للوكيل وليس الرصيد العام!
+     batch.update(_db.collection('users').doc(posPhone), {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
 
      batch.set(_db.collection('notifications').doc(), {
        'targetPhones': [posPhone],
        'title': 'تغذية رصيد 💰',
-       'body': 'تم تحويل مبلغ $amount ريال إلى رصيدك من قبل الوكيل.',
+       'body': 'تم تحويل $amount ريال لمحفظتك من الوكيل $currentUserName.',
        'timestamp': FieldValue.serverTimestamp(), 'isRead': false, 'readBy': [],
      });
 
      await batch.commit();
   }
 
-  // 4. استلام دفعة (سداد دين من التبويب الثالث)
+  // 4. استلام دفعة كاش لتصفية الدين
   Future<void> receivePosPayment(String posPhone, double amount, String note) async {
     if (_activeUserPhone == null) return;
     try {
       WriteBatch batch = _db.batch();
       
-      // إضافة الرصيد للبقالة لتصفير السالب
-      batch.update(_db.collection('users').doc(posPhone), {'balance': FieldValue.increment(amount)});
+      // إضافة الرصيد لمحفظة الوكيل لتصفير السالب (الدين)
+      batch.update(_db.collection('users').doc(posPhone), {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
       
       // تسجيل الدفعة كحركة مالية
       batch.set(_db.collection('transactions').doc(), {
@@ -878,24 +885,20 @@ class SystemProvider extends ChangeNotifier {
     }
 
     final requesterDoc = await _db.collection('users').doc(requesterPhone).get();
-    final String requesterRole = requesterDoc.data()?['role'] ?? 'user';
 
     WriteBatch batch = _db.batch();
 
     batch.update(_db.collection('user_recharges').doc(requestId), {'status': 'مقبول'});
     batch.update(myDoc.reference, {'balance': FieldValue.increment(-amount)});
     
-    if (requesterRole == 'pos') {
-      batch.update(requesterDoc.reference, {'balance': FieldValue.increment(amount)});
-    } else {
-      batch.update(requesterDoc.reference, {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
-    }
+    // سواء كان بقالة أو زبوناً، الشحن يتم للمحفظة المخصصة للوكيل!
+    batch.update(requesterDoc.reference, {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
 
     DocumentReference notifRef = _db.collection('notifications').doc();
     batch.set(notifRef, {
       'targetPhones': [requesterPhone],
       'title': 'تم شحن محفظتك 🎉',
-      'body': 'تمت الموافقة وإضافة $amount ريال بنجاح.',
+      'body': 'تمت الموافقة وإضافة $amount ريال لمحفظتك من $currentUserName.',
       'timestamp': FieldValue.serverTimestamp(),
       'isRead': false, 'readBy': [],
     });
