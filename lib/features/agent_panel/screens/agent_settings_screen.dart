@@ -8,6 +8,7 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
+import '../../../core/providers/theme_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart';
 
@@ -50,14 +51,12 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
   final TextEditingController _newPinController = TextEditingController();
   bool _obsCurrentPin = true;
   bool _obsNewPin = true;
-  String _savedPin = ''; // يخزن محلياً
+  String _savedPin = ''; 
 
   // ==========================================
   // متغيرات الإعدادات (Tab 3: المظهر والتفضيلات)
   // ==========================================
   bool _notificationsEnabled = true;
-  bool _soundEnabled = true;
-  Color _agentThemeColor = Colors.cyan.shade800; // اللون الافتراضي
 
   @override
   void initState() {
@@ -94,12 +93,6 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
       _savedPin = prefs.getString('savedPin') ?? '';
 
       _notificationsEnabled = prefs.getBool('notifications') ?? true;
-      _soundEnabled = prefs.getBool('sounds') ?? true;
-      
-      int? colorInt = prefs.getInt('agentThemeColor');
-      if (colorInt != null) {
-        _agentThemeColor = Color(colorInt);
-      }
       
       _isLoading = false;
     });
@@ -133,20 +126,25 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
       showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
       User? user = FirebaseAuth.instance.currentUser;
       
-      // إعادة المصادقة (Re-authenticate)
-      AuthCredential credential = EmailAuthProvider.credential(email: user!.email!, password: _oldPasswordController.text);
-      await user.reauthenticateWithCredential(credential);
-      
-      // تحديث كلمة المرور
-      await user.updatePassword(_newPasswordController.text);
-      
-      Navigator.pop(context); // إغلاق التحميل
-      _play('success');
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تغيير كلمة المرور بنجاح! ✅'), backgroundColor: Colors.green));
-      
-      _oldPasswordController.clear();
-      _newPasswordController.clear();
-      _confirmPasswordController.clear();
+      if (user != null && user.email != null) {
+        // إعادة المصادقة (Re-authenticate)
+        AuthCredential credential = EmailAuthProvider.credential(email: user.email!, password: _oldPasswordController.text);
+        await user.reauthenticateWithCredential(credential);
+        
+        // تحديث كلمة المرور
+        await user.updatePassword(_newPasswordController.text);
+        
+        Navigator.pop(context); // إغلاق التحميل
+        _play('success');
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تغيير كلمة المرور بنجاح! ✅'), backgroundColor: Colors.green));
+        
+        _oldPasswordController.clear();
+        _newPasswordController.clear();
+        _confirmPasswordController.clear();
+      } else {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لم يتم العثور على حساب مسجل.'), backgroundColor: Colors.red));
+      }
     } catch (e) {
       Navigator.pop(context); // إغلاق التحميل
       _play('error');
@@ -160,15 +158,18 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
   @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final ui = Provider.of<UiProvider>(context);
+    final theme = Provider.of<ThemeProvider>(context);
+    
+    final isDark = theme.isDarkMode;
 
     if (_isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: CustomHeader(title: 'لوحة تحكم الوكيل'),
+      backgroundColor: isDark ? Colors.black87 : Colors.grey.shade50,
+      appBar: const CustomHeader(title: 'لوحة تحكم الوكيل'),
       drawer: CustomAgentDrawer(
         agentName: sys.currentUserName,
         phoneNumber: sys.currentUserPhone,
@@ -181,7 +182,8 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
           children: [
             // شريط التبويبات (TabBar)
             Container(
-              color: isDark ? Colors.grey.shade900 : _agentThemeColor,
+              // الاعتماد على ThemeProvider لتلوين الرأس
+              color: isDark ? Colors.grey.shade900 : (theme.primaryColor == Colors.white ? Colors.cyan.shade800 : theme.primaryColor),
               child: TabBar(
                 controller: _tabController,
                 indicatorColor: Colors.amber,
@@ -204,10 +206,10 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildPrinterTab(),
-                  _buildSecurityTab(),
-                  _buildAppearanceTab(),
-                  _buildSystemTab(sys),
+                  _buildPrinterTab(theme),
+                  _buildSecurityTab(theme),
+                  _buildAppearanceTab(theme, ui),
+                  _buildSystemTab(sys, theme),
                 ],
               ),
             ),
@@ -220,7 +222,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
   // ==========================================
   // 🖨️ التبويب الأول: الطباعة والكاشير
   // ==========================================
-  Widget _buildPrinterTab() {
+  Widget _buildPrinterTab(ThemeProvider theme) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -254,7 +256,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
               SwitchListTile(
                 title: const Text('الطباعة التلقائية فور البيع', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 subtitle: const Text('تجاوز نافذة التأكيد للسرعة', style: TextStyle(fontSize: 12)),
-                activeColor: _agentThemeColor,
+                activeColor: theme.primaryColor == Colors.white ? Colors.cyan.shade800 : theme.primaryColor,
                 value: _autoPrintEnabled,
                 onChanged: (val) {
                   _play('click');
@@ -272,7 +274,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
                     Slider(
                       value: _defaultQty,
                       min: 1, max: 10, divisions: 9,
-                      activeColor: _agentThemeColor,
+                      activeColor: theme.primaryColor == Colors.white ? Colors.cyan.shade800 : theme.primaryColor,
                       label: _defaultQty.toInt().toString(),
                       onChanged: (val) {
                         setState(() => _defaultQty = val);
@@ -303,9 +305,11 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
   }
 
   // ==========================================
-  // 🔐 التبويب الثاني: الأمان والحساب (تم إصلاح الأخطاء هنا ✅)
+  // 🔐 التبويب الثاني: الأمان والحساب
   // ==========================================
-  Widget _buildSecurityTab() {
+  Widget _buildSecurityTab(ThemeProvider theme) {
+    Color activeColor = theme.primaryColor == Colors.white ? Colors.cyan.shade800 : theme.primaryColor;
+    
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -318,7 +322,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
               SwitchListTile(
                 title: const Text('تفعيل الدخول برمز PIN', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 subtitle: const Text('بديل سريع لكلمة المرور الطويلة', style: TextStyle(fontSize: 12)),
-                activeColor: _agentThemeColor,
+                activeColor: activeColor,
                 value: _pinEnabled,
                 onChanged: (val) {
                   _play('click');
@@ -351,7 +355,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
                       ),
                       const SizedBox(height: 10),
                       ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: _agentThemeColor),
+                        style: ElevatedButton.styleFrom(backgroundColor: activeColor),
                         onPressed: () {
                           _play('click');
                           if (_newPinController.text.length >= 4) {
@@ -378,7 +382,6 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
         const SizedBox(height: 10),
         Card(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          // 👇 تم إضافة ويدجت Padding لإصلاح خطأ بناء فلاتر
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -412,7 +415,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
               SwitchListTile(
                 title: const Text('القفل التلقائي للجلسة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 subtitle: const Text('قفل التطبيق عند الخمول لمدة 3 دقائق', style: TextStyle(fontSize: 12)),
-                activeColor: _agentThemeColor,
+                activeColor: activeColor,
                 value: _autoLockEnabled,
                 onChanged: (val) {
                   _play('click');
@@ -424,7 +427,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
               SwitchListTile(
                 title: const Text('تسجيل الدخول بالبصمة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 subtitle: const Text('إذا كان هاتفك يدعم ذلك', style: TextStyle(fontSize: 12)),
-                activeColor: _agentThemeColor,
+                activeColor: activeColor,
                 value: _biometricsEnabled,
                 onChanged: (val) async {
                   _play('click');
@@ -464,9 +467,11 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
   }
 
   // ==========================================
-  // 🎨 التبويب الثالث: المظهر والتفضيلات (تم تعليق الخطأ هنا ✅)
+  // 🎨 التبويب الثالث: المظهر والتفضيلات 
   // ==========================================
-  Widget _buildAppearanceTab() {
+  Widget _buildAppearanceTab(ThemeProvider theme, UiProvider ui) {
+    Color activeColor = theme.primaryColor == Colors.white ? Colors.cyan.shade800 : theme.primaryColor;
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -482,32 +487,43 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('لونك المفضل:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    CircleAvatar(backgroundColor: _agentThemeColor, radius: 20),
+                    CircleAvatar(backgroundColor: theme.primaryColor, radius: 20, child: theme.primaryColor == Colors.white ? const Icon(Icons.palette, color: Colors.grey) : null),
                   ],
                 ),
                 const SizedBox(height: 15),
-                BlockPicker(
-                  pickerColor: _agentThemeColor,
-                  availableColors: const [
-                    Colors.cyan, Colors.blue, Colors.indigo, Colors.deepPurple,
-                    Colors.purple, Colors.red, Colors.orange, Colors.teal,
-                    Colors.green, Colors.brown, Colors.blueGrey, Colors.black87
-                  ],
-                  onColorChanged: (Color color) {
-                    _play('click');
-                    setState(() => _agentThemeColor = color);
-                    _saveSetting('agentThemeColor', color.value);
-                  },
+                
+                // 👈 دائرة ألوان كاملة ومنسقة كما طلبت بالضبط
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.grey.shade200, width: 2),
+                    ),
+                    child: ColorPicker(
+                      pickerColor: theme.primaryColor,
+                      onColorChanged: (color) {
+                        theme.changeColor(color);
+                      },
+                      paletteType: PaletteType.hsvWithHue,
+                      enableAlpha: false,
+                      displayThumbColor: true,
+                      labelTypes: const [],
+                      pickerAreaBorderRadius: BorderRadius.circular(100), // يجعلها دائرة تماماً
+                    ),
+                  ),
                 ),
-                const Divider(),
+                
+                const Divider(height: 30),
+                
+                // 👈 زر استعادة المظهر الافتراضي (الأبيض)
                 TextButton.icon(
                   onPressed: () {
                     _play('click');
-                    setState(() => _agentThemeColor = Colors.cyan.shade800);
-                    _saveSetting('agentThemeColor', Colors.cyan.shade800.value);
+                    theme.resetToDefault();
                   },
-                  icon: const Icon(Icons.restore, color: Colors.grey),
-                  label: const Text('استعادة اللون الافتراضي', style: TextStyle(color: Colors.grey)),
+                  icon: const Icon(Icons.refresh, color: Colors.blueGrey),
+                  label: const Text('استعادة المظهر الافتراضي (الأبيض)', style: TextStyle(color: Colors.blueGrey, fontWeight: FontWeight.bold)),
                 )
               ],
             ),
@@ -525,7 +541,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
                 secondary: const Icon(Icons.notifications_active, color: Colors.blue),
                 title: const Text('إشعارات النظام', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 subtitle: const Text('استقبال تنبيهات العروض والأرصدة', style: TextStyle(fontSize: 12)),
-                activeColor: _agentThemeColor,
+                activeColor: activeColor,
                 value: _notificationsEnabled,
                 onChanged: (val) {
                   _play('click');
@@ -538,14 +554,12 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
                 secondary: const Icon(Icons.volume_up, color: Colors.purple),
                 title: const Text('أصوات التطبيق', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 subtitle: const Text('صوت نجاح عملية البيع والطباعة', style: TextStyle(fontSize: 12)),
-                activeColor: _agentThemeColor,
-                value: _soundEnabled,
+                activeColor: activeColor,
+                // قراءة القيمة وتفعيلها مباشرة من ملف UiProvider الأصلي
+                value: ui.isSoundsEnabled,
                 onChanged: (val) {
                   _play('click');
-                  setState(() => _soundEnabled = val);
-                  _saveSetting('sounds', val);
-                  // 👇 تم تعليق هذا السطر لأنه سيسبب خطأ لعدم برمجة الدالة في Provider بعد
-                  // Provider.of<UiProvider>(context, listen: false).toggleSound(val); 
+                  ui.updateSoundSettings(val); 
                 },
               ),
             ],
@@ -556,9 +570,9 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
   }
 
   // ==========================================
-  // ⚙️ التبويب الرابع: النظام والمزامنة (تم تعليق الخطأ هنا ✅)
+  // ⚙️ التبويب الرابع: النظام والمزامنة 
   // ==========================================
-  Widget _buildSystemTab(SystemProvider sys) {
+  Widget _buildSystemTab(SystemProvider sys, ThemeProvider theme) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -591,9 +605,8 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen> with SingleTi
                   _play('click');
                   showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
                   
-                  // 👇 تم استبدال استدعاء دالة Provider بمحاكاة تأخير زمني لتجنب الخطأ
-                  // await sys.loadUserData(sys.currentUserPhone);
-                  await Future.delayed(const Duration(seconds: 1));
+                  // 👇 تم تفعيل المزامنة الفعلية من ملف SystemProvider
+                  await sys.loadUserData(sys.currentUserPhone);
                   
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت مزامنة البيانات والأرصدة بنجاح 🔄'), backgroundColor: Colors.green));
