@@ -81,8 +81,7 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
       return;
     }
 
-    // هنا يتم تطبيق الخصم (اقتراحك الذكي!)
-    // مؤقتاً سنعرض السعر الإجمالي العادي، ويمكنك ربط نظام الخصم لاحقاً
+    // هنا يتم تطبيق الخصم
     int totalPrice = _selectedCategory!['price'] * _quantity;
 
     if (currentBalance < totalPrice) {
@@ -327,7 +326,8 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _buildActionButton(Icons.whatsapp, 'واتساب', Colors.green, () { 
+                      // 👇 تم التعديل هنا: استبدال Icons.whatsapp بـ Icons.message
+                      _buildActionButton(Icons.message, 'واتساب', Colors.green, () { 
                         _play('click');
                         _shareViaWhatsApp(generatedPins);
                       }),
