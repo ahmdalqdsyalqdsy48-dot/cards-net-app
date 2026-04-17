@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'dart:math'; // 👈 ضرورية لتوليد أرقام الكروت العشوائية
+import 'package:http/http.dart' as http; // 👈 إضافة مكتبة الاتصال بالسيرفر
+import 'dart:convert'; // 👈 إضافة مكتبة تحويل البيانات
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -19,12 +20,13 @@ class MikrotikCategoriesScreen extends StatefulWidget {
 class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> with SingleTickerProviderStateMixin {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   late TabController _tabController;
-  
-  // رابط السيرفر الخاص بك على Render
-  final String _renderUrl = "https://mikrotik-server-qu6a.onrender.com";
 
-  final TextEditingController _generateAmountController = TextEditingController();
+  String? _selectedServerToGenerate;
   String? _selectedCategoryToGenerate;
+  final TextEditingController _generateAmountController = TextEditingController();
+
+  // 👇 إضافة: رابط السيرفر وحالة التحميل
+  final String _renderUrl = "https://mikrotik-server-qu6a.onrender.com";
   bool _isProcessing = false;
 
   @override
@@ -35,9 +37,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
 
   void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
 
-  // ---------------------------------------------------------
-  // نافذة التأكيد (حماية ضد الضغط الخاطئ)
-  // ---------------------------------------------------------
+  // 👇 إضافة: دالة نافذة التأكيد قبل أي عملية حساسة
   Future<bool> _confirmAction(String title, String message, Color color) async {
     _play('warning');
     return await showDialog(
@@ -64,89 +64,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
     ) ?? false;
   }
 
-  // ---------------------------------------------------------
-  // إدارة الشبكات: إضافة وتعديل
-  // ---------------------------------------------------------
-  void _showServerForm({Map<String, dynamic>? existingData, String? docId}) {
-    _play('click');
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    
-    final nameC = TextEditingController(text: existingData?['name'] ?? '');
-    final ipC = TextEditingController(text: existingData?['ip'] ?? '');
-    final userC = TextEditingController(text: existingData?['apiUser'] ?? '');
-    final passC = TextEditingController(text: existingData?['apiPassword'] ?? '');
-    final loginUrlC = TextEditingController(text: existingData?['loginUrl'] ?? '');
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, top: 20, left: 16, right: 16),
-        child: Directionality(
-          textDirection: TextDirection.rtl,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(docId == null ? 'إضافة شبكة ميكروتك جديدة 📡' : 'تعديل بيانات الشبكة ✏️', 
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 20),
-                TextField(controller: nameC, decoration: InputDecoration(labelText: 'اسم الشبكة', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.dns))),
-                const SizedBox(height: 12),
-                TextField(controller: ipC, decoration: InputDecoration(labelText: 'IP الميكروتك / DDNS', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.wifi))),
-                const SizedBox(height: 12),
-                TextField(controller: loginUrlC, decoration: InputDecoration(labelText: 'رابط صفحة تسجيل الدخول (الزبائن سيفتحونه)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.link))),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(child: TextField(controller: userC, decoration: InputDecoration(labelText: 'مستخدم API', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))))),
-                    const SizedBox(width: 10),
-                    Expanded(child: TextField(controller: passC, obscureText: true, decoration: InputDecoration(labelText: 'الباسورد', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))))),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity, height: 50,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade800, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                    onPressed: () async {
-                      if (nameC.text.isEmpty || ipC.text.isEmpty) { _play('error'); return; }
-                      
-                      bool confirm = await _confirmAction("حفظ التغييرات", "هل أنت متأكد من صحة البيانات المدخلة؟", Colors.blue);
-                      if (!confirm) return;
-
-                      final data = {
-                        'name': nameC.text, 'ip': ipC.text, 'apiUser': userC.text, 'apiPassword': passC.text,
-                        'loginUrl': loginUrlC.text, 'agentPhone': sys.currentUserPhone, 'isActive': existingData?['isActive'] ?? true,
-                        'apiPort': '8728', 'updatedAt': FieldValue.serverTimestamp(),
-                      };
-
-                      if (docId == null) {
-                        data['createdAt'] = FieldValue.serverTimestamp();
-                        data['categories'] = [];
-                        await _db.collection('networks').add(data);
-                      } else {
-                        await _db.collection('networks').doc(docId).update(data);
-                      }
-                      Navigator.pop(context);
-                      _play('success');
-                    },
-                    child: const Text('حفظ البيانات والربط', style: TextStyle(color: Colors.white, fontSize: 16)),
-                  ),
-                ),
-                const SizedBox(height: 25),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------
-  // اختبار الاتصال بالميكروتك (زر الفلاش)
-  // ---------------------------------------------------------
+  // 👇 إضافة: دالة اختبار الاتصال بالميكروتك عبر السيرفر
   Future<void> _testConnection(Map<String, dynamic> net) async {
     _play('click');
     setState(() => _isProcessing = true);
@@ -158,274 +76,619 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
       );
       if (response.statusCode == 200) {
         _play('success');
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم الاتصال بالميكروتك بنجاح! ✅'), backgroundColor: Colors.green));
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم الاتصال بالميكروتك بنجاح! ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
       } else { throw 'الراوتر لا يستجيب'; }
     } catch (e) {
       _play('error');
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ في الاتصال: $e ❌'), backgroundColor: Colors.red));
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ في الاتصال: $e ❌', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
     }
     setState(() => _isProcessing = false);
   }
 
-  // ---------------------------------------------------------
-  // إدارة الفئات (إضافة / تعديل / حذف / تجميد)
-  // ---------------------------------------------------------
-  void _showCategoryForm(String netId, List categories, {Map? existingCat}) {
+  // ==========================================
+  // 1. إضافة وتعديل سيرفر ميكروتك (ورفعه للسوق) 📡
+  // تم تعديل الدالة لتقبل بيانات قديمة (existingData) لتفعيل ميزة "التعديل"
+  // ==========================================
+  void _showAddServerBottomSheet(SystemProvider sys, {Map<String, dynamic>? existingData, String? docId}) {
     _play('click');
-    final nameC = TextEditingController(text: existingCat?['name'] ?? '');
-    final priceC = TextEditingController(text: existingCat?['price']?.toString() ?? '');
+    String name = existingData?['name'] ?? '';
+    String location = existingData?['location'] ?? '';
+    String ip = existingData?['ip'] ?? '';
+    String user = existingData?['apiUser'] ?? '';
+    String pass = existingData?['apiPassword'] ?? '';
+    String port = existingData?['apiPort'] ?? '8728';
+    String loginUrl = existingData?['loginUrl'] ?? ''; // 👈 الميزة الجديدة (رابط الدخول)
+    bool isSubmitting = false;
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: Text(existingCat == null ? 'إضافة فئة كروت' : 'تعديل الفئة'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: nameC, decoration: const InputDecoration(labelText: 'اسم البروفايل في الميكروتك (Profile)')),
-              TextField(controller: priceC, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'سعر البيع للجمهور')),
-            ],
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) => Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, top: 20, left: 16, right: 16),
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(docId == null ? 'إضافة شبكة/سيرفر ميكروتك جديد 📡' : 'تعديل بيانات الشبكة ✏️', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 10),
+                    const Text('سيتم عرض هذه الشبكة في "سوق الشبكات" للزبائن.', style: TextStyle(fontSize: 12, color: Colors.blue)),
+                    const SizedBox(height: 20),
+                    // 👇 تم إضافة controller لعرض البيانات عند التعديل
+                    TextField(controller: TextEditingController(text: name), onChanged: (v) => name = v, decoration: InputDecoration(labelText: 'اسم الشبكة (مثال: شبكة الصقر)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.dns))),
+                    const SizedBox(height: 12),
+                    TextField(controller: TextEditingController(text: location), onChanged: (v) => location = v, decoration: InputDecoration(labelText: 'موقع الشبكة (مثال: صنعاء - حدة)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.location_on))),
+                    const SizedBox(height: 12),
+                    TextField(controller: TextEditingController(text: ip), onChanged: (v) => ip = v, decoration: InputDecoration(labelText: 'عنوان IP / الرابط (DDNS)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.wifi))),
+                    const SizedBox(height: 12),
+                    // 👇 الميزة الجديدة: حقل رابط تسجيل الدخول
+                    TextField(controller: TextEditingController(text: loginUrl), onChanged: (v) => loginUrl = v, decoration: InputDecoration(labelText: 'رابط صفحة تسجيل الدخول للزبائن', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.link))),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(child: TextField(controller: TextEditingController(text: user), onChanged: (v) => user = v, decoration: InputDecoration(labelText: 'مستخدم API', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.person)))),
+                        const SizedBox(width: 10),
+                        Expanded(child: TextField(controller: TextEditingController(text: pass), onChanged: (v) => pass = v, obscureText: true, decoration: InputDecoration(labelText: 'كلمة المرور', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.lock)))),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(controller: TextEditingController(text: port), onChanged: (v) => port = v, decoration: InputDecoration(labelText: 'API Port (الافتراضي: 8728)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.settings_ethernet))),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity, height: 50,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade800, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                        onPressed: isSubmitting ? null : () async {
+                          if (name.isNotEmpty && location.isNotEmpty && ip.isNotEmpty) {
+                            // 👇 إضافة التأكيد قبل الحفظ (في حالة التعديل)
+                            if (docId != null) {
+                              bool confirm = await _confirmAction("حفظ التعديلات", "هل أنت متأكد من حفظ التعديلات على هذه الشبكة؟", Colors.blue);
+                              if (!confirm) return;
+                            }
+                            
+                            _play('click');
+                            setModalState(() => isSubmitting = true);
+                            try {
+                              Map<String, dynamic> networkData = {
+                                'name': name,
+                                'location': location,
+                                'ip': ip, 'apiUser': user, 'apiPassword': pass, 'apiPort': port,
+                                'loginUrl': loginUrl, // 👈 حفظ الرابط
+                                'agentPhone': sys.currentUserPhone, 
+                                'agentName': sys.currentUserName,
+                                'isActive': existingData?['isActive'] ?? true, // 👈 حالة التجميد
+                                'updatedAt': FieldValue.serverTimestamp(),
+                              };
+
+                              if (docId == null) {
+                                networkData['status'] = 'متصل نشط 🟢';
+                                networkData['categories'] = [];
+                                networkData['createdAt'] = FieldValue.serverTimestamp();
+                                await _db.collection('networks').add(networkData);
+                              } else {
+                                await _db.collection('networks').doc(docId).update(networkData);
+                              }
+
+                              _play('success');
+                              if (mounted) { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(docId == null ? 'تمت إضافة الشبكة بنجاح! 🟢' : 'تم تعديل الشبكة بنجاح! ✏️', textDirection: TextDirection.rtl), backgroundColor: Colors.green)); }
+                            } catch (e) {
+                              setModalState(() => isSubmitting = false);
+                              _play('error');
+                            }
+                          } else {
+                            _play('error');
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال اسم الشبكة والموقع والـ IP', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                          }
+                        },
+                        child: isSubmitting ? const CircularProgressIndicator(color: Colors.white) : const Text('حفظ واتصال', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              ),
+            ),
           ),
-          actions: [
-            TextButton(onPressed: () { _play('click'); Navigator.pop(context); }, child: const Text('إلغاء')),
-            ElevatedButton(
-              onPressed: () async {
-                if (nameC.text.isEmpty || priceC.text.isEmpty) return;
-                _play('click');
-                List updatedCats = List.from(categories);
-                final newCat = {
-                  'id': existingCat?['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
-                  'name': nameC.text, 'price': int.parse(priceC.text), 'stock': existingCat?['stock'] ?? 0,
-                  'isActive': existingCat?['isActive'] ?? true, 'color': existingCat?['color'] ?? Colors.blue.value,
-                };
-                if (existingCat == null) { updatedCats.add(newCat); } 
-                else {
-                  int idx = updatedCats.indexWhere((c) => c['id'] == existingCat['id']);
-                  updatedCats[idx] = newCat;
-                }
-                await _db.collection('networks').doc(netId).update({'categories': updatedCats});
-                Navigator.pop(context);
-                _play('success');
-              },
-              child: const Text('حفظ الفئة'),
-            )
-          ],
-        ),
-      ),
+        );
+      },
     );
   }
 
-  // ---------------------------------------------------------
-  // وظيفة توليد الكروت (الاتصال بـ Render)
-  // ---------------------------------------------------------
-  Future<void> _generateCards() async {
-    if (_selectedCategoryToGenerate == null || _generateAmountController.text.isEmpty) return;
-    int amount = int.parse(_generateAmountController.text);
-    if (amount > 400 || amount <= 0) { _play('error'); return; }
-
-    bool confirmed = await _confirmAction("تأكيد التوليد 🔌", "سيتم الآن توليد $amount كرت وإضافتها للراوتر وللتطبيق. هل تريد الاستمرار؟", Colors.green);
-    if (!confirmed) return;
-
-    setState(() => _isProcessing = true);
+  // ==========================================
+  // 2. إضافة وتعديل فئة كروت للشبكة 🎟️
+  // تم التعديل لقبول existingCat
+  // ==========================================
+  void _showAddCategoryBottomSheet(List<QueryDocumentSnapshot> agentNetworks, {Map? existingCat, String? preSelectedNetId}) {
     _play('click');
+    String newName = existingCat?['name'] ?? '';
+    String newTime = existingCat?['time'] ?? '';
+    String newCapacity = existingCat?['capacity'] ?? '';
+    String newPrice = existingCat?['price']?.toString() ?? '';
+    String? selectedNetworkId = preSelectedNetId;
+    Color selectedColor = existingCat != null ? Color(existingCat['color']) : Colors.blue;
+    final List<Color> colorOptions = [Colors.blue, Colors.orange, Colors.green, Colors.purple, Colors.red, Colors.teal];
+    bool isSubmitting = false;
 
-    try {
-      List parts = _selectedCategoryToGenerate!.split('_');
-      final response = await http.post(
-        Uri.parse("$_renderUrl/generateMikrotikCards"),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"networkId": parts[0], "categoryId": parts[1], "amount": amount, "agentPhone": Provider.of<SystemProvider>(context, listen: false).currentUserPhone}),
-      );
-
-      if (response.statusCode == 200) {
-        _play('success');
-        _generateAmountController.clear();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت العملية بنجاح! الكروت جاهزة للبيع 🎟️'), backgroundColor: Colors.green));
-      } else { throw jsonDecode(response.body)['error'] ?? 'خطأ غير معروف'; }
-    } catch (e) {
-      _play('error');
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشلت العملية: $e'), backgroundColor: Colors.red));
+    if (agentNetworks.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يجب إضافة سيرفر شبكة أولاً قبل إضافة الفئات!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+      return;
     }
-    setState(() => _isProcessing = false);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) => Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, top: 20, left: 16, right: 16),
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(existingCat == null ? 'إضافة فئة كروت جديدة (Profile) 🎟️' : 'تعديل بيانات الفئة ✏️', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 20),
+                    
+                    if (existingCat == null) DropdownButtonFormField<String>(
+                      decoration: InputDecoration(labelText: 'اختر الشبكة التابعة لها الفئة', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
+                      value: selectedNetworkId,
+                      items: agentNetworks.map((net) => DropdownMenuItem(value: net.id, child: Text((net.data() as Map)['name']))).toList(),
+                      onChanged: (val) => setModalState(() => selectedNetworkId = val),
+                    ),
+                    if (existingCat == null) const SizedBox(height: 12),
+
+                    TextField(controller: TextEditingController(text: newName), onChanged: (val) => newName = val, decoration: InputDecoration(labelText: 'اسم الفئة (مثال: أبو 1000)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.category))),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(child: TextField(controller: TextEditingController(text: newTime), onChanged: (val) => newTime = val, decoration: InputDecoration(labelText: 'الوقت (مثال: 24 ساعة)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.timer)))),
+                        const SizedBox(width: 10),
+                        Expanded(child: TextField(controller: TextEditingController(text: newCapacity), onChanged: (val) => newCapacity = val, decoration: InputDecoration(labelText: 'السعة (مثال: 1 جيجا)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.data_usage)))),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(controller: TextEditingController(text: newPrice), onChanged: (val) => newPrice = val, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'سعر البيع للجمهور (ريال)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.attach_money))),
+                    const SizedBox(height: 15),
+                    const Align(alignment: Alignment.centerRight, child: Text('اختر لون الفئة:', style: TextStyle(fontWeight: FontWeight.bold))),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: colorOptions.map((color) => GestureDetector(
+                        onTap: () { _play('click'); setModalState(() => selectedColor = color); },
+                        child: CircleAvatar(backgroundColor: color, radius: 20, child: selectedColor == color ? const Icon(Icons.check, color: Colors.white) : null),
+                      )).toList(),
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity, height: 50,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: selectedColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                        onPressed: isSubmitting ? null : () async {
+                          if (selectedNetworkId != null && newName.isNotEmpty && newPrice.isNotEmpty) {
+                            
+                            if (existingCat != null) {
+                              bool confirm = await _confirmAction("حفظ التعديلات", "هل متأكد من تعديل بيانات هذه الفئة؟", Colors.blue);
+                              if (!confirm) return;
+                            }
+
+                            _play('click');
+                            setModalState(() => isSubmitting = true);
+                            try {
+                              var newCategory = {
+                                'id': existingCat?['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+                                'name': newName,
+                                'time': newTime.isNotEmpty ? newTime : 'غير محدد',
+                                'capacity': newCapacity.isNotEmpty ? newCapacity : 'مفتوح',
+                                'price': int.tryParse(newPrice) ?? 0,
+                                'color': selectedColor.value, 
+                                'stock': existingCat?['stock'] ?? 0,
+                                'isActive': existingCat?['isActive'] ?? true, // 👈 حالة التجميد
+                              };
+
+                              if (existingCat == null) {
+                                await _db.collection('networks').doc(selectedNetworkId).update({
+                                  'categories': FieldValue.arrayUnion([newCategory])
+                                });
+                              } else {
+                                // تعديل فئة موجودة
+                                var netDoc = await _db.collection('networks').doc(selectedNetworkId).get();
+                                List cats = List.from((netDoc.data() as Map)['categories']);
+                                int idx = cats.indexWhere((c) => c['id'] == existingCat['id']);
+                                cats[idx] = newCategory;
+                                await _db.collection('networks').doc(selectedNetworkId).update({'categories': cats});
+                              }
+
+                              _play('success');
+                              if (mounted) { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ الفئة بنجاح! 📋', textDirection: TextDirection.rtl), backgroundColor: Colors.green)); }
+                            } catch (e) {
+                              setModalState(() => isSubmitting = false);
+                              _play('error');
+                            }
+                          } else {
+                            _play('error');
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء اختيار الشبكة وإدخال الاسم والسعر!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                          }
+                        },
+                        child: isSubmitting ? const CircularProgressIndicator(color: Colors.white) : const Text('حفظ الفئة', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       appBar: const CustomHeader(title: 'إدارة الميكروتك والفئات'),
-      drawer: CustomAgentDrawer(agentName: sys.currentUserName, phoneNumber: sys.currentUserPhone, role: 'مدير شبكة', currentBalance: sys.currentUserBalance),
+      drawer: CustomAgentDrawer(
+        agentName: sys.currentUserName,
+        phoneNumber: sys.currentUserPhone,
+        role: 'وكيل معتمد (Agent)',
+        currentBalance: sys.currentUserBalance,
+      ),
       body: StreamBuilder<QuerySnapshot>(
         stream: _db.collection('networks').where('agentPhone', isEqualTo: sys.currentUserPhone).snapshots(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          var networks = snapshot.data!.docs;
-          return Column(
-            children: [
-              Container(
-                color: Colors.blue.shade800,
-                child: TabBar(
-                  controller: _tabController,
-                  labelColor: Colors.orange, unselectedLabelColor: Colors.white70,
-                  indicatorColor: Colors.orange, indicatorWeight: 3,
-                  onTap: (index) { _play('click'); setState(() {}); },
-                  tabs: const [Tab(text: 'الشبكات'), Tab(text: 'المخزون'), Tab(text: 'الخصومات'), Tab(text: 'توليد كروت')],
-                ),
-              ),
-              if (_isProcessing) const LinearProgressIndicator(backgroundColor: Colors.orange, color: Colors.white),
-              Expanded(
-                child: TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _buildNetworksTab(networks),
-                    _buildInventoryTab(networks),
-                    _buildDiscountsTab(),
-                    _buildGenerateTab(networks),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-      floatingActionButton: _tabController.index == 0 
-        ? FloatingActionButton(onPressed: () => _showServerForm(), backgroundColor: Colors.blue.shade800, child: const Icon(Icons.add, color: Colors.white))
-        : null,
-    );
-  }
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          
+          List<QueryDocumentSnapshot> agentNetworks = snapshot.hasData ? snapshot.data!.docs : [];
 
-  // 1. تبويب الشبكات
-  Widget _buildNetworksTab(List<QueryDocumentSnapshot> docs) {
-    if (docs.isEmpty) return const Center(child: Text('لم يتم ربط أي شبكة حتى الآن'));
-    return ListView.builder(
-      padding: const EdgeInsets.all(10),
-      itemCount: docs.length,
-      itemBuilder: (context, i) {
-        var net = docs[i].data() as Map<String, dynamic>;
-        bool active = net['isActive'] ?? true;
-        return Card(
-          elevation: 3, color: active ? Colors.white : Colors.grey.shade200,
-          child: ListTile(
-            leading: Icon(Icons.router, color: active ? Colors.green : Colors.grey),
-            title: Text(net['name'], style: TextStyle(fontWeight: FontWeight.bold, decoration: active ? null : TextDecoration.lineThrough)),
-            subtitle: Text("IP: ${net['ip']}"),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: Column(
               children: [
-                IconButton(icon: const Icon(Icons.bolt, color: Colors.blue), onPressed: () => _testConnection(net)),
-                IconButton(icon: Icon(active ? Icons.pause_circle_outline : Icons.play_circle_outline, color: Colors.orange), 
-                  onPressed: () async {
-                    bool c = await _confirmAction(active ? "تجميد الشبكة" : "تنشيط الشبكة", "هل تريد تغيير حالة الشبكة؟", Colors.orange);
-                    if(c) {
-                       _db.collection('networks').doc(docs[i].id).update({'isActive': !active});
-                       _play('success');
-                    }
-                  }),
-                IconButton(icon: const Icon(Icons.edit, color: Colors.grey), onPressed: () => _showServerForm(existingData: net, docId: docs[i].id)),
-                IconButton(icon: const Icon(Icons.delete_forever, color: Colors.red), 
-                  onPressed: () async {
-                    bool c = await _confirmAction("حذف الشبكة", "سيتم حذف الشبكة وكافة بياناتها نهائياً!", Colors.red);
-                    if(c) {
-                       _db.collection('networks').doc(docs[i].id).delete();
-                       _play('success');
-                    }
-                  }),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.only(bottom: 5, top: 5),
+                  decoration: BoxDecoration(color: isDark ? Colors.grey.shade900 : Colors.blue.shade800, borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20))),
+                  child: TabBar(
+                    controller: _tabController,
+                    isScrollable: true,
+                    labelColor: Colors.white,
+                    unselectedLabelColor: Colors.white54,
+                    indicatorColor: Colors.orange,
+                    indicatorWeight: 4,
+                    labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    tabs: const [
+                      Tab(icon: Icon(Icons.dns), text: 'سيرفرات الربط'),
+                      Tab(icon: Icon(Icons.category), text: 'المخزون والفئات'),
+                      Tab(icon: Icon(Icons.local_offer), text: 'شرائح الخصم'),
+                      Tab(icon: Icon(Icons.autorenew), text: 'توليد الكروت'),
+                    ],
+                  ),
+                ),
+                if (_isProcessing) const LinearProgressIndicator(backgroundColor: Colors.orange, color: Colors.white),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildServersTab(sys, agentNetworks),
+                      _buildCategoriesTab(agentNetworks),
+                      _buildDiscountTiersTab(),
+                      _buildGenerateCardsTab(sys, agentNetworks), 
+                    ],
+                  ),
+                ),
               ],
             ),
-          ),
-        );
-      },
+          );
+        }
+      ),
     );
   }
 
-  // 2. تبويب المخزون والفئات
-  Widget _buildInventoryTab(List<QueryDocumentSnapshot> docs) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(10),
-      itemCount: docs.length,
-      itemBuilder: (context, i) {
-        var net = docs[i].data() as Map<String, dynamic>;
-        List cats = net['categories'] ?? [];
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(padding: const EdgeInsets.all(8.0), child: Text("فئات شبكة: ${net['name']}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue))),
-            ...cats.map((c) => Card(
+  // ==========================================
+  // تبويب السيرفرات (الشبكات)
+  // ==========================================
+  Widget _buildServersTab(SystemProvider sys, List<QueryDocumentSnapshot> networks) {
+    return Scaffold(
+      backgroundColor: Colors.transparent, 
+      body: networks.isEmpty 
+        ? const Center(child: Text('لم تقم بربط أي شبكة ميكروتك حتى الآن.', style: TextStyle(color: Colors.grey)))
+        : ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: networks.length,
+          itemBuilder: (context, index) {
+            var net = networks[index].data() as Map<String, dynamic>;
+            bool isActive = net['isActive'] ?? true; // حالة التجميد
+            return Card(
+              color: isActive ? null : Colors.grey.shade300, // لون رمادي عند التجميد
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              elevation: 3,
               child: ListTile(
-                title: Text(c['name'], style: TextStyle(decoration: c['isActive'] == false ? TextDecoration.lineThrough : null)),
-                subtitle: Text("المخزون: ${c['stock']} كرت | السعر: ${c['price']}"),
+                contentPadding: const EdgeInsets.all(16),
+                leading: CircleAvatar(backgroundColor: isActive ? Colors.green : Colors.grey, child: const Icon(Icons.router, color: Colors.white)),
+                title: Text(net['name'] ?? '', style: TextStyle(fontWeight: FontWeight.bold, decoration: isActive ? null : TextDecoration.lineThrough)),
+                subtitle: Text('الموقع: ${net['location']}\nIP: ${net['ip']}\nالحالة: ${isActive ? 'نشط' : 'مجمد'}'),
+                // 👇 استبدال أيقونة الحذف بصف كامل من الأزرار (فحص، تجميد، تعديل، حذف)
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    IconButton(icon: Icon(c['isActive'] == false ? Icons.play_arrow : Icons.stop, color: Colors.orange), 
+                    IconButton(icon: const Icon(Icons.bolt, color: Colors.blue), onPressed: () => _testConnection(net)),
+                    IconButton(icon: Icon(isActive ? Icons.pause_circle_filled : Icons.play_circle_fill, color: Colors.orange), 
                       onPressed: () async {
-                         bool res = await _confirmAction(c['isActive'] == false ? "تنشيط" : "تجميد", "تغيير حالة الفئة؟", Colors.orange);
-                         if(res) {
-                            List updated = List.from(cats);
-                            int idx = updated.indexWhere((cat) => cat['id'] == c['id']);
-                            updated[idx]['isActive'] = !(updated[idx]['isActive'] ?? true);
-                            await _db.collection('networks').doc(docs[i].id).update({'categories': updated});
-                            _play('success');
-                         }
+                        bool confirm = await _confirmAction(isActive ? "تجميد الشبكة" : "تنشيط الشبكة", "هل تريد تغيير حالة الشبكة؟", Colors.orange);
+                        if(confirm) _db.collection('networks').doc(networks[index].id).update({'isActive': !isActive});
                       }),
-                    IconButton(icon: const Icon(Icons.edit_note, color: Colors.blue), onPressed: () => _showCategoryForm(docs[i].id, cats, existingCat: c)),
-                    IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.red), 
-                      onPressed: () async {
-                        bool res = await _confirmAction("حذف الفئة", "سيتم حذف هذه الفئة من التطبيق نهائياً!", Colors.red);
-                        if(res) {
-                          List updated = List.from(cats);
-                          updated.removeWhere((cat) => cat['id'] == c['id']);
-                          await _db.collection('networks').doc(docs[i].id).update({'categories': updated});
-                          _play('success');
-                        }
-                      }),
+                    IconButton(icon: const Icon(Icons.edit, color: Colors.grey), onPressed: () => _showAddServerBottomSheet(sys, existingData: net, docId: networks[index].id)),
+                    IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () async {
+                      bool confirm = await _confirmAction("حذف الشبكة نهائياً", "سيتم مسح بيانات الشبكة، هل أنت متأكد؟", Colors.red);
+                      if(confirm) {
+                        _play('click');
+                        await _db.collection('networks').doc(networks[index].id).delete();
+                      }
+                    }),
                   ],
                 ),
               ),
-            )),
-            TextButton.icon(onPressed: () => _showCategoryForm(docs[i].id, cats), icon: const Icon(Icons.add), label: const Text("إضافة فئة جديدة لهذا الميكروتك")),
-            const Divider(),
-          ],
-        );
-      },
+            );
+          }
+        ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showAddServerBottomSheet(sys),
+        backgroundColor: Colors.blue.shade800,
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text('إضافة سيرفر', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      ),
     );
   }
 
-  // 3. تبويب التوليد
-  Widget _buildGenerateTab(List<QueryDocumentSnapshot> networks) {
+  // ==========================================
+  // تبويب الفئات والمخزون
+  // ==========================================
+  Widget _buildCategoriesTab(List<QueryDocumentSnapshot> networks) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: networks.isEmpty 
+        ? const Center(child: Text('أضف سيرفر شبكة أولاً لعرض فئاته.'))
+        : ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: networks.length,
+          itemBuilder: (context, netIndex) {
+            var netId = networks[netIndex].id;
+            var netData = networks[netIndex].data() as Map<String, dynamic>;
+            List categories = netData['categories'] ?? [];
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Text('فئات شبكة: ${netData['name']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueGrey)),
+                ),
+                if (categories.isEmpty)
+                  const Padding(padding: EdgeInsets.all(8.0), child: Text('لا توجد فئات لهذه الشبكة.', style: TextStyle(color: Colors.grey))),
+                ...categories.map((category) {
+                  int stock = category['stock'] ?? 0;
+                  bool isLowStock = stock < 10;
+                  Color catColor = Color(category['color'] ?? Colors.blue.value);
+                  bool isCatActive = category['isActive'] ?? true; // حالة التجميد للفئة
+
+                  return Card(
+                    color: isCatActive ? null : Colors.grey.shade200,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: isCatActive ? catColor.withOpacity(0.5) : Colors.grey)),
+                    margin: const EdgeInsets.only(bottom: 10),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(category['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: isCatActive ? catColor : Colors.grey, decoration: isCatActive ? null : TextDecoration.lineThrough)),
+                              // 👇 إضافة أزرار (تجميد، تعديل، حذف) بجانب بعض
+                              Row(
+                                children: [
+                                  IconButton(icon: Icon(isCatActive ? Icons.pause_circle_filled : Icons.play_circle_fill, color: Colors.orange, size: 20), 
+                                    onPressed: () async {
+                                      bool confirm = await _confirmAction(isCatActive ? "تجميد الفئة" : "تنشيط الفئة", "تغيير حالة الفئة؟", Colors.orange);
+                                      if(confirm) {
+                                        List updated = List.from(categories);
+                                        int idx = updated.indexWhere((c) => c['id'] == category['id']);
+                                        updated[idx]['isActive'] = !isCatActive;
+                                        await _db.collection('networks').doc(netId).update({'categories': updated});
+                                      }
+                                    }, constraints: const BoxConstraints(), padding: const EdgeInsets.symmetric(horizontal: 5)),
+                                  IconButton(icon: const Icon(Icons.edit, color: Colors.blue, size: 20), 
+                                    onPressed: () => _showAddCategoryBottomSheet(networks, existingCat: category, preSelectedNetId: netId), 
+                                    constraints: const BoxConstraints(), padding: const EdgeInsets.symmetric(horizontal: 5)),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete, color: Colors.red, size: 20), 
+                                    onPressed: () async {
+                                      bool confirm = await _confirmAction("حذف الفئة", "سيتم حذف الفئة نهائياً، متأكد؟", Colors.red);
+                                      if(confirm) {
+                                        _play('click');
+                                        await _db.collection('networks').doc(netId).update({'categories': FieldValue.arrayRemove([category])});
+                                      }
+                                    }, 
+                                    constraints: const BoxConstraints(), padding: const EdgeInsets.symmetric(horizontal: 5)
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text('الوقت: ${category['time']} | السعة: ${category['capacity']}', style: const TextStyle(color: Colors.grey)),
+                          const Divider(),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('سعر الجمهور: ${category['price']} ريال', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(color: isLowStock ? Colors.red.shade100 : Colors.green.shade100, borderRadius: BorderRadius.circular(10)),
+                                child: Text('المخزون: $stock كرت', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: isLowStock ? Colors.red : Colors.green.shade800)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+                const SizedBox(height: 20),
+              ],
+            );
+          }
+        ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showAddCategoryBottomSheet(networks),
+        backgroundColor: Colors.orange.shade700,
+        icon: const Icon(Icons.add_circle, color: Colors.white),
+        label: const Text('إضافة فئة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      ),
+    );
+  }
+
+  // ==========================================
+  // تبويب التوليد (الآن يتم عبر سيرفر Render)
+  // ==========================================
+  Widget _buildGenerateCardsTab(SystemProvider sys, List<QueryDocumentSnapshot> networks) {
+    if (networks.isEmpty) return const Center(child: Text('يجب إضافة شبكة وفئات أولاً!'));
+
+    List<Map<String, dynamic>> allCategories = [];
+    for (var net in networks) {
+      String netId = net.id;
+      List cats = (net.data() as Map)['categories'] ?? [];
+      for (var cat in cats) {
+        // إضافة الفئات النشطة فقط والشبكات النشطة فقط للتوليد
+        if ((net.data() as Map)['isActive'] != false && cat['isActive'] != false) {
+           allCategories.add({'networkId': netId, 'networkName': (net.data() as Map)['name'], 'category': cat});
+        }
+      }
+    }
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20.0),
+      padding: const EdgeInsets.all(16),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.autorenew, size: 80, color: Colors.green),
-          const Text("محرك توليد الكروت الذكي", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.blue)),
+            child: const Text('🔌 عند الضغط على توليد، سيقوم النظام بتوليد الكروت وحفظها في قاعدة البيانات لتكون متاحة للبيع الفوري في سوق الشبكات.', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+          ),
           const SizedBox(height: 20),
           DropdownButtonFormField<String>(
-            decoration: const InputDecoration(labelText: 'اختر الشبكة والفئة المراد توليدها', border: OutlineInputBorder()),
-            items: networks.expand((net) {
-              List cats = (net.data() as Map)['categories'] ?? [];
-              return cats.map((c) => DropdownMenuItem(value: "${net.id}_${c['id']}", child: Text("${net['name']} - ${c['name']}")));
-            }).toList(),
-            onChanged: (v) { _play('click'); setState(() => _selectedCategoryToGenerate = v); },
+            decoration: InputDecoration(labelText: 'اختر الفئة المطلوب توليدها', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
+            value: _selectedCategoryToGenerate,
+            items: allCategories.map((item) => DropdownMenuItem(
+              value: '${item['networkId']}_${item['category']['id']}', 
+              child: Text('${item['networkName']} - ${item['category']['name']}')
+            )).toList(),
+            onChanged: (value) { _play('click'); setState(() => _selectedCategoryToGenerate = value); },
           ),
           const SizedBox(height: 15),
-          TextField(controller: _generateAmountController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'كمية الكروت المطلوب توليدها', border: OutlineInputBorder())),
+          TextField(
+            controller: _generateAmountController,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(labelText: 'الكمية المطلوب توليدها (الحد الأقصى: 400)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.format_list_numbered)),
+          ),
           const SizedBox(height: 30),
           SizedBox(
-            width: double.infinity, height: 60,
+            width: double.infinity, height: 50,
             child: ElevatedButton.icon(
-              onPressed: _isProcessing ? null : _generateCards,
-              icon: const Icon(Icons.bolt, color: Colors.white),
-              label: const Text('بدء التوليد والربط بالميكروتك', style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+              onPressed: _isProcessing ? null : () async {
+                if (_selectedCategoryToGenerate != null && _generateAmountController.text.isNotEmpty) {
+                  int amount = int.tryParse(_generateAmountController.text) ?? 0;
+                  
+                  if (amount > 400) {
+                     _play('error');
+                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الحد الأقصى للتوليد في الدفعة الواحدة هو 400 كرت!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                     return;
+                  }
+
+                  if (amount > 0) {
+                    bool confirm = await _confirmAction("بدء التوليد 🔌", "سيتم الآن توليد $amount كرت عبر السيرفر. هل تريد الاستمرار؟", Colors.green);
+                    if (!confirm) return;
+
+                    _play('click');
+                    setState(() => _isProcessing = true);
+                    
+                    List<String> parts = _selectedCategoryToGenerate!.split('_');
+                    String netId = parts[0];
+                    String catId = parts[1];
+
+                    // 👇 السحر هنا: استبدال كود الحفظ المحلي بإرسال الطلب لسيرفر Render
+                    try {
+                      final response = await http.post(
+                        Uri.parse("$_renderUrl/generateMikrotikCards"),
+                        headers: {"Content-Type": "application/json"},
+                        body: jsonEncode({
+                          "networkId": netId,
+                          "categoryId": catId,
+                          "amount": amount,
+                          "agentPhone": sys.currentUserPhone
+                        }),
+                      );
+
+                      if (response.statusCode == 200) {
+                        _play('success');
+                        _generateAmountController.clear();
+                        if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم توليد وإضافة $amount كرت حقيقي بنجاح! متاح الآن للزبائن ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                      } else {
+                        throw jsonDecode(response.body)['error'] ?? 'خطأ غير معروف';
+                      }
+                    } catch (e) {
+                      _play('error');
+                      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشلت العملية: $e', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                    }
+                    setState(() => _isProcessing = false);
+                  }
+                } else {
+                  _play('error');
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء اختيار الفئة وإدخال الكمية', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                }
+              },
+              icon: const Icon(Icons.autorenew, color: Colors.white),
+              label: const Text('بدء الاتصال والتوليد', style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
             ),
-          )
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildDiscountsTab() => const Center(child: Text("قسم إدارة شرائح الخصم التلقائي للبقالات (قيد التطوير)"));
+  // تبويب شرائح الخصم (للعرض فقط - لم يتم تغييره)
+  Widget _buildDiscountTiersTab() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(10)), child: const Text('💡 يتم تطبيق هذا الخصم (سعر الجملة) تلقائياً للبقالات بناءً على حجم مسحوباتها.', style: TextStyle(color: Colors.brown, fontWeight: FontWeight.bold, fontSize: 12))),
+        const SizedBox(height: 15),
+        _buildTierCard('الشريحة الذهبية 🏆', 'للبقالات التي تسحب أكثر من 70,000 ريال', 'خصم: 30%', Colors.amber.shade700),
+        _buildTierCard('الشريحة الفضية 🥈', 'للبقالات التي تسحب أكثر من 50,000 ريال', 'خصم: 20%', Colors.grey.shade600),
+        _buildTierCard('الشريحة البرونزية 🥉', 'للبقالات التي تسحب أقل من 30,000 ريال', 'خصم: 10%', Colors.brown.shade400),
+      ],
+    );
+  }
+
+  Widget _buildTierCard(String title, String condition, String discount, Color color) {
+    return Card(
+      elevation: 2, margin: const EdgeInsets.only(bottom: 12),
+      child: ListTile(
+        leading: Icon(Icons.stars, color: color, size: 35),
+        title: Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: color)), subtitle: Text(condition, style: const TextStyle(fontSize: 12)),
+        trailing: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(20)), child: Text(discount, style: TextStyle(fontWeight: FontWeight.bold, color: color))),
+      ),
+    );
+  }
 }
