@@ -359,7 +359,14 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
             // StreamBuilder للجدول
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
-                stream: _db.collection('transactions').where('agentPhone', isEqualTo: sys.currentUserPhone).orderBy('createdAt', descending: true).limit(500).snapshots(),
+                stream: _db.collection('transactions').where('agentPhone', isEqualTo: sys.currentUserPhone).snapshots(),
+                // StreamBuilder للجدول
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: _db.collection('transactions').where('agentPhone', isEqualTo: sys.currentUserPhone).snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) return Center(child: Text('خطأ في جلب البيانات: ${snapshot.error}', textDirection: TextDirection.rtl)); // 👈 سيظهر لك أي مشكلة إن وجدت
+                  if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
                   
