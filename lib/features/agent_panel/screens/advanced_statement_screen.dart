@@ -33,6 +33,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
   @override
   void initState() {
     super.initState();
+    // عرض آخر 30 يوماً كوضع افتراضي
     _selectedDateRange = DateTimeRange(
       start: DateTime.now().subtract(const Duration(days: 30)), 
       end: DateTime.now()
@@ -64,7 +65,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
   }
 
   // ==========================================
-  // تصدير PDF احترافي (تم تحديث خصائص التلوين)
+  // تصدير PDF احترافي
   // ==========================================
   Future<void> _exportToPDF(List<Map<String, dynamic>> data, SystemProvider sys, double tCredit, double tDebit, double net) async {
     _play('click');
@@ -115,7 +116,6 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
               headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
               headerDecoration: const pw.BoxDecoration(color: PdfColors.cyan800),
               cellAlignment: pw.Alignment.center,
-              // تم التحديث هنا لتوافق الإصدار الجديد من مكتبة PDF
               oddRowDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
               cellStyle: const pw.TextStyle(fontSize: 10),
               data: data.map((row) => [
@@ -150,7 +150,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
   }
 
   // ==========================================
-  // تصدير Excel (تم التحديث لتوافق الإصدار)
+  // تصدير Excel احترافي
   // ==========================================
   Future<void> _exportToExcel(List<Map<String, dynamic>> data, SystemProvider sys) async {
     _play('click');
@@ -159,9 +159,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
     var excel = ex.Excel.createExcel();
     ex.Sheet sheet = excel['كشف الحساب'];
     excel.setDefaultSheet('كشف الحساب');
-    excel.delete('Sheet1'); // حذف الورقة الافتراضية
-
-    // تم إزالة sheet.isRightToLeft لأن الإصدار 4.0.6 لا يدعمها مباشرة
+    excel.delete('Sheet1'); 
 
     // تنسيق الترويسة
     ex.CellStyle headerStyle = ex.CellStyle(
@@ -174,7 +172,6 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
     List<String> headers = ['رقم العملية', 'التاريخ', 'الوقت', 'البيان', 'دائن (+)', 'مدين (-)', 'الرصيد'];
     sheet.appendRow(headers.map((e) => ex.TextCellValue(e)).toList());
     
-    // تطبيق التنسيق على الصف الأول
     for (int i = 0; i < headers.length; i++) {
       sheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0)).cellStyle = headerStyle;
     }
@@ -356,18 +353,16 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
             ),
             const SizedBox(height: 10),
 
-            // StreamBuilder للجدول
+            // StreamBuilder للجدول والملخصات
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
-                stream: _db.collection('transactions').where('agentPhone', isEqualTo: sys.currentUserPhone).snapshots(),
-                // StreamBuilder للجدول
-            Expanded(
-              child: StreamBuilder<QuerySnapshot>(
+                // 👇 تم إزالة orderBy و limit لحل مشكلة (Missing Index) وعودة ظهور البيانات
                 stream: _db.collection('transactions').where('agentPhone', isEqualTo: sys.currentUserPhone).snapshots(),
                 builder: (context, snapshot) {
-                  if (snapshot.hasError) return Center(child: Text('خطأ في جلب البيانات: ${snapshot.error}', textDirection: TextDirection.rtl)); // 👈 سيظهر لك أي مشكلة إن وجدت
-                  if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                builder: (context, snapshot) {
+                  // 👇 إضافة رسالة لمعرفة الخطأ في حال حدوثه بدلاً من الشاشة الفارغة
+                  if (snapshot.hasError) {
+                    return Center(child: Text('حدث خطأ في جلب البيانات:\n${snapshot.error}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.red), textDirection: TextDirection.rtl));
+                  }
                   if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
                   
                   List<Map<String, dynamic>> finalData = _processData(snapshot.hasData ? snapshot.data!.docs : []);
@@ -377,6 +372,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
 
                   return Column(
                     children: [
+                      // أزرار التصدير والملخصات
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Row(
@@ -406,6 +402,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
                       ),
                       const SizedBox(height: 10),
 
+                      // ترويسة الجدول
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Container(
@@ -422,6 +419,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
                         ),
                       ),
 
+                      // محتوى الجدول
                       Expanded(
                         child: finalData.isEmpty
                             ? const Center(child: Text('لا توجد عمليات مطابقة في هذه الفترة.', style: TextStyle(color: Colors.grey)))
@@ -494,7 +492,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
 
       String desc = data['desc'] ?? '';
       if (desc.isEmpty && rawType == 'sale') {
-        desc = 'بيع كروت: ${data['networkName']} - ${data['categoryName']} (${data['quantity']} كرت)';
+        desc = 'بيع كروت: ${data['networkName'] ?? ''} - ${data['categoryName'] ?? ''} (${data['quantity'] ?? 1} كرت)';
       }
 
       rawList.add({
