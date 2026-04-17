@@ -33,7 +33,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
   @override
   void initState() {
     super.initState();
-    // عرض آخر 30 يوماً كوضع افتراضي
+    // تعيين النطاق الافتراضي ليكون آخر 30 يوم
     _selectedDateRange = DateTimeRange(
       start: DateTime.now().subtract(const Duration(days: 30)), 
       end: DateTime.now()
@@ -48,6 +48,9 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
 
   void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
 
+  // ==========================================
+  // نافذة اختيار التاريخ
+  // ==========================================
   Future<void> _selectDateRange() async {
     _play('click');
     final DateTimeRange? picked = await showDateRangePicker(
@@ -65,11 +68,13 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
   }
 
   // ==========================================
-  // تصدير PDF احترافي
+  // تصدير PDF احترافي (ملون ومرتب)
   // ==========================================
   Future<void> _exportToPDF(List<Map<String, dynamic>> data, SystemProvider sys, double tCredit, double tDebit, double net) async {
     _play('click');
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري تجهيز التقرير المحاسبي (PDF)...', textDirection: TextDirection.rtl)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('جاري تجهيز التقرير المحاسبي (PDF)...', textDirection: TextDirection.rtl))
+    );
 
     final pdf = pw.Document();
     final font = await PdfGoogleFonts.cairoRegular();
@@ -86,7 +91,10 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
             // الترويسة
             pw.Container(
               padding: const pw.EdgeInsets.all(15),
-              decoration: pw.BoxDecoration(color: PdfColors.cyan50, borderRadius: const pw.BorderRadius.all(pw.Radius.circular(10))),
+              decoration: pw.BoxDecoration(
+                color: PdfColors.cyan50, 
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(10))
+              ),
               child: pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
@@ -94,6 +102,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
                       pw.Text('كشف حساب تفصيلي', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: PdfColors.cyan900)),
+                      pw.SizedBox(height: 5),
                       pw.Text('الوكيل: ${sys.currentUserName}', style: const pw.TextStyle(fontSize: 14)),
                       pw.Text('رقم الهاتف: ${sys.currentUserPhone}', style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
                     ]
@@ -112,7 +121,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
 
             // الجدول
             pw.TableHelper.fromTextArray(
-              headers: ['التاريخ', 'البيان', 'دائن (+)', 'مدين (-)', 'الرصيد'],
+              headers: ['التاريخ والوقت', 'البيان', 'دائن (+)', 'مدين (-)', 'الرصيد'],
               headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
               headerDecoration: const pw.BoxDecoration(color: PdfColors.cyan800),
               cellAlignment: pw.Alignment.center,
@@ -131,7 +140,10 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
             // تذييل الملخص
             pw.Container(
               padding: const pw.EdgeInsets.all(10),
-              decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.cyan), borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5))),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.cyan), 
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5))
+              ),
               child: pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
                 children: [
@@ -146,7 +158,10 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
       ),
     );
 
-    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save(), name: 'Statement_${sys.currentUserPhone}.pdf');
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => pdf.save(), 
+      name: 'Statement_${sys.currentUserPhone}.pdf'
+    );
   }
 
   // ==========================================
@@ -154,7 +169,9 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
   // ==========================================
   Future<void> _exportToExcel(List<Map<String, dynamic>> data, SystemProvider sys) async {
     _play('click');
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري تجهيز ملف Excel...', textDirection: TextDirection.rtl)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('جاري تجهيز ملف Excel...', textDirection: TextDirection.rtl))
+    );
 
     var excel = ex.Excel.createExcel();
     ex.Sheet sheet = excel['كشف الحساب'];
@@ -191,13 +208,17 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
 
     var fileBytes = excel.encode();
     if (fileBytes != null) {
-      final xFile = XFile.fromData(Uint8List.fromList(fileBytes), name: 'Statement_${sys.currentUserPhone}.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      final xFile = XFile.fromData(
+        Uint8List.fromList(fileBytes), 
+        name: 'Statement_${sys.currentUserPhone}.xlsx', 
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
       await Share.shareXFiles([xFile], text: 'كشف حساب الوكيل: ${sys.currentUserName}');
     }
   }
 
   // ==========================================
-  // عرض سند إلكتروني للعملية (مع زر مشاركة)
+  // عرض السند الإلكتروني التفصيلي
   // ==========================================
   void _showReceiptDialog(Map<String, dynamic> row, SystemProvider sys) {
     _play('click');
@@ -210,30 +231,41 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             title: Row(
               children: [
-                Icon(row['credit'] > 0 ? Icons.arrow_downward : Icons.arrow_upward, color: row['credit'] > 0 ? Colors.green : Colors.red),
+                Icon(
+                  row['credit'] > 0 ? Icons.arrow_downward : Icons.arrow_upward, 
+                  color: row['credit'] > 0 ? Colors.green : Colors.red
+                ),
                 const SizedBox(width: 10),
-                const Text('إشعار عملية', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text('إشعار عملية تفصيلي', style: TextStyle(fontWeight: FontWeight.bold)),
               ],
             ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _buildReceiptRow('رقم المرجع:', row['id']),
+                _buildReceiptRow('رقم المرجع:', '#${row['id']}'),
                 const Divider(),
-                _buildReceiptRow('التاريخ:', '${row['date']}  ${row['time']}'),
+                _buildReceiptRow('التاريخ والوقت:', '${row['date']}  ${row['time']}'),
                 const Divider(),
                 _buildReceiptRow('نوع العملية:', row['type']),
                 const Divider(),
                 _buildReceiptRow('البيان:', row['desc']),
                 const Divider(),
-                _buildReceiptRow('المبلغ:', '${row['credit'] > 0 ? row['credit'] : row['debit']} ريال', isBold: true, color: row['credit'] > 0 ? Colors.green : Colors.red),
+                _buildReceiptRow(
+                  'المبلغ:', 
+                  '${row['credit'] > 0 ? row['credit'] : row['debit']} ريال', 
+                  isBold: true, 
+                  color: row['credit'] > 0 ? Colors.green : Colors.red
+                ),
                 const Divider(),
-                _buildReceiptRow('الرصيد:', '${row['balance']} ريال', isBold: true, color: Colors.blue),
+                _buildReceiptRow('الرصيد بعد العملية:', '${row['balance']} ريال', isBold: true, color: Colors.blue),
               ],
             ),
             actionsAlignment: MainAxisAlignment.spaceBetween,
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق', style: TextStyle(color: Colors.grey))),
+              TextButton(
+                onPressed: () => Navigator.pop(context), 
+                child: const Text('إغلاق', style: TextStyle(color: Colors.grey))
+              ),
               ElevatedButton.icon(
                 onPressed: () {
                   _play('click');
@@ -268,204 +300,8 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: const CustomHeader(title: 'كشف الحساب المتقدم'),
-      drawer: CustomAgentDrawer(
-        agentName: sys.currentUserName,
-        phoneNumber: sys.currentUserPhone,
-        role: 'وكيل معتمد (Agent)',
-        currentBalance: sys.currentUserBalance,
-      ),
-      body: Directionality(
-        textDirection: TextDirection.rtl,
-        child: Column(
-          children: [
-            // الفلاتر والبحث (مفصولة للحفاظ على الكيبورد)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.grey.shade900 : Colors.cyan.shade800,
-                borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
-                boxShadow: [BoxShadow(color: Colors.cyan.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 5))],
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: ElevatedButton.icon(
-                          onPressed: _selectDateRange,
-                          icon: const Icon(Icons.date_range, size: 18, color: Colors.cyan),
-                          label: Text(
-                            _selectedDateRange == null ? 'الفترة الزمنية' : '${_selectedDateRange!.start.day}/${_selectedDateRange!.start.month} - ${_selectedDateRange!.end.day}/${_selectedDateRange!.end.month}',
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.cyan),
-                          ),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        flex: 1,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30)),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value: _selectedType,
-                              isExpanded: true,
-                              icon: const Icon(Icons.filter_list, color: Colors.cyan, size: 18),
-                              style: const TextStyle(fontSize: 11, color: Colors.black, fontWeight: FontWeight.bold, fontFamily: 'Tajawal'),
-                              items: ['الكل', 'مبيعات', 'شحن رصيد', 'أخرى'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                              onChanged: (val) { setState(() => _selectedType = val!); },
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 40,
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: (val) => setState(() => _searchQuery = val.toLowerCase()),
-                      style: const TextStyle(color: Colors.black),
-                      decoration: InputDecoration(
-                        hintText: 'بحث سريع في البيان...',
-                        hintStyle: const TextStyle(color: Colors.grey, fontSize: 12),
-                        prefixIcon: const Icon(Icons.search, color: Colors.cyan),
-                        filled: true,
-                        fillColor: Colors.white,
-                        contentPadding: EdgeInsets.zero,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
-                      ),
-                    ),
-                  )
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            // StreamBuilder للجدول والملخصات
-            Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                // 👇 تم إزالة orderBy و limit لحل مشكلة (Missing Index) وعودة ظهور البيانات
-                stream: _db.collection('transactions').where('agentPhone', isEqualTo: sys.currentUserPhone).snapshots(),
-                builder: (context, snapshot) {
-                  // 👇 إضافة رسالة لمعرفة الخطأ في حال حدوثه بدلاً من الشاشة الفارغة
-                  if (snapshot.hasError) {
-                    return Center(child: Text('حدث خطأ في جلب البيانات:\n${snapshot.error}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.red), textDirection: TextDirection.rtl));
-                  }
-                  if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                  
-                  List<Map<String, dynamic>> finalData = _processData(snapshot.hasData ? snapshot.data!.docs : []);
-                  final double totalCredit = finalData.fold(0.0, (sum, item) => sum + item['credit']);
-                  final double totalDebit = finalData.fold(0.0, (sum, item) => sum + item['debit']);
-                  final double netMovement = totalCredit - totalDebit;
-
-                  return Column(
-                    children: [
-                      // أزرار التصدير والملخصات
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('الملخص المالي للفترة:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                            Row(
-                              children: [
-                                IconButton(icon: const Icon(Icons.picture_as_pdf, color: Colors.red), onPressed: finalData.isNotEmpty ? () => _exportToPDF(finalData, sys, totalCredit, totalDebit, netMovement) : null),
-                                IconButton(icon: const Icon(Icons.table_view, color: Colors.green), onPressed: finalData.isNotEmpty ? () => _exportToExcel(finalData, sys) : null),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Row(
-                          children: [
-                            Expanded(child: _buildSummaryCard('إيداعات (+)', totalCredit, Colors.green)),
-                            const SizedBox(width: 6),
-                            Expanded(child: _buildSummaryCard('مسحوبات (-)', totalDebit, Colors.red)),
-                            const SizedBox(width: 6),
-                            Expanded(child: _buildSummaryCard('صافي الحركة', netMovement, Colors.blue)),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-
-                      // ترويسة الجدول
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                          decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(8)),
-                          child: const Row(
-                            children: [
-                              Expanded(flex: 3, child: Text('البيان / التاريخ', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 11))),
-                              Expanded(flex: 2, child: Text('دائن (+)', textAlign: TextAlign.center, style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 11))),
-                              Expanded(flex: 2, child: Text('مدين (-)', textAlign: TextAlign.center, style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 11))),
-                              Expanded(flex: 2, child: Text('الرصيد', textAlign: TextAlign.center, style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 11))),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      // محتوى الجدول
-                      Expanded(
-                        child: finalData.isEmpty
-                            ? const Center(child: Text('لا توجد عمليات مطابقة في هذه الفترة.', style: TextStyle(color: Colors.grey)))
-                            : ListView.builder(
-                                padding: const EdgeInsets.all(16),
-                                itemCount: finalData.length,
-                                itemBuilder: (context, index) {
-                                  final row = finalData[index];
-                                  return InkWell(
-                                    onTap: () => _showReceiptDialog(row, sys),
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Container(
-                                      margin: const EdgeInsets.only(bottom: 6),
-                                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                                      decoration: BoxDecoration(
-                                        color: index % 2 == 0 ? Theme.of(context).cardColor : (isDark ? Colors.grey.shade800 : Colors.grey.shade50),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: Colors.grey.shade200),
-                                      ),
-                                      child: Row(
-                                        crossAxisAlignment: CrossAxisAlignment.center,
-                                        children: [
-                                          Expanded(flex: 3, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(row['desc'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10), maxLines: 2, overflow: TextOverflow.ellipsis), const SizedBox(height: 4), Text('${row['date']} • ${row['time']}', style: const TextStyle(fontSize: 9, color: Colors.grey), textDirection: TextDirection.ltr)])),
-                                          Expanded(flex: 2, child: Text(row['credit'] > 0 ? '+${row['credit']}' : '-', textAlign: TextAlign.center, style: TextStyle(color: row['credit'] > 0 ? Colors.green.shade700 : Colors.grey, fontWeight: FontWeight.bold, fontSize: 11))),
-                                          Expanded(flex: 2, child: Text(row['debit'] > 0 ? '-${row['debit']}' : '-', textAlign: TextAlign.center, style: TextStyle(color: row['debit'] > 0 ? Colors.red.shade700 : Colors.grey, fontWeight: FontWeight.bold, fontSize: 11))),
-                                          Expanded(flex: 2, child: Text('${row['balance']}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 11))),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                      ),
-                    ],
-                  );
-                }
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   // ==========================================
-  // المحرك المحاسبي: تحضير، ترتيب، فلترة، وحساب الرصيد
+  // معالجة البيانات والمحرك المحاسبي
   // ==========================================
   List<Map<String, dynamic>> _processData(List<QueryDocumentSnapshot> docs) {
     List<Map<String, dynamic>> rawList = [];
@@ -508,7 +344,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
       });
     }
 
-    // الترتيب من الأقدم للأحدث لحساب الرصيد
+    // الترتيب من الأقدم للأحدث لحساب الرصيد التراكمي
     rawList.sort((a, b) => (a['rawDate'] as DateTime).compareTo(b['rawDate'] as DateTime));
 
     double runningBalance = 0.0;
@@ -535,20 +371,261 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
     }).toList();
   }
 
+  // ==========================================
+  // بناء الشاشة الرئيسية (UI)
+  // ==========================================
+  @override
+  Widget build(BuildContext context) {
+    final sys = Provider.of<SystemProvider>(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: const CustomHeader(title: 'كشف الحساب المتقدم'),
+      drawer: CustomAgentDrawer(
+        agentName: sys.currentUserName,
+        phoneNumber: sys.currentUserPhone,
+        role: 'وكيل معتمد (Agent)',
+        currentBalance: sys.currentUserBalance,
+      ),
+      body: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Column(
+          children: [
+            // 1. الفلاتر والبحث (تم فصلها عن StreamBuilder لحل مشكلة الكيبورد)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.grey.shade900 : Colors.cyan.shade800,
+                borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
+                boxShadow: [BoxShadow(color: Colors.cyan.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 5))],
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: OutlinedButton.icon(
+                          onPressed: _selectDateRange,
+                          icon: const Icon(Icons.date_range, size: 18),
+                          label: Text(
+                            _selectedDateRange == null ? 'تحديد الفترة الزمنية' : '${_selectedDateRange!.start.day}/${_selectedDateRange!.start.month} - ${_selectedDateRange!.end.day}/${_selectedDateRange!.end.month}',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: isDark ? Colors.cyanAccent : Colors.cyan.shade800,
+                            backgroundColor: Theme.of(context).cardColor,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 1,
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedType,
+                          decoration: InputDecoration(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                            filled: true,
+                            fillColor: Theme.of(context).cardColor,
+                          ),
+                          style: TextStyle(fontSize: 12, color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontFamily: 'Tajawal'),
+                          items: ['الكل', 'مبيعات', 'شحن رصيد', 'أخرى'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                          onChanged: (val) { 
+                            _play('click'); 
+                            setState(() => _selectedType = val!); 
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 45,
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (val) => setState(() => _searchQuery = val.toLowerCase()),
+                      decoration: InputDecoration(
+                        hintText: 'ابحث عن اسم الشبكة أو الفئة أو البيان...',
+                        hintStyle: const TextStyle(fontSize: 13),
+                        prefixIcon: const Icon(Icons.search),
+                        filled: true,
+                        fillColor: Theme.of(context).cardColor,
+                        contentPadding: EdgeInsets.zero,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                      ),
+                    ),
+                  )
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            // 2. StreamBuilder لجلب البيانات الحية
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                // تم إزالة orderBy و limit لحل مشكلة الفايربيز
+                stream: _db.collection('transactions').where('agentPhone', isEqualTo: sys.currentUserPhone).snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return Center(child: Text('حدث خطأ في الاتصال: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
+                  }
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  
+                  // معالجة وتصفية البيانات
+                  List<Map<String, dynamic>> finalData = _processData(snapshot.hasData ? snapshot.data!.docs : []);
+
+                  // حساب الإجماليات للفترة المحددة
+                  final double totalCredit = finalData.fold(0.0, (sum, item) => sum + item['credit']);
+                  final double totalDebit = finalData.fold(0.0, (sum, item) => sum + item['debit']);
+                  final double netMovement = totalCredit - totalDebit;
+
+                  return Column(
+                    children: [
+                      // أدوات التصدير
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('تصدير الكشف المعروض:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            Row(
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.picture_as_pdf, color: Colors.red),
+                                  tooltip: 'تصدير PDF',
+                                  onPressed: finalData.isNotEmpty ? () => _exportToPDF(finalData, sys, totalCredit, totalDebit, netMovement) : null,
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.table_view, color: Colors.green),
+                                  tooltip: 'تصدير Excel',
+                                  onPressed: finalData.isNotEmpty ? () => _exportToExcel(finalData, sys) : null,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // بطاقات الملخص المالي
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          children: [
+                            Expanded(child: _buildSummaryCard('إجمالي دائن (+)', totalCredit, Colors.green)),
+                            const SizedBox(width: 8),
+                            Expanded(child: _buildSummaryCard('إجمالي مدين (-)', totalDebit, Colors.red)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+
+                      // ترويسة الجدول (كما صممتها أنت سابقاً)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                          decoration: BoxDecoration(color: Colors.cyan.shade800, borderRadius: BorderRadius.circular(8)),
+                          child: const Row(
+                            children: [
+                              Expanded(flex: 3, child: Text('البيان / التاريخ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))),
+                              Expanded(flex: 2, child: Text('دائن (+)', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))),
+                              Expanded(flex: 2, child: Text('مدين (-)', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))),
+                              Expanded(flex: 2, child: Text('الرصيد', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // محتوى الجدول الفعلي
+                      Expanded(
+                        child: finalData.isEmpty
+                            ? const Center(child: Text('لا توجد عمليات مطابقة في هذه الفترة.', style: TextStyle(color: Colors.grey)))
+                            : ListView.builder(
+                                padding: const EdgeInsets.all(16),
+                                itemCount: finalData.length,
+                                itemBuilder: (context, index) {
+                                  final row = finalData[index];
+                                  Color creditColor = row['credit'] > 0 ? Colors.green.shade700 : Colors.grey.shade400;
+                                  Color debitColor = row['debit'] > 0 ? Colors.red.shade700 : Colors.grey.shade400;
+
+                                  return InkWell(
+                                    onTap: () => _showReceiptDialog(row, sys),
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Container(
+                                      margin: const EdgeInsets.only(bottom: 8),
+                                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context).cardColor,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: Colors.grey.shade200),
+                                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
+                                      ),
+                                      child: Row(
+                                        crossAxisAlignment: CrossAxisAlignment.center,
+                                        children: [
+                                          Expanded(
+                                            flex: 3,
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(row['desc'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                                const SizedBox(height: 4),
+                                                Text('${row['date']} • ${row['time']}', style: const TextStyle(color: Colors.grey, fontSize: 10), textDirection: TextDirection.ltr),
+                                              ],
+                                            ),
+                                          ),
+                                          Expanded(
+                                            flex: 2,
+                                            child: Text(row['credit'] > 0 ? '+${row['credit']}' : '-', textAlign: TextAlign.center, style: TextStyle(color: creditColor, fontWeight: FontWeight.bold, fontSize: 12)),
+                                          ),
+                                          Expanded(
+                                            flex: 2,
+                                            child: Text(row['debit'] > 0 ? '-${row['debit']}' : '-', textAlign: TextAlign.center, style: TextStyle(color: debitColor, fontWeight: FontWeight.bold, fontSize: 12)),
+                                          ),
+                                          Expanded(
+                                            flex: 2,
+                                            child: Text('${row['balance']}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 12)),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  );
+                }
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // بناء بطاقة الملخص
   Widget _buildSummaryCard(String title, double amount, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 12),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+          Text(title, style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.bold)),
           const SizedBox(height: 5),
-          Text('${amount.toStringAsFixed(0)}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color)),
+          Text(
+            '${amount.toStringAsFixed(0)} ريال', 
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color),
+          ),
         ],
       ),
     );
