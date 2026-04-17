@@ -64,7 +64,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
   }
 
   // ==========================================
-  // تصدير PDF احترافي (ملون ومرتب)
+  // تصدير PDF احترافي (تم تحديث خصائص التلوين)
   // ==========================================
   Future<void> _exportToPDF(List<Map<String, dynamic>> data, SystemProvider sys, double tCredit, double tDebit, double net) async {
     _play('click');
@@ -115,11 +115,8 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
               headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
               headerDecoration: const pw.BoxDecoration(color: PdfColors.cyan800),
               cellAlignment: pw.Alignment.center,
-              // تلوين الصفوف (Zebra Striping)
-              cellBackground: (int row, int col) {
-                if (row == 0) return PdfColors.cyan800;
-                return row % 2 == 0 ? PdfColors.grey100 : PdfColors.white;
-              },
+              // تم التحديث هنا لتوافق الإصدار الجديد من مكتبة PDF
+              oddRowDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
               cellStyle: const pw.TextStyle(fontSize: 10),
               data: data.map((row) => [
                 '${row['date']}\n${row['time']}',
@@ -153,7 +150,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
   }
 
   // ==========================================
-  // تصدير Excel احترافي (RTL + ألوان)
+  // تصدير Excel (تم التحديث لتوافق الإصدار)
   // ==========================================
   Future<void> _exportToExcel(List<Map<String, dynamic>> data, SystemProvider sys) async {
     _play('click');
@@ -164,7 +161,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
     excel.setDefaultSheet('كشف الحساب');
     excel.delete('Sheet1'); // حذف الورقة الافتراضية
 
-    sheet.isRightToLeft = true; // دعم اللغة العربية
+    // تم إزالة sheet.isRightToLeft لأن الإصدار 4.0.6 لا يدعمها مباشرة
 
     // تنسيق الترويسة
     ex.CellStyle headerStyle = ex.CellStyle(
@@ -292,7 +289,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // 1. الفلاتر والبحث (خارج StreamBuilder لحل مشكلة الكيبورد)
+            // الفلاتر والبحث (مفصولة للحفاظ على الكيبورد)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -359,10 +356,9 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
             ),
             const SizedBox(height: 10),
 
-            // 2. StreamBuilder للجدول والملخصات
+            // StreamBuilder للجدول
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
-                // حماية الأداء: نجلب أحدث 500 عملية فقط لتجنب تشنج التطبيق
                 stream: _db.collection('transactions').where('agentPhone', isEqualTo: sys.currentUserPhone).orderBy('createdAt', descending: true).limit(500).snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
@@ -374,7 +370,6 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
 
                   return Column(
                     children: [
-                      // أزرار التصدير والملخصات
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Row(
@@ -404,7 +399,6 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
                       ),
                       const SizedBox(height: 10),
 
-                      // ترويسة الجدول
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Container(
@@ -421,7 +415,6 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
                         ),
                       ),
 
-                      // محتوى الجدول
                       Expanded(
                         child: finalData.isEmpty
                             ? const Center(child: Text('لا توجد عمليات مطابقة في هذه الفترة.', style: TextStyle(color: Colors.grey)))
