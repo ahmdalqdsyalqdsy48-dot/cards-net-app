@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart';
 
@@ -10,25 +15,40 @@ class QuickPosScreen extends StatefulWidget {
 }
 
 class _QuickPosScreenState extends State<QuickPosScreen> {
-  double _walletBalance = 125000.0;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  
   Map<String, dynamic>? _selectedCategory;
   int _quantity = 1;
+  bool _isProcessing = false; // لمنع تكرار الضغط أثناء البيع
 
-  final List<Map<String, dynamic>> _categories = [
-    {'name': 'فئة أبو 1000', 'price': 1000, 'time': '24 ساعة', 'color': Colors.blue},
-    {'name': 'فئة أبو 500', 'price': 500, 'time': '12 ساعة', 'color': Colors.orange},
-    {'name': 'فئة أبو 250', 'price': 250, 'time': '6 ساعات', 'color': Colors.green},
-    {'name': 'فئة أبو 100', 'price': 100, 'time': 'ساعتين', 'color': Colors.purple},
-  ];
+  void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
 
-  void _showConfirmSaleDialog() {
+  // ==========================================
+  // 1. نافذة تأكيد البيع (الحماية قبل الخصم)
+  // ==========================================
+  void _showConfirmSaleDialog(double currentBalance) {
     if (_selectedCategory == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء اختيار فئة أولاً!'), backgroundColor: Colors.red));
+      _play('error');
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء اختيار فئة أولاً!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+      return;
+    }
+
+    int stockAvailable = _selectedCategory!['stock'] ?? 0;
+    if (_quantity > stockAvailable) {
+      _play('error');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('الكمية المطلوبة ($_quantity) أكبر من المخزون المتوفر ($stockAvailable)!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
       return;
     }
 
     int totalPrice = _selectedCategory!['price'] * _quantity;
 
+    if (currentBalance < totalPrice) {
+      _play('error');
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('عفواً، رصيد المحفظة لا يكفي لإتمام العملية!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+      return;
+    }
+
+    _play('warning');
     showDialog(
       context: context,
       builder: (context) {
@@ -39,7 +59,7 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
             title: const Text('تأكيد البيع 🛒', style: TextStyle(fontWeight: FontWeight.bold)),
             content: Text('هل أنت متأكد من خصم مبلغ $totalPrice ريال من محفظتك لبيع عدد ($_quantity) كرت من (${_selectedCategory!['name']})؟', style: const TextStyle(fontSize: 16)),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))),
+              TextButton(onPressed: () { _play('click'); Navigator.pop(context); }, child: const Text('إلغاء', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                 onPressed: () {
@@ -55,10 +75,93 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
     );
   }
 
-  void _processSale(int totalPrice) {
-    setState(() { _walletBalance -= totalPrice; });
-    List<String> generatedPins = List.generate(_quantity, (index) => "8472 9102 334${index + 1}");
+  // ==========================================
+  // 2. معالجة البيع الحقيقي (سحب الكروت والخصم المالي)
+  // ==========================================
+  Future<void> _processSale(int totalPrice) async {
+    setState(() => _isProcessing = true);
+    _play('click');
+    
+    final sys = Provider.of<SystemProvider>(context, listen: false);
+    String netId = _selectedCategory!['networkId'];
+    String catId = _selectedCategory!['id'];
 
+    try {
+      // 1. جلب الكروت "المتاحة" من المخزون بناءً على الكمية المطلوبة
+      QuerySnapshot availableCards = await _db.collection('cards')
+          .where('categoryId', isEqualTo: catId)
+          .where('networkId', isEqualTo: netId)
+          .where('status', isEqualTo: 'متاح')
+          .limit(_quantity)
+          .get();
+
+      if (availableCards.docs.length < _quantity) {
+        throw 'حدث خطأ! عدد الكروت المتاحة فعلياً أقل من المطلوب. يرجى مراجعة الإدارة.';
+      }
+
+      // 2. التجهيز للعملية المجمعة (Batch) لضمان تنفيذ كل الخطوات معاً
+      WriteBatch batch = _db.batch();
+      List<String> generatedPins = [];
+
+      // أ. تغيير حالة الكروت إلى (مباع)
+      for (var doc in availableCards.docs) {
+        generatedPins.push(doc['pin']);
+        batch.update(doc.reference, {
+          'status': 'مباع',
+          'soldAt': FieldValue.serverTimestamp(),
+          'soldByPhone': sys.currentUserPhone, // رقم الوكيل الذي باع الكرت
+        });
+      }
+
+      // ب. إنقاص العدد من مخزون الفئة في الشبكة
+      DocumentReference netRef = _db.collection('networks').doc(netId);
+      DocumentSnapshot netDoc = await netRef.get();
+      List cats = List.from((netDoc.data() as Map)['categories']);
+      int catIndex = cats.indexWhere((c) => c['id'] == catId);
+      cats[catIndex]['stock'] -= _quantity; // إنقاص المخزون
+      batch.update(netRef, {'categories': cats});
+
+      // ج. خصم الرصيد من حساب الوكيل
+      QuerySnapshot userSnap = await _db.collection('users').where('phone', isEqualTo: sys.currentUserPhone).limit(1).get();
+      if (userSnap.docs.isNotEmpty) {
+        batch.update(userSnap.docs.first.reference, {
+          'balance': FieldValue.increment(-totalPrice) // خصم المبلغ
+        });
+      }
+
+      // د. تسجيل الفاتورة في السجل (Transactions)
+      DocumentReference transRef = _db.collection('transactions').doc();
+      batch.set(transRef, {
+        'agentPhone': sys.currentUserPhone,
+        'amount': totalPrice,
+        'type': 'sale', // نوع العملية: بيع كروت
+        'quantity': _quantity,
+        'categoryName': _selectedCategory!['name'],
+        'networkName': _selectedCategory!['networkName'],
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      // 3. تنفيذ كل العمليات في قاعدة البيانات
+      await batch.commit();
+
+      // 4. تحديث الرصيد محلياً في التطبيق ليظهر فوراً
+      sys.updateBalanceLocally(-totalPrice.toDouble());
+
+      _play('success');
+      _showSuccessReceipt(generatedPins); // عرض الإيصال
+
+    } catch (e) {
+      _play('error');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString(), textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+    }
+
+    setState(() => _isProcessing = false);
+  }
+
+  // ==========================================
+  // 3. عرض فاتورة الكروت (الإيصال الذكي) بعد البيع
+  // ==========================================
+  void _showSuccessReceipt(List<String> generatedPins) {
     showDialog(
       context: context,
       barrierDismissible: false, 
@@ -84,20 +187,21 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                         shrinkWrap: true,
                         itemCount: generatedPins.length,
                         itemBuilder: (context, index) {
+                          Color catColor = Color(_selectedCategory!['color']);
                           return Container(
                             margin: const EdgeInsets.only(bottom: 10),
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: _selectedCategory!['color'].withOpacity(0.05),
+                              color: catColor.withOpacity(0.05),
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: _selectedCategory!['color'].withOpacity(0.3), width: 1.5),
+                              border: Border.all(color: catColor.withOpacity(0.3), width: 1.5),
                             ),
                             child: Column(
                               children: [
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(_selectedCategory!['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: _selectedCategory!['color'])),
+                                    Text(_selectedCategory!['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: catColor)),
                                     Text('كرت #${index + 1}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
                                   ],
                                 ),
@@ -116,13 +220,22 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _buildActionButton(Icons.share, 'مشاركة الكل', Colors.blue, () { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري فتح واتساب...'))); }),
-                      _buildActionButton(Icons.print, 'طباعة الكل', Colors.orange, () { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري الإرسال للطابعة...'))); }),
+                      // زر المشاركة للواتساب (تم تجهيزه لكود url_launcher لاحقاً)
+                      _buildActionButton(Icons.share, 'مشاركة الكل', Colors.blue, () { 
+                        _play('click');
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري التجهيز للمشاركة...', textDirection: TextDirection.rtl))); 
+                      }),
+                      // زر الطباعة (تم تجهيزه لمكاتب الطباعة لاحقاً)
+                      _buildActionButton(Icons.print, 'طباعة الكل', Colors.orange, () { 
+                        _play('click');
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري الإرسال للطابعة...', textDirection: TextDirection.rtl))); 
+                      }),
                     ],
                   ),
                   const SizedBox(height: 10),
                   TextButton(
                     onPressed: () {
+                      _play('click');
                       Navigator.pop(context);
                       setState(() { _selectedCategory = null; _quantity = 1; });
                     },
@@ -157,20 +270,22 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final sys = Provider.of<SystemProvider>(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: const CustomHeader(title: 'المتجر السريع (الكاشير)'),
-      drawer: const CustomAgentDrawer(
-        agentName: 'شبكة الصقر للواي فاي',
-        phoneNumber: '777777777',
+      drawer: CustomAgentDrawer(
+        agentName: sys.currentUserName,
+        phoneNumber: sys.currentUserPhone,
         role: 'وكيل معتمد (Agent)',
-        currentBalance: 125000.0,
+        currentBalance: sys.currentUserBalance, // الرصيد الحقيقي من المزود
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
+            // شريط الرصيد
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
               decoration: BoxDecoration(
@@ -181,59 +296,108 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('رصيد المحفظة المتاح:', style: TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.bold)),
-                  Text('${_walletBalance.toStringAsFixed(0)} ريال', style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                  Text('${sys.currentUserBalance.toStringAsFixed(0)} ريال', style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
+            if (_isProcessing) const LinearProgressIndicator(color: Colors.teal),
             const SizedBox(height: 15),
+            
+            // جلب الفئات والمخزون ديناميكياً من الفايربيز
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('اختر الفئة المطلوبة:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.blueGrey)),
+                    const Text('اختر الفئة المطلوبة من المخزون:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.blueGrey)),
                     const SizedBox(height: 15),
                     Expanded(
-                      child: GridView.builder(
-                        padding: const EdgeInsets.only(bottom: 20),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2, crossAxisSpacing: 15, mainAxisSpacing: 15, childAspectRatio: 1.2,
-                        ),
-                        itemCount: _categories.length,
-                        itemBuilder: (context, index) {
-                          final category = _categories[index];
-                          final isSelected = _selectedCategory == category;
-                          return InkWell(
-                            onTap: () { setState(() { _selectedCategory = category; _quantity = 1; }); },
-                            borderRadius: BorderRadius.circular(15),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              decoration: BoxDecoration(
-                                color: isSelected ? category['color'] : (isDark ? Colors.grey.shade800 : Colors.white),
-                                borderRadius: BorderRadius.circular(15),
-                                border: Border.all(color: isSelected ? category['color'] : Colors.grey.shade300, width: isSelected ? 3 : 1),
-                                boxShadow: [if (isSelected) BoxShadow(color: category['color'].withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 5))],
-                              ),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.wifi, size: 30, color: isSelected ? Colors.white : category['color']),
-                                  const SizedBox(height: 10),
-                                  Text(category['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isSelected ? Colors.white : (isDark ? Colors.white : Colors.black87))),
-                                  const SizedBox(height: 5),
-                                  Text('${category['price']} ريال', style: TextStyle(fontSize: 14, color: isSelected ? Colors.white70 : Colors.grey)),
-                                ],
-                              ),
+                      child: StreamBuilder<QuerySnapshot>(
+                        stream: _db.collection('networks')
+                            .where('agentPhone', isEqualTo: sys.currentUserPhone)
+                            .where('isActive', isEqualTo: true) // جلب الشبكات النشطة فقط
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                          
+                          // استخراج جميع الفئات المتاحة (التي مخزونها أكبر من 0 ونشطة)
+                          List<Map<String, dynamic>> dynamicCategories = [];
+                          if (snapshot.hasData) {
+                            for (var netDoc in snapshot.data!.docs) {
+                              var netData = netDoc.data() as Map<String, dynamic>;
+                              List cats = netData['categories'] ?? [];
+                              for (var cat in cats) {
+                                if ((cat['isActive'] ?? true) == true && (cat['stock'] ?? 0) > 0) {
+                                  dynamicCategories.add({
+                                    ...cat,
+                                    'networkId': netDoc.id,
+                                    'networkName': netData['name'],
+                                  });
+                                }
+                              }
+                            }
+                          }
+
+                          if (dynamicCategories.isEmpty) {
+                            return const Center(child: Text('لا يوجد مخزون كروت متاح حالياً. قم بتوليد كروت من قسم إدارة الميكروتك أولاً.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)));
+                          }
+
+                          return GridView.builder(
+                            padding: const EdgeInsets.only(bottom: 20),
+                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2, crossAxisSpacing: 15, mainAxisSpacing: 15, childAspectRatio: 1.1,
                             ),
+                            itemCount: dynamicCategories.length,
+                            itemBuilder: (context, index) {
+                              final category = dynamicCategories[index];
+                              final isSelected = _selectedCategory != null && _selectedCategory!['id'] == category['id'] && _selectedCategory!['networkId'] == category['networkId'];
+                              Color catColor = Color(category['color']);
+                              
+                              return InkWell(
+                                onTap: _isProcessing ? null : () { 
+                                  _play('click'); 
+                                  setState(() { _selectedCategory = category; _quantity = 1; }); 
+                                },
+                                borderRadius: BorderRadius.circular(15),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? catColor : (isDark ? Colors.grey.shade800 : Colors.white),
+                                    borderRadius: BorderRadius.circular(15),
+                                    border: Border.all(color: isSelected ? catColor : Colors.grey.shade300, width: isSelected ? 3 : 1),
+                                    boxShadow: [if (isSelected) BoxShadow(color: catColor.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 5))],
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.wifi, size: 28, color: isSelected ? Colors.white : catColor),
+                                      const SizedBox(height: 5),
+                                      Text(category['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isSelected ? Colors.white : (isDark ? Colors.white : Colors.black87))),
+                                      const SizedBox(height: 2),
+                                      Text('${category['price']} ريال', style: TextStyle(fontSize: 13, color: isSelected ? Colors.white70 : Colors.grey)),
+                                      const SizedBox(height: 2),
+                                      // 👇 عرض المخزون المتاح للوكيل
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(color: isSelected ? Colors.white24 : Colors.orange.shade100, borderRadius: BorderRadius.circular(5)),
+                                        child: Text('المتوفر: ${category['stock']}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isSelected ? Colors.white : Colors.orange.shade800)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
                           );
-                        },
+                        }
                       ),
                     ),
                   ],
                 ),
               ),
             ),
+            
+            // شريط إتمام البيع السفلي
             if (_selectedCategory != null)
               Container(
                 padding: const EdgeInsets.all(20),
@@ -252,9 +416,17 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                           decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(10)),
                           child: Row(
                             children: [
-                              IconButton(icon: const Icon(Icons.remove, color: Colors.red), onPressed: () { if (_quantity > 1) setState(() => _quantity--); }),
+                              IconButton(icon: const Icon(Icons.remove, color: Colors.red), onPressed: _isProcessing ? null : () { if (_quantity > 1) { _play('click'); setState(() => _quantity--); } }),
                               Container(padding: const EdgeInsets.symmetric(horizontal: 15), child: Text('$_quantity', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-                              IconButton(icon: const Icon(Icons.add, color: Colors.green), onPressed: () => setState(() => _quantity++)),
+                              IconButton(icon: const Icon(Icons.add, color: Colors.green), onPressed: _isProcessing ? null : () { 
+                                // نمنعه من تجاوز المخزون المتاح
+                                if (_quantity < _selectedCategory!['stock']) {
+                                  _play('click'); setState(() => _quantity++); 
+                                } else {
+                                  _play('error');
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لقد وصلت للحد الأقصى من المخزون المتوفر لهذه الفئة.', textDirection: TextDirection.rtl)));
+                                }
+                              }),
                             ],
                           ),
                         ),
@@ -277,9 +449,9 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                           child: SizedBox(
                             height: 55,
                             child: ElevatedButton.icon(
-                              onPressed: _showConfirmSaleDialog,
+                              onPressed: _isProcessing ? null : () => _showConfirmSaleDialog(sys.currentUserBalance),
                               icon: const Icon(Icons.point_of_sale, color: Colors.white, size: 24),
-                              label: const Text('بيع الآن', style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
+                              label: const Text('دفع وإصدار الكروت', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
                               style: ElevatedButton.styleFrom(backgroundColor: Colors.teal.shade700, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
                             ),
                           ),
