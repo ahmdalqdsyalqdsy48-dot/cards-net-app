@@ -19,7 +19,7 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
   
   Map<String, dynamic>? _selectedCategory;
   int _quantity = 1;
-  bool _isProcessing = false; // لمنع تكرار الضغط أثناء البيع
+  bool _isProcessing = false; 
 
   void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
 
@@ -87,7 +87,6 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
     String catId = _selectedCategory!['id'];
 
     try {
-      // 1. جلب الكروت "المتاحة" من المخزون بناءً على الكمية المطلوبة
       QuerySnapshot availableCards = await _db.collection('cards')
           .where('categoryId', isEqualTo: catId)
           .where('networkId', isEqualTo: netId)
@@ -99,56 +98,50 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
         throw 'حدث خطأ! عدد الكروت المتاحة فعلياً أقل من المطلوب. يرجى مراجعة الإدارة.';
       }
 
-      // 2. التجهيز للعملية المجمعة (Batch) لضمان تنفيذ كل الخطوات معاً
       WriteBatch batch = _db.batch();
       List<String> generatedPins = [];
 
-      // أ. تغيير حالة الكروت إلى (مباع)
       for (var doc in availableCards.docs) {
-        generatedPins.push(doc['pin']);
+        // 👇 تم الإصلاح: استخدام add بدلاً من push
+        generatedPins.add(doc['pin']);
         batch.update(doc.reference, {
           'status': 'مباع',
           'soldAt': FieldValue.serverTimestamp(),
-          'soldByPhone': sys.currentUserPhone, // رقم الوكيل الذي باع الكرت
+          'soldByPhone': sys.currentUserPhone, 
         });
       }
 
-      // ب. إنقاص العدد من مخزون الفئة في الشبكة
       DocumentReference netRef = _db.collection('networks').doc(netId);
       DocumentSnapshot netDoc = await netRef.get();
       List cats = List.from((netDoc.data() as Map)['categories']);
       int catIndex = cats.indexWhere((c) => c['id'] == catId);
-      cats[catIndex]['stock'] -= _quantity; // إنقاص المخزون
+      cats[catIndex]['stock'] -= _quantity; 
       batch.update(netRef, {'categories': cats});
 
-      // ج. خصم الرصيد من حساب الوكيل
       QuerySnapshot userSnap = await _db.collection('users').where('phone', isEqualTo: sys.currentUserPhone).limit(1).get();
       if (userSnap.docs.isNotEmpty) {
         batch.update(userSnap.docs.first.reference, {
-          'balance': FieldValue.increment(-totalPrice) // خصم المبلغ
+          'balance': FieldValue.increment(-totalPrice) 
         });
       }
 
-      // د. تسجيل الفاتورة في السجل (Transactions)
       DocumentReference transRef = _db.collection('transactions').doc();
       batch.set(transRef, {
         'agentPhone': sys.currentUserPhone,
         'amount': totalPrice,
-        'type': 'sale', // نوع العملية: بيع كروت
+        'type': 'sale', 
         'quantity': _quantity,
         'categoryName': _selectedCategory!['name'],
         'networkName': _selectedCategory!['networkName'],
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // 3. تنفيذ كل العمليات في قاعدة البيانات
       await batch.commit();
 
-      // 4. تحديث الرصيد محلياً في التطبيق ليظهر فوراً
-      sys.updateBalanceLocally(-totalPrice.toDouble());
+      // 👇 تم إزالة سطر updateBalanceLocally لأنه غير مطلوب 
 
       _play('success');
-      _showSuccessReceipt(generatedPins); // عرض الإيصال
+      _showSuccessReceipt(generatedPins); 
 
     } catch (e) {
       _play('error');
@@ -220,12 +213,10 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      // زر المشاركة للواتساب (تم تجهيزه لكود url_launcher لاحقاً)
                       _buildActionButton(Icons.share, 'مشاركة الكل', Colors.blue, () { 
                         _play('click');
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري التجهيز للمشاركة...', textDirection: TextDirection.rtl))); 
                       }),
-                      // زر الطباعة (تم تجهيزه لمكاتب الطباعة لاحقاً)
                       _buildActionButton(Icons.print, 'طباعة الكل', Colors.orange, () { 
                         _play('click');
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري الإرسال للطابعة...', textDirection: TextDirection.rtl))); 
@@ -279,13 +270,12 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
         agentName: sys.currentUserName,
         phoneNumber: sys.currentUserPhone,
         role: 'وكيل معتمد (Agent)',
-        currentBalance: sys.currentUserBalance, // الرصيد الحقيقي من المزود
+        currentBalance: sys.currentUserBalance, 
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // شريط الرصيد
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
               decoration: BoxDecoration(
@@ -303,7 +293,6 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
             if (_isProcessing) const LinearProgressIndicator(color: Colors.teal),
             const SizedBox(height: 15),
             
-            // جلب الفئات والمخزون ديناميكياً من الفايربيز
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -316,12 +305,11 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                       child: StreamBuilder<QuerySnapshot>(
                         stream: _db.collection('networks')
                             .where('agentPhone', isEqualTo: sys.currentUserPhone)
-                            .where('isActive', isEqualTo: true) // جلب الشبكات النشطة فقط
+                            .where('isActive', isEqualTo: true)
                             .snapshots(),
                         builder: (context, snapshot) {
                           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
                           
-                          // استخراج جميع الفئات المتاحة (التي مخزونها أكبر من 0 ونشطة)
                           List<Map<String, dynamic>> dynamicCategories = [];
                           if (snapshot.hasData) {
                             for (var netDoc in snapshot.data!.docs) {
@@ -377,7 +365,6 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                                       const SizedBox(height: 2),
                                       Text('${category['price']} ريال', style: TextStyle(fontSize: 13, color: isSelected ? Colors.white70 : Colors.grey)),
                                       const SizedBox(height: 2),
-                                      // 👇 عرض المخزون المتاح للوكيل
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                         decoration: BoxDecoration(color: isSelected ? Colors.white24 : Colors.orange.shade100, borderRadius: BorderRadius.circular(5)),
@@ -397,7 +384,6 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
               ),
             ),
             
-            // شريط إتمام البيع السفلي
             if (_selectedCategory != null)
               Container(
                 padding: const EdgeInsets.all(20),
@@ -419,7 +405,6 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                               IconButton(icon: const Icon(Icons.remove, color: Colors.red), onPressed: _isProcessing ? null : () { if (_quantity > 1) { _play('click'); setState(() => _quantity--); } }),
                               Container(padding: const EdgeInsets.symmetric(horizontal: 15), child: Text('$_quantity', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
                               IconButton(icon: const Icon(Icons.add, color: Colors.green), onPressed: _isProcessing ? null : () { 
-                                // نمنعه من تجاوز المخزون المتاح
                                 if (_quantity < _selectedCategory!['stock']) {
                                   _play('click'); setState(() => _quantity++); 
                                 } else {
