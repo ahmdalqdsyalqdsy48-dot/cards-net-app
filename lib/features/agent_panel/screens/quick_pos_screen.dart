@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // للـ TextInputFormatter
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:share_plus/share_plus.dart'; // للمشاركة العامة
+import 'package:url_launcher/url_launcher.dart'; // للواتساب
+import 'package:pdf/pdf.dart'; // للطباعة
+import 'package:pdf/widgets.dart' as pw; // للطباعة
+import 'package:printing/printing.dart'; // للطباعة
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -20,11 +26,46 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
   Map<String, dynamic>? _selectedCategory;
   int _quantity = 1;
   bool _isProcessing = false; 
+  bool _isBalanceHidden = true; // للتحكم في إخفاء/إظهار الرصيد
+
+  // متحكم لكتابة الكمية يدوياً
+  final TextEditingController _quantityController = TextEditingController(text: '1');
+
+  @override
+  void initState() {
+    super.initState();
+    // مراقبة التغييرات في حقل إدخال الكمية لتحديث الإجمالي
+    _quantityController.addListener(() {
+      if (_quantityController.text.isNotEmpty) {
+        int parsed = int.tryParse(_quantityController.text) ?? 1;
+        if (parsed > 0) {
+          // لن نسمح له بتجاوز المخزون إذا كان قد اختار فئة
+          if (_selectedCategory != null && parsed > (_selectedCategory!['stock'] ?? 0)) {
+            setState(() {
+              _quantity = _selectedCategory!['stock'] ?? 0;
+              _quantityController.text = _quantity.toString();
+            });
+            // وضع المؤشر في نهاية النص
+            _quantityController.selection = TextSelection.fromPosition(TextPosition(offset: _quantityController.text.length));
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لقد وصلت للحد الأقصى من المخزون.', textDirection: TextDirection.rtl)));
+          } else {
+             setState(() { _quantity = parsed; });
+          }
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _quantityController.dispose();
+    super.dispose();
+  }
 
   void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
 
   // ==========================================
-  // 1. نافذة تأكيد البيع (الحماية قبل الخصم)
+  // 1. نافذة تأكيد البيع
   // ==========================================
   void _showConfirmSaleDialog(double currentBalance) {
     if (_selectedCategory == null) {
@@ -34,12 +75,14 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
     }
 
     int stockAvailable = _selectedCategory!['stock'] ?? 0;
-    if (_quantity > stockAvailable) {
+    if (_quantity > stockAvailable || _quantity < 1) {
       _play('error');
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('الكمية المطلوبة ($_quantity) أكبر من المخزون المتوفر ($stockAvailable)!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('الكمية المطلوبة غير صحيحة أو أكبر من المخزون ($stockAvailable)!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
       return;
     }
 
+    // هنا يتم تطبيق الخصم (اقتراحك الذكي!)
+    // مؤقتاً سنعرض السعر الإجمالي العادي، ويمكنك ربط نظام الخصم لاحقاً
     int totalPrice = _selectedCategory!['price'] * _quantity;
 
     if (currentBalance < totalPrice) {
@@ -57,7 +100,7 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
           child: AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
             title: const Text('تأكيد البيع 🛒', style: TextStyle(fontWeight: FontWeight.bold)),
-            content: Text('هل أنت متأكد من خصم مبلغ $totalPrice ريال من محفظتك لبيع عدد ($_quantity) كرت من (${_selectedCategory!['name']})؟', style: const TextStyle(fontSize: 16)),
+            content: Text('هل أنت متأكد من خصم مبلغ $totalPrice ريال لبيع عدد ($_quantity) كرت من (${_selectedCategory!['name']})؟', style: const TextStyle(fontSize: 16)),
             actions: [
               TextButton(onPressed: () { _play('click'); Navigator.pop(context); }, child: const Text('إلغاء', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))),
               ElevatedButton(
@@ -76,7 +119,7 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
   }
 
   // ==========================================
-  // 2. معالجة البيع الحقيقي (سحب الكروت والخصم المالي)
+  // 2. معالجة البيع الحقيقي 
   // ==========================================
   Future<void> _processSale(int totalPrice) async {
     setState(() => _isProcessing = true);
@@ -95,14 +138,13 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
           .get();
 
       if (availableCards.docs.length < _quantity) {
-        throw 'حدث خطأ! عدد الكروت المتاحة فعلياً أقل من المطلوب. يرجى مراجعة الإدارة.';
+        throw 'حدث خطأ! عدد الكروت المتاحة فعلياً أقل من المطلوب. يرجى المراجعة.';
       }
 
       WriteBatch batch = _db.batch();
       List<String> generatedPins = [];
 
       for (var doc in availableCards.docs) {
-        // 👇 تم الإصلاح: استخدام add بدلاً من push
         generatedPins.add(doc['pin']);
         batch.update(doc.reference, {
           'status': 'مباع',
@@ -138,8 +180,6 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
 
       await batch.commit();
 
-      // 👇 تم إزالة سطر updateBalanceLocally لأنه غير مطلوب 
-
       _play('success');
       _showSuccessReceipt(generatedPins); 
 
@@ -149,6 +189,74 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
     }
 
     setState(() => _isProcessing = false);
+  }
+
+  // ==========================================
+  // وظائف المشاركة والطباعة
+  // ==========================================
+
+  // مشاركة عبر واتساب
+  Future<void> _shareViaWhatsApp(List<String> pins) async {
+    String text = "🛒 *${_selectedCategory!['networkName']}*\n";
+    text += "🎟️ الفئة: ${_selectedCategory!['name']} (${_selectedCategory!['time']})\n";
+    text += "-------------------\n";
+    for(int i=0; i<pins.length; i++) {
+      text += "🔑 رقم الكرت: *${pins[i]}*\n";
+    }
+    
+    // محاولة فتح واتساب، وإذا فشل نفتح المشاركة العامة
+    final whatsappUrl = Uri.parse("whatsapp://send?text=${Uri.encodeComponent(text)}");
+    if (await canLaunchUrl(whatsappUrl)) {
+      await launchUrl(whatsappUrl);
+    } else {
+      _shareGeneral(pins); // بديل لو واتساب غير مثبت
+    }
+  }
+
+  // مشاركة عامة (تليجرام، رسائل، إلخ)
+  void _shareGeneral(List<String> pins) {
+    String text = "🛒 *${_selectedCategory!['networkName']}*\n";
+    text += "🎟️ الفئة: ${_selectedCategory!['name']} (${_selectedCategory!['time']})\n";
+    text += "-------------------\n";
+    for(int i=0; i<pins.length; i++) {
+      text += "🔑 الكرت: ${pins[i]}\n";
+    }
+    Share.share(text);
+  }
+
+  // طباعة (بلوتوث + PDF)
+  Future<void> _printCards(List<String> pins) async {
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.roll80, // مقاس طابعة حرارية 80mm
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              pw.Text(_selectedCategory!['networkName'], style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 10),
+              pw.Text(_selectedCategory!['name']),
+              pw.Text("Time: ${_selectedCategory!['time']}"),
+              pw.Divider(),
+              ...pins.map((pin) => pw.Column(
+                children: [
+                  pw.Text("PIN", style: const pw.TextStyle(fontSize: 12)),
+                  pw.Text(pin, style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+                  pw.Divider(),
+                ]
+              )),
+              pw.SizedBox(height: 10),
+              pw.Text("Thank You!"),
+            ],
+          );
+        },
+      ),
+    );
+
+    // تفتح واجهة الطباعة (تعمل مع طابعات البلوتوث المربوطة بالجهاز وطابعات الشبكة)
+    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save());
   }
 
   // ==========================================
@@ -195,7 +303,13 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(_selectedCategory!['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: catColor)),
-                                    Text('كرت #${index + 1}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                    // زر المشاركة الفردي
+                                    IconButton(
+                                      icon: const Icon(Icons.share, size: 18, color: Colors.blue),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      onPressed: () => _shareGeneral([generatedPins[index]]),
+                                    ),
                                   ],
                                 ),
                                 const Divider(),
@@ -213,13 +327,17 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _buildActionButton(Icons.share, 'مشاركة الكل', Colors.blue, () { 
+                      _buildActionButton(Icons.whatsapp, 'واتساب', Colors.green, () { 
                         _play('click');
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري التجهيز للمشاركة...', textDirection: TextDirection.rtl))); 
+                        _shareViaWhatsApp(generatedPins);
                       }),
-                      _buildActionButton(Icons.print, 'طباعة الكل', Colors.orange, () { 
+                      _buildActionButton(Icons.share, 'مشاركة', Colors.blue, () { 
                         _play('click');
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري الإرسال للطابعة...', textDirection: TextDirection.rtl))); 
+                        _shareGeneral(generatedPins);
+                      }),
+                      _buildActionButton(Icons.print, 'طباعة', Colors.orange, () { 
+                        _play('click');
+                        _printCards(generatedPins);
                       }),
                     ],
                   ),
@@ -228,7 +346,11 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                     onPressed: () {
                       _play('click');
                       Navigator.pop(context);
-                      setState(() { _selectedCategory = null; _quantity = 1; });
+                      setState(() { 
+                        _selectedCategory = null; 
+                        _quantity = 1; 
+                        _quantityController.text = '1';
+                      });
                     },
                     child: const Text('إغلاق وبدء بيع جديد', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
                   )
@@ -276,20 +398,40 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.grey.shade900 : Colors.teal.shade700,
-                borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('رصيد المحفظة المتاح:', style: TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.bold)),
-                  Text('${sys.currentUserBalance.toStringAsFixed(0)} ريال', style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-                ],
+            // الشريط الأخضر (الرصيد مع ميزة الإخفاء)
+            InkWell(
+              onTap: () {
+                _play('click');
+                setState(() => _isBalanceHidden = !_isBalanceHidden);
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey.shade900 : Colors.teal.shade700,
+                  borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(_isBalanceHidden ? Icons.visibility_off : Icons.visibility, color: Colors.white70, size: 18),
+                        const SizedBox(width: 8),
+                        const Text('رصيد المحفظة المتاح', style: TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      _isBalanceHidden ? '****** ريال' : '${sys.currentUserBalance.toStringAsFixed(0)} ريال', 
+                      style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)
+                    ),
+                  ],
+                ),
               ),
             ),
+
             if (_isProcessing) const LinearProgressIndicator(color: Colors.teal),
             const SizedBox(height: 15),
             
@@ -345,7 +487,11 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                               return InkWell(
                                 onTap: _isProcessing ? null : () { 
                                   _play('click'); 
-                                  setState(() { _selectedCategory = category; _quantity = 1; }); 
+                                  setState(() { 
+                                    _selectedCategory = category; 
+                                    _quantity = 1; 
+                                    _quantityController.text = '1'; 
+                                  }); 
                                 },
                                 borderRadius: BorderRadius.circular(15),
                                 child: AnimatedContainer(
@@ -399,19 +545,43 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                       children: [
                         const Text('الكمية المطلوبة:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                         Container(
+                          width: 140, // حجم مناسب للأزرار والحقل النصي
                           decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(10)),
                           child: Row(
                             children: [
-                              IconButton(icon: const Icon(Icons.remove, color: Colors.red), onPressed: _isProcessing ? null : () { if (_quantity > 1) { _play('click'); setState(() => _quantity--); } }),
-                              Container(padding: const EdgeInsets.symmetric(horizontal: 15), child: Text('$_quantity', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-                              IconButton(icon: const Icon(Icons.add, color: Colors.green), onPressed: _isProcessing ? null : () { 
-                                if (_quantity < _selectedCategory!['stock']) {
-                                  _play('click'); setState(() => _quantity++); 
-                                } else {
-                                  _play('error');
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لقد وصلت للحد الأقصى من المخزون المتوفر لهذه الفئة.', textDirection: TextDirection.rtl)));
+                              IconButton(
+                                icon: const Icon(Icons.remove, color: Colors.red, size: 20), 
+                                padding: EdgeInsets.zero, constraints: const BoxConstraints(),
+                                onPressed: _isProcessing ? null : () { 
+                                  if (_quantity > 1) { 
+                                    _play('click'); 
+                                    setState(() { _quantity--; _quantityController.text = _quantity.toString(); }); 
+                                  } 
                                 }
-                              }),
+                              ),
+                              Expanded(
+                                child: TextField(
+                                  controller: _quantityController,
+                                  keyboardType: TextInputType.number,
+                                  textAlign: TextAlign.center,
+                                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                  decoration: const InputDecoration(border: InputBorder.none, contentPadding: EdgeInsets.zero),
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.add, color: Colors.green, size: 20), 
+                                padding: EdgeInsets.zero, constraints: const BoxConstraints(),
+                                onPressed: _isProcessing ? null : () { 
+                                  if (_quantity < _selectedCategory!['stock']) {
+                                    _play('click'); 
+                                    setState(() { _quantity++; _quantityController.text = _quantity.toString(); }); 
+                                  } else {
+                                    _play('error');
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لقد وصلت للحد الأقصى من المخزون.', textDirection: TextDirection.rtl)));
+                                  }
+                                }
+                              ),
                             ],
                           ),
                         ),
