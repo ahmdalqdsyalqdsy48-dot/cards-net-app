@@ -16,12 +16,12 @@ app.use(express.json());
 
 // 1. إعدادات المشروع (تأكد أنها مطابقة تماماً لملف الـ Web الخاص بك)
 const firebaseConfig = {
-  apiKey: "AIzaSyDdZzU6VXrmmk9Ul99GTN5RLtza95tLkVE",
-  authDomain: "netcardsapp.firebaseapp.com",
-  projectId: "netcardsapp",
-  storageBucket: "netcardsapp.firebasestorage.app",
-  messagingSenderId: "100057914511",
-  appId: "1:100057914511:web:75b015601ca5cb836724fa"
+    apiKey: "AIzaSyDdZzU6VXrmmk9Ul99GTN5RLtza95tLkVE",
+    authDomain: "netcardsapp.firebaseapp.com",
+    projectId: "netcardsapp",
+    storageBucket: "netcardsapp.firebasestorage.app",
+    messagingSenderId: "100057914511",
+    appId: "1:100057914511:web:75b015601ca5cb836724fa"
 };
 
 // 2. تهيئة فايربيز (Firebase SDK for Web/Node)
@@ -239,12 +239,109 @@ onSnapshot(doc(db, 'system', 'backup_settings'), async (docSnap) => {
     }
 });
 
+// ==========================================
+// 🤖 إضافة المحرك الجديد: البوت الذكي للتوليد التلقائي
+// ==========================================
+async function autoGenerateBot() {
+    try {
+        await serverLogin();
+        const networksSnap = await getDocs(collection(db, 'networks'));
+
+        for (const netDoc of networksSnap.docs) {
+            const netData = netDoc.data();
+            // تخطي الشبكات المجمدة
+            if (netData.isActive === false) continue;
+
+            const categories = netData.categories || [];
+            let categoriesUpdated = false;
+
+            for (let i = 0; i < categories.length; i++) {
+                const category = categories[i];
+                const stock = category.stock || 0;
+                const minStock = category.botMinStock || 5;
+                const refillAmount = category.botRefillAmount || 50;
+
+                // التحقق من شروط البوت: هل هو مفعل؟ وهل المخزون أقل من الحد الأدنى؟
+                if (category.isBotEnabled === true && stock < minStock) {
+                    console.log(`🤖 البوت يعمل: مخزون فئة (${category.name}) في شبكة (${netData.name}) انخفض إلى ${stock}. جاري توليد ${refillAmount} كرت...`);
+
+                    const api = new RouterOSAPI({
+                        host: netData.ip,
+                        user: netData.apiUser,
+                        password: netData.apiPassword,
+                        port: parseInt(netData.apiPort) || 8728,
+                        timeout: 20
+                    });
+
+                    try {
+                        await api.connect();
+                        const batch = writeBatch(db);
+
+                        for (let j = 0; j < refillAmount; j++) {
+                            const pin = Math.floor(10000000 + Math.random() * 90000000).toString();
+                            
+                            // إرسال الكرت للميكروتك
+                            await api.write('/ip/hotspot/user/add', [
+                                `=name=${pin}`,
+                                `=password=${pin}`,
+                                `=profile=${category.name}`,
+                                `=comment=AutoBot-${netData.agentPhone}`
+                            ]);
+
+                            // حجز الكرت في الفايربيز
+                            const cardRef = doc(collection(db, 'cards'));
+                            batch.set(cardRef, {
+                                pin: pin,
+                                networkId: netDoc.id,
+                                categoryId: category.id,
+                                cardTitle: `${netData.name} - ${category.name}`,
+                                agentPhone: netData.agentPhone,
+                                status: 'متاح',
+                                createdAt: serverTimestamp(),
+                                generatedBy: 'AutoBot' // علامة تدل أن البوت هو من ولدها
+                            });
+                        }
+
+                        await api.close();
+
+                        // تحديث المخزون
+                        categories[i].stock = stock + refillAmount;
+                        categoriesUpdated = true;
+
+                        await batch.commit();
+                        console.log(`✅ نجاح البوت: تم إضافة ${refillAmount} كرت لفئة ${category.name}. المخزون الجديد: ${categories[i].stock}`);
+
+                    } catch (err) {
+                        console.error(`❌ خطأ البوت مع شبكة ${netData.name}:`, err.message);
+                        if (api && api.connected) {
+                            await api.close().catch(() => {});
+                        }
+                    }
+                }
+            }
+
+            // تحديث الفئات في الفايربيز إذا حدث أي توليد تلقائي
+            if (categoriesUpdated) {
+                await updateDoc(doc(db, 'networks', netDoc.id), { categories: categories });
+            }
+        }
+    } catch (error) {
+        console.error("❌ خطأ عام في محرك البوت:", error.message);
+    }
+}
+
+// ⏰ فحص البوت الذكي للتوليد التلقائي (كل 5 دقائق)
+cron.schedule('*/5 * * * *', async () => {
+    // لن يطبع رسائل إذا لم يجد شيئاً لتوليده لكي لا يملأ السجل (Logs)
+    await autoGenerateBot();
+});
+
 // الصفحة الرئيسية للسيرفر
 app.get('/', (req, res) => {
     res.send(`
         <div style="text-align:center; padding:50px; font-family:sans-serif;">
             <h1 style="color:#2ecc71;">🚀 NetCards Mikrotik Server is LIVE</h1>
-            <p>Status: All systems functional</p>
+            <p>Status: All systems functional (Including Auto-Bot 🤖)</p>
             <p>Time: ${new Date().toLocaleString()}</p>
         </div>
     `);
@@ -253,4 +350,5 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server is running on port ${PORT}`);
+    console.log(`🤖 Auto-Bot Engine Initialized (Checking every 5 mins)`);
 });
