@@ -26,7 +26,8 @@ dependencies:
   google_fonts: ^6.1.0  
   audioplayers: ^5.2.1  
   url_launcher: ^6.2.5
-  http: ^1.2.0  # 👈 تمت إضافة هذه المكتبة للاتصال بسيرفر Render الجديد
+  http: ^1.2.0  # 👈 للاتصال بسيرفر Render
+  share_plus: ^7.2.2  # 👈 تمت إضافتها لتفعيل ميزة "مشاركة الكروت" في الكاشير
 
 dev_dependencies:
   flutter_test:
