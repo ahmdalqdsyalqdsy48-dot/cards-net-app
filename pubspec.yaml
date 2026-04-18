@@ -43,5 +43,8 @@ flutter:
   # 👇 تعريف مجلد الأصوات والخطوط للتطبيق
   assets:
     - assets/sounds/
-    - assets/fonts/Cairo-Regular.ttf
-    - assets/fonts/Cairo-Bold.ttf
+    # ⚠️ ملاحظة: إذا لم تكن قد رفعت ملفات الخطوط لمجلد المشروع في GitHub حتى الآن،
+    # اترك علامة الـ # (التعليق) قبلها كما فعلت أنا الآن لكي لا يفشل البناء (Build).
+    # وعندما ترفع ملفات الخطوط مستقبلاً، قم بمسح الـ # فقط لتعمل فوراً.
+    # - assets/fonts/Cairo-Regular.ttf
+    # - assets/fonts/Cairo-Bold.ttf
