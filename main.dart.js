@@ -70145,26 +70145,26 @@ k.toString
 j.c4(0,l,k)
 c=!0}}catch(h){}}if(c)d.b.ft(0)},
 NP(a){return this.b1L(a)},
-b1L(a){var s=0,r=A.z(t.H),q=1,p=[],o=this,n,m,l,k,j,i,h
+b1L(a){var s=0,r=A.z(t.H),q=1,p=[],o=this,n,m,l,k,j,i,h,g,f
 var $async$NP=A.A(function(b,c){if(b===1){p.push(c)
 s=q}for(;;)switch(s){case 0:q=3
 s=6
 return A.q(o.a.a8("users").aL(a).fF(0),$async$NP)
 case 6:n=c
-if(n.gkf()){m=B.k.wo(o.ry,new A.bfc(a))
-k=J.h(m,-1)
-j=o.ry
-if(!k){k=J.VD(n)
-k.toString
-j[m]=k}else{k=J.VD(n)
-k.toString
-B.k.B(j,k)}o.ab()}q=1
+if(n.gkf()&&J.VD(n)!=null){j=J.VD(n)
+m=j==null?t.P.a(j):j
+l=B.k.wo(o.ry,new A.bfc(a))
+i=J.h(l,-1)
+h=o.ry
+if(!i)h[l]=m
+else B.k.B(h,m)
+o.ab()}q=1
 s=5
 break
 case 3:q=2
-h=p.pop()
-l=A.al(h)
-A.aPc().$1("\u062e\u0637\u0623 \u0641\u064a \u0627\u0644\u0645\u0632\u0627\u0645\u0646\u0629 \u0627\u0644\u064a\u062f\u0648\u064a\u0629: "+A.j(l))
+f=p.pop()
+k=A.al(f)
+A.aPc().$1("\u062e\u0637\u0623 \u0641\u064a \u0627\u0644\u0645\u0632\u0627\u0645\u0646\u0629 \u0627\u0644\u064a\u062f\u0648\u064a\u0629: "+A.j(k))
 s=5
 break
 case 2:s=1
