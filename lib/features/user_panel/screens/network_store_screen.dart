@@ -93,13 +93,35 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   }
 
   // ==========================================
-  // 2. نافذة إتمام الشراء الحقيقية (المتصلة بالسيرفر) 💳
+  // 2. محرك التحقق من الساعات السعيدة (Happy Hour) ⏳
   // ==========================================
-  void _showPurchaseBottomSheet(BuildContext context, String title, double price, String agentPhone, String agentName, bool isPos) {
+  bool _isWithinHappyHour(String startStr, String endStr) {
+    try {
+      var now = TimeOfDay.now();
+      double nowDouble = now.hour + now.minute / 60.0;
+
+      var startParts = startStr.split(':');
+      double startDouble = int.parse(startParts[0]) + int.parse(startParts[1]) / 60.0;
+
+      var endParts = endStr.split(':');
+      double endDouble = int.parse(endParts[0]) + int.parse(endParts[1]) / 60.0;
+
+      if (startDouble < endDouble) {
+        return nowDouble >= startDouble && nowDouble <= endDouble;
+      } else {
+        return nowDouble >= startDouble || nowDouble <= endDouble; // يعبر منتصف الليل
+      }
+    } catch(e) { return false; }
+  }
+
+  // ==========================================
+  // 3. نافذة إتمام الشراء الحقيقية (المطورة بدمج الكوبونات) 💳🎟️
+  // ==========================================
+  void _showPurchaseBottomSheet(BuildContext context, String title, double originalPrice, String agentPhone, String agentName, bool isPos) {
     _play('click');
     bool isPurchased = false;
-    bool isSubmittingPurchase = false; // 👈 حماية من النقر المزدوج
-    String actualPinFetched = ''; // 👈 لاستقبال الكرت الحقيقي
+    bool isSubmittingPurchase = false; 
+    String actualPinFetched = ''; 
     
     final systemProvider = Provider.of<SystemProvider>(context, listen: false);
     
@@ -114,7 +136,17 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     }
     
     double totalPurchasingPower = walletBalance + creditLimit;
-    bool canAfford = totalPurchasingPower >= price;
+    
+    // متغيرات نظام الكوبونات
+    double finalPrice = originalPrice;
+    double discountAmount = 0.0;
+    String? appliedCouponDocId;
+    String couponMessage = '';
+    Color couponMessageColor = Colors.black;
+    bool isApplyingCoupon = false;
+    TextEditingController couponController = TextEditingController();
+    
+    bool canAfford = totalPurchasingPower >= finalPrice;
 
     showModalBottomSheet(
       context: context,
@@ -124,10 +156,104 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
       builder: (context) {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
+            
+            // 🎟️ دالة تطبيق الكوبون الداخلية
+            Future<void> _applyCoupon() async {
+              String code = couponController.text.trim().toUpperCase();
+              if (code.isEmpty) return;
+
+              _play('click');
+              setModalState(() { isApplyingCoupon = true; couponMessage = ''; });
+
+              try {
+                var query = await _db.collection('coupons')
+                    .where('agentPhone', isEqualTo: agentPhone)
+                    .where('code', isEqualTo: code)
+                    .get();
+
+                if (query.docs.isEmpty) {
+                  setModalState(() { couponMessage = 'كود الخصم غير صحيح أو لا يتبع لهذا الوكيل'; couponMessageColor = Colors.red; isApplyingCoupon = false; });
+                  _play('error');
+                  return;
+                }
+
+                var doc = query.docs.first;
+                var data = doc.data();
+
+                // التحققات الصارمة
+                if (data['isActive'] != true) {
+                  setModalState(() { couponMessage = 'هذا الكود متوقف حالياً'; couponMessageColor = Colors.red; isApplyingCoupon = false; });
+                  _play('error'); return;
+                }
+
+                DateTime expiry = (data['expiryDate'] as Timestamp).toDate();
+                if (expiry.isBefore(DateTime.now())) {
+                  setModalState(() { couponMessage = 'لقد انتهت صلاحية هذا العرض'; couponMessageColor = Colors.red; isApplyingCoupon = false; });
+                  _play('error'); return;
+                }
+
+                int currentUsage = data['currentUsage'] ?? 0;
+                int maxUsage = data['maxUsage'] ?? 1;
+                if (currentUsage >= maxUsage) {
+                  setModalState(() { couponMessage = 'تم استنفاد الحد الأقصى لاستخدام الكوبون'; couponMessageColor = Colors.red; isApplyingCoupon = false; });
+                  _play('error'); return;
+                }
+
+                String targetPhone = data['targetPhone'] ?? '';
+                if (targetPhone.isNotEmpty && targetPhone != systemProvider.currentUserPhone) {
+                  setModalState(() { couponMessage = 'عذراً، هذا الكود مخصص لرقم آخر'; couponMessageColor = Colors.red; isApplyingCoupon = false; });
+                  _play('error'); return;
+                }
+
+                if (data['isHappyHour'] == true) {
+                  String sTime = data['startTime'] ?? '00:00';
+                  String eTime = data['endTime'] ?? '23:59';
+                  if (!_isWithinHappyHour(sTime, eTime)) {
+                    setModalState(() { couponMessage = 'هذا الكود يعمل فقط من $sTime إلى $eTime'; couponMessageColor = Colors.orange; isApplyingCoupon = false; });
+                    _play('error'); return;
+                  }
+                }
+
+                // حساب قيمة الخصم
+                double dValue = (data['discountValue'] ?? 0).toDouble();
+                String dType = data['discountType'] ?? 'fixed';
+
+                double calculatedDiscount = 0.0;
+                if (dType == 'percent') {
+                  calculatedDiscount = originalPrice * (dValue / 100);
+                } else if (dType == 'fixed') {
+                  calculatedDiscount = dValue;
+                } else if (dType == 'combo' || dType == 'referral') {
+                  setModalState(() { couponMessage = 'عروض الباقات والدعوات لا تخصم من قيمة الكرت الفورية.'; couponMessageColor = Colors.orange; isApplyingCoupon = false; });
+                  return;
+                }
+
+                if (calculatedDiscount >= originalPrice) calculatedDiscount = originalPrice; // لا يمكن أن يكون الخصم أكبر من السعر
+
+                _play('success');
+                setModalState(() {
+                  discountAmount = calculatedDiscount;
+                  finalPrice = originalPrice - discountAmount;
+                  canAfford = totalPurchasingPower >= finalPrice; // إعادة حساب القدرة الشرائية
+                  appliedCouponDocId = doc.id;
+                  couponMessage = 'تم تطبيق الخصم بنجاح! 🎉';
+                  couponMessageColor = Colors.green;
+                  isApplyingCoupon = false;
+                });
+
+              } catch (e) {
+                setModalState(() { couponMessage = 'حدث خطأ في الاتصال'; couponMessageColor = Colors.red; isApplyingCoupon = false; });
+                _play('error');
+              }
+            }
+
             return Directionality(
               textDirection: TextDirection.rtl,
               child: Padding(
-                padding: const EdgeInsets.all(20),
+                padding: EdgeInsets.only(
+                  left: 20, right: 20, top: 20, 
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 20 // التجاوب مع الكيبورد
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -143,6 +269,49 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                       Text('هل أنت متأكد من شراء كرت ($title)؟', textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
                       const SizedBox(height: 20),
                       
+                      // حقل إدخال كود الخصم (الميزة الجديدة 🎟️)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: appliedCouponDocId != null ? Colors.green : Colors.grey.shade300)
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: couponController,
+                                enabled: appliedCouponDocId == null && !isApplyingCoupon,
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                                decoration: InputDecoration(
+                                  hintText: 'هل لديك كود خصم؟',
+                                  hintStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 13),
+                                  border: InputBorder.none,
+                                  icon: Icon(Icons.local_offer, color: appliedCouponDocId != null ? Colors.green : Colors.grey),
+                                ),
+                              ),
+                            ),
+                            if (appliedCouponDocId == null)
+                              isApplyingCoupon
+                                  ? const Padding(padding: EdgeInsets.all(10), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
+                                  : TextButton(
+                                      onPressed: _applyCoupon,
+                                      child: const Text('تطبيق', style: TextStyle(fontWeight: FontWeight.bold)),
+                                    )
+                            else
+                              const Icon(Icons.check_circle, color: Colors.green),
+                          ],
+                        ),
+                      ),
+                      if (couponMessage.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Text(couponMessage, style: TextStyle(color: couponMessageColor, fontSize: 12, fontWeight: FontWeight.bold)),
+                        ),
+                      const SizedBox(height: 15),
+
+                      // رصيد المشتري
                       Container(
                         padding: const EdgeInsets.all(15),
                         decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.blue.withOpacity(0.3))),
@@ -164,6 +333,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                       ),
                       const SizedBox(height: 10),
 
+                      // المبلغ المطلوب خصمه (مع عرض التخفيض إن وجد)
                       Container(
                         padding: const EdgeInsets.all(15),
                         decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.orange.withOpacity(0.3))),
@@ -171,7 +341,14 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text('المبلغ المطلوب خصمه:', style: TextStyle(fontWeight: FontWeight.bold)),
-                            Text('$price ريال', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 18)),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                if (discountAmount > 0)
+                                  Text('$originalPrice ريال', style: const TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey, fontSize: 13)),
+                                Text('$finalPrice ريال', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 18)),
+                              ],
+                            ),
                           ],
                         ),
                       ),
@@ -185,15 +362,23 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                             style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                             onPressed: isSubmittingPurchase ? null : () async {
                               _play('click');
-                              setModalState(() => isSubmittingPurchase = true); // 👈 إظهار التحميل ومنع النقر المزدوج
+                              setModalState(() => isSubmittingPurchase = true); 
                               
                               try {
-                                // 👇 الاتصال بالسيرفر لإجراء الشراء الحقيقي
-                                String realPin = await systemProvider.executeRealPurchase(price, title, agentPhone);
+                                // الاتصال بالسيرفر لإجراء الشراء الحقيقي (بالسعر النهائي المخفض)
+                                String realPin = await systemProvider.executeRealPurchase(finalPrice, title, agentPhone);
+                                
+                                // 🎟️ تسجيل استخدام الكوبون في الفايربيز
+                                if (appliedCouponDocId != null) {
+                                  await _db.collection('coupons').doc(appliedCouponDocId).update({
+                                    'currentUsage': FieldValue.increment(1)
+                                  });
+                                }
+
                                 _play('success');
                                 
                                 setModalState(() { 
-                                  actualPinFetched = realPin; // 👈 تخزين الكرت الحقيقي
+                                  actualPinFetched = realPin; 
                                   isPurchased = true; 
                                   isSubmittingPurchase = false;
                                 }); 
@@ -237,7 +422,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                           children: [
                             const Text('رقم الكرت (PIN)', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
                             const SizedBox(height: 10),
-                            // 👈 عرض الكرت الحقيقي المسحوب من السيرفر
                             Text(actualPinFetched, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 2)),
                             const SizedBox(height: 15),
                             ElevatedButton.icon(
