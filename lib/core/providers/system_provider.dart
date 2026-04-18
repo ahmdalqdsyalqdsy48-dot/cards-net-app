@@ -267,15 +267,14 @@ class SystemProvider extends ChangeNotifier {
   // ==========================================
   Future<void> loadUserData(String phone) async {
     try {
-      // بما أن النظام يعتمد على Streams، المزامنة اليدوية تقوم بجلب أحدث نسخة من المستخدم
-      // وتحديث المصفوفة المحلية فوراً لضمان عدم وجود أي تأخير.
       final doc = await _db.collection('users').doc(phone).get();
-      if (doc.exists) {
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data() as Map<String, dynamic>;
         int index = _usersDatabase.indexWhere((u) => u['phone'] == phone);
         if (index != -1) {
-          _usersDatabase[index] = doc.data()!;
+          _usersDatabase[index] = data;
         } else {
-          _usersDatabase.add(doc.data()!);
+          _usersDatabase.add(data);
         }
         notifyListeners();
       }
