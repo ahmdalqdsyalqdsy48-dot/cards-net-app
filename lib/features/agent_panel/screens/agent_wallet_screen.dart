@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart' hide TextDirection;
-import 'package:share_plus/share_plus.dart'; // 👈 ضروري للمشاركة (إكسل وإيصالات)
+import 'package:share_plus/share_plus.dart'; 
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -28,10 +28,10 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   late TabController _tabController;
 
   String _selectedFilter = 'الكل';
-  String _selectedDateFilter = 'الكل'; // 👈 فلتر زمني جديد
+  String _selectedDateFilter = 'الكل'; 
   bool _isBalanceHidden = false; 
 
-  // إعدادات الـ VIP (المحولة من الشاشة السابقة)
+  // إعدادات الـ VIP
   double _vipThreshold = 50000.0;
   String _autoVipCommission = '5%';
 
@@ -53,6 +53,51 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   String _maskPhone(String phone) {
     if (phone.length < 6) return phone;
     return '${phone.substring(0, 3)}****${phone.substring(phone.length - 2)}';
+  }
+
+  // ==========================================
+  // ⚙️ إعدادات الترقية التلقائية للزبائن (الدالة التي تم إضافتها لإصلاح الخطأ)
+  // ==========================================
+  void _showVipSettingsDialog() {
+    _play('click');
+    TextEditingController thresholdCtrl = TextEditingController(text: _vipThreshold.toString());
+    TextEditingController commissionCtrl = TextEditingController(text: _autoVipCommission.replaceAll('%', ''));
+
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          title: const Text('إعدادات الترقية التلقائية 🌟', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('إذا طلب زبون عادي شحناً بهذا المبلغ أو أكثر، سيتم ترقيته تلقائياً لبقالة واعتماد هذا الخصم له.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 15),
+              TextField(controller: thresholdCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'مبلغ الشحن المستهدف (ريال)', border: OutlineInputBorder())),
+              const SizedBox(height: 10),
+              TextField(controller: commissionCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'نسبة الخصم التلقائية (%)', border: OutlineInputBorder())),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.purple),
+              onPressed: () {
+                setState(() {
+                  _vipThreshold = double.tryParse(thresholdCtrl.text) ?? 50000.0;
+                  _autoVipCommission = '${commissionCtrl.text}%';
+                });
+                Navigator.pop(context);
+                _showSnack('تم حفظ إعدادات الترقية التلقائية ✅');
+              },
+              child: const Text('حفظ', style: TextStyle(color: Colors.white)),
+            )
+          ],
+        ),
+      ),
+    );
   }
 
   // ==========================================
@@ -143,7 +188,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
 
                   if (amount > 0 && refController.text.isNotEmpty && selectedBank != null) {
                     _play('warning');
-                    // 👈 نافذة تأكيد قبل الإرسال
                     showDialog(context: context, builder: (ctx) => Directionality(textDirection: TextDirection.rtl, child: AlertDialog(
                       title: const Text('تأكيد الطلب ⚠️', style: TextStyle(fontWeight: FontWeight.bold)),
                       content: Text('هل أنت متأكد من إرسال طلب تغذية بقيمة $amount ريال؟'),
@@ -152,7 +196,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                           onPressed: () async {
-                            Navigator.pop(ctx); // إغلاق التأكيد
+                            Navigator.pop(ctx); 
                             if (sys.isCurrencyAutoRounding) amount = amount.ceilToDouble();
                             await _db.collection('recharge_requests').add({
                               'agentPhone': sys.currentUserPhone, 'agentName': sys.currentUserName,
@@ -274,7 +318,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                       if (amount <= 0 || amount > sys.currentUserBalance) { _play('error'); _showSnack('المبلغ غير متاح في رصيدك!', isErr: true); return; }
 
                       _play('warning');
-                      // 👈 تأكيد نهائي للتحويل
                       showDialog(context: context, builder: (ctx) => Directionality(textDirection: TextDirection.rtl, child: AlertDialog(
                         title: const Text('تأكيد التحويل ⚠️', style: TextStyle(fontWeight: FontWeight.bold)),
                         content: Text('هل أنت متأكد من تحويل $amount ريال إلى $targetName؟'),
@@ -448,7 +491,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     _play('click');
     _showSnack('جاري تصدير السجل إلى Excel... ⏳');
     
-    // إضافة BOM لكي يقرأ الإكسل اللغة العربية بشكل صحيح
     String csv = '\uFEFF'; 
     csv += 'التاريخ,البيان,النوع,المبلغ (ريال)\n';
     
@@ -609,11 +651,9 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     final Color cardColor = Theme.of(context).cardColor;
     final Color textColor = themeProvider.adaptiveTextColor;
 
-    // فلترة العمليات الخاصة بالوكيل
     final List<Map<String, dynamic>> realTransactions = sys.transactionsLedger.where((t) {
       if (t['agentPhone'] != sys.currentUserPhone && t['fromPhone'] != sys.currentUserPhone && t['toPhone'] != sys.currentUserPhone) return false;
       
-      // الفلترة بالنوع
       bool typeMatch = false;
       if (_selectedFilter == 'الكل') typeMatch = true;
       else if (_selectedFilter == 'إيداعات وأرباح' && (t['type'] == 'income' || t['type'] == 'deposit')) typeMatch = true;
@@ -623,7 +663,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
       
       if (!typeMatch) return false;
 
-      // الفلترة بالزمن
       if (_selectedDateFilter == 'الكل') return true;
       if (t['timestamp'] == null) return false;
       DateTime d = (t['timestamp'] as Timestamp).toDate();
@@ -636,7 +675,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
       return true;
     }).toList();
 
-    // حساب إحصائيات الدخل والمصروفات
     double totalIncome = 0;
     double totalExpense = 0;
     for (var t in realTransactions) {
@@ -665,9 +703,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // ==========================================
-            // ترويسة الرصيد + التبويبات (بدون إخفاء الأزرار)
-            // ==========================================
             Container(
               width: double.infinity,
               color: isDark ? Colors.grey.shade900 : Colors.teal.shade800,
@@ -692,7 +727,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                             ),
                           ],
                         ),
-                        // صندوق صافي التدفق
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                           decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10)),
@@ -707,7 +741,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                     ),
                   ),
                   
-                  // نظام التبويبات مع Badge للطلبات
                   StreamBuilder<QuerySnapshot>(
                     stream: _db.collection('user_recharges').where('targetPhone', isEqualTo: sys.currentUserPhone).where('status', isEqualTo: 'قيد الانتظار').snapshots(),
                     builder: (context, snapshot) {
@@ -768,7 +801,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   Widget _buildWalletAndLedgerTab(SystemProvider sys, List<Map<String, dynamic>> realTransactions, double totalIncome, double totalExpense, int incomeFlex, int expenseFlex, bool isDark, Color cardColor, Color textColor) {
     return Column(
       children: [
-        // الأزرار السريعة الدائمة
         Container(
           padding: const EdgeInsets.symmetric(vertical: 15),
           color: isDark ? Colors.grey.shade800 : Colors.white,
@@ -783,7 +815,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
           ),
         ),
         
-        // شريط الإحصائيات البصري
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Column(
@@ -811,7 +842,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
           ),
         ),
 
-        // الفلاتر
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
@@ -837,7 +867,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
           ),
         ),
 
-        // السجل المالي (Ledger)
         Expanded(
           child: realTransactions.isEmpty
               ? const Center(child: Text('لا توجد عمليات مسجلة تطابق الفلتر', style: TextStyle(color: Colors.grey)))
@@ -854,7 +883,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                       margin: const EdgeInsets.only(bottom: 10),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       child: ListTile(
-                        onTap: () => _showTransactionReceipt(txn, sys), // 👈 إظهار الإيصال
+                        onTap: () => _showTransactionReceipt(txn, sys), 
                         leading: CircleAvatar(
                           backgroundColor: isPlus ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
                           child: Icon(isPlus ? Icons.arrow_downward : Icons.arrow_upward, color: isPlus ? Colors.green : Colors.red),
@@ -866,7 +895,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                           children: [
                             Text('${isPlus ? '+' : '-'}${txn['amount']}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: isPlus ? Colors.green : Colors.red), textDirection: TextDirection.ltr),
                             const SizedBox(width: 5),
-                            Icon(Icons.receipt_long, color: Colors.grey.shade400, size: 16), // دليل أن العنصر قابل للنقر
+                            Icon(Icons.receipt_long, color: Colors.grey.shade400, size: 16), 
                           ],
                         ),
                       ),
@@ -903,7 +932,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
 
         return Column(
           children: [
-            // زر الموافقة الجماعية
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
