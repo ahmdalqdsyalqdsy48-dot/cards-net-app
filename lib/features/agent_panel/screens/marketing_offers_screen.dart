@@ -27,10 +27,24 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
   void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
 
   // ==========================================
-  // 🎟️ نافذة إنشاء عرض / كوبون جديد (مكتملة ومربوطة)
+  // 🎟️ نافذة إنشاء عرض / كوبون جديد (المطورة)
   // ==========================================
-  void _showCreateOfferDialog(SystemProvider sys, ThemeProvider theme) {
+  void _showCreateOfferDialog(SystemProvider sys, ThemeProvider theme) async {
     _play('click');
+    
+    // 1. جلب شبكات الوكيل أولاً قبل فتح النافذة
+    showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
+    List<String> agentNetworks = ['الكل'];
+    try {
+      var netsQuery = await _db.collection('networks').where('agentPhone', isEqualTo: sys.currentUserPhone).get();
+      for(var doc in netsQuery.docs) {
+         agentNetworks.add(doc.data()['name'] ?? 'شبكة بدون اسم');
+      }
+    } catch(e) {
+      debugPrint('خطأ في جلب الشبكات: $e');
+    }
+    if (mounted) Navigator.pop(context); // إغلاق التحميل
+
     final formKey = GlobalKey<FormState>();
     
     String newCode = '';
@@ -41,6 +55,7 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
     double refereeReward = 0.0;
     int maxUsage = 50;
     String targetPhone = '';
+    String targetNetwork = 'الكل'; // 👈 المتغير الجديد لتخصيص الشبكة
     
     DateTime expiryDate = DateTime.now().add(const Duration(days: 7));
     bool isHappyHour = false;
@@ -85,7 +100,16 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                           ),
                           const SizedBox(height: 12),
 
-                          // 2. نوع الخصم المطور (تم إضافة الإحالة)
+                          // 👈 2. تحديد الشبكة المستهدفة
+                          DropdownButtonFormField<String>(
+                            value: targetNetwork,
+                            decoration: InputDecoration(labelText: 'تخصيص لشبكة معينة (اختياري)', prefixIcon: const Icon(Icons.wifi, color: Colors.purple), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
+                            items: agentNetworks.map((net) => DropdownMenuItem(value: net, child: Text(net))).toList(),
+                            onChanged: (val) => setStateDialog(() => targetNetwork = val!),
+                          ),
+                          const SizedBox(height: 12),
+
+                          // 3. نوع الخصم المطور (تم إضافة الإحالة)
                           DropdownButtonFormField<String>(
                             value: discountType,
                             decoration: InputDecoration(labelText: 'نوع الخصم', prefixIcon: const Icon(Icons.discount, color: Colors.green), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
@@ -99,7 +123,7 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                           ),
                           const SizedBox(height: 12),
 
-                          // 3. المدخلات الديناميكية بناءً على نوع الخصم
+                          // 4. المدخلات الديناميكية بناءً على نوع الخصم
                           if (discountType == 'combo')
                             TextFormField(
                               decoration: InputDecoration(labelText: 'تفاصيل الباقة (مثال: اشتر 10 واحصل على 1 مجاناً)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
@@ -137,7 +161,7 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                             ),
                           const SizedBox(height: 12),
 
-                          // 4. الفئة المستهدفة
+                          // 5. الفئة المستهدفة
                           if (discountType != 'referral')
                             TextFormField(
                               keyboardType: TextInputType.phone,
@@ -146,7 +170,7 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                             ),
                           if (discountType != 'referral') const SizedBox(height: 12),
 
-                          // 5. الحد الأقصى للاستخدام
+                          // 6. الحد الأقصى للاستخدام
                           TextFormField(
                             initialValue: '50',
                             keyboardType: TextInputType.number,
@@ -155,7 +179,7 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                           ),
                           const Divider(height: 25),
 
-                          // 6. تاريخ الانتهاء
+                          // 7. تاريخ الانتهاء
                           ListTile(
                             contentPadding: EdgeInsets.zero,
                             leading: const Icon(Icons.calendar_month, color: Colors.redAccent),
@@ -171,7 +195,7 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                           ),
                           const Divider(height: 10),
 
-                          // 7. الساعات السعيدة (Happy Hour)
+                          // 8. الساعات السعيدة (Happy Hour)
                           SwitchListTile(
                             contentPadding: EdgeInsets.zero,
                             title: const Text('تفعيل الساعات السعيدة ⏳', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
@@ -204,7 +228,7 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                         showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
                         
                         try {
-                          // التأكد من عدم تكرار الكود (تم التغيير إلى coupons ليتوافق مع SystemProvider)
+                          // التأكد من عدم تكرار الكود
                           var check = await _db.collection('coupons').where('agentPhone', isEqualTo: sys.currentUserPhone).where('code', isEqualTo: newCode).get();
                           if (check.docs.isNotEmpty) {
                             Navigator.pop(context); 
@@ -220,6 +244,7 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                             'comboDesc': comboDesc,
                             'referrerReward': referrerReward,
                             'refereeReward': refereeReward,
+                            'targetNetwork': targetNetwork == 'الكل' ? '' : targetNetwork, // 👈 حفظ الشبكة المستهدفة
                             'maxUsage': maxUsage,
                             'currentUsage': 0,
                             'expiryDate': Timestamp.fromDate(expiryDate),
@@ -308,6 +333,14 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                       Text(discountTitle, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 5),
                       Text(subTitle, style: const TextStyle(color: Colors.white70, fontSize: 16), textAlign: TextAlign.center),
+                      
+                      // 👈 إظهار الشبكة المخصصة في البوستر إن وجدت
+                      if (offer['targetNetwork'] != null && offer['targetNetwork'] != '')
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Text('صالح فقط لشبكة: ${offer['targetNetwork']}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 14, fontWeight: FontWeight.bold)),
+                        ),
+                        
                       const SizedBox(height: 20),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -370,6 +403,10 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
       msg += "استخدم كود الدعوة: *${offer['code']}*\nسجل معنا واحصل على رصيد مجاني *${offer['refereeReward']} ريال*!\n";
     } else {
       msg += "استخدم الكود: *${offer['code']}*\nواستفد من العرض: *${offer['comboDesc']}*\n";
+    }
+
+    if (offer['targetNetwork'] != null && offer['targetNetwork'] != '') {
+      msg += "🌐 *مخصص لشبكة:* ${offer['targetNetwork']}\n";
     }
 
     if (offer['isHappyHour'] == true) msg += "⏳ *ملاحظة:* العرض يعمل فقط خلال الساعات السعيدة.\n";
@@ -604,6 +641,14 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                                   padding: const EdgeInsets.only(top: 8.0),
                                   child: Text('🎯 مخصص للرقم: ${offer['targetPhone']}', style: const TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold)),
                                 ),
+                              
+                              // 👈 إظهار الشبكة المخصصة إن وجدت
+                              if (offer['targetNetwork'] != null && offer['targetNetwork'] != '')
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8.0),
+                                  child: Text('🌐 مخصص لشبكة: ${offer['targetNetwork']}', style: const TextStyle(color: Colors.purple, fontSize: 11, fontWeight: FontWeight.bold)),
+                                ),
+                                
                               const Divider(height: 25),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
