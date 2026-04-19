@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
 import 'package:provider/provider.dart'; 
+import 'package:cloud_firestore/cloud_firestore.dart';
 // import 'package:url_launcher/url_launcher.dart'; // 👈 (اختياري) يمكنك تفعيلها لمشاركة الكروت عبر واتساب لاحقاً
 
 import '../../../core/providers/system_provider.dart'; 
@@ -24,6 +25,8 @@ class UserDashboardScreen extends StatefulWidget {
 }
 
 class _UserDashboardScreenState extends State<UserDashboardScreen> {
+  // 👈 إضافة الاتصال بقاعدة البيانات لجلب العروض
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // دالة موحدة للانتقال بين الشاشات بسهولة مع صوت
   void _goTo(Widget screen) {
@@ -33,6 +36,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
       MaterialPageRoute(builder: (context) => screen)
     );
   }
+
+  void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
 
   @override
   Widget build(BuildContext context) {
@@ -110,13 +115,13 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
               // 3. قسم الكرت النشط (يقرأ أحدث كرت فعلي مسحوب)
               if (hasActiveCard) _buildActiveCardSection(isDark, purchasedCards.last, isPos),
 
-              // 4. قسم العروض الإعلانية
+              // 4. قسم العروض الإعلانية المطوّر 🎟️
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Text(isPos ? 'عروض الوكلاء ونقاط البيع 🔥' : 'عروض حصرية لك 🔥', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               ),
               const SizedBox(height: 10),
-              _buildPromoSection(),
+              _buildPromoSection(systemProvider), // تمرير SystemProvider لمعرفة رقم الهاتف
               
               const SizedBox(height: 30),
             ],
@@ -282,38 +287,141 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   // ==========================================
-  // بناء قسم العروض الإعلانية الترويجية
+  // بناء قسم العروض الإعلانية الترويجية (الديناميكي الحي 🎟️)
   // ==========================================
-  Widget _buildPromoSection() {
-    return SizedBox(
-      height: 120,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        children: [
-          _buildPromoBanner('خصم 20%', 'على شبكة النور', Colors.orange.shade400, Colors.deepOrange),
-          const SizedBox(width: 10),
-          _buildPromoBanner('نقاط مضاعفة!', 'اشتري الآن واحصل على الضعف', Colors.purple.shade400, Colors.deepPurple),
-        ],
-      ),
+  Widget _buildPromoSection(SystemProvider sys) {
+    return StreamBuilder<QuerySnapshot>(
+      // لجلب جميع العروض وتجنب أخطاء الفهارس المركبة في الفايربيز
+      stream: _db.collection('coupons').snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox(height: 140, child: Center(child: CircularProgressIndicator()));
+        }
+        
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const SizedBox(height: 140, child: Center(child: Text('لا توجد عروض حالياً، ترقبوا جديدنا!', style: TextStyle(color: Colors.grey))));
+        }
+
+        // 👈 فلترة ذكية في الذاكرة (In-Memory Filtering) لاستبعاد الكوبونات المنتهية أو غير المخصصة للمستخدم
+        var activeCoupons = snapshot.data!.docs.map((doc) => doc.data() as Map<String, dynamic>).where((offer) {
+          if (offer['isActive'] != true) return false; // يجب أن يكون نشطاً
+          
+          DateTime expiry = (offer['expiryDate'] as Timestamp).toDate();
+          if (expiry.isBefore(DateTime.now())) return false; // لم تنتهِ صلاحيته
+
+          int current = offer['currentUsage'] ?? 0;
+          int max = offer['maxUsage'] ?? 1;
+          if (current >= max) return false; // لم يستنفد الحد الأقصى
+
+          // التحقق من التخصيص
+          String targetPhone = offer['targetPhone'] ?? '';
+          if (targetPhone.isNotEmpty && targetPhone != sys.currentUserPhone) return false;
+
+          return true;
+        }).toList();
+
+        // ترتيب من الأحدث للأقدم
+        activeCoupons.sort((a, b) {
+          Timestamp tA = a['createdAt'] ?? Timestamp.now();
+          Timestamp tB = b['createdAt'] ?? Timestamp.now();
+          return tB.compareTo(tA);
+        });
+
+        if (activeCoupons.isEmpty) {
+          return const SizedBox(height: 140, child: Center(child: Text('لا توجد عروض تناسبك حالياً', style: TextStyle(color: Colors.grey))));
+        }
+
+        return SizedBox(
+          height: 150, // زيادة الارتفاع قليلاً لاستيعاب البيانات الجديدة
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: activeCoupons.length,
+            itemBuilder: (context, index) {
+              var offer = activeCoupons[index];
+              
+              // ألوان متناوبة وجميلة للبانرات
+              List<Color> gradientColors = index % 2 == 0 
+                  ? [Colors.orange.shade400, Colors.deepOrange]
+                  : [Colors.purple.shade400, Colors.deepPurple];
+
+              return _buildDynamicPromoBanner(offer, gradientColors);
+            },
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildPromoBanner(String title, String subtitle, Color c1, Color c2) {
-    return Container(
-      width: 280,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [c1, c2]),
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-          Text(subtitle, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-        ],
+  // بناء كرت العرض الديناميكي المربوط بالكوبون
+  Widget _buildDynamicPromoBanner(Map<String, dynamic> offer, List<Color> colors) {
+    String discountTitle = '';
+    String subTitle = '';
+    
+    if (offer['discountType'] == 'percent') {
+      discountTitle = 'خصم ${offer['discountValue']}%';
+      subTitle = 'استخدم الكود: ${offer['code']}';
+    } else if (offer['discountType'] == 'fixed') {
+      discountTitle = 'خصم ${offer['discountValue']} ريال';
+      subTitle = 'استخدم الكود: ${offer['code']}';
+    } else if (offer['discountType'] == 'referral') {
+      discountTitle = 'مكافأة دعوة!';
+      subTitle = 'كود: ${offer['code']} (رصيد مجاني)';
+    } else {
+      discountTitle = 'عرض خاص';
+      subTitle = 'استخدم الكود: ${offer['code']}';
+    }
+
+    String network = offer['targetNetwork'] ?? '';
+
+    return GestureDetector(
+      onTap: () {
+        _play('success');
+        Clipboard.setData(ClipboardData(text: offer['code']));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم نسخ الكود: ${offer['code']} ✂️', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+      },
+      child: Container(
+        width: 280,
+        margin: const EdgeInsets.only(left: 10),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: [BoxShadow(color: colors[1].withOpacity(0.4), blurRadius: 6, offset: const Offset(0, 3))],
+        ),
+        child: Stack(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(discountTitle, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20)),
+                const SizedBox(height: 5),
+                Text(subTitle, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                
+                // تحديد الشبكة المستهدفة للزبون
+                if (network.isNotEmpty && network != 'الكل')
+                  Text('🌐 صالح لشبكة: $network', style: const TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.bold))
+                else
+                  const Text('🌐 صالح لجميع الشبكات', style: TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                
+                // تنبيه الساعات السعيدة
+                if (offer['isHappyHour'] == true)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('⏳ يعمل فقط من ${offer['startTime']} إلى ${offer['endTime']}', style: const TextStyle(color: Colors.white70, fontSize: 10)),
+                  ),
+              ],
+            ),
+            // أيقونة النسخ في الزاوية
+            const Positioned(
+              top: 0,
+              left: 0,
+              child: Icon(Icons.copy, color: Colors.white54, size: 20),
+            )
+          ],
+        ),
       ),
     );
   }
