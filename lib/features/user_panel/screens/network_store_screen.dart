@@ -117,7 +117,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   // ==========================================
   // 3. نافذة إتمام الشراء الحقيقية (المطورة بدمج الكوبونات) 💳🎟️
   // ==========================================
-  void _showPurchaseBottomSheet(BuildContext context, String title, double originalPrice, String agentPhone, String agentName, bool isPos) {
+  void _showPurchaseBottomSheet(BuildContext context, String title, double originalPrice, String agentPhone, String agentName, bool isPos, String networkName) {
     _play('click');
     bool isPurchased = false;
     bool isSubmittingPurchase = false; 
@@ -173,8 +173,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
 
                 if (query.docs.isEmpty) {
                   setModalState(() { couponMessage = 'كود الخصم غير صحيح أو لا يتبع لهذا الوكيل'; couponMessageColor = Colors.red; isApplyingCoupon = false; });
-                  _play('error');
-                  return;
+                  _play('error'); return;
                 }
 
                 var doc = query.docs.first;
@@ -205,6 +204,12 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                   _play('error'); return;
                 }
 
+                String targetNetwork = data['targetNetwork'] ?? '';
+                if (targetNetwork.isNotEmpty && targetNetwork != 'الكل' && targetNetwork != networkName) {
+                  setModalState(() { couponMessage = 'هذا الكود مخصص لشبكة ($targetNetwork) فقط'; couponMessageColor = Colors.red; isApplyingCoupon = false; });
+                  _play('error'); return;
+                }
+
                 if (data['isHappyHour'] == true) {
                   String sTime = data['startTime'] ?? '00:00';
                   String eTime = data['endTime'] ?? '23:59';
@@ -224,11 +229,11 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                 } else if (dType == 'fixed') {
                   calculatedDiscount = dValue;
                 } else if (dType == 'combo' || dType == 'referral') {
-                  setModalState(() { couponMessage = 'عروض الباقات والدعوات لا تخصم من قيمة الكرت الفورية.'; couponMessageColor = Colors.orange; isApplyingCoupon = false; });
+                  setModalState(() { couponMessage = 'عروض الباقات والدعوات لا تخصم من القيمة النقدية للفاتورة.'; couponMessageColor = Colors.orange; isApplyingCoupon = false; });
                   return;
                 }
 
-                if (calculatedDiscount >= originalPrice) calculatedDiscount = originalPrice; // لا يمكن أن يكون الخصم أكبر من السعر
+                if (calculatedDiscount >= originalPrice) calculatedDiscount = originalPrice;
 
                 _play('success');
                 setModalState(() {
@@ -269,7 +274,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                       Text('هل أنت متأكد من شراء كرت ($title)؟', textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
                       const SizedBox(height: 20),
                       
-                      // حقل إدخال كود الخصم (الميزة الجديدة 🎟️)
+                      // حقل إدخال كود الخصم 🎟️
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
@@ -285,8 +290,8 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                                 enabled: appliedCouponDocId == null && !isApplyingCoupon,
                                 style: const TextStyle(fontWeight: FontWeight.bold),
                                 decoration: InputDecoration(
-                                  hintText: 'هل لديك كود خصم؟',
-                                  hintStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 13),
+                                  hintText: 'هل لديك كود خصم؟ (انسخه من الرئيسية)',
+                                  hintStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 12),
                                   border: InputBorder.none,
                                   icon: Icon(Icons.local_offer, color: appliedCouponDocId != null ? Colors.green : Colors.grey),
                                 ),
@@ -365,7 +370,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                               setModalState(() => isSubmittingPurchase = true); 
                               
                               try {
-                                // الاتصال بالسيرفر لإجراء الشراء الحقيقي (بالسعر النهائي المخفض)
+                                // الاتصال بالسيرفر لإجراء الشراء الحقيقي (بناءً على السعر النهائي المخفض)
                                 String realPin = await systemProvider.executeRealPurchase(finalPrice, title, agentPhone);
                                 
                                 // 🎟️ تسجيل استخدام الكوبون في الفايربيز
@@ -587,6 +592,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     List categories = network['categories'] ?? [];
     String agentPhone = network['agentPhone'] ?? '';
     String agentName = network['agentName'] ?? 'مجهول';
+    String networkName = network['name'] ?? ''; // لاستخدامها في التحقق من الكوبون
 
     if (isPos) {
       Map<String, dynamic> myRelationWithThisAgent = agentRelations[agentPhone] ?? {};
@@ -603,7 +609,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       child: ExpansionTile(
         leading: CircleAvatar(backgroundColor: isPos ? Colors.purple : Colors.blue, child: const Icon(Icons.router, color: Colors.white)),
-        title: Text(network['name'] ?? 'بدون اسم', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        title: Text(networkName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         subtitle: Text('📍 ${network['location'] ?? ''}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
         children: [
           Container(
@@ -631,7 +637,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                         ],
                       ),
                       ElevatedButton(
-                        onPressed: isAvailable ? () => _showPurchaseBottomSheet(context, '${network['name']} - ${cat['name']}', price, agentPhone, agentName, isPos) : null,
+                        onPressed: isAvailable ? () => _showPurchaseBottomSheet(context, '${network['name']} - ${cat['name']}', price, agentPhone, agentName, isPos, networkName) : null,
                         style: ElevatedButton.styleFrom(backgroundColor: isAvailable ? (isPos ? Colors.purple : Colors.blue.shade800) : Colors.grey, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
                         child: Text(isAvailable ? 'شراء ($price)' : 'نفدت الكمية', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
                       )
@@ -695,7 +701,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                           ),
                         ),
                         ElevatedButton(
-                          onPressed: isAvailable ? () => _showPurchaseBottomSheet(context, 'من ${pos['name']} (${item['network']})', price, ownerPhone, ownerName, isCurrentPos) : null,
+                          onPressed: isAvailable ? () => _showPurchaseBottomSheet(context, 'من ${pos['name']} (${item['network']})', price, ownerPhone, ownerName, isCurrentPos, item['network']) : null,
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
                           child: Text(isAvailable ? 'شراء ($price)' : 'نفدت الكمية', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
                         )
