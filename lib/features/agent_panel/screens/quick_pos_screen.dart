@@ -65,9 +65,31 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
   void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
 
   // ==========================================
-  // 1. نافذة تأكيد البيع
+  // محرك التحقق من الساعات السعيدة (Happy Hour) ⏳
   // ==========================================
-  void _showConfirmSaleDialog(double currentBalance) {
+  bool _isWithinHappyHour(String startStr, String endStr) {
+    try {
+      var now = TimeOfDay.now();
+      double nowDouble = now.hour + now.minute / 60.0;
+
+      var startParts = startStr.split(':');
+      double startDouble = int.parse(startParts[0]) + int.parse(startParts[1]) / 60.0;
+
+      var endParts = endStr.split(':');
+      double endDouble = int.parse(endParts[0]) + int.parse(endParts[1]) / 60.0;
+
+      if (startDouble < endDouble) {
+        return nowDouble >= startDouble && nowDouble <= endDouble;
+      } else {
+        return nowDouble >= startDouble || nowDouble <= endDouble; // يعبر منتصف الليل
+      }
+    } catch(e) { return false; }
+  }
+
+  // ==========================================
+  // 1. نافذة تأكيد البيع (المطورة بدمج الكوبونات 🎟️)
+  // ==========================================
+  void _showConfirmSaleDialog(double currentBalance, SystemProvider sys) {
     if (_selectedCategory == null) {
       _play('error');
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء اختيار فئة أولاً!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
@@ -81,46 +103,228 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
       return;
     }
 
-    // هنا يتم تطبيق الخصم
-    int totalPrice = _selectedCategory!['price'] * _quantity;
+    double originalTotalPrice = (_selectedCategory!['price'] * _quantity).toDouble();
 
-    if (currentBalance < totalPrice) {
+    if (currentBalance < originalTotalPrice) {
       _play('error');
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('عفواً، رصيد المحفظة لا يكفي لإتمام العملية!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
       return;
     }
 
     _play('warning');
+    
+    // متغيرات نظام الكوبونات
+    double finalPrice = originalTotalPrice;
+    double discountAmount = 0.0;
+    String? appliedCouponDocId;
+    String couponMessage = '';
+    Color couponMessageColor = Colors.black;
+    bool isApplyingCoupon = false;
+    TextEditingController couponController = TextEditingController();
+
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) {
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-            title: const Text('تأكيد البيع 🛒', style: TextStyle(fontWeight: FontWeight.bold)),
-            content: Text('هل أنت متأكد من خصم مبلغ $totalPrice ريال لبيع عدد ($_quantity) كرت من (${_selectedCategory!['name']})؟', style: const TextStyle(fontSize: 16)),
-            actions: [
-              TextButton(onPressed: () { _play('click'); Navigator.pop(context); }, child: const Text('إلغاء', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                onPressed: () {
-                  Navigator.pop(context); 
-                  _processSale(totalPrice); 
-                },
-                child: const Text('تأكيد وبيع', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            
+            // 🎟️ دالة تطبيق الكوبون الداخلية
+            Future<void> _applyCoupon() async {
+              String code = couponController.text.trim().toUpperCase();
+              if (code.isEmpty) return;
+
+              _play('click');
+              setStateDialog(() { isApplyingCoupon = true; couponMessage = ''; });
+
+              try {
+                var query = await _db.collection('coupons')
+                    .where('agentPhone', isEqualTo: sys.currentUserPhone)
+                    .where('code', isEqualTo: code)
+                    .get();
+
+                if (query.docs.isEmpty) {
+                  setStateDialog(() { couponMessage = 'كود الخصم غير صحيح أو لا يتبع لك'; couponMessageColor = Colors.red; isApplyingCoupon = false; });
+                  _play('error'); return;
+                }
+
+                var doc = query.docs.first;
+                var data = doc.data();
+
+                // التحققات الصارمة
+                if (data['isActive'] != true) {
+                  setStateDialog(() { couponMessage = 'هذا الكود متوقف حالياً'; couponMessageColor = Colors.red; isApplyingCoupon = false; });
+                  _play('error'); return;
+                }
+
+                DateTime expiry = (data['expiryDate'] as Timestamp).toDate();
+                if (expiry.isBefore(DateTime.now())) {
+                  setStateDialog(() { couponMessage = 'لقد انتهت صلاحية هذا العرض'; couponMessageColor = Colors.red; isApplyingCoupon = false; });
+                  _play('error'); return;
+                }
+
+                int currentUsage = data['currentUsage'] ?? 0;
+                int maxUsage = data['maxUsage'] ?? 1;
+                if (currentUsage >= maxUsage) {
+                  setStateDialog(() { couponMessage = 'تم استنفاد الحد الأقصى لاستخدام الكوبون'; couponMessageColor = Colors.red; isApplyingCoupon = false; });
+                  _play('error'); return;
+                }
+
+                String targetNetwork = data['targetNetwork'] ?? '';
+                if (targetNetwork.isNotEmpty && targetNetwork != 'الكل' && targetNetwork != _selectedCategory!['networkName']) {
+                  setStateDialog(() { couponMessage = 'هذا الكود مخصص لشبكة ($targetNetwork) فقط'; couponMessageColor = Colors.red; isApplyingCoupon = false; });
+                  _play('error'); return;
+                }
+
+                if (data['isHappyHour'] == true) {
+                  String sTime = data['startTime'] ?? '00:00';
+                  String eTime = data['endTime'] ?? '23:59';
+                  if (!_isWithinHappyHour(sTime, eTime)) {
+                    setStateDialog(() { couponMessage = 'هذا الكود يعمل فقط من $sTime إلى $eTime'; couponMessageColor = Colors.orange; isApplyingCoupon = false; });
+                    _play('error'); return;
+                  }
+                }
+
+                // حساب قيمة الخصم
+                double dValue = (data['discountValue'] ?? 0).toDouble();
+                String dType = data['discountType'] ?? 'fixed';
+
+                double calculatedDiscount = 0.0;
+                if (dType == 'percent') {
+                  calculatedDiscount = originalTotalPrice * (dValue / 100);
+                } else if (dType == 'fixed') {
+                  calculatedDiscount = dValue; // الخصم الثابت يطبق على إجمالي الفاتورة
+                } else if (dType == 'combo' || dType == 'referral') {
+                  setStateDialog(() { couponMessage = 'عروض الباقات والدعوات لا تخصم من القيمة النقدية للفاتورة'; couponMessageColor = Colors.orange; isApplyingCoupon = false; });
+                  return;
+                }
+
+                if (calculatedDiscount >= originalTotalPrice) calculatedDiscount = originalTotalPrice;
+
+                _play('success');
+                setStateDialog(() {
+                  discountAmount = calculatedDiscount;
+                  finalPrice = originalTotalPrice - discountAmount;
+                  appliedCouponDocId = doc.id;
+                  couponMessage = 'تم تطبيق الخصم بنجاح! 🎉';
+                  couponMessageColor = Colors.green;
+                  isApplyingCoupon = false;
+                });
+
+              } catch (e) {
+                setStateDialog(() { couponMessage = 'حدث خطأ في الاتصال'; couponMessageColor = Colors.red; isApplyingCoupon = false; });
+                _play('error');
+              }
+            }
+
+            return Directionality(
+              textDirection: TextDirection.rtl,
+              child: AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                title: const Text('تأكيد البيع 🛒', style: TextStyle(fontWeight: FontWeight.bold)),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('بيع عدد ($_quantity) كرت من (${_selectedCategory!['name']}) التابعة لـ (${_selectedCategory!['networkName']}).', style: const TextStyle(fontSize: 14)),
+                      const SizedBox(height: 20),
+                      
+                      // 🎟️ حقل الكوبون
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: appliedCouponDocId != null ? Colors.green : Colors.grey.shade300)
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: couponController,
+                                enabled: appliedCouponDocId == null && !isApplyingCoupon,
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                decoration: InputDecoration(
+                                  hintText: 'إضافة كود خصم للزبون...',
+                                  hintStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 12),
+                                  border: InputBorder.none,
+                                  icon: Icon(Icons.local_offer, color: appliedCouponDocId != null ? Colors.green : Colors.grey, size: 20),
+                                ),
+                              ),
+                            ),
+                            if (appliedCouponDocId == null)
+                              isApplyingCoupon
+                                  ? const Padding(padding: EdgeInsets.all(10), child: SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2)))
+                                  : TextButton(
+                                      onPressed: _applyCoupon,
+                                      child: const Text('تطبيق', style: TextStyle(fontWeight: FontWeight.bold)),
+                                    )
+                            else
+                              const Icon(Icons.check_circle, color: Colors.green),
+                          ],
+                        ),
+                      ),
+                      if (couponMessage.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 5.0, bottom: 10.0),
+                          child: Text(couponMessage, style: TextStyle(color: couponMessageColor, fontSize: 11, fontWeight: FontWeight.bold)),
+                        ),
+                        
+                      const Divider(height: 25),
+                      
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('الإجمالي قبل الخصم:', style: TextStyle(fontSize: 12)),
+                          Text('$originalTotalPrice ريال', style: TextStyle(fontSize: 13, color: discountAmount > 0 ? Colors.grey : Colors.black, decoration: discountAmount > 0 ? TextDecoration.lineThrough : null)),
+                        ],
+                      ),
+                      if (discountAmount > 0)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('قيمة الخصم الممنوح:', style: TextStyle(fontSize: 12, color: Colors.green)),
+                              Text('- $discountAmount ريال', style: const TextStyle(fontSize: 13, color: Colors.green, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                      const SizedBox(height: 5),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('الصافي للخصم من المحفظة:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                          Text('$finalPrice ريال', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.red)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(onPressed: () { _play('click'); Navigator.pop(context); }, child: const Text('إلغاء', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                    onPressed: () {
+                      Navigator.pop(context); 
+                      _processSale(finalPrice, appliedCouponDocId); // 👈 إرسال السعر النهائي ومعرف الكوبون للتنفيذ
+                    },
+                    child: const Text('تأكيد وبيع', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          }
         );
       },
     );
   }
 
   // ==========================================
-  // 2. معالجة البيع الحقيقي 
+  // 2. معالجة البيع الحقيقي (المطورة)
   // ==========================================
-  Future<void> _processSale(int totalPrice) async {
+  Future<void> _processSale(double finalPrice, String? appliedCouponDocId) async {
     setState(() => _isProcessing = true);
     _play('click');
     
@@ -162,20 +366,27 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
       QuerySnapshot userSnap = await _db.collection('users').where('phone', isEqualTo: sys.currentUserPhone).limit(1).get();
       if (userSnap.docs.isNotEmpty) {
         batch.update(userSnap.docs.first.reference, {
-          'balance': FieldValue.increment(-totalPrice) 
+          'balance': FieldValue.increment(-finalPrice) // خصم السعر المخفض
         });
       }
 
       DocumentReference transRef = _db.collection('transactions').doc();
       batch.set(transRef, {
         'agentPhone': sys.currentUserPhone,
-        'amount': totalPrice,
+        'amount': finalPrice, // تسجيل السعر الفعلي المدفوع
         'type': 'sale', 
         'quantity': _quantity,
         'categoryName': _selectedCategory!['name'],
         'networkName': _selectedCategory!['networkName'],
         'createdAt': FieldValue.serverTimestamp(),
       });
+
+      // 🎟️ تحديث عداد الكوبون إن وُجد
+      if (appliedCouponDocId != null) {
+        batch.update(_db.collection('coupons').doc(appliedCouponDocId), {
+          'currentUsage': FieldValue.increment(1)
+        });
+      }
 
       await batch.commit();
 
@@ -326,7 +537,6 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      // 👇 تم التعديل هنا: استبدال Icons.whatsapp بـ Icons.message
                       _buildActionButton(Icons.message, 'واتساب', Colors.green, () { 
                         _play('click');
                         _shareViaWhatsApp(generatedPins);
@@ -545,7 +755,7 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                       children: [
                         const Text('الكمية المطلوبة:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                         Container(
-                          width: 140, // حجم مناسب للأزرار والحقل النصي
+                          width: 140, 
                           decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(10)),
                           child: Row(
                             children: [
@@ -604,7 +814,7 @@ class _QuickPosScreenState extends State<QuickPosScreen> {
                           child: SizedBox(
                             height: 55,
                             child: ElevatedButton.icon(
-                              onPressed: _isProcessing ? null : () => _showConfirmSaleDialog(sys.currentUserBalance),
+                              onPressed: _isProcessing ? null : () => _showConfirmSaleDialog(sys.currentUserBalance, sys),
                               icon: const Icon(Icons.point_of_sale, color: Colors.white, size: 24),
                               label: const Text('دفع وإصدار الكروت', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
                               style: ElevatedButton.styleFrom(backgroundColor: Colors.teal.shade700, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
