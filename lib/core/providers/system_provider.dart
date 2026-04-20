@@ -703,7 +703,7 @@ class SystemProvider extends ChangeNotifier {
     try {
       final doc = await _db.collection('users').doc(oldPhone).get();
       if (doc.exists) {
-        Map<String, dynamic> data = doc.data()!;
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
         data.addAll({'phone': newPhone, 'name': newName, 'networkName': newNetwork, 'location': newLocation, 'profitMargin': newProfit, 'password': newPassword});
         WriteBatch batch = _db.batch();
         batch.set(_db.collection('users').doc(newPhone), data);
@@ -747,14 +747,15 @@ class SystemProvider extends ChangeNotifier {
     }
 
     final cardDoc = availableCardsQuery.docs.first;
-    final String actualPin = cardDoc.data()['pin'] ?? 'رقم غير معروف';
+    final cardData = cardDoc.data() as Map<String, dynamic>;
+    final String actualPin = cardData['pin'] ?? 'رقم غير معروف';
     final String cardId = cardDoc.id;
 
     await _db.runTransaction((transaction) async {
       final userSnapshot = await transaction.get(userRef);
       if (!userSnapshot.exists) throw 'حدث خطأ: حساب المستخدم غير موجود.';
 
-      final userData = userSnapshot.data()!;
+      final userData = userSnapshot.data() as Map<String, dynamic>;
       Map<String, dynamic> wallets = userData['wallets'] ?? {};
       double currentWalletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
 
@@ -830,7 +831,7 @@ class SystemProvider extends ChangeNotifier {
       final doc = await _db.collection('users').doc(posPhone).get();
       if (!doc.exists) throw 'الرقم غير مسجل كزبون مسبقاً.';
       
-      final userData = doc.data()!;
+      final userData = doc.data() as Map<String, dynamic>;
       if (userData['role'] != 'user' && userData['role'] != 'pos') throw 'لا يمكن تعديل صلاحية هذا الحساب.';
 
       WriteBatch batch = _db.batch();
@@ -898,7 +899,8 @@ class SystemProvider extends ChangeNotifier {
      if (_activeUserPhone == null) return;
      
      final agentDoc = await _db.collection('users').doc(_activeUserPhone).get();
-     if ((agentDoc.data()?['balance'] ?? 0.0) < amount) throw 'رصيدك غير كافٍ لإتمام التحويل.';
+     final agentData = agentDoc.data() as Map<String, dynamic>? ?? {};
+     if ((agentData['balance'] ?? 0.0) < amount) throw 'رصيدك غير كافٍ لإتمام التحويل.';
 
      WriteBatch batch = _db.batch();
      
@@ -974,11 +976,13 @@ class SystemProvider extends ChangeNotifier {
     if (_activeUserPhone == null) return;
     
     final myDoc = await _db.collection('users').doc(_activeUserPhone).get();
-    if ((myDoc.data()?['balance'] ?? 0.0) < amount) {
+    final myData = myDoc.data() as Map<String, dynamic>? ?? {};
+    if ((myData['balance'] ?? 0.0) < amount) {
        throw 'رصيدك لا يكفي! قم بتغذية رصيدك أولاً لتتمكن من إعطاء رصيد للآخرين.';
     }
 
     final requesterDoc = await _db.collection('users').doc(requesterPhone).get();
+    final requesterData = requesterDoc.data() as Map<String, dynamic>? ?? {};
 
     WriteBatch batch = _db.batch();
 
@@ -993,10 +997,10 @@ class SystemProvider extends ChangeNotifier {
       'toPhone': requesterPhone,
       'agentPhone': _activeUserPhone,
       'agentName': currentUserName,
-      'targetName': requesterDoc.data()?['name'] ?? 'مستخدم',
+      'targetName': requesterData['name'] ?? 'مستخدم',
       'amount': amount,
       'type': 'transfer', 
-      'title': 'موافقة على طلب شحن من ${requesterDoc.data()?['name'] ?? 'مستخدم'}',
+      'title': 'موافقة على طلب شحن من ${requesterData['name'] ?? 'مستخدم'}',
       'reference': 'RCH-$requestId',
       'timestamp': FieldValue.serverTimestamp()
     });
@@ -1038,7 +1042,7 @@ class SystemProvider extends ChangeNotifier {
 
       String lastRecharge = 'لا يوجد سجل سابق';
       if (lastTxn.docs.isNotEmpty) {
-        var tData = lastTxn.docs.first.data();
+        var tData = lastTxn.docs.first.data() as Map<String, dynamic>;
         if (tData['timestamp'] != null) {
           lastRecharge = DateFormat('yyyy-MM-dd hh:mm a').format((tData['timestamp'] as Timestamp).toDate());
         }
@@ -1089,12 +1093,13 @@ class SystemProvider extends ChangeNotifier {
         throw 'أحد الحسابات غير موجود في النظام.';
       }
 
-      double currentSenderBalance = (senderDoc.data()!['balance'] ?? 0.0).toDouble();
+      var sData = senderDoc.data() as Map<String, dynamic>;
+      double currentSenderBalance = (sData['balance'] ?? 0.0).toDouble();
       if (currentSenderBalance < amount) throw 'رصيد المحفظة الفعلي غير كافٍ.';
       
       transaction.update(senderRef, {'balance': FieldValue.increment(-amount)});
 
-      var rData = receiverDoc.data()!;
+      var rData = receiverDoc.data() as Map<String, dynamic>;
       if (rData['role'] == 'user' || rData['role'] == 'pos') {
          transaction.update(receiverRef, {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
       } else {
@@ -1171,7 +1176,8 @@ class SystemProvider extends ChangeNotifier {
     try {
       final reqDoc = await _db.collection('recharge_requests').doc(requestId).get();
       if(reqDoc.exists){
-         String agentPhone = reqDoc.data()!['agentPhone'];
+         final reqData = reqDoc.data() as Map<String, dynamic>;
+         String agentPhone = reqData['agentPhone'];
          
          WriteBatch batch = _db.batch();
          batch.update(reqDoc.reference, {'status': 'مرفوض', 'rejectReason': reason});
