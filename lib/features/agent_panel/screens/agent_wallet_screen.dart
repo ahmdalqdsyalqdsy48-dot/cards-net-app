@@ -196,7 +196,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                           onPressed: () async {
-                            // 👈 إصلاح التعليق: إغلاق نوافذ التأكيد أولاً ثم رفع الطلب
                             Navigator.pop(ctx); 
                             Navigator.pop(context); 
                             
@@ -267,7 +266,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                       const SizedBox(height: 15),
                       TextField(controller: phoneController, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'رقم المستلم', prefixIcon: Icon(Icons.phone_android), border: OutlineInputBorder())),
                     ] else ...[
-                      // 👈 عرض بيانات المستلم بدقة عالية بعد البحث
                       Container(
                         padding: const EdgeInsets.all(15),
                         decoration: BoxDecoration(color: Colors.blue.withOpacity(0.05), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.blue.withOpacity(0.3))),
@@ -349,7 +347,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                       setStateDialog(() => isSearching = true);
                       
                       try {
-                        // 👈 استخدام الدالة الجديدة من Provider للبحث الدقيق
                         var data = await sys.searchUserForTransfer(targetPhone);
                         if (data != null) {
                           _play('success');
@@ -383,7 +380,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                               Navigator.pop(ctx);
                               setStateDialog(() => isSearching = true);
                               try {
-                                // 👈 استخدام الدالة الآمنة للتحويل مع التحقق من الباسورد في الخلفية
                                 await sys.secureTransferBalance(targetPhone: targetPhoneStr, targetName: targetData?['name'], amount: amount, password: passwordController.text);
                                 
                                 if (mounted) { Navigator.pop(context); _play('success'); _showSnack('تم التحويل بنجاح! 🎉'); }
@@ -436,7 +432,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, padding: const EdgeInsets.symmetric(vertical: 12)),
                     onPressed: () {
                       _play('click'); Navigator.pop(context);
-                      // إذا لم يحدد تواريخ، نرسل تواريخ تغطي كل شيء
                       _generateMyStatement(sys, realTransactions, DateTime(2020), DateTime.now(), isAll: true);
                     },
                     icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
@@ -613,7 +608,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   }
 
   // ==========================================
-  // 4. تصدير كشف حساب بصيغة Excel/CSV 📊 (إصلاح المكتبة والتنسيق)
+  // 4. تصدير كشف حساب بصيغة Excel/CSV 📊 
   // ==========================================
   Future<void> _exportCSV(List<Map<String, dynamic>> txns, SystemProvider sys) async {
     _play('click');
@@ -640,7 +635,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     }
     
     Uint8List bytes = Uint8List.fromList(utf8.encode(csv));
-    // 👈 استخدام الدالة الصحيحة في أحدث إصدار لمكتبة share_plus
     await Share.shareXFiles(
       [XFile.fromData(bytes, mimeType: 'text/csv', name: 'Wallet_Ledger_${sys.currentUserPhone}.csv')], 
       text: 'مرفق كشف حساب المحفظة بصيغة إكسل'
@@ -649,7 +643,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   }
 
   // ==========================================
-  // 5. نافذة الإيصال الرقمي (تصميم مشابه لفاتورة الكاشير) 🧾
+  // 5. نافذة عرض الإيصال الرقمي (تصميم مشابه لفاتورة الكاشير) 🧾
   // ==========================================
   void _showTransactionReceipt(Map<String, dynamic> txn, SystemProvider sys) {
     _play('click');
@@ -679,6 +673,8 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                 const SizedBox(height: 5),
                 const Text('نظام كروت نت', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
                 const Text('إيصال عملية إلكترونية', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                
+                // 👈 تم إصلاح خطأ الـ Divider هنا 
                 const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(thickness: 1.5)),
                 
                 // تفاصيل العملية
@@ -695,7 +691,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                 if (txn['reference'] != null)
                   _buildReceiptRow('رقم المرجع', txn['reference']),
 
-                const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(thickness: 1.5, style: BorderStyle.solid)), // dotted effect can be added with custom painter if needed
+                const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(thickness: 1.5)), 
                 const Text('شكراً لاستخدامكم محفظة كروت نت', style: TextStyle(fontSize: 11, color: Colors.grey)),
               ],
             ),
