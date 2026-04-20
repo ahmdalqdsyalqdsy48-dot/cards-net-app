@@ -56,7 +56,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   }
 
   // ==========================================
-  // ⚙️ إعدادات الترقية التلقائية للزبائن (الدالة التي تم إضافتها لإصلاح الخطأ)
+  // ⚙️ إعدادات الترقية التلقائية للزبائن 
   // ==========================================
   void _showVipSettingsDialog() {
     _play('click');
@@ -196,14 +196,25 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                           onPressed: () async {
+                            // 👈 إصلاح التعليق: إغلاق نوافذ التأكيد أولاً ثم رفع الطلب
                             Navigator.pop(ctx); 
-                            if (sys.isCurrencyAutoRounding) amount = amount.ceilToDouble();
-                            await _db.collection('recharge_requests').add({
-                              'agentPhone': sys.currentUserPhone, 'agentName': sys.currentUserName,
-                              'amount': amount, 'bankName': selectedBank, 'reference': refController.text,
-                              'status': 'قيد الانتظار', 'hasReceipt': true, 'receiptBase64': base64Image, 'timestamp': FieldValue.serverTimestamp(),
-                            });
-                            if (mounted) { Navigator.pop(context); _play('success'); _showSnack('تم إرسال الطلب للمراجعة ⏳'); }
+                            Navigator.pop(context); 
+                            
+                            _play('success');
+                            _showSnack('جاري إرسال الطلب... ⏳');
+                            
+                            try {
+                              if (sys.isCurrencyAutoRounding) amount = amount.ceilToDouble();
+                              await _db.collection('recharge_requests').add({
+                                'agentPhone': sys.currentUserPhone, 'agentName': sys.currentUserName,
+                                'amount': amount, 'bankName': selectedBank, 'reference': refController.text,
+                                'status': 'قيد الانتظار', 'hasReceipt': true, 'receiptBase64': base64Image, 'timestamp': FieldValue.serverTimestamp(),
+                              });
+                              if (mounted) _showSnack('تم إرسال الطلب للمراجعة بنجاح ✅');
+                            } catch(e) {
+                              _play('error');
+                              if (mounted) _showSnack('حدث خطأ أثناء الإرسال', isErr: true);
+                            }
                           },
                           child: const Text('تأكيد وإرسال', style: TextStyle(color: Colors.white)),
                         )
@@ -223,7 +234,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   }
 
   // ==========================================
-  // 2. تحويل رصيد بأمان (مع تأكيد نهائي) 🛡️
+  // 2. تحويل رصيد بأمان (تحديث جلب بيانات المستخدم بدقة) 🛡️
   // ==========================================
   void _showTransferToAnyUserDialog() {
     _play('click');
@@ -232,16 +243,13 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     final amountController = TextEditingController();
     final passwordController = TextEditingController();
 
-    final myData = sys.agentsList.firstWhere((a) => a['phone'] == sys.currentUserPhone, orElse: () => {});
-    final myPassword = myData['password'] ?? '';
-
     showDialog(
       context: context, barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setStateDialog) {
           bool isSearching = false;
           bool isUserFound = false;
-          String targetName = '';
+          Map<String, dynamic>? targetData; 
           String targetPhoneStr = '';
 
           return Directionality(
@@ -249,31 +257,75 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
             child: AlertDialog(
               backgroundColor: Theme.of(context).cardColor,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-              title: const Text('تحويل رصيد', style: TextStyle(fontWeight: FontWeight.bold)),
+              title: const Text('تحويل رصيد سريع', style: TextStyle(fontWeight: FontWeight.bold)),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (!isUserFound) ...[
-                      const Text('أدخل رقم هاتف المستلم للتحقق من هويته:', style: TextStyle(fontSize: 12, color: Colors.blueGrey)),
+                      const Text('أدخل رقم هاتف المستلم للبحث عنه في النظام:', style: TextStyle(fontSize: 12, color: Colors.blueGrey)),
                       const SizedBox(height: 15),
                       TextField(controller: phoneController, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'رقم المستلم', prefixIcon: Icon(Icons.phone_android), border: OutlineInputBorder())),
                     ] else ...[
+                      // 👈 عرض بيانات المستلم بدقة عالية بعد البحث
                       Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.blue.withOpacity(0.3))),
+                        padding: const EdgeInsets.all(15),
+                        decoration: BoxDecoration(color: Colors.blue.withOpacity(0.05), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.blue.withOpacity(0.3))),
                         child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('سيتم التحويل إلى:', style: TextStyle(color: Colors.blueGrey, fontSize: 12)),
-                            Text(targetName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue)),
-                            Text(_maskPhone(targetPhoneStr), style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2, color: Colors.blueGrey), textDirection: TextDirection.ltr),
+                            const Text('سيتم التحويل إلى:', style: TextStyle(color: Colors.blueGrey, fontSize: 12, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 10),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('الاسم:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                                Text(targetData?['name'] ?? 'مجهول', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.blue)),
+                              ],
+                            ),
+                            const SizedBox(height: 5),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('الرقم:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                                Text(targetPhoneStr, style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1), textDirection: TextDirection.ltr),
+                              ],
+                            ),
+                            const SizedBox(height: 5),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('الدور:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(color: Colors.orange.withOpacity(0.2), borderRadius: BorderRadius.circular(5)),
+                                  child: Text((targetData?['role'] == 'pos') ? 'نقطة بيع' : (targetData?['role'] == 'agent') ? 'وكيل' : 'مستخدم', style: const TextStyle(fontSize: 11, color: Colors.orange, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 5),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('الرصيد الحالي:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                                Text('${targetData?['balance']} ريال', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                              ],
+                            ),
+                            const SizedBox(height: 5),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('آخر شحن:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                                Text(targetData?['lastRecharge'] ?? 'لا يوجد', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
                           ],
                         ),
                       ),
                       const SizedBox(height: 15),
-                      TextField(controller: amountController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'المبلغ', prefixIcon: Icon(Icons.send), border: OutlineInputBorder())),
+                      TextField(controller: amountController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'المبلغ المراد تحويله', prefixIcon: Icon(Icons.send), border: OutlineInputBorder())),
                       const SizedBox(height: 15),
-                      TextField(controller: passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'كلمة المرور (للتأكيد)', prefixIcon: Icon(Icons.lock, color: Colors.red), border: OutlineInputBorder())),
+                      TextField(controller: passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'كلمة مرورك (للتأكيد)', prefixIcon: Icon(Icons.lock, color: Colors.red), border: OutlineInputBorder())),
                     ]
                   ],
                 ),
@@ -295,32 +347,34 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                       String targetPhone = phoneController.text.trim();
                       if (targetPhone.isEmpty || targetPhone == sys.currentUserPhone) { _play('error'); _showSnack('رقم غير صالح!', isErr: true); return; }
                       setStateDialog(() => isSearching = true);
+                      
                       try {
-                        var userSnap = await _db.collection('users').doc(targetPhone).get();
-                        if (userSnap.exists) {
+                        // 👈 استخدام الدالة الجديدة من Provider للبحث الدقيق
+                        var data = await sys.searchUserForTransfer(targetPhone);
+                        if (data != null) {
                           _play('success');
-                          setStateDialog(() { targetName = userSnap.data()?['name'] ?? 'مستخدم'; targetPhoneStr = targetPhone; isUserFound = true; isSearching = false; });
+                          setStateDialog(() { targetData = data; targetPhoneStr = targetPhone; isUserFound = true; isSearching = false; });
                         } else {
                           setStateDialog(() => isSearching = false); _play('error'); _showSnack('لم يتم العثور على مستخدم بهذا الرقم!', isErr: true);
                         }
                       } catch (e) {
-                        setStateDialog(() => isSearching = false); _play('error'); _showSnack('حدث خطأ في الاتصال', isErr: true);
+                        setStateDialog(() => isSearching = false); _play('error'); _showSnack(e.toString(), isErr: true);
                       }
                     },
-                    child: isSearching ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('تحقق من الرقم', style: TextStyle(color: Colors.white)),
+                    child: isSearching ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('بحث وتحقق', style: TextStyle(color: Colors.white)),
                   )
                 else
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
                     onPressed: isSearching ? null : () async {
                       double amount = double.tryParse(amountController.text) ?? 0;
-                      if (passwordController.text != myPassword) { _play('error'); _showSnack('كلمة المرور غير صحيحة! ❌', isErr: true); return; }
+                      if (passwordController.text.isEmpty) { _play('error'); _showSnack('يرجى إدخال كلمة المرور', isErr: true); return; }
                       if (amount <= 0 || amount > sys.currentUserBalance) { _play('error'); _showSnack('المبلغ غير متاح في رصيدك!', isErr: true); return; }
 
                       _play('warning');
                       showDialog(context: context, builder: (ctx) => Directionality(textDirection: TextDirection.rtl, child: AlertDialog(
                         title: const Text('تأكيد التحويل ⚠️', style: TextStyle(fontWeight: FontWeight.bold)),
-                        content: Text('هل أنت متأكد من تحويل $amount ريال إلى $targetName؟'),
+                        content: Text('هل أنت متأكد من تحويل $amount ريال إلى ${targetData?['name']}؟'),
                         actions: [
                           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('تراجع')),
                           ElevatedButton(
@@ -329,18 +383,12 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                               Navigator.pop(ctx);
                               setStateDialog(() => isSearching = true);
                               try {
-                                WriteBatch batch = _db.batch();
-                                batch.update(_db.collection('users').doc(sys.currentUserPhone), {'balance': FieldValue.increment(-amount)});
-                                batch.set(_db.collection('users').doc(targetPhoneStr), {'balance': FieldValue.increment(amount)}, SetOptions(merge: true));
-                                batch.set(_db.collection('transactions').doc(), {
-                                  'fromPhone': sys.currentUserPhone, 'toPhone': targetPhoneStr,
-                                  'agentName': sys.currentUserName, 'targetName': targetName,
-                                  'amount': amount, 'type': 'transfer', 'title': 'تحويل رصيد صادر إلى $targetName', 'timestamp': FieldValue.serverTimestamp()
-                                });
-                                await batch.commit();
+                                // 👈 استخدام الدالة الآمنة للتحويل مع التحقق من الباسورد في الخلفية
+                                await sys.secureTransferBalance(targetPhone: targetPhoneStr, targetName: targetData?['name'], amount: amount, password: passwordController.text);
+                                
                                 if (mounted) { Navigator.pop(context); _play('success'); _showSnack('تم التحويل بنجاح! 🎉'); }
                               } catch (e) {
-                                setStateDialog(() => isSearching = false); _play('error'); _showSnack('حدث خطأ أثناء التحويل', isErr: true);
+                                setStateDialog(() => isSearching = false); _play('error'); _showSnack(e.toString(), isErr: true);
                               }
                             },
                             child: const Text('نعم، حوّل الرصيد', style: TextStyle(color: Colors.white)),
@@ -359,7 +407,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   }
 
   // ==========================================
-  // 3. تصدير كشف حساب PDF 📄
+  // 3. تصدير كشف حساب PDF 📄 (تحسين التصميم والخيارات)
   // ==========================================
   void _showPdfStatementDialog(SystemProvider sys, List<Map<String, dynamic>> realTransactions) {
     _play('click');
@@ -374,12 +422,29 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
           child: AlertDialog(
             backgroundColor: Theme.of(context).cardColor,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: const Text('تصدير كشف حساب', style: TextStyle(fontWeight: FontWeight.bold)),
+            title: const Text('تصدير كشف حساب PDF', style: TextStyle(fontWeight: FontWeight.bold)),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  const Text('يمكنك تصدير السجل المالي بالكامل، أو تحديد فترة معينة:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 15),
+                  
+                  // زر تصدير سريع للكل
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, padding: const EdgeInsets.symmetric(vertical: 12)),
+                    onPressed: () {
+                      _play('click'); Navigator.pop(context);
+                      // إذا لم يحدد تواريخ، نرسل تواريخ تغطي كل شيء
+                      _generateMyStatement(sys, realTransactions, DateTime(2020), DateTime.now(), isAll: true);
+                    },
+                    icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
+                    label: const Text('تصدير كل السجل (سريع)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                  
+                  const Padding(padding: EdgeInsets.symmetric(vertical: 15), child: Row(children: [Expanded(child: Divider()), Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('أو تحديد فترة', style: TextStyle(fontSize: 11, color: Colors.grey))), Expanded(child: Divider())])),
+
                   OutlinedButton.icon(
                     onPressed: () async {
                       _play('click');
@@ -404,15 +469,14 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
             ),
             actions: [
               TextButton(onPressed: () { _play('click'); Navigator.pop(context); }, child: const Text('إلغاء')),
-              ElevatedButton.icon(
+              ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
                 onPressed: () async {
-                  if (startDate == null || endDate == null) { _play('error'); _showSnack('يرجى تحديد فترة الكشف!', isErr: true); return; }
+                  if (startDate == null || endDate == null) { _play('error'); _showSnack('يرجى تحديد فترة الكشف أولاً!', isErr: true); return; }
                   _play('click'); Navigator.pop(context);
-                  _generateMyStatement(sys, realTransactions, startDate!, endDate!);
+                  _generateMyStatement(sys, realTransactions, startDate!, endDate!, isAll: false);
                 },
-                icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
-                label: const Text('تصدير (PDF)', style: TextStyle(color: Colors.white)),
+                child: const Text('تصدير المحدد', style: TextStyle(color: Colors.white)),
               ),
             ],
           ),
@@ -421,7 +485,8 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     );
   }
 
-  Future<void> _generateMyStatement(SystemProvider sys, List<Map<String, dynamic>> allTxn, DateTime start, DateTime end) async {
+  // دالة بناء وتنسيق الـ PDF
+  Future<void> _generateMyStatement(SystemProvider sys, List<Map<String, dynamic>> allTxn, DateTime start, DateTime end, {required bool isAll}) async {
     _showSnack('جاري تجهيز كشف الحساب (PDF)... ⏳');
     final endInclusive = DateTime(end.year, end.month, end.day, 23, 59, 59); 
     final startInclusive = DateTime(start.year, start.month, start.day, 0, 0, 0);
@@ -432,51 +497,114 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
       return d.isAfter(startInclusive) && d.isBefore(endInclusive);
     }).toList();
 
+    double totalIn = 0;
+    double totalOut = 0;
+
     final arabicFont = await PdfGoogleFonts.cairoRegular();
     final arabicBold = await PdfGoogleFonts.cairoBold();
     final pdf = pw.Document();
 
-    pdf.addPage(pw.Page(
+    pdf.addPage(pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
       textDirection: pw.TextDirection.rtl, 
       theme: pw.ThemeData.withFont(base: arabicFont, bold: arabicBold),
-      build: (pw.Context context) {
+      header: (pw.Context context) {
         return pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
             pw.Container(
-              padding: const pw.EdgeInsets.all(15), color: PdfColors.teal700,
+              padding: const pw.EdgeInsets.all(15),
+              decoration: pw.BoxDecoration(color: PdfColors.teal800, borderRadius: pw.BorderRadius.circular(10)),
               child: pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text('كشف حساب محفظة رقمية', style: pw.TextStyle(color: PdfColors.white, fontSize: 20, fontWeight: pw.FontWeight.bold)),
-                  pw.Text('نظام كروت نت', style: pw.TextStyle(color: PdfColors.white, fontSize: 14)),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('كشف حساب محفظة مالية', style: pw.TextStyle(color: PdfColors.white, fontSize: 24, fontWeight: pw.FontWeight.bold)),
+                      pw.SizedBox(height: 5),
+                      pw.Text('الوكيل: ${sys.currentUserName}', style: pw.TextStyle(color: PdfColors.white, fontSize: 14)),
+                      pw.Text('رقم الحساب: ${sys.currentUserPhone}', style: pw.TextStyle(color: PdfColors.white, fontSize: 14)),
+                    ]
+                  ),
+                  pw.Container(
+                    padding: const pw.EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+                    decoration: pw.BoxDecoration(color: PdfColors.white, borderRadius: pw.BorderRadius.circular(5)),
+                    child: pw.Text('نظام كروت نت', style: pw.TextStyle(color: PdfColors.teal800, fontWeight: pw.FontWeight.bold, fontSize: 16)),
+                  )
                 ]
               )
             ),
-            pw.SizedBox(height: 20),
-            pw.Text('اسم الوكيل: ${sys.currentUserName}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-            pw.Text('رقم الحساب: ${sys.currentUserPhone}'),
-            pw.Text('الفترة: ${DateFormat('yyyy-MM-dd').format(start)} إلى ${DateFormat('yyyy-MM-dd').format(end)}', style: const pw.TextStyle(color: PdfColors.grey700)),
-            pw.SizedBox(height: 20),
-            
-            pw.TableHelper.fromTextArray(
-              context: context,
-              headerStyle: pw.TextStyle(font: arabicBold, color: PdfColors.white),
-              headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey800),
-              cellStyle: pw.TextStyle(font: arabicFont),
-              cellAlignment: pw.Alignment.center,
-              oddRowDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
-              data: <List<String>>[
-                <String>['التاريخ', 'البيان', 'النوع', 'المبلغ'], 
-                ...filtered.map((item) {
-                  DateTime date = (item['timestamp'] as Timestamp).toDate();
-                  bool isPlus = item['type'] == 'income' || item['type'] == 'deposit' || (item['type'] == 'transfer' && item['toPhone'] == sys.currentUserPhone);
-                  return [DateFormat('yyyy-MM-dd HH:mm').format(date), item['title'] ?? 'عملية', isPlus ? 'إيداع (+)' : 'خصم (-)', '${item['amount']} ريال'];
-                })
-              ],
+            pw.SizedBox(height: 10),
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(isAll ? 'الفترة: السجل بالكامل' : 'الفترة: ${DateFormat('yyyy-MM-dd').format(start)} إلى ${DateFormat('yyyy-MM-dd').format(end)}', style: const pw.TextStyle(color: PdfColors.grey700)),
+                pw.Text('تاريخ الإصدار: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}', style: const pw.TextStyle(color: PdfColors.grey700)),
+              ]
             ),
-          ],
+            pw.SizedBox(height: 20),
+          ]
         );
+      },
+      build: (pw.Context context) {
+        return [
+          pw.TableHelper.fromTextArray(
+            context: context,
+            border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+            headerStyle: pw.TextStyle(font: arabicBold, color: PdfColors.white, fontSize: 11),
+            headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey800),
+            cellStyle: pw.TextStyle(font: arabicFont, fontSize: 10),
+            cellAlignment: pw.Alignment.center,
+            oddRowDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
+            data: <List<String>>[
+              <String>['رقم المرجع', 'التاريخ', 'البيان', 'النوع', 'المبلغ'], 
+              ...filtered.map((item) {
+                DateTime date = (item['timestamp'] as Timestamp).toDate();
+                bool isPlus = item['type'] == 'income' || item['type'] == 'deposit' || (item['type'] == 'transfer' && item['toPhone'] == sys.currentUserPhone);
+                
+                double amt = double.tryParse(item['amount'].toString()) ?? 0.0;
+                if (isPlus) totalIn += amt; else totalOut += amt;
+
+                return [
+                  item['reference'] ?? 'N/A',
+                  DateFormat('yyyy-MM-dd HH:mm').format(date), 
+                  item['title'] ?? 'عملية', 
+                  isPlus ? 'إيداع (+)' : 'خصم (-)', 
+                  '${item['amount']}'
+                ];
+              })
+            ],
+          ),
+          pw.SizedBox(height: 20),
+          // ملخص الكشف في الأسفل
+          pw.Container(
+            padding: const pw.EdgeInsets.all(15),
+            decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400), borderRadius: pw.BorderRadius.circular(10)),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+              children: [
+                pw.Column(
+                  children: [
+                    pw.Text('إجمالي الإيداعات', style: pw.TextStyle(color: PdfColors.grey700, font: arabicBold)),
+                    pw.Text('$totalIn ريال', style: pw.TextStyle(color: PdfColors.green700, fontSize: 16, font: arabicBold)),
+                  ]
+                ),
+                pw.Column(
+                  children: [
+                    pw.Text('إجمالي المسحوبات', style: pw.TextStyle(color: PdfColors.grey700, font: arabicBold)),
+                    pw.Text('$totalOut ريال', style: pw.TextStyle(color: PdfColors.red700, fontSize: 16, font: arabicBold)),
+                  ]
+                ),
+                pw.Column(
+                  children: [
+                    pw.Text('صافي الحركة', style: pw.TextStyle(color: PdfColors.grey700, font: arabicBold)),
+                    pw.Text('${totalIn - totalOut} ريال', style: pw.TextStyle(color: (totalIn - totalOut) >= 0 ? PdfColors.blue800 : PdfColors.red800, fontSize: 16, font: arabicBold)),
+                  ]
+                ),
+              ]
+            )
+          )
+        ];
       },
     ));
 
@@ -485,14 +613,19 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   }
 
   // ==========================================
-  // 4. تصدير كشف حساب بصيغة Excel/CSV 📊
+  // 4. تصدير كشف حساب بصيغة Excel/CSV 📊 (إصلاح المكتبة والتنسيق)
   // ==========================================
   Future<void> _exportCSV(List<Map<String, dynamic>> txns, SystemProvider sys) async {
     _play('click');
-    _showSnack('جاري تصدير السجل إلى Excel... ⏳');
+    if (txns.isEmpty) {
+      _showSnack('لا توجد بيانات لتصديرها!', isErr: true);
+      return;
+    }
+    _showSnack('جاري تصدير السجل إلى إكسل... ⏳');
     
+    // إضافة BOM لكي يقرأ الإكسل اللغة العربية بدون مشاكل (UTF-8 with BOM)
     String csv = '\uFEFF'; 
-    csv += 'التاريخ,البيان,النوع,المبلغ (ريال)\n';
+    csv += 'المرجع,التاريخ,البيان,النوع,المبلغ (ريال),الطرف الآخر\n';
     
     for(var t in txns) {
       if (t['timestamp'] == null) continue;
@@ -500,16 +633,23 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
       String dateStr = DateFormat('yyyy-MM-dd HH:mm').format(d);
       bool isPlus = t['type'] == 'income' || t['type'] == 'deposit' || (t['type'] == 'transfer' && t['toPhone'] == sys.currentUserPhone);
       String typeStr = isPlus ? 'إيداع (+)' : 'خصم (-)';
-      csv += '$dateStr,${t['title'] ?? 'عملية'},$typeStr,${t['amount']}\n';
+      String target = t['targetName'] ?? 'نظام كروت نت';
+      String ref = t['reference'] ?? 'بدون مرجع';
+
+      csv += '$ref,$dateStr,${t['title'] ?? 'عملية'},$typeStr,${t['amount']},$target\n';
     }
     
     Uint8List bytes = Uint8List.fromList(utf8.encode(csv));
-    await Share.shareXFiles([XFile.fromData(bytes, mimeType: 'text/csv', name: 'Wallet_Ledger_${sys.currentUserPhone}.csv')], text: 'مرفق كشف حساب المحفظة');
+    // 👈 استخدام الدالة الصحيحة في أحدث إصدار لمكتبة share_plus
+    await Share.shareXFiles(
+      [XFile.fromData(bytes, mimeType: 'text/csv', name: 'Wallet_Ledger_${sys.currentUserPhone}.csv')], 
+      text: 'مرفق كشف حساب المحفظة بصيغة إكسل'
+    );
     _play('success');
   }
 
   // ==========================================
-  // 5. نافذة عرض الإيصال الرقمي 🧾
+  // 5. نافذة الإيصال الرقمي (تصميم مشابه لفاتورة الكاشير) 🧾
   // ==========================================
   void _showTransactionReceipt(Map<String, dynamic> txn, SystemProvider sys) {
     _play('click');
@@ -521,34 +661,82 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
       builder: (c) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
+          contentPadding: EdgeInsets.zero,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: const Center(child: Text('إيصال عملية 🧾', style: TextStyle(fontWeight: FontWeight.bold))),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(txn['title'] ?? 'عملية مالية', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-              const Divider(),
-              ListTile(title: const Text('المبلغ', style: TextStyle(fontSize: 12, color: Colors.grey)), trailing: Text('${txn['amount']} ريال', style: TextStyle(color: isPlus ? Colors.green : Colors.red, fontWeight: FontWeight.bold, fontSize: 18))),
-              ListTile(title: const Text('التاريخ', style: TextStyle(fontSize: 12, color: Colors.grey)), trailing: Text(dateStr, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold))),
-              ListTile(title: const Text('نوع العملية', style: TextStyle(fontSize: 12, color: Colors.grey)), trailing: Text(isPlus ? 'إيداع (+)' : 'خصم (-)', style: const TextStyle(fontWeight: FontWeight.bold))),
-              if (txn['reference'] != null)
-                ListTile(title: const Text('المرجع', style: TextStyle(fontSize: 12, color: Colors.grey)), trailing: Text(txn['reference'], style: const TextStyle(fontWeight: FontWeight.bold))),
-            ],
+          content: Container(
+            width: 300,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(color: Colors.grey.shade300)
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // رأس الفاتورة
+                const Icon(Icons.receipt_long, size: 40, color: Colors.blueGrey),
+                const SizedBox(height: 5),
+                const Text('نظام كروت نت', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
+                const Text('إيصال عملية إلكترونية', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(thickness: 1.5)),
+                
+                // تفاصيل العملية
+                Text(txn['title'] ?? 'عملية مالية', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black), textAlign: TextAlign.center),
+                const SizedBox(height: 15),
+                
+                _buildReceiptRow('المبلغ', '${txn['amount']} ريال', valueColor: isPlus ? Colors.green : Colors.red, isBold: true),
+                _buildReceiptRow('تاريخ العملية', dateStr),
+                _buildReceiptRow('نوع الحركة', isPlus ? 'إيداع (+)' : 'خصم (-)'),
+                
+                if (txn['targetName'] != null)
+                  _buildReceiptRow('الطرف الآخر', txn['targetName']),
+                  
+                if (txn['reference'] != null)
+                  _buildReceiptRow('رقم المرجع', txn['reference']),
+
+                const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(thickness: 1.5, style: BorderStyle.solid)), // dotted effect can be added with custom painter if needed
+                const Text('شكراً لاستخدامكم محفظة كروت نت', style: TextStyle(fontSize: 11, color: Colors.grey)),
+              ],
+            ),
           ),
+          actionsAlignment: MainAxisAlignment.spaceEvenly,
           actions: [
-            TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('إغلاق', style: TextStyle(color: Colors.grey))),
+            TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('إغلاق', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))),
             ElevatedButton.icon(
-               icon: const Icon(Icons.share, color: Colors.white, size: 18),
-               label: const Text('مشاركة الإيصال', style: TextStyle(color: Colors.white)),
-               style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+               icon: const Icon(Icons.share, color: Colors.white, size: 16),
+               label: const Text('مشاركة الإيصال', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+               style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                onPressed: () {
                   _play('click');
-                  Share.share('🧾 *إيصال عملية رقمية*\n\nالبيان: ${txn['title']}\nالمبلغ: ${txn['amount']} ريال\nالتاريخ: $dateStr\nنوع العملية: ${isPlus ? "إيداع" : "خصم"}\n\nنظام كروت نت');
+                  String shareText = '🧾 *إيصال عملية رقمية - كروت نت*\n';
+                  shareText += '----------------------------\n';
+                  shareText += 'البيان: ${txn['title']}\n';
+                  shareText += 'المبلغ: *${txn['amount']} ريال*\n';
+                  shareText += 'التاريخ: $dateStr\n';
+                  shareText += 'النوع: ${isPlus ? "إيداع" : "خصم"}\n';
+                  if(txn['reference'] != null) shareText += 'المرجع: ${txn['reference']}\n';
+                  shareText += '----------------------------';
+                  Share.share(shareText);
                }
             )
           ]
         )
       )
+    );
+  }
+
+  // دالة مساعدة لسطور الإيصال
+  Widget _buildReceiptRow(String label, String value, {Color? valueColor, bool isBold = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+          Text(value, style: TextStyle(fontSize: isBold ? 16 : 13, fontWeight: isBold ? FontWeight.bold : FontWeight.w600, color: valueColor ?? Colors.black87)),
+        ],
+      ),
     );
   }
 
@@ -577,7 +765,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
               }
               _play('success');
             } catch (e) {
-              _play('error'); _showSnack('حدث خطأ أثناء الموافقة', isErr: true);
+              _play('error'); _showSnack('حدث خطأ أثناء الموافقة: $e', isErr: true);
             }
           },
           child: const Text('نعم، أؤكد الاستلام', style: TextStyle(color: Colors.white)),
@@ -642,7 +830,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     )));
   }
 
-
   @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
@@ -651,6 +838,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     final Color cardColor = Theme.of(context).cardColor;
     final Color textColor = themeProvider.adaptiveTextColor;
 
+    // فلترة العمليات الخاصة بالوكيل مع الفلتر الزمني المضاف
     final List<Map<String, dynamic>> realTransactions = sys.transactionsLedger.where((t) {
       if (t['agentPhone'] != sys.currentUserPhone && t['fromPhone'] != sys.currentUserPhone && t['toPhone'] != sys.currentUserPhone) return false;
       
