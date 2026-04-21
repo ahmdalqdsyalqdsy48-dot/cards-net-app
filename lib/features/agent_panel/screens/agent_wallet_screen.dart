@@ -36,26 +36,25 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   @override
   void initState() {
     super.initState();
-    // 3 تبويبات رئيسية حقيقية
-    _tabController = TabController(length: 3, vsync: this);
+    // تم التعديل إلى تبويبين فقط كما تم الاتفاق
+    _tabController = TabController(length: 2, vsync: this);
   }
 
   void _showSnack(String m, {bool isErr = false}) {
     if(!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(m, textDirection: TextDirection.rtl), backgroundColor: isErr ? Colors.red : Colors.green)
+      SnackBar(
+        content: Text(m, textDirection: TextDirection.rtl, style: const TextStyle(fontWeight: FontWeight.bold)), 
+        backgroundColor: isErr ? Colors.red.shade800 : Colors.green.shade800,
+        behavior: SnackBarBehavior.floating,
+      )
     );
   }
 
   void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
 
-  String _maskPhone(String phone) {
-    if (phone.length < 6) return phone;
-    return '${phone.substring(0, 3)}****${phone.substring(phone.length - 2)}';
-  }
-
   // ==========================================
-  // 1. نافذة طلب رصيد (إرفاق السند يعمل بنجاح)
+  // 1. نافذة طلب رصيد (مكتملة ومستقرة)
   // ==========================================
   void _showRequestBalanceDialog() {
     _play('click');
@@ -94,7 +93,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                       onChanged: (val) { _play('click'); selectedBank = val!; },
                     )
                   else
-                    const Text('لا توجد حسابات بنكية نشطة للإدارة حالياً.', style: TextStyle(color: Colors.red)),
+                    const Text('لا توجد حسابات بنكية نشطة حالياً.', style: TextStyle(color: Colors.red)),
                   
                   const SizedBox(height: 10),
                   TextField(controller: amountController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'المبلغ المحول', prefixIcon: Icon(Icons.attach_money), border: OutlineInputBorder())),
@@ -117,6 +116,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                             if (pickedFile != null) {
                               final bytes = await pickedFile.readAsBytes();
                               setStateDialog(() => base64Image = base64Encode(bytes));
+                              _play('success');
                               _showSnack('تم إرفاق السند بنجاح ✅');
                             }
                           },
@@ -163,7 +163,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                                 'amount': amount, 'bankName': selectedBank, 'reference': refController.text,
                                 'status': 'قيد الانتظار', 'hasReceipt': true, 'receiptBase64': base64Image, 'timestamp': FieldValue.serverTimestamp(),
                               });
-                              if (mounted) _showSnack('تم إرسال الطلب للمراجعة بنجاح ✅');
+                              if (mounted) { _play('success'); _showSnack('تم إرسال الطلب للمراجعة بنجاح ✅'); }
                             } catch(e) {
                               _play('error');
                               if (mounted) _showSnack('حدث خطأ أثناء الإرسال', isErr: true);
@@ -187,7 +187,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   }
 
   // ==========================================
-  // 2. نافذة التحويل المتقدمة (نقاط، ضرائب، طرق دفع) 🛡️🔥
+  // 2. نافذة التحويل المتقدمة (تظهر كل الحقول مرة واحدة) 🔥
   // ==========================================
   void _showAdvancedTransferDialog() {
     _play('click');
@@ -199,20 +199,19 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     final noteController = TextEditingController();
     final passwordController = TextEditingController();
 
+    bool isSearching = false;
+    Map<String, dynamic>? targetData; 
+    String selectedPaymentMethod = 'نقدي'; 
+    
+    double currentAmount = 0;
+    double currentTax = 0;
+    double taxValue = 0;
+    double totalCost = 0;
+
     showDialog(
       context: context, barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setStateDialog) {
-          bool isSearching = false;
-          bool isUserFound = false;
-          Map<String, dynamic>? targetData; 
-          String targetPhoneStr = '';
-          String selectedPaymentMethod = 'نقدي'; 
-          
-          double currentAmount = 0;
-          double currentTax = 0;
-          double taxValue = 0;
-          double totalCost = 0;
 
           void calculateLive() {
             currentAmount = double.tryParse(amountController.text) ?? 0;
@@ -226,167 +225,210 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
             child: AlertDialog(
               backgroundColor: Theme.of(context).cardColor,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-              title: const Text('تحويل رصيد (متقدم)', style: TextStyle(fontWeight: FontWeight.bold)),
+              title: const Row(
+                children: [
+                  Icon(Icons.send_to_mobile, color: Colors.blueAccent),
+                  SizedBox(width: 10),
+                  Text('تحويل رصيد (متقدم)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                ],
+              ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (!isUserFound) ...[
-                      const Text('أدخل رقم هاتف المستلم للبحث عنه في النظام:', style: TextStyle(fontSize: 12, color: Colors.blueGrey)),
-                      const SizedBox(height: 15),
-                      TextField(controller: phoneController, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'رقم المستلم', prefixIcon: Icon(Icons.search), border: OutlineInputBorder())),
-                    ] else ...[
+                    // --- القسم الأول: البحث وجلب البيانات ---
+                    const Text('رقم هاتف المستلم:', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 5),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: phoneController, 
+                            keyboardType: TextInputType.phone, 
+                            decoration: const InputDecoration(
+                              hintText: 'أدخل الرقم للبحث...', 
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                            )
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blueAccent,
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5))
+                          ),
+                          onPressed: isSearching ? null : () async {
+                            String targetPhone = phoneController.text.trim();
+                            if (targetPhone.isEmpty || targetPhone == sys.currentUserPhone) { 
+                              _play('error'); _showSnack('رقم غير صالح أو لا يمكنك التحويل لنفسك!', isErr: true); return; 
+                            }
+                            setStateDialog(() { isSearching = true; targetData = null; });
+                            
+                            try {
+                              var data = await sys.searchUserForTransfer(targetPhone);
+                              if (data != null) {
+                                _play('success');
+                                setStateDialog(() { targetData = data; isSearching = false; });
+                              } else {
+                                setStateDialog(() { isSearching = false; }); 
+                                _play('error'); _showSnack('الرقم غير موجود في النظام!', isErr: true);
+                              }
+                            } catch (e) {
+                              setStateDialog(() { isSearching = false; }); 
+                              _play('error'); _showSnack('فشل البحث: قد تحتاج لإنشاء فهرس (Index) في الفايربيز', isErr: true);
+                            }
+                          },
+                          child: isSearching 
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+                              : const Icon(Icons.search, color: Colors.white),
+                        )
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // --- لوحة عرض بيانات المستلم (تظهر فقط عند نجاح البحث) ---
+                    if (targetData != null)
                       Container(
-                        padding: const EdgeInsets.all(15),
-                        decoration: BoxDecoration(color: Colors.blue.withOpacity(0.05), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.blue.withOpacity(0.3))),
+                        margin: const EdgeInsets.only(bottom: 15),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.05), 
+                          borderRadius: BorderRadius.circular(8), 
+                          border: Border.all(color: Colors.blue.withOpacity(0.3))
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('سيتم التحويل إلى:', style: TextStyle(color: Colors.blueGrey, fontSize: 12, fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 10),
-                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('الاسم:', style: TextStyle(fontSize: 12, color: Colors.grey)), Text(targetData?['name'] ?? 'مجهول', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.blue))]),
-                            const SizedBox(height: 5),
-                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('الرقم:', style: TextStyle(fontSize: 12, color: Colors.grey)), Text(targetPhoneStr, style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1), textDirection: TextDirection.ltr)]),
-                            const SizedBox(height: 5),
-                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('الدور:', style: TextStyle(fontSize: 12, color: Colors.grey)), Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: Colors.orange.withOpacity(0.2), borderRadius: BorderRadius.circular(5)), child: Text((targetData?['role'] == 'pos') ? 'نقطة بيع' : (targetData?['role'] == 'agent') ? 'وكيل' : 'مستخدم', style: const TextStyle(fontSize: 11, color: Colors.orange, fontWeight: FontWeight.bold)))]),
-                            const SizedBox(height: 5),
-                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('رصيده الحالي لديك:', style: TextStyle(fontSize: 12, color: Colors.grey)), Text('${targetData?['balance']} ريال', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green))]),
-                            const SizedBox(height: 5),
-                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('آخر شحن:', style: TextStyle(fontSize: 12, color: Colors.grey)), Text(targetData?['lastRecharge'] ?? 'لا يوجد', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold))]),
+                            const Text('بيانات المستلم:', style: TextStyle(color: Colors.blueGrey, fontSize: 11, fontWeight: FontWeight.bold)),
+                            const Divider(height: 10),
+                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('الاسم:', style: TextStyle(fontSize: 11, color: Colors.grey)), Text(targetData?['name'] ?? 'مجهول', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue))]),
+                            const SizedBox(height: 4),
+                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('الدور:', style: TextStyle(fontSize: 11, color: Colors.grey)), Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: Colors.orange.withOpacity(0.2), borderRadius: BorderRadius.circular(4)), child: Text((targetData?['role'] == 'pos') ? 'نقطة بيع' : (targetData?['role'] == 'agent') ? 'وكيل' : 'مستخدم', style: const TextStyle(fontSize: 10, color: Colors.orange, fontWeight: FontWeight.bold)))]),
+                            const SizedBox(height: 4),
+                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('الرصيد لديك:', style: TextStyle(fontSize: 11, color: Colors.grey)), Text('${targetData?['balance']} ريال', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.green))]),
+                            const SizedBox(height: 4),
+                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('آخر شحن:', style: TextStyle(fontSize: 11, color: Colors.grey)), Text(targetData?['lastRecharge'] ?? 'لا يوجد', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold))]),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 15),
 
-                      Row(
-                        children: [
-                          Expanded(
-                            flex: 2,
-                            child: TextField(
-                              controller: amountController, keyboardType: TextInputType.number, 
-                              onChanged: (v) => setStateDialog((){ calculateLive(); }),
-                              decoration: const InputDecoration(labelText: 'الكمية (نقاط/مبلغ)', border: OutlineInputBorder())
-                            )
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            flex: 1,
-                            child: TextField(
-                              controller: taxController, keyboardType: TextInputType.number, 
-                              onChanged: (v) => setStateDialog((){ calculateLive(); }),
-                              decoration: const InputDecoration(labelText: 'الضريبة %', border: OutlineInputBorder())
-                            )
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      
-                      DropdownButtonFormField<String>(
-                        value: selectedPaymentMethod,
-                        decoration: const InputDecoration(labelText: 'طريقة الدفع/الاستلام', border: OutlineInputBorder()),
-                        items: ['نقدي', 'تحويل بنكي', 'آجل'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                        onChanged: (v) => setStateDialog(() { selectedPaymentMethod = v!; calculateLive(); }),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(controller: noteController, decoration: const InputDecoration(labelText: 'ملاحظة (اختياري)', border: OutlineInputBorder())),
-                      
-                      if (currentAmount > 0)
-                        Container(
-                          margin: const EdgeInsets.only(top: 15),
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('سيتم خصم: $currentAmount من رصيدك الأساسي', style: const TextStyle(fontSize: 11)),
-                              Text('الضريبة/الرسوم المضافة: $taxValue ريال', style: const TextStyle(fontSize: 11, color: Colors.red)),
-                              const Divider(),
-                              Text('الإجمالي المطلوب (سداد/دين): $totalCost ريال', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-                              if (selectedPaymentMethod == 'آجل')
-                                const Text('⚠️ سيتم تقييد الإجمالي كدين (آجل) على المستلم تلقائياً', style: TextStyle(fontSize: 10, color: Colors.orange, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
+                    // --- القسم الثاني: حقول المعاملة (تظهر دائماً) ---
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: amountController, keyboardType: TextInputType.number, 
+                            onChanged: (v) => setStateDialog((){ calculateLive(); }),
+                            decoration: const InputDecoration(labelText: 'الكمية (نقاط/مبلغ)', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10))
+                          )
                         ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          flex: 1,
+                          child: TextField(
+                            controller: taxController, keyboardType: TextInputType.number, 
+                            onChanged: (v) => setStateDialog((){ calculateLive(); }),
+                            decoration: const InputDecoration(labelText: 'الضريبة %', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10))
+                          )
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    
+                    DropdownButtonFormField<String>(
+                      value: selectedPaymentMethod,
+                      decoration: const InputDecoration(labelText: 'طريقة الدفع (الاستلام)', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10)),
+                      items: ['نقدي', 'تحويل بنكي', 'آجل'].map((e) => DropdownMenuItem(value: e, child: Text(e, style: TextStyle(fontWeight: e == 'آجل' ? FontWeight.bold : FontWeight.normal, color: e == 'آجل' ? Colors.red : null)))).toList(),
+                      onChanged: (v) => setStateDialog(() { selectedPaymentMethod = v!; calculateLive(); }),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(controller: noteController, decoration: const InputDecoration(labelText: 'البيان / ملاحظة (اختياري)', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10))),
+                    
+                    // --- لوحة الحساب الآلي اللحظية ---
+                    if (currentAmount > 0)
+                      Container(
+                        margin: const EdgeInsets.only(top: 15),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('خصم من رصيدك:', style: TextStyle(fontSize: 11)), Text('$currentAmount ريال', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold))]),
+                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('الضريبة/الرسوم:', style: TextStyle(fontSize: 11, color: Colors.red)), Text('$taxValue ريال', style: const TextStyle(fontSize: 11, color: Colors.red, fontWeight: FontWeight.bold))]),
+                            const Divider(),
+                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('الإجمالي المطلوب:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)), Text('$totalCost ريال', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 16))]),
+                            if (selectedPaymentMethod == 'آجل')
+                              const Padding(
+                                padding: EdgeInsets.only(top: 5),
+                                child: Text('⚠️ سيتم تقييد الإجمالي كـ "دين آجل" على المستلم تلقائياً.', style: TextStyle(fontSize: 10, color: Colors.deepOrange, fontWeight: FontWeight.bold)),
+                              ),
+                          ],
+                        ),
+                      ),
 
-                      const SizedBox(height: 15),
-                      TextField(controller: passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'كلمة مرورك (للتأكيد الآمن)', prefixIcon: Icon(Icons.lock, color: Colors.red), border: OutlineInputBorder())),
-                    ]
+                    const SizedBox(height: 15),
+                    TextField(controller: passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'كلمة مرور الوكيل (للتأكيد الآمن)', prefixIcon: Icon(Icons.lock, color: Colors.red), border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10))),
                   ],
                 ),
               ),
               actions: [
-                TextButton(
-                  onPressed: () {
-                    _play('click');
-                    if (isUserFound) setStateDialog(() => isUserFound = false); 
-                    else Navigator.pop(context);
-                  }, 
-                  child: Text(isUserFound ? 'تغيير الرقم' : 'إلغاء', style: const TextStyle(color: Colors.grey))
-                ),
-                
-                if (!isUserFound)
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
-                    onPressed: isSearching ? null : () async {
-                      String targetPhone = phoneController.text.trim();
-                      if (targetPhone.isEmpty || targetPhone == sys.currentUserPhone) { _play('error'); _showSnack('رقم غير صالح!', isErr: true); return; }
-                      setStateDialog(() => isSearching = true);
-                      
-                      try {
-                        var data = await sys.searchUserForTransfer(targetPhone);
-                        if (data != null) {
-                          _play('success');
-                          setStateDialog(() { targetData = data; targetPhoneStr = targetPhone; isUserFound = true; isSearching = false; });
-                        } else {
-                          setStateDialog(() => isSearching = false); _play('error'); _showSnack('لم يتم العثور على مستخدم بهذا الرقم!', isErr: true);
-                        }
-                      } catch (e) {
-                        setStateDialog(() => isSearching = false); _play('error'); _showSnack(e.toString(), isErr: true);
-                      }
-                    },
-                    child: isSearching ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('بحث وتحقق', style: TextStyle(color: Colors.white)),
-                  )
-                else
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                    onPressed: isSearching ? null : () async {
-                      if (passwordController.text.isEmpty) { _play('error'); _showSnack('يرجى إدخال كلمة المرور', isErr: true); return; }
-                      if (currentAmount <= 0 || currentAmount > sys.currentUserBalance) { _play('error'); _showSnack('المبلغ غير متاح في رصيدك!', isErr: true); return; }
+                TextButton(onPressed: () { _play('click'); Navigator.pop(context); }, child: const Text('إلغاء', style: TextStyle(color: Colors.grey))),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                  onPressed: () async {
+                    if (targetData == null) { _play('error'); _showSnack('يجب البحث عن الرقم والتحقق منه أولاً!', isErr: true); return; }
+                    if (passwordController.text.isEmpty) { _play('error'); _showSnack('يرجى إدخال كلمة المرور!', isErr: true); return; }
+                    if (currentAmount <= 0 || currentAmount > sys.currentUserBalance) { _play('error'); _showSnack('المبلغ غير صالح أو غير متاح في رصيدك!', isErr: true); return; }
 
-                      _play('warning');
-                      showDialog(context: context, builder: (ctx) => Directionality(textDirection: TextDirection.rtl, child: AlertDialog(
-                        title: const Text('تأكيد التحويل ⚠️', style: TextStyle(fontWeight: FontWeight.bold)),
-                        content: Text('تأكيد تحويل $currentAmount (بإجمالي $totalCost) إلى ${targetData?['name']}؟'),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('تراجع')),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                            onPressed: () async {
-                              Navigator.pop(ctx); // إغلاق التأكيد
-                              setStateDialog(() => isSearching = true);
-                              try {
-                                await sys.advancedSecureTransferBalance(
-                                  targetPhone: targetPhoneStr, 
-                                  targetName: targetData?['name'] ?? 'مجهول', 
-                                  amount: currentAmount,
-                                  taxPercentage: currentTax,
-                                  note: noteController.text,
-                                  paymentMethod: selectedPaymentMethod,
-                                  password: passwordController.text
-                                );
-                                
-                                if (mounted) { Navigator.pop(context); _play('success'); _showSnack('تم التحويل بنجاح! 🎉'); }
-                              } catch (e) {
-                                setStateDialog(() => isSearching = false); _play('error'); _showSnack(e.toString(), isErr: true);
+                    _play('warning');
+                    showDialog(context: context, builder: (ctx) => Directionality(textDirection: TextDirection.rtl, child: AlertDialog(
+                      title: const Text('تأكيد التحويل النهائي ⚠️', style: TextStyle(fontWeight: FontWeight.bold)),
+                      content: Text('تأكيد تحويل $currentAmount (بإجمالي $totalCost ريال) إلى ${targetData?['name']}؟\n\nطريقة الدفع: $selectedPaymentMethod'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('تراجع')),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                          onPressed: () async {
+                            Navigator.pop(ctx); // إغلاق التأكيد
+                            _play('click');
+                            showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator())); // Loading
+                            try {
+                              await sys.advancedSecureTransferBalance(
+                                targetPhone: phoneController.text.trim(), 
+                                targetName: targetData?['name'] ?? 'مجهول', 
+                                amount: currentAmount,
+                                taxPercentage: currentTax,
+                                note: noteController.text,
+                                paymentMethod: selectedPaymentMethod,
+                                password: passwordController.text
+                              );
+                              
+                              if (mounted) { 
+                                Navigator.pop(context); // إغلاق الـ Loading
+                                Navigator.pop(context); // إغلاق نافذة التحويل
+                                _play('success'); 
+                                _showSnack('تم التحويل بنجاح! وتم تقييد العملية في السجل المالي. 🎉'); 
                               }
-                            },
-                            child: const Text('نعم، حوّل الرصيد', style: TextStyle(color: Colors.white)),
-                          )
-                        ],
-                      )));
-                    },
-                    child: isSearching ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('تأكيد وإرسال', style: TextStyle(color: Colors.white)),
-                  ),
+                            } catch (e) {
+                              if (mounted) {
+                                Navigator.pop(context); // إغلاق الـ Loading
+                                _play('error'); 
+                                _showSnack(e.toString(), isErr: true);
+                              }
+                            }
+                          },
+                          child: const Text('نعم، حوّل الرصيد', style: TextStyle(color: Colors.white)),
+                        )
+                      ],
+                    )));
+                  },
+                  icon: const Icon(Icons.send, color: Colors.white, size: 18),
+                  label: const Text('تنفيذ التحويل', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
               ],
             ),
           );
@@ -632,15 +674,14 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   }
 
   // ==========================================
-  // 5. نافذة عرض الإيصال الرقمي (ومشاركته كصورة 📸)
+  // 5. نافذة الإيصال الرقمي (تصدير كصورة حقيقية 📸)
   // ==========================================
   void _showTransactionReceipt(Map<String, dynamic> txn, SystemProvider sys) {
     _play('click');
     bool isPlus = txn['type'] == 'income' || txn['type'] == 'deposit' || (txn['type'] == 'transfer' && txn['toPhone'] == sys.currentUserPhone);
     String dateStr = txn['timestamp'] != null ? DateFormat('yyyy-MM-dd hh:mm a').format((txn['timestamp'] as Timestamp).toDate()) : 'الآن';
     
-    // مفتاح لالتقاط صورة الويدجت
-    final GlobalKey receiptKey = GlobalKey();
+    final GlobalKey receiptKey = GlobalKey(); // مفتاح التقاط الصورة
 
     showDialog(
       context: context,
@@ -650,12 +691,12 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
           contentPadding: EdgeInsets.zero,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           content: RepaintBoundary(
-            key: receiptKey, // 👈 تم وضع الـ RepaintBoundary لالتقاط الصورة
+            key: receiptKey,
             child: Container(
               width: 300,
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Colors.white, // خلفية بيضاء للصورة
                 borderRadius: BorderRadius.circular(15),
                 border: Border.all(color: Colors.grey.shade300)
               ),
@@ -666,7 +707,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                   const SizedBox(height: 5),
                   const Text('نظام كروت نت', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
                   const Text('إيصال عملية إلكترونية', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(thickness: 1.5)),
+                  const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(thickness: 1.5, color: Colors.grey)),
                   
                   Text(txn['title'] ?? 'عملية مالية', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black), textAlign: TextAlign.center),
                   const SizedBox(height: 15),
@@ -674,6 +715,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                   _buildReceiptRow('المبلغ', '${txn['amount']} ريال', valueColor: isPlus ? Colors.green : Colors.red, isBold: true),
                   _buildReceiptRow('تاريخ العملية', dateStr),
                   _buildReceiptRow('نوع الحركة', isPlus ? 'إيداع (+)' : 'خصم (-)'),
+                  
                   if (txn['paymentMethod'] != null)
                     _buildReceiptRow('طريقة الدفع', txn['paymentMethod']),
                   if (txn['targetName'] != null)
@@ -681,7 +723,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                   if (txn['reference'] != null)
                     _buildReceiptRow('رقم المرجع', txn['reference']),
 
-                  const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(thickness: 1.5)), 
+                  const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(thickness: 1.5, color: Colors.grey)), 
                   const Text('شكراً لاستخدامكم محفظة كروت نت', style: TextStyle(fontSize: 11, color: Colors.grey)),
                 ],
               ),
@@ -691,21 +733,20 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
           actions: [
             TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('إغلاق', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))),
             ElevatedButton.icon(
-               icon: const Icon(Icons.share, color: Colors.white, size: 16),
+               icon: const Icon(Icons.image, color: Colors.white, size: 16),
                label: const Text('مشاركة كصورة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                onPressed: () async {
                   _play('click');
-                  _showSnack('جاري تجهيز الصورة...');
+                  _showSnack('جاري تجهيز الصورة للمشاركة... ⏳');
                   try {
-                    // 👈 تحويل الويدجت إلى صورة باستخدام dart:ui
                     RenderRepaintBoundary boundary = receiptKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
-                    ui.Image image = await boundary.toImage(pixelRatio: 3.0); // جودة عالية
+                    ui.Image image = await boundary.toImage(pixelRatio: 3.0); // دقة عالية
                     ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
                     Uint8List pngBytes = byteData!.buffer.asUint8List();
                     
-                    // مشاركة الصورة كملف
                     await Share.shareXFiles([XFile.fromData(pngBytes, mimeType: 'image/png', name: 'receipt.png')], text: 'إيصال عملية مالية - كروت نت');
+                    _play('success');
                   } catch (e) {
                     _play('error');
                     _showSnack('حدث خطأ أثناء التقاط الصورة', isErr: true);
@@ -732,13 +773,13 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   }
 
   // ==========================================
-  // وظائف الموافقة والرفض لطلبات الشحن (بدون VIP كما اتفقنا)
+  // وظائف الموافقة والرفض لطلبات الشحن (تم التطوير)
   // ==========================================
   void _confirmApproveRequest(String reqId, String posPhone, double amount, SystemProvider sys, String userName) {
     _play('warning');
     showDialog(context: context, builder: (ctx) => Directionality(textDirection: TextDirection.rtl, child: AlertDialog(
       title: const Text('تأكيد الموافقة ✅', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-      content: Text('هل تم التأكد من وصول مبلغ $amount ريال من $userName؟\nسيتم إضافة الرصيد إلى محفظته فوراً.'),
+      content: Text('هل تم التأكد من استلام مبلغ $amount ريال من $userName؟\nسيتم توريد الرصيد لمحفظته فوراً.'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('تراجع')),
         ElevatedButton(
@@ -748,10 +789,12 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
             _play('click');
             try {
               await sys.agentAcceptUserRecharge(reqId, posPhone, amount);
-              if(mounted) _showSnack('تم إضافة الرصيد لمحفظة الزبون بنجاح ✅');
-              _play('success');
+              if(mounted) {
+                _play('success');
+                _showSnack('تم إضافة الرصيد لمحفظة الزبون بنجاح ✅');
+              }
             } catch (e) {
-              _play('error'); _showSnack('حدث خطأ أثناء الموافقة: $e', isErr: true);
+              _play('error'); _showSnack('حدث خطأ: $e', isErr: true);
             }
           },
           child: const Text('نعم، أؤكد الاستلام', style: TextStyle(color: Colors.white)),
@@ -764,7 +807,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     _play('warning');
     showDialog(context: context, builder: (ctx) => Directionality(textDirection: TextDirection.rtl, child: AlertDialog(
       title: const Text('رفض الطلب ❌', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-      content: const Text('هل أنت متأكد أنك تريد رفض هذا الطلب؟'),
+      content: const Text('هل أنت متأكد أنك تريد رفض هذا الطلب وإلغاءه؟'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('تراجع')),
         ElevatedButton(
@@ -772,8 +815,12 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
           onPressed: () async {
             Navigator.pop(ctx);
             _play('click');
-            await _db.collection('recharge_requests').doc(reqId).update({'status': 'مرفوض'});
-            if(mounted) { _play('success'); _showSnack('تم رفض الطلب.'); }
+            try {
+              await sys.rejectRechargeRequest(reqId, 'مرفوض من قبل الوكيل');
+              if(mounted) { _play('success'); _showSnack('تم رفض الطلب بنجاح.'); }
+            } catch(e) {
+               _play('error'); _showSnack('حدث خطأ أثناء الرفض', isErr: true);
+            }
           },
           child: const Text('نعم، ارفض الطلب', style: TextStyle(color: Colors.white)),
         )
@@ -782,11 +829,13 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   }
 
   void _confirmBulkApprove(List<QueryDocumentSnapshot> requests, SystemProvider sys) {
-    if (requests.isEmpty) return;
+    if (requests.isEmpty) {
+      _play('error'); _showSnack('لا توجد طلبات للموافقة عليها!', isErr: true); return;
+    }
     _play('warning');
     showDialog(context: context, builder: (ctx) => Directionality(textDirection: TextDirection.rtl, child: AlertDialog(
       title: const Text('موافقة جماعية ⚡', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-      content: Text('أنت على وشك الموافقة على (${requests.length}) طلبات شحن دفعة واحدة.\nهل أنت متأكد من استلامك لجميع الحوالات؟'),
+      content: Text('أنت على وشك الموافقة على (${requests.length}) طلبات شحن دفعة واحدة.\nهل أنت متأكد من استلامك لجميع المبالغ؟'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('تراجع')),
         ElevatedButton(
@@ -794,16 +843,24 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
           onPressed: () async {
             Navigator.pop(ctx);
             _play('click');
-            showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
+            showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator(color: Colors.green)));
             try {
               for (var reqDoc in requests) {
                 var req = reqDoc.data() as Map<String, dynamic>;
                 double reqAmount = (req['amount'] ?? 0).toDouble();
                 await sys.agentAcceptUserRecharge(reqDoc.id, req['userPhone'], reqAmount);
               }
-              if (mounted) { Navigator.pop(context); _play('success'); _showSnack('تمت الموافقة على جميع الطلبات بنجاح! ✅'); }
+              if (mounted) { 
+                Navigator.pop(context); // close loader
+                _play('success'); 
+                _showSnack('تمت الموافقة على جميع الطلبات بنجاح! ✅'); 
+              }
             } catch (e) {
-              if (mounted) { Navigator.pop(context); _play('error'); _showSnack('حدث خطأ أثناء المعالجة الجماعية', isErr: true); }
+              if (mounted) { 
+                Navigator.pop(context); // close loader
+                _play('error'); 
+                _showSnack('حدث خطأ أثناء المعالجة الجماعية', isErr: true); 
+              }
             }
           },
           child: const Text('تأكيد الكل', style: TextStyle(color: Colors.white)),
@@ -812,6 +869,9 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     )));
   }
 
+  // ==========================================
+  // 🎨 بناء الشاشة بنظام NestedScrollView (لإخفاء الجزء العلوي عند التمرير)
+  // ==========================================
   @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
@@ -870,64 +930,68 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: Column(
-          children: [
-            Container(
-              width: double.infinity,
-              color: isDark ? Colors.grey.shade900 : Colors.teal.shade800,
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 20, left: 20, right: 20, bottom: 10),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('رصيد المحفظة المتاح', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                            Row(
-                              children: [
-                                Text(_isBalanceHidden ? '******' : '${sys.currentUserBalance.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
-                                const SizedBox(width: 5),
-                                const Text('ريال', style: TextStyle(color: Colors.white70, fontSize: 14)),
-                                IconButton(icon: Icon(_isBalanceHidden ? Icons.visibility_off : Icons.visibility, color: Colors.white70, size: 20), onPressed: () { _play('click'); setState(() => _isBalanceHidden = !_isBalanceHidden); }),
-                              ],
-                            ),
-                          ],
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10)),
-                          child: Column(
+        // 👈 استخدام NestedScrollView لكي يرتفع الرأس للأعلى عند التمرير
+        child: NestedScrollView(
+          headerSliverBuilder: (context, innerBoxIsScrolled) {
+            return [
+              SliverToBoxAdapter(
+                child: Container(
+                  width: double.infinity,
+                  color: isDark ? Colors.grey.shade900 : Colors.teal.shade800,
+                  padding: const EdgeInsets.only(top: 20, left: 20, right: 20, bottom: 15),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('رصيد المحفظة المتاح', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                          Row(
                             children: [
-                              const Text('صافي التدفق', style: TextStyle(color: Colors.white70, fontSize: 10)),
-                              Text('${netFlow >= 0 ? "+" : ""}${netFlow.toStringAsFixed(0)}', style: TextStyle(color: netFlow >= 0 ? Colors.greenAccent : Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 14), textDirection: TextDirection.ltr),
+                              Text(_isBalanceHidden ? '******' : '${sys.currentUserBalance.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                              const SizedBox(width: 5),
+                              const Text('ريال', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                              IconButton(icon: Icon(_isBalanceHidden ? Icons.visibility_off : Icons.visibility, color: Colors.white70, size: 20), onPressed: () { _play('click'); setState(() => _isBalanceHidden = !_isBalanceHidden); }),
                             ],
                           ),
-                        )
-                      ],
-                    ),
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10)),
+                        child: Column(
+                          children: [
+                            const Text('صافي التدفق', style: TextStyle(color: Colors.white70, fontSize: 10)),
+                            Text('${netFlow >= 0 ? "+" : ""}${netFlow.toStringAsFixed(0)}', style: TextStyle(color: netFlow >= 0 ? Colors.greenAccent : Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 14), textDirection: TextDirection.ltr),
+                          ],
+                        ),
+                      )
+                    ],
                   ),
-                  
-                  StreamBuilder<QuerySnapshot>(
-                    stream: _db.collection('user_recharges').where('targetPhone', isEqualTo: sys.currentUserPhone).where('status', isEqualTo: 'قيد الانتظار').snapshots(),
-                    builder: (context, snapshot) {
-                      int pendingCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
-
-                      return TabBar(
-                        controller: _tabController,
-                        labelColor: Colors.white, 
-                        unselectedLabelColor: Colors.white60, 
-                        indicatorColor: Colors.orange, indicatorWeight: 4,
-                        labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), 
-                        tabs: [
-                          const Tab(text: 'السجل والتحويل'),
-                          Tab(
-                            child: Row(
+                ),
+              ),
+              // 👈 شريط التبويبات يظل ثابتاً في الأعلى
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _SliverAppBarDelegate(
+                  TabBar(
+                    controller: _tabController,
+                    labelColor: Colors.orangeAccent, 
+                    unselectedLabelColor: isDark ? Colors.white70 : Colors.black54, 
+                    indicatorColor: Colors.orangeAccent, 
+                    indicatorWeight: 4,
+                    labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), 
+                    tabs: [
+                      const Tab(text: 'السجل والتحويل'),
+                      Tab(
+                        child: StreamBuilder<QuerySnapshot>(
+                          stream: _db.collection('user_recharges').where('targetPhone', isEqualTo: sys.currentUserPhone).where('status', isEqualTo: 'قيد الانتظار').snapshots(),
+                          builder: (context, snapshot) {
+                            int pendingCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                            return Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Text('الطلبات'),
+                                const Text('طلبات الشحن'),
                                 if (pendingCount > 0) ...[
                                   const SizedBox(width: 5),
                                   Container(
@@ -937,28 +1001,24 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                                   )
                                 ]
                               ],
-                            )
-                          ),
-                          const Tab(text: 'حساباتي البنكية 🏦'),
-                        ],
-                      );
-                    }
+                            );
+                          }
+                        )
+                      ),
+                    ],
                   ),
-                ],
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                ),
               ),
-            ),
-
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildWalletAndLedgerTab(sys, realTransactions, totalIncome, totalExpense, incomeFlex, expenseFlex, isDark, cardColor, textColor),
-                  _buildRequestsTab(sys),
-                  _buildBankAccountsTab(sys),
-                ],
-              ),
-            )
-          ],
+            ];
+          },
+          body: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildWalletAndLedgerTab(sys, realTransactions, totalIncome, totalExpense, incomeFlex, expenseFlex, isDark, cardColor, textColor),
+              _buildRequestsTab(sys),
+            ],
+          ),
         ),
       ),
     );
@@ -972,12 +1032,12 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
       children: [
         Container(
           padding: const EdgeInsets.symmetric(vertical: 15),
-          color: isDark ? Colors.grey.shade800 : Colors.white,
+          color: isDark ? Colors.grey.shade900 : Colors.white,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               _buildQuickBtn(Icons.add_to_photos, 'طلب رصيد', Colors.green, _showRequestBalanceDialog),
-              _buildQuickBtn(Icons.swap_horiz, 'تحويل متقدم', Colors.orange, _showAdvancedTransferDialog),
+              _buildQuickBtn(Icons.send_to_mobile, 'تحويل رصيد', Colors.orange, _showAdvancedTransferDialog),
               _buildQuickBtn(Icons.picture_as_pdf, 'تصدير PDF', Colors.blue, () => _showPdfStatementDialog(sys, realTransactions)),
               _buildQuickBtn(Icons.table_chart, 'إكسل CSV', Colors.teal, () => _exportCSV(realTransactions, sys)),
             ],
@@ -1016,7 +1076,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('السجل المالي', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const Text('سجل العمليات المالية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               Row(
                 children: [
                   _buildFilterDropdown(
@@ -1050,7 +1110,8 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                     return Card(
                       color: cardColor,
                       margin: const EdgeInsets.only(bottom: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 1,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.withOpacity(0.2))),
                       child: ListTile(
                         onTap: () => _showTransactionReceipt(txn, sys), 
                         leading: CircleAvatar(
@@ -1058,7 +1119,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                           child: Icon(isPlus ? Icons.arrow_downward : Icons.arrow_upward, color: isPlus ? Colors.green : Colors.red),
                         ),
                         title: Text(txn['title'] ?? 'عملية مالية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: textColor)),
-                        subtitle: Text(txn['timestamp'] != null ? DateFormat('yyyy-MM-dd hh:mm a').format((txn['timestamp'] as Timestamp).toDate()) : 'الآن', style: TextStyle(fontSize: 11, color: textColor.withOpacity(0.6))),
+                        subtitle: Text(txn['timestamp'] != null ? DateFormat('yyyy-MM-dd hh:mm a').format((txn['timestamp'] as Timestamp).toDate()) : 'الآن', style: TextStyle(fontSize: 11, color: Colors.grey)),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -1083,7 +1144,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     return StreamBuilder<QuerySnapshot>(
       stream: _db.collection('user_recharges').where('targetPhone', isEqualTo: sys.currentUserPhone).where('status', isEqualTo: 'قيد الانتظار').snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.orange));
         var requests = snapshot.data!.docs;
         
         if (requests.isEmpty) {
@@ -1091,9 +1152,9 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.inbox, size: 60, color: Colors.grey.shade300),
+                Icon(Icons.mark_email_read, size: 70, color: Colors.grey.shade300),
                 const SizedBox(height: 10),
-                const Text('لا توجد طلبات شحن معلقة حالياً.', style: TextStyle(color: Colors.grey)),
+                const Text('لا توجد طلبات شحن معلقة حالياً، عمل رائع!', style: TextStyle(color: Colors.grey, fontSize: 14)),
               ],
             )
           );
@@ -1107,9 +1168,9 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
               color: Colors.green.withOpacity(0.1),
               child: ElevatedButton.icon(
                 onPressed: () => _confirmBulkApprove(requests, sys),
-                icon: const Icon(Icons.check_circle_outline, color: Colors.white),
-                label: Text('الموافقة على جميع الطلبات (${requests.length})', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                icon: const Icon(Icons.playlist_add_check_circle, color: Colors.white),
+                label: Text('موافقة على جميع الطلبات (${requests.length})', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, elevation: 0),
               ),
             ),
 
@@ -1117,6 +1178,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
               child: ListView.builder(
                 padding: const EdgeInsets.all(12), 
                 itemCount: requests.length,
+                physics: const BouncingScrollPhysics(),
                 itemBuilder: (context, i) {
                   var req = requests[i].data() as Map<String, dynamic>;
                   String reqId = requests[i].id;
@@ -1124,30 +1186,33 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
 
                   return Card(
                     color: Theme.of(context).cardColor,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.blue.shade200)),
+                    elevation: 2,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.blue.shade200, width: 1.5)),
                     child: Padding(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(15),
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('${req['userName']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                              const Text('طلب شحن', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                              Text('${req['userName']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueAccent)),
+                              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: Colors.orange.withOpacity(0.2), borderRadius: BorderRadius.circular(5)), child: const Text('طلب جديد', style: TextStyle(color: Colors.orange, fontSize: 11, fontWeight: FontWeight.bold))),
                             ],
                           ),
-                          const SizedBox(height: 5),
+                          const SizedBox(height: 8),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('رقم: ${req['userPhone']}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                              Text('المبلغ: $reqAmount ريال', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.blue)),
+                              Text('رقم: ${req['userPhone']}', style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                              Text('$reqAmount ريال', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.green)),
                             ],
                           ),
-                          const Divider(),
+                          const Padding(padding: EdgeInsets.symmetric(vertical: 5), child: Divider()),
                           Row(
                             children: [
-                              Expanded(child: OutlinedButton(onPressed: () => _confirmRejectRequest(reqId), style: OutlinedButton.styleFrom(foregroundColor: Colors.red), child: const Text('رفض ❌'))),
+                              Expanded(flex: 1, child: OutlinedButton(onPressed: () => _confirmRejectRequest(reqId), style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)), child: const Text('رفض ❌'))),
                               const SizedBox(width: 10),
                               Expanded(flex: 2, child: ElevatedButton(
                                 onPressed: () => _confirmApproveRequest(reqId, req['userPhone'], reqAmount, sys, req['userName']),
@@ -1169,159 +1234,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   }
 
   // ==========================================
-  // التبويب الثالث: حساباتي البنكية 🏦 (البديل للـ VIP)
-  // ==========================================
-  Widget _buildBankAccountsTab(SystemProvider sys) {
-    var accounts = sys.myAgentBankAccounts;
-    
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: ElevatedButton.icon(
-            onPressed: () => _showAddEditBankDialog(sys),
-            icon: const Icon(Icons.add_card, color: Colors.white),
-            label: const Text('إضافة حساب بنكي جديد', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, minimumSize: const Size(double.infinity, 50)),
-          ),
-        ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.0),
-          child: Align(alignment: Alignment.centerRight, child: Text('يمكنك ترتيب الحسابات بالسحب والإفلات ↕️', style: TextStyle(fontSize: 11, color: Colors.grey))),
-        ),
-        Expanded(
-          child: accounts.isEmpty
-            ? const Center(child: Text('لم تقم بإضافة حسابات بنكية بعد', style: TextStyle(color: Colors.grey)))
-            : ReorderableListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: accounts.length,
-                onReorder: (oldIndex, newIndex) {
-                  _play('click');
-                  sys.reorderAgentBankAccounts(oldIndex, newIndex);
-                },
-                itemBuilder: (context, index) {
-                  var bank = accounts[index];
-                  bool isActive = bank['status'] == 'نشط';
-                  
-                  return Card(
-                    key: ValueKey(bank['docId']),
-                    elevation: 2,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: isActive ? Colors.transparent : Colors.red.withOpacity(0.5))),
-                    child: ListTile(
-                      leading: Icon(Icons.account_balance, color: isActive ? Colors.blue : Colors.red),
-                      title: Text('${bank['bankName']} - ${bank['networkName']}', style: TextStyle(fontWeight: FontWeight.bold, decoration: isActive ? null : TextDecoration.lineThrough)),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('رقم الحساب: ${bank['accountNumber']}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
-                          Text('المستلم: ${bank['agentName']}', style: const TextStyle(fontSize: 12)),
-                          if (bank['note'] != null && bank['note'].toString().isNotEmpty)
-                            Text('ملاحظة: ${bank['note']}', style: const TextStyle(fontSize: 11, color: Colors.orange)),
-                        ],
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: Icon(isActive ? Icons.toggle_on : Icons.toggle_off, color: isActive ? Colors.green : Colors.red, size: 30),
-                            onPressed: () { _play('click'); sys.toggleAgentBankAccountStatus(bank['docId'], bank['status']); }
-                          ),
-                          PopupMenuButton<String>(
-                            onSelected: (val) {
-                              _play('click');
-                              if (val == 'edit') _showAddEditBankDialog(sys, bankData: bank);
-                              if (val == 'delete') {
-                                showDialog(context: context, builder: (ctx) => Directionality(textDirection: TextDirection.rtl, child: AlertDialog(
-                                  title: const Text('حذف الحساب ⚠️'),
-                                  content: const Text('هل أنت متأكد من حذف هذا الحساب نهائياً؟'),
-                                  actions: [
-                                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('تراجع')),
-                                    ElevatedButton(onPressed: () { Navigator.pop(ctx); sys.deleteAgentBankAccount(bank['docId']); }, style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: const Text('نعم، احذف', style: TextStyle(color: Colors.white))),
-                                  ]
-                                )));
-                              }
-                            },
-                            itemBuilder: (context) => [
-                              const PopupMenuItem(value: 'edit', child: Text('تعديل')),
-                              const PopupMenuItem(value: 'delete', child: Text('حذف', style: TextStyle(color: Colors.red))),
-                            ],
-                          ),
-                          const Icon(Icons.drag_handle, color: Colors.grey),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-        )
-      ],
-    );
-  }
-
-  void _showAddEditBankDialog(SystemProvider sys, {Map<String, dynamic>? bankData}) {
-    _play('click');
-    bool isEdit = bankData != null;
-    final networkCtrl = TextEditingController(text: isEdit ? bankData['networkName'] : '');
-    final nameCtrl = TextEditingController(text: isEdit ? bankData['agentName'] : sys.currentUserName);
-    final bankCtrl = TextEditingController(text: isEdit ? bankData['bankName'] : '');
-    final accCtrl = TextEditingController(text: isEdit ? bankData['accountNumber'] : '');
-    final noteCtrl = TextEditingController(text: isEdit ? bankData['note'] : '');
-
-    showDialog(
-      context: context,
-      builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: Text(isEdit ? 'تعديل الحساب البنكي' : 'إضافة حساب بنكي', style: const TextStyle(fontWeight: FontWeight.bold)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(controller: networkCtrl, decoration: const InputDecoration(labelText: 'اسم الشبكة التابع لها الحساب', border: OutlineInputBorder())),
-                const SizedBox(height: 10),
-                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'اسم المستلم (الوكيل) الرباعي', border: OutlineInputBorder())),
-                const SizedBox(height: 10),
-                TextField(controller: bankCtrl, decoration: const InputDecoration(labelText: 'اسم البنك / المحفظة (مثل: الكريمي)', border: OutlineInputBorder())),
-                const SizedBox(height: 10),
-                TextField(controller: accCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'رقم الحساب', border: OutlineInputBorder())),
-                const SizedBox(height: 10),
-                TextField(controller: noteCtrl, decoration: const InputDecoration(labelText: 'ملاحظة للزبائن (اختياري)', border: OutlineInputBorder())),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
-              onPressed: () async {
-                if (networkCtrl.text.isEmpty || nameCtrl.text.isEmpty || bankCtrl.text.isEmpty || accCtrl.text.isEmpty) {
-                  _play('error'); _showSnack('يرجى تعبئة جميع الحقول المطلوبة!', isErr: true); return;
-                }
-                Navigator.pop(context);
-                try {
-                  if (isEdit) {
-                    await sys.updateAgentBankAccount(bankData['docId'], networkCtrl.text, nameCtrl.text, bankCtrl.text, accCtrl.text, noteCtrl.text);
-                    _showSnack('تم تعديل الحساب بنجاح ✅');
-                  } else {
-                    await sys.addAgentBankAccount(networkCtrl.text, nameCtrl.text, bankCtrl.text, accCtrl.text, noteCtrl.text);
-                    _showSnack('تم إضافة الحساب بنجاح ✅');
-                  }
-                  _play('success');
-                } catch(e) {
-                  _play('error'); _showSnack(e.toString(), isErr: true);
-                }
-              },
-              child: const Text('حفظ', style: TextStyle(color: Colors.white)),
-            )
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ==========================================
   // واجهات مساعدة
   // ==========================================
   Widget _buildQuickBtn(IconData icon, String label, Color iconColor, VoidCallback onTap) {
@@ -1331,8 +1243,8 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
       borderRadius: BorderRadius.circular(15),
       child: Column(
         children: [
-          CircleAvatar(backgroundColor: iconColor.withOpacity(0.15), radius: 22, child: Icon(icon, color: iconColor, size: 20)),
-          const SizedBox(height: 5),
+          CircleAvatar(backgroundColor: iconColor.withOpacity(0.15), radius: 25, child: Icon(icon, color: iconColor, size: 22)),
+          const SizedBox(height: 8),
           Text(label, style: TextStyle(color: textColor, fontSize: 11, fontWeight: FontWeight.bold)),
         ],
       ),
@@ -1343,15 +1255,41 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     return Container(
       height: 35,
       padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade300)),
+      decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)),
       child: DropdownButton<String>(
         value: value,
         dropdownColor: Theme.of(context).cardColor,
         underline: const SizedBox(),
-        icon: const Icon(Icons.keyboard_arrow_down, size: 16),
-        items: items.map((v) => DropdownMenuItem(value: v, child: Text(v, style: TextStyle(fontSize: 11, color: Provider.of<ThemeProvider>(context).adaptiveTextColor)))).toList(),
+        icon: const Icon(Icons.keyboard_arrow_down, size: 16, color: Colors.blueAccent),
+        items: items.map((v) => DropdownMenuItem(value: v, child: Text(v, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Provider.of<ThemeProvider>(context).adaptiveTextColor)))).toList(),
         onChanged: onChanged,
       ),
     );
+  }
+}
+
+// 👈 كلاس مساعد لجعل شريط التبويبات (TabBar) يثبت في الأعلى عند التمرير
+class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
+  final TabBar _tabBar;
+  final Color color;
+
+  _SliverAppBarDelegate(this._tabBar, {required this.color});
+
+  @override
+  double get minExtent => _tabBar.preferredSize.height;
+  @override
+  double get maxExtent => _tabBar.preferredSize.height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      color: color,
+      child: _tabBar,
+    );
+  }
+
+  @override
+  bool shouldRebuild(_SliverAppBarDelegate oldDelegate) {
+    return false;
   }
 }
