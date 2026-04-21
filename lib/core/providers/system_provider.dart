@@ -87,10 +87,14 @@ class SystemProvider extends ChangeNotifier {
   DateTimeRange? _dashboardDateRange; 
 
   // ==========================================
-  // 🔔 إعدادات الإشعارات المباشرة (Real-time)
+  // 🔔 إعدادات الإشعارات المباشرة والحسابات (Real-time)
   // ==========================================
   List<Map<String, dynamic>> _notifications = [];
   StreamSubscription? _notificationSubscription; 
+  
+  // 👈 الإضافة الجديدة: قائمة حسابات الوكيل البنكية
+  List<Map<String, dynamic>> _myAgentBankAccounts = [];
+  StreamSubscription? _agentBankSubscription;
 
   SystemProvider() {
     _initDatabaseSync();
@@ -216,6 +220,7 @@ class SystemProvider extends ChangeNotifier {
   void _listenToUserNotifications() {
     if (_activeUserPhone == null) return;
     _notificationSubscription?.cancel();
+    _agentBankSubscription?.cancel();
 
     _notificationSubscription = _db.collection('notifications')
       .where('targetPhones', arrayContainsAny: [_activeUserPhone, 'all', _currentUserRole == 'agent' ? 'all_agents' : 'all_staff'])
@@ -231,6 +236,18 @@ class SystemProvider extends ChangeNotifier {
         }).toList();
         notifyListeners();
     });
+
+    // 👈 الإضافة الجديدة: الاستماع لحسابات الوكيل البنكية
+    if (_currentUserRole == 'agent' || _currentUserRole == 'super_admin') {
+      _agentBankSubscription = _db.collection('agent_bank_accounts')
+        .where('agentPhone', isEqualTo: _activeUserPhone)
+        .orderBy('order')
+        .snapshots()
+        .listen((snapshot) {
+          _myAgentBankAccounts = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
+          notifyListeners();
+      });
+    }
   }
 
   void clearAllData() {
@@ -240,6 +257,9 @@ class SystemProvider extends ChangeNotifier {
     _notifications = [];
     _notificationSubscription?.cancel(); 
     _notificationSubscription = null;
+    _agentBankSubscription?.cancel();
+    _agentBankSubscription = null;
+    _myAgentBankAccounts = [];
     notifyListeners();
   }
 
@@ -263,9 +283,6 @@ class SystemProvider extends ChangeNotifier {
     if (needsUpdate) batch.commit();
   }
 
-  // ==========================================
-  // 🔄 دالة فرض المزامنة (أضيفت لتتوافق مع شاشة الإعدادات)
-  // ==========================================
   Future<void> loadUserData(String phone) async {
     try {
       final doc = await _db.collection('users').doc(phone).get();
@@ -345,6 +362,9 @@ class SystemProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get backupsList => _backupsList;
   List<Map<String, dynamic>> get bankAccounts => _bankAccounts;
   List<Map<String, dynamic>> get coupons => _coupons;
+
+  // 👈 الإضافة الجديدة الخاصة بقراءة حسابات الوكيل
+  List<Map<String, dynamic>> get myAgentBankAccounts => _myAgentBankAccounts;
 
   List<Map<String, dynamic>> get notifications => _notifications;
   int get unreadNotificationsCount => _notifications.where((n) => n['isReadLocal'] == false).length;
@@ -907,7 +927,6 @@ class SystemProvider extends ChangeNotifier {
      batch.update(agentDoc.reference, {'balance': FieldValue.increment(-amount)});
      batch.update(_db.collection('users').doc(posPhone), {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
 
-     // تسجيل الحركة في السجل بدقة
      batch.set(_db.collection('transactions').doc(), {
        'fromPhone': _activeUserPhone,
        'toPhone': posPhone,
@@ -942,7 +961,7 @@ class SystemProvider extends ChangeNotifier {
         'toPhone': _activeUserPhone,
         'agentPhone': _activeUserPhone,
         'agentName': currentUserName,
-        'type': 'deposit', // اعتباره إيداع
+        'type': 'deposit', 
         'amount': amount,
         'note': note,
         'title': 'سداد ديون نقدي (كاش)',
@@ -991,7 +1010,6 @@ class SystemProvider extends ChangeNotifier {
     
     batch.update(requesterDoc.reference, {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
 
-    // تسجيل العملية في سجل الحركات للوكيل بدقة
     batch.set(_db.collection('transactions').doc(), {
       'fromPhone': _activeUserPhone,
       'toPhone': requesterPhone,
@@ -1018,10 +1036,9 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==========================================
-  // 🔐 محرك البحث والتحويل الآمن (الإضافة الجديدة)
+  // 🔐 محرك البحث والتحويل المتقدم (التطوير الأسطوري) 🚀
   // ==========================================
 
-  // البحث عن مستخدم لجلب بياناته قبل التحويل
   Future<Map<String, dynamic>?> searchUserForTransfer(String targetPhone) async {
     if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول.';
     if (targetPhone == _activeUserPhone) throw 'لا يمكنك تحويل الرصيد لنفسك!';
@@ -1032,7 +1049,6 @@ class SystemProvider extends ChangeNotifier {
 
       final data = doc.data() as Map<String, dynamic>;
 
-      // استعلام سريع لمعرفة آخر مرة شحن فيها هذا المستخدم من هذا الوكيل
       var lastTxn = await _db.collection('transactions')
           .where('toPhone', isEqualTo: targetPhone)
           .where('fromPhone', isEqualTo: _activeUserPhone)
@@ -1051,7 +1067,7 @@ class SystemProvider extends ChangeNotifier {
       double displayBalance = 0.0;
       if (data['role'] == 'user' || data['role'] == 'pos') {
          Map<String, dynamic> wallets = data['wallets'] ?? {};
-         displayBalance = (wallets[_activeUserPhone] ?? 0.0).toDouble(); // عرض رصيده لدى هذا الوكيل فقط
+         displayBalance = (wallets[_activeUserPhone] ?? 0.0).toDouble(); 
       } else {
          displayBalance = (data['balance'] ?? 0.0).toDouble();
       }
@@ -1067,11 +1083,18 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  // التحويل الآمن بناءً على كلمة المرور المخزنة في السيرفر واستخدام المعاملات (Transactions)
-  Future<void> secureTransferBalance({required String targetPhone, required String targetName, required double amount, required String password}) async {
+  // 👈 الدالة الجديدة والمحدثة بالكامل للتحويل (مع الضريبة، والآجل، وتسجيل الديون)
+  Future<void> advancedSecureTransferBalance({
+    required String targetPhone,
+    required String targetName,
+    required double amount,
+    required double taxPercentage,
+    required String note,
+    required String paymentMethod,
+    required String password
+  }) async {
     if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول.';
 
-    // 1. التحقق من كلمة المرور في الخلفية (آمن جداً)
     final myData = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {});
     if (myData['password'] != password) {
       throw 'كلمة المرور غير صحيحة ❌';
@@ -1081,7 +1104,9 @@ class SystemProvider extends ChangeNotifier {
        throw 'رصيدك غير كافٍ لإتمام التحويل ❌';
     }
 
-    // 2. استخدام المعاملات لضمان عدم ضياع الأموال
+    double taxAmount = amount * (taxPercentage / 100);
+    double totalDebt = amount + taxAmount;
+
     await _db.runTransaction((transaction) async {
       DocumentReference senderRef = _db.collection('users').doc(_activeUserPhone);
       DocumentReference receiverRef = _db.collection('users').doc(targetPhone);
@@ -1097,13 +1122,20 @@ class SystemProvider extends ChangeNotifier {
       double currentSenderBalance = (sData['balance'] ?? 0.0).toDouble();
       if (currentSenderBalance < amount) throw 'رصيد المحفظة الفعلي غير كافٍ.';
       
+      // الخصم من الوكيل
       transaction.update(senderRef, {'balance': FieldValue.increment(-amount)});
 
+      // الإضافة للمستلم
       var rData = receiverDoc.data() as Map<String, dynamic>;
       if (rData['role'] == 'user' || rData['role'] == 'pos') {
          transaction.update(receiverRef, {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
       } else {
          transaction.update(receiverRef, {'balance': FieldValue.increment(amount)});
+      }
+
+      // 👈 تسجيل الدين آلياً إذا كان "آجل"
+      if (paymentMethod == 'آجل') {
+         transaction.update(receiverRef, {'agent_debts.$_activeUserPhone': FieldValue.increment(totalDebt)});
       }
 
       // إضافة تفاصيل كاملة في السجل המالي للوكيل
@@ -1115,8 +1147,13 @@ class SystemProvider extends ChangeNotifier {
         'agentName': currentUserName,
         'targetName': targetName,
         'amount': amount,
+        'taxPercentage': taxPercentage,
+        'taxAmount': taxAmount,
+        'totalDebt': paymentMethod == 'آجل' ? totalDebt : 0,
+        'paymentMethod': paymentMethod,
+        'note': note,
         'type': 'transfer',
-        'title': 'تحويل رصيد صادر إلى $targetName',
+        'title': 'تحويل رصيد إلى $targetName',
         'reference': 'TRX-${DateTime.now().millisecondsSinceEpoch}',
         'timestamp': FieldValue.serverTimestamp()
       });
@@ -1125,12 +1162,70 @@ class SystemProvider extends ChangeNotifier {
       transaction.set(notifRef, {
         'targetPhones': [targetPhone],
         'title': 'حوالة واردة 💸',
-        'body': 'تم إيداع مبلغ $amount ريال إلى محفظتك من الوكيل $currentUserName.',
+        'body': 'تم إيداع مبلغ $amount ريال إلى محفظتك من الوكيل $currentUserName.\nطريقة الدفع: $paymentMethod',
         'timestamp': FieldValue.serverTimestamp(),
         'isRead': false,
         'readBy': [],
       });
     });
+  }
+
+  // احتفاظ بالدالة القديمة لكي لا نكسر أي جزء آخر من النظام يستخدمها
+  Future<void> secureTransferBalance({required String targetPhone, required String targetName, required double amount, required String password}) async {
+    await advancedSecureTransferBalance(targetPhone: targetPhone, targetName: targetName, amount: amount, taxPercentage: 0.0, note: '', paymentMethod: 'نقد', password: password);
+  }
+
+  // ==========================================
+  // 🏦 إدارة الحسابات البنكية الخاصة بالوكيل 
+  // ==========================================
+  
+  Future<void> addAgentBankAccount(String networkName, String agentName, String bankName, String accNumber, String note) async {
+    if (_activeUserPhone == null) return;
+    try {
+      int newOrder = _myAgentBankAccounts.length;
+      await _db.collection('agent_bank_accounts').add({
+        'agentPhone': _activeUserPhone,
+        'networkName': networkName,
+        'agentName': agentName,
+        'bankName': bankName,
+        'accountNumber': accNumber,
+        'note': note.isNotEmpty ? note : 'لا توجد ملاحظات',
+        'status': 'نشط',
+        'order': newOrder,
+        'createdAt': FieldValue.serverTimestamp()
+      });
+    } catch (e) { throw 'خطأ في إضافة الحساب: $e'; }
+  }
+
+  Future<void> updateAgentBankAccount(String docId, String networkName, String agentName, String bankName, String accNumber, String note) async {
+    await _db.collection('agent_bank_accounts').doc(docId).update({
+      'networkName': networkName,
+      'agentName': agentName,
+      'bankName': bankName,
+      'accountNumber': accNumber,
+      'note': note
+    });
+  }
+
+  Future<void> toggleAgentBankAccountStatus(String docId, String currentStatus) async {
+    String newStatus = currentStatus == 'نشط' ? 'موقوف' : 'نشط';
+    await _db.collection('agent_bank_accounts').doc(docId).update({'status': newStatus});
+  }
+
+  Future<void> deleteAgentBankAccount(String docId) async {
+    await _db.collection('agent_bank_accounts').doc(docId).delete();
+  }
+
+  Future<void> reorderAgentBankAccounts(int oldIndex, int newIndex) async {
+    if (oldIndex < newIndex) newIndex -= 1;
+    final item = _myAgentBankAccounts.removeAt(oldIndex);
+    _myAgentBankAccounts.insert(newIndex, item);
+    notifyListeners();
+    WriteBatch batch = _db.batch();
+    for (int i = 0; i < _myAgentBankAccounts.length; i++) {
+      batch.update(_db.collection('agent_bank_accounts').doc(_myAgentBankAccounts[i]['docId']), {'order': i});
+    }
+    await batch.commit();
   }
 
   // ==========================================
@@ -1151,7 +1246,7 @@ class SystemProvider extends ChangeNotifier {
       batch.set(transactionRef, {
         'agentPhone': agentPhone, 
         'agentName': agentName, 
-        'type': 'deposit', // تم التعديل لتكون إيداع رسمي
+        'type': 'deposit', 
         'title': 'إيداع رصيد (شحن)', 
         'amount': amount, 
         'reference': 'DEP-$requestId',
