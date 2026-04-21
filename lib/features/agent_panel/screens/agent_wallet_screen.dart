@@ -1,6 +1,8 @@
 import 'dart:convert'; 
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
@@ -31,14 +33,10 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   String _selectedDateFilter = 'الكل'; 
   bool _isBalanceHidden = false; 
 
-  // إعدادات الـ VIP (موجودة في الخلفية لتعمل عليها الترقية التلقائية)
-  double _vipThreshold = 50000.0;
-  String _autoVipCommission = '5%';
-
   @override
   void initState() {
     super.initState();
-    // 3 تبويبات: السجل والتحويل، الطلبات، حساباتي البنكية
+    // 3 تبويبات رئيسية حقيقية
     _tabController = TabController(length: 3, vsync: this);
   }
 
@@ -57,7 +55,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   }
 
   // ==========================================
-  // 1. نافذة طلب رصيد 📸
+  // 1. نافذة طلب رصيد (إرفاق السند يعمل بنجاح)
   // ==========================================
   void _showRequestBalanceDialog() {
     _play('click');
@@ -96,7 +94,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                       onChanged: (val) { _play('click'); selectedBank = val!; },
                     )
                   else
-                    const Text('لا توجد حسابات بنكية نشطة حالياً.', style: TextStyle(color: Colors.red)),
+                    const Text('لا توجد حسابات بنكية نشطة للإدارة حالياً.', style: TextStyle(color: Colors.red)),
                   
                   const SizedBox(height: 10),
                   TextField(controller: amountController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'المبلغ المحول', prefixIcon: Icon(Icons.attach_money), border: OutlineInputBorder())),
@@ -156,7 +154,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                             Navigator.pop(context); 
                             
                             _play('success');
-                            _showSnack('جاري إرسال الطلب... ⏳');
+                            _showSnack('جاري إرسال الطلب للمركز الرئيسي... ⏳');
                             
                             try {
                               if (sys.isCurrencyAutoRounding) amount = amount.ceilToDouble();
@@ -189,7 +187,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   }
 
   // ==========================================
-  // 2. نافذة التحويل المتقدمة 🛡️🔥
+  // 2. نافذة التحويل المتقدمة (نقاط، ضرائب، طرق دفع) 🛡️🔥
   // ==========================================
   void _showAdvancedTransferDialog() {
     _play('click');
@@ -209,7 +207,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
           bool isUserFound = false;
           Map<String, dynamic>? targetData; 
           String targetPhoneStr = '';
-          String selectedPaymentMethod = 'نقدي'; // الافتراضي
+          String selectedPaymentMethod = 'نقدي'; 
           
           double currentAmount = 0;
           double currentTax = 0;
@@ -285,9 +283,9 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                       
                       DropdownButtonFormField<String>(
                         value: selectedPaymentMethod,
-                        decoration: const InputDecoration(labelText: 'طريقة الاستلام الدفع', border: OutlineInputBorder()),
+                        decoration: const InputDecoration(labelText: 'طريقة الدفع/الاستلام', border: OutlineInputBorder()),
                         items: ['نقدي', 'تحويل بنكي', 'آجل'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                        onChanged: (v) => setStateDialog(() => selectedPaymentMethod = v!),
+                        onChanged: (v) => setStateDialog(() { selectedPaymentMethod = v!; calculateLive(); }),
                       ),
                       const SizedBox(height: 10),
                       TextField(controller: noteController, decoration: const InputDecoration(labelText: 'ملاحظة (اختياري)', border: OutlineInputBorder())),
@@ -300,18 +298,18 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('سيتم خصم: $currentAmount من رصيدك', style: const TextStyle(fontSize: 11)),
+                              Text('سيتم خصم: $currentAmount من رصيدك الأساسي', style: const TextStyle(fontSize: 11)),
                               Text('الضريبة/الرسوم المضافة: $taxValue ريال', style: const TextStyle(fontSize: 11, color: Colors.red)),
                               const Divider(),
                               Text('الإجمالي المطلوب (سداد/دين): $totalCost ريال', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
                               if (selectedPaymentMethod == 'آجل')
-                                const Text('⚠️ سيتم تقييد الإجمالي كدين على المستلم تلقائياً', style: TextStyle(fontSize: 10, color: Colors.orange, fontWeight: FontWeight.bold)),
+                                const Text('⚠️ سيتم تقييد الإجمالي كدين (آجل) على المستلم تلقائياً', style: TextStyle(fontSize: 10, color: Colors.orange, fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ),
 
                       const SizedBox(height: 15),
-                      TextField(controller: passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'كلمة مرورك (للتأكيد)', prefixIcon: Icon(Icons.lock, color: Colors.red), border: OutlineInputBorder())),
+                      TextField(controller: passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'كلمة مرورك (للتأكيد الآمن)', prefixIcon: Icon(Icons.lock, color: Colors.red), border: OutlineInputBorder())),
                     ]
                   ],
                 ),
@@ -358,13 +356,13 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                       _play('warning');
                       showDialog(context: context, builder: (ctx) => Directionality(textDirection: TextDirection.rtl, child: AlertDialog(
                         title: const Text('تأكيد التحويل ⚠️', style: TextStyle(fontWeight: FontWeight.bold)),
-                        content: Text('تأكيد تحويل $currentAmount (بإجمالي مطلوب $totalCost) إلى ${targetData?['name']}؟'),
+                        content: Text('تأكيد تحويل $currentAmount (بإجمالي $totalCost) إلى ${targetData?['name']}؟'),
                         actions: [
                           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('تراجع')),
                           ElevatedButton(
                             style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
                             onPressed: () async {
-                              Navigator.pop(ctx);
+                              Navigator.pop(ctx); // إغلاق التأكيد
                               setStateDialog(() => isSearching = true);
                               try {
                                 await sys.advancedSecureTransferBalance(
@@ -634,13 +632,16 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   }
 
   // ==========================================
-  // 5. نافذة عرض الإيصال الرقمي 🧾
+  // 5. نافذة عرض الإيصال الرقمي (ومشاركته كصورة 📸)
   // ==========================================
   void _showTransactionReceipt(Map<String, dynamic> txn, SystemProvider sys) {
     _play('click');
     bool isPlus = txn['type'] == 'income' || txn['type'] == 'deposit' || (txn['type'] == 'transfer' && txn['toPhone'] == sys.currentUserPhone);
     String dateStr = txn['timestamp'] != null ? DateFormat('yyyy-MM-dd hh:mm a').format((txn['timestamp'] as Timestamp).toDate()) : 'الآن';
     
+    // مفتاح لالتقاط صورة الويدجت
+    final GlobalKey receiptKey = GlobalKey();
+
     showDialog(
       context: context,
       builder: (c) => Directionality(
@@ -648,39 +649,42 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
         child: AlertDialog(
           contentPadding: EdgeInsets.zero,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          content: Container(
-            width: 300,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: Colors.grey.shade300)
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.receipt_long, size: 40, color: Colors.blueGrey),
-                const SizedBox(height: 5),
-                const Text('نظام كروت نت', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
-                const Text('إيصال عملية إلكترونية', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(thickness: 1.5)),
-                
-                Text(txn['title'] ?? 'عملية مالية', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black), textAlign: TextAlign.center),
-                const SizedBox(height: 15),
-                
-                _buildReceiptRow('المبلغ', '${txn['amount']} ريال', valueColor: isPlus ? Colors.green : Colors.red, isBold: true),
-                _buildReceiptRow('تاريخ العملية', dateStr),
-                _buildReceiptRow('نوع الحركة', isPlus ? 'إيداع (+)' : 'خصم (-)'),
-                if (txn['paymentMethod'] != null)
-                  _buildReceiptRow('طريقة الدفع', txn['paymentMethod']),
-                if (txn['targetName'] != null)
-                  _buildReceiptRow('الطرف الآخر', txn['targetName']),
-                if (txn['reference'] != null)
-                  _buildReceiptRow('رقم المرجع', txn['reference']),
+          content: RepaintBoundary(
+            key: receiptKey, // 👈 تم وضع الـ RepaintBoundary لالتقاط الصورة
+            child: Container(
+              width: 300,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: Colors.grey.shade300)
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.receipt_long, size: 40, color: Colors.blueGrey),
+                  const SizedBox(height: 5),
+                  const Text('نظام كروت نت', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
+                  const Text('إيصال عملية إلكترونية', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(thickness: 1.5)),
+                  
+                  Text(txn['title'] ?? 'عملية مالية', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black), textAlign: TextAlign.center),
+                  const SizedBox(height: 15),
+                  
+                  _buildReceiptRow('المبلغ', '${txn['amount']} ريال', valueColor: isPlus ? Colors.green : Colors.red, isBold: true),
+                  _buildReceiptRow('تاريخ العملية', dateStr),
+                  _buildReceiptRow('نوع الحركة', isPlus ? 'إيداع (+)' : 'خصم (-)'),
+                  if (txn['paymentMethod'] != null)
+                    _buildReceiptRow('طريقة الدفع', txn['paymentMethod']),
+                  if (txn['targetName'] != null)
+                    _buildReceiptRow('الطرف الآخر', txn['targetName']),
+                  if (txn['reference'] != null)
+                    _buildReceiptRow('رقم المرجع', txn['reference']),
 
-                const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(thickness: 1.5)), 
-                const Text('شكراً لاستخدامكم محفظة كروت نت', style: TextStyle(fontSize: 11, color: Colors.grey)),
-              ],
+                  const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(thickness: 1.5)), 
+                  const Text('شكراً لاستخدامكم محفظة كروت نت', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                ],
+              ),
             ),
           ),
           actionsAlignment: MainAxisAlignment.spaceEvenly,
@@ -688,20 +692,24 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
             TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('إغلاق', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))),
             ElevatedButton.icon(
                icon: const Icon(Icons.share, color: Colors.white, size: 16),
-               label: const Text('مشاركة الإيصال', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+               label: const Text('مشاركة كصورة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-               onPressed: () {
+               onPressed: () async {
                   _play('click');
-                  String shareText = '🧾 *إيصال عملية رقمية - كروت نت*\n';
-                  shareText += '----------------------------\n';
-                  shareText += 'البيان: ${txn['title']}\n';
-                  shareText += 'المبلغ: *${txn['amount']} ريال*\n';
-                  shareText += 'التاريخ: $dateStr\n';
-                  shareText += 'النوع: ${isPlus ? "إيداع" : "خصم"}\n';
-                  if(txn['paymentMethod'] != null) shareText += 'طريقة الدفع: ${txn['paymentMethod']}\n';
-                  if(txn['reference'] != null) shareText += 'المرجع: ${txn['reference']}\n';
-                  shareText += '----------------------------';
-                  Share.share(shareText);
+                  _showSnack('جاري تجهيز الصورة...');
+                  try {
+                    // 👈 تحويل الويدجت إلى صورة باستخدام dart:ui
+                    RenderRepaintBoundary boundary = receiptKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+                    ui.Image image = await boundary.toImage(pixelRatio: 3.0); // جودة عالية
+                    ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+                    Uint8List pngBytes = byteData!.buffer.asUint8List();
+                    
+                    // مشاركة الصورة كملف
+                    await Share.shareXFiles([XFile.fromData(pngBytes, mimeType: 'image/png', name: 'receipt.png')], text: 'إيصال عملية مالية - كروت نت');
+                  } catch (e) {
+                    _play('error');
+                    _showSnack('حدث خطأ أثناء التقاط الصورة', isErr: true);
+                  }
                }
             )
           ]
@@ -724,9 +732,9 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   }
 
   // ==========================================
-  // وظائف الموافقة والرفض لطلبات الشحن 
+  // وظائف الموافقة والرفض لطلبات الشحن (بدون VIP كما اتفقنا)
   // ==========================================
-  void _confirmApproveRequest(String reqId, String posPhone, double amount, bool isVip, SystemProvider sys, String userName) {
+  void _confirmApproveRequest(String reqId, String posPhone, double amount, SystemProvider sys, String userName) {
     _play('warning');
     showDialog(context: context, builder: (ctx) => Directionality(textDirection: TextDirection.rtl, child: AlertDialog(
       title: const Text('تأكيد الموافقة ✅', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
@@ -740,12 +748,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
             _play('click');
             try {
               await sys.agentAcceptUserRecharge(reqId, posPhone, amount);
-              if (isVip) {
-                await sys.upgradeUserToPos(posPhone: posPhone, storeName: 'محل $userName', location: 'غير محدد', creditLimit: 0.0, commission: _autoVipCommission, allowedCategories: []);
-                if(mounted) _showSnack('تم الموافقة وترقية الزبون إلى بقالة تلقائياً! 🌟');
-              } else {
-                if(mounted) _showSnack('تم إضافة الرصيد لمحفظة الزبون بنجاح ✅');
-              }
+              if(mounted) _showSnack('تم إضافة الرصيد لمحفظة الزبون بنجاح ✅');
               _play('success');
             } catch (e) {
               _play('error'); _showSnack('حدث خطأ أثناء الموافقة: $e', isErr: true);
@@ -796,11 +799,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
               for (var reqDoc in requests) {
                 var req = reqDoc.data() as Map<String, dynamic>;
                 double reqAmount = (req['amount'] ?? 0).toDouble();
-                bool isVip = reqAmount >= _vipThreshold; 
                 await sys.agentAcceptUserRecharge(reqDoc.id, req['userPhone'], reqAmount);
-                if (isVip) {
-                  await sys.upgradeUserToPos(posPhone: req['userPhone'], storeName: 'محل ${req['userName']}', location: 'غير محدد', creditLimit: 0.0, commission: _autoVipCommission, allowedCategories: []);
-                }
               }
               if (mounted) { Navigator.pop(context); _play('success'); _showSnack('تمت الموافقة على جميع الطلبات بنجاح! ✅'); }
             } catch (e) {
@@ -811,8 +810,9 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
         )
       ],
     )));
-    
-  }@override
+  }
+
+  @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
@@ -1121,11 +1121,10 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                   var req = requests[i].data() as Map<String, dynamic>;
                   String reqId = requests[i].id;
                   double reqAmount = (req['amount'] ?? 0).toDouble();
-                  bool isVip = reqAmount >= _vipThreshold; 
 
                   return Card(
-                    color: isVip ? Colors.amber.shade50 : Theme.of(context).cardColor,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: isVip ? Colors.amber : Colors.blue.shade200)),
+                    color: Theme.of(context).cardColor,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.blue.shade200)),
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: Column(
@@ -1133,8 +1132,8 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('${req['userName']} ${isVip ? "🌟" : ""}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                              Text(isVip ? 'يستحق الترقية لبقالة!' : 'طلب عادي', style: TextStyle(color: isVip ? Colors.orange : Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                              Text('${req['userName']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              const Text('طلب شحن', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
                             ],
                           ),
                           const SizedBox(height: 5),
@@ -1142,7 +1141,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text('رقم: ${req['userPhone']}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                              Text('المبلغ: $reqAmount ريال', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: isVip ? Colors.amber.shade800 : Colors.blue)),
+                              Text('المبلغ: $reqAmount ريال', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.blue)),
                             ],
                           ),
                           const Divider(),
@@ -1151,7 +1150,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                               Expanded(child: OutlinedButton(onPressed: () => _confirmRejectRequest(reqId), style: OutlinedButton.styleFrom(foregroundColor: Colors.red), child: const Text('رفض ❌'))),
                               const SizedBox(width: 10),
                               Expanded(flex: 2, child: ElevatedButton(
-                                onPressed: () => _confirmApproveRequest(reqId, req['userPhone'], reqAmount, isVip, sys, req['userName']),
+                                onPressed: () => _confirmApproveRequest(reqId, req['userPhone'], reqAmount, sys, req['userName']),
                                 style: ElevatedButton.styleFrom(backgroundColor: Colors.green), child: const Text('موافقة ✅', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                               )),
                             ],
@@ -1170,7 +1169,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   }
 
   // ==========================================
-  // التبويب الثالث: حساباتي البنكية 🏦 
+  // التبويب الثالث: حساباتي البنكية 🏦 (البديل للـ VIP)
   // ==========================================
   Widget _buildBankAccountsTab(SystemProvider sys) {
     var accounts = sys.myAgentBankAccounts;
