@@ -31,9 +31,9 @@ jobs:
       - name: تفعيل دعم الويب
         run: flutter create . --platforms web
 
-      # 👈 أمر بناء نسخة الويب (هنا تم التحديث الجذري لحل مشكلة Wasm) 🚀
+      # 👈 أمر بناء نسخة الويب (بدون web-renderer ومع إخفاء تحذيرات Wasm)
       - name: بناء نسخة الويب
-        run: flutter build web --base-href "/cards-net-app/" --web-renderer canvaskit
+        run: flutter build web --base-href "/cards-net-app/" --no-wasm-dry-run
 
       - name: النشر على رابط جيت هاب
         uses: peaceiris/actions-gh-pages@v3
