@@ -674,14 +674,14 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   }
 
   // ==========================================
-  // 5. نافذة الإيصال الرقمي (تصدير كصورة حقيقية 📸)
+  // 5. نافذة عرض الإيصال الرقمي (تصدير كصورة 📸)
   // ==========================================
   void _showTransactionReceipt(Map<String, dynamic> txn, SystemProvider sys) {
     _play('click');
     bool isPlus = txn['type'] == 'income' || txn['type'] == 'deposit' || (txn['type'] == 'transfer' && txn['toPhone'] == sys.currentUserPhone);
     String dateStr = txn['timestamp'] != null ? DateFormat('yyyy-MM-dd hh:mm a').format((txn['timestamp'] as Timestamp).toDate()) : 'الآن';
     
-    final GlobalKey receiptKey = GlobalKey(); // مفتاح التقاط الصورة
+    final GlobalKey receiptKey = GlobalKey(); 
 
     showDialog(
       context: context,
@@ -696,7 +696,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
               width: 300,
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.white, // خلفية بيضاء للصورة
+                color: Colors.white, 
                 borderRadius: BorderRadius.circular(15),
                 border: Border.all(color: Colors.grey.shade300)
               ),
@@ -741,7 +741,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                   _showSnack('جاري تجهيز الصورة للمشاركة... ⏳');
                   try {
                     RenderRepaintBoundary boundary = receiptKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
-                    ui.Image image = await boundary.toImage(pixelRatio: 3.0); // دقة عالية
+                    ui.Image image = await boundary.toImage(pixelRatio: 3.0); 
                     ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
                     Uint8List pngBytes = byteData!.buffer.asUint8List();
                     
@@ -773,7 +773,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   }
 
   // ==========================================
-  // وظائف الموافقة والرفض لطلبات الشحن (تم التطوير)
+  // وظائف الموافقة والرفض لطلبات الشحن 
   // ==========================================
   void _confirmApproveRequest(String reqId, String posPhone, double amount, SystemProvider sys, String userName) {
     _play('warning');
@@ -803,8 +803,11 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     )));
   }
 
+  // 👈 تم الإصلاح هنا بتعريف المتغير sys بشكل صحيح لحل خطأ الـ Build
   void _confirmRejectRequest(String reqId) {
     _play('warning');
+    final sys = Provider.of<SystemProvider>(context, listen: false); 
+    
     showDialog(context: context, builder: (ctx) => Directionality(textDirection: TextDirection.rtl, child: AlertDialog(
       title: const Text('رفض الطلب ❌', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
       content: const Text('هل أنت متأكد أنك تريد رفض هذا الطلب وإلغاءه؟'),
@@ -870,7 +873,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   }
 
   // ==========================================
-  // 🎨 بناء الشاشة بنظام NestedScrollView (لإخفاء الجزء العلوي عند التمرير)
+  // 🎨 بناء الشاشة بنظام NestedScrollView 
   // ==========================================
   @override
   Widget build(BuildContext context) {
@@ -930,7 +933,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        // 👈 استخدام NestedScrollView لكي يرتفع الرأس للأعلى عند التمرير
         child: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) {
             return [
@@ -970,7 +972,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                   ),
                 ),
               ),
-              // 👈 شريط التبويبات يظل ثابتاً في الأعلى
               SliverPersistentHeader(
                 pinned: true,
                 delegate: _SliverAppBarDelegate(
