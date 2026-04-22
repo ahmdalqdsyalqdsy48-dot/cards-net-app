@@ -36,6 +36,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   @override
   void initState() {
     super.initState();
+    // تم التعديل إلى تبويبين فقط كما تم الاتفاق
     _tabController = TabController(length: 2, vsync: this);
   }
 
@@ -220,7 +221,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                           _showSnack('جاري إرسال الطلب للمركز الرئيسي... ⏳');
                           
                           try {
-                            // 👈 استدعاء الدالة الجديدة الخاصة بالـ SaaS في Provider
                             await sys.submitSaaSRechargeRequest(
                               quotaAmount: quota,
                               feeAmount: calculatedFee,
@@ -422,9 +422,9 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                             const Divider(),
                             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('إجمالي مبلغ المستلم:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)), Text('$totalCost ريال', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 16))]),
                             if (selectedPaymentMethod == 'آجل')
-                              const Padding(
-                                padding: EdgeInsets.only(top: 5),
-                                child: Text('⚠️ سيتم تقييد الإجمالي ($totalCost) كـ "دين آجل" على المستلم تلقائياً.', style: TextStyle(fontSize: 10, color: Colors.deepOrange, fontWeight: FontWeight.bold)),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 5),
+                                child: Text('⚠️ سيتم تقييد الإجمالي ($totalCost) كـ "دين آجل" على المستلم تلقائياً.', style: const TextStyle(fontSize: 10, color: Colors.deepOrange, fontWeight: FontWeight.bold)),
                               ),
                           ],
                         ),
@@ -508,7 +508,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     final Color cardColor = Theme.of(context).cardColor;
     final Color textColor = themeProvider.adaptiveTextColor;
 
-    // جلب اسم النظام العالمي المتغير من Provider بدلاً من النص الثابت
     final String globalAppName = sys.appName; 
 
     final List<Map<String, dynamic>> realTransactions = sys.transactionsLedger.where((t) {
@@ -646,7 +645,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
               _buildQuickBtn(Icons.send_to_mobile, 'تحويل رصيد', Colors.orange, _showAdvancedTransferDialog),
               _buildQuickBtn(Icons.document_scanner, 'الكشف المتقدم', Colors.blue, () {
                 _play('click');
-                // توجيه الوكيل لشاشة الكشف المتقدم التي أصلحناها سابقاً
                 Navigator.pushNamed(context, '/advanced_statement_screen');
               }),
             ],
@@ -861,13 +859,13 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                 await sys.agentAcceptUserRecharge(reqDoc.id, req['userPhone'], reqAmount);
               }
               if (mounted) { 
-                Navigator.pop(context); // close loader
+                Navigator.pop(context); 
                 _play('success'); 
                 _showSnack('تمت الموافقة على جميع الطلبات بنجاح! ✅'); 
               }
             } catch (e) {
               if (mounted) { 
-                Navigator.pop(context); // close loader
+                Navigator.pop(context); 
                 _play('error'); 
                 _showSnack('حدث خطأ أثناء المعالجة الجماعية', isErr: true); 
               }
