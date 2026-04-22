@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:intl/intl.dart' hide TextDirection;
+import 'package:intl/intl.dart' as intl;
 import 'package:share_plus/share_plus.dart'; 
 
 import '../../../core/providers/system_provider.dart';
@@ -47,7 +47,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
 
   void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
 
-  // دالة التفقيط المبسطة (تحويل الأرقام لنص عربي)
   String _convertNumberToArabicWords(double number) {
     if (number == 0) return 'صفر';
     int num = number.toInt();
@@ -56,18 +55,14 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     if (num > 2000 && num <= 10000) return '${(num/1000).toInt()} آلاف';
     if (num > 10000 && num < 1000000 && num % 1000 == 0) return '${(num/1000).toInt()} ألف';
     if (num == 1000000) return 'مليون';
-    return ''; // للأرقام المعقدة، نكتفي بالفواصل فقط لجمال المظهر
+    return ''; 
   }
 
-  // ==========================================
-  // 1. نافذة طلب حصة (SaaS) العصرية 🔥
-  // ==========================================
   void _showRequestBalanceDialog({Map<String, dynamic>? existingRequest}) {
     _play('click');
     final sys = Provider.of<SystemProvider>(context, listen: false);
     final activeBanks = sys.bankAccounts.where((bank) => bank['status'] == 'نشط').toList();
     
-    // جلب بيانات الوكيل لمعرفة النسبة الحقيقية التي فرضها المالك
     final currentUserData = sys.usersList.firstWhere((u) => u['phone'] == sys.currentUserPhone, orElse: () => {});
     double feePercentage = double.tryParse(currentUserData['feePercentage']?.toString() ?? currentUserData['systemFee']?.toString() ?? '0') ?? 0.0;
 
@@ -92,7 +87,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
           textDirection: TextDirection.rtl,
           child: AlertDialog(
             backgroundColor: Theme.of(context).cardColor,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), // حواف منحنية
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             titlePadding: const EdgeInsets.only(top: 20, right: 20, left: 20, bottom: 10),
             contentPadding: const EdgeInsets.symmetric(horizontal: 20),
             title: Row(
@@ -108,7 +103,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
             ),
             content: SizedBox(
               width: double.maxFinite,
-              // السماح بالتمرير بدون إخفاء الكيبورد
               child: SingleChildScrollView(
                 keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
                 physics: const BouncingScrollPhysics(),
@@ -137,7 +131,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                       )
                     ),
                     
-                    // الفواصل والتفقيط الذكي
                     if (currentQuota > 0)
                       Padding(
                         padding: const EdgeInsets.only(top: 5, right: 10),
@@ -147,13 +140,12 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                         ),
                       ),
                     
-                    // عرض النسبة فقط إذا كانت أكبر من صفر
                     if (calculatedFee > 0)
                       Container(
                         margin: const EdgeInsets.only(top: 15, bottom: 10),
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          gradient: LinearAxisGradient(colors: [Colors.red.shade50, Colors.white]),
+                          gradient: LinearGradient(colors: [Colors.red.shade50, Colors.white]),
                           borderRadius: BorderRadius.circular(12), 
                           border: Border.all(color: Colors.red.shade200)
                         ),
@@ -184,7 +176,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                         },
                       ),
                       
-                      // بطاقة تفاصيل البنك الذكية للنسخ
                       if (selectedBankDetails != null && selectedBankDetails!.isNotEmpty)
                         Container(
                           margin: const EdgeInsets.only(top: 10),
@@ -285,13 +276,12 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                   if (sourceController.text.isEmpty || refController.text.isEmpty) { _play('error'); _showSnack('يرجى إكمال بيانات التحويل!', isErr: true); return; }
                   if (base64Image == null) { _play('error'); _showSnack('يجب إرفاق السند!', isErr: true); return; }
 
-                  Navigator.pop(context); // إغلاق النافذة
+                  Navigator.pop(context);
                   _play('success');
                   _showSnack('جاري إرسال الطلب للمركز الرئيسي... ⏳');
                   
                   try {
                     if (existingRequest != null) {
-                      // في حالة التعديل، نلغي القديم وننشئ جديد
                       await _db.collection('recharge_requests').doc(existingRequest['docId']).delete();
                     }
                     await sys.submitSaaSRechargeRequest(
@@ -317,10 +307,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     );
   }
 
-  // ==========================================
-  // 2. نافذة التحويل للغير
-  // ==========================================
-  // ... (متبقي الكود الخاص بـ _showAdvancedTransferDialog كما هو لأنه سليم وممتاز)
   void _showAdvancedTransferDialog() {
     _play('click');
     final sys = Provider.of<SystemProvider>(context, listen: false);
@@ -507,9 +493,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     );
   }
 
-  // ==========================================
-  // 3. بناء الشاشة الرئيسية (Tabs)
-  // ==========================================
   @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
@@ -578,13 +561,11 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     );
   }
 
-  // التبويب الأول (لوحة الوكيل وطلباته المعلقة)
   Widget _buildMainDashboardTab(SystemProvider sys) {
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       child: Column(
         children: [
-          // أزرار سريعة
           Container(
             padding: const EdgeInsets.symmetric(vertical: 20),
             margin: const EdgeInsets.all(16),
@@ -599,7 +580,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
             ),
           ),
           
-          // قسم "طلباتي المعلقة" (My Pending SaaS Requests)
           StreamBuilder<QuerySnapshot>(
             stream: _db.collection('recharge_requests').where('userPhone', isEqualTo: sys.currentUserPhone).where('type', isEqualTo: 'saas_quota').where('status', isEqualTo: 'قيد الانتظار').snapshots(),
             builder: (context, snapshot) {
@@ -663,7 +643,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     );
   }
 
-  // التبويب الثاني (طلبات نقاط البيع للوكيل)
   Widget _buildRequestsFromPosTab(SystemProvider sys) {
     return StreamBuilder<QuerySnapshot>(
       stream: _db.collection('user_recharges').where('targetPhone', isEqualTo: sys.currentUserPhone).where('status', isEqualTo: 'قيد الانتظار').snapshots(),
