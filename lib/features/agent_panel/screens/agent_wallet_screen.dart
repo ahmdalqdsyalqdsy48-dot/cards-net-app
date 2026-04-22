@@ -1,6 +1,7 @@
 import 'dart:convert'; 
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'dart:async'; // 👈 ضروري لمؤقت البحث التلقائي
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -63,8 +64,11 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     final sys = Provider.of<SystemProvider>(context, listen: false);
     final activeBanks = sys.bankAccounts.where((bank) => bank['status'] == 'نشط').toList();
     
+    // 👈 قراءة النسبة الحقيقية للوكيل كما حددها المالك (وتجاهل أي نصوص مثل علامة %)
     final currentUserData = sys.usersList.firstWhere((u) => u['phone'] == sys.currentUserPhone, orElse: () => {});
-    double feePercentage = double.tryParse(currentUserData['feePercentage']?.toString() ?? currentUserData['systemFee']?.toString() ?? '0') ?? 0.0;
+    String rawMargin = currentUserData['profitMargin']?.toString() ?? '0';
+    rawMargin = rawMargin.replaceAll(RegExp(r'[^0-9.]'), ''); 
+    double feePercentage = double.tryParse(rawMargin) ?? 0.0;
 
     String? selectedBankName = existingRequest != null ? existingRequest['bankName'] : (activeBanks.isNotEmpty ? activeBanks.first['bankName'] : null); 
     Map<String, dynamic>? selectedBankDetails = activeBanks.firstWhere((b) => b['bankName'] == selectedBankName, orElse: () => <String, dynamic>{});
@@ -320,6 +324,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     bool isSearching = false;
     Map<String, dynamic>? targetData; 
     String selectedPaymentMethod = 'نقدي'; 
+    Timer? _searchDebounce; // 👈 مؤقت البحث الذكي
     
     double currentAmount = 0;
     double currentTax = 0;
@@ -359,41 +364,45 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                   children: [
                     const Text('رقم المستلم:', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 5),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: phoneController, 
-                            keyboardType: TextInputType.phone, 
-                            decoration: InputDecoration(hintText: 'أدخل الرقم...', filled: true, fillColor: Colors.grey.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none))
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                          onPressed: isSearching ? null : () async {
-                            String targetPhone = phoneController.text.trim();
-                            if (targetPhone.isEmpty || targetPhone == sys.currentUserPhone) { 
-                              _play('error'); _showSnack('رقم غير صالح!', isErr: true); return; 
-                            }
-                            setStateDialog(() { isSearching = true; targetData = null; });
-                            try {
-                              var data = await sys.searchUserForTransfer(targetPhone);
-                              if (data != null) {
-                                _play('success');
-                                setStateDialog(() { targetData = data; isSearching = false; });
-                              } else {
-                                setStateDialog(() { isSearching = false; }); 
-                                _play('error'); _showSnack('الرقم غير موجود!', isErr: true);
-                              }
-                            } catch (e) {
+                    
+                    // 👈 حقل البحث الذكي (Auto-Search)
+                    TextField(
+                      controller: phoneController, 
+                      keyboardType: TextInputType.phone, 
+                      onChanged: (val) {
+                        if (_searchDebounce?.isActive ?? false) _searchDebounce!.cancel();
+                        _searchDebounce = Timer(const Duration(milliseconds: 600), () async {
+                          String targetPhone = val.trim();
+                          if (targetPhone.isEmpty) { 
+                            setStateDialog(() { targetData = null; isSearching = false; }); return; 
+                          }
+                          if (targetPhone == sys.currentUserPhone) { 
+                            _showSnack('لا يمكنك التحويل لنفسك!', isErr: true); return; 
+                          }
+                          
+                          setStateDialog(() { isSearching = true; targetData = null; });
+                          try {
+                            var data = await sys.searchUserForTransfer(targetPhone);
+                            if (data != null) {
+                              _play('success');
+                              setStateDialog(() { targetData = data; isSearching = false; });
+                            } else {
                               setStateDialog(() { isSearching = false; }); 
-                              _play('error'); _showSnack('فشل البحث', isErr: true);
                             }
-                          },
-                          child: isSearching ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.search, color: Colors.white),
-                        )
-                      ],
+                          } catch (e) {
+                            setStateDialog(() { isSearching = false; }); 
+                          }
+                        });
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'أدخل الرقم ليتم البحث تلقائياً...', 
+                        filled: true, 
+                        fillColor: Colors.grey.withOpacity(0.05), 
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                        suffixIcon: isSearching 
+                          ? const Padding(padding: EdgeInsets.all(12.0), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange)))
+                          : const Icon(Icons.search, color: Colors.grey)
+                      )
                     ),
                     const SizedBox(height: 10),
 
