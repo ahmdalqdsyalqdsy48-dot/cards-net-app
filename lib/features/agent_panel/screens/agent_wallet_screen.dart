@@ -36,7 +36,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
   @override
   void initState() {
     super.initState();
-    // تم التعديل إلى تبويبين فقط كما تم الاتفاق
     _tabController = TabController(length: 2, vsync: this);
   }
 
@@ -53,9 +52,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
 
   void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
 
-  // ==========================================
-  // 1. نافذة طلب حصة (SaaS) ودفع الرسوم التشغيلية
-  // ==========================================
   void _showRequestBalanceDialog() {
     _play('click');
     final sys = Provider.of<SystemProvider>(context, listen: false);
@@ -70,7 +66,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     
     String transferType = 'تطبيق بنكي'; 
     String? base64Image;
-    double feePercentage = 1.0; // نسبة رسوم النظام (يجب جلبها من إعدادات الوكيل مستقبلاً، وضعناها 1% كمثال)
+    double feePercentage = 1.0; 
     double calculatedFee = 0.0;
 
     showDialog(
@@ -195,7 +191,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
               ),
             ),
             actions: [
-              TextButton(onPressed: () { _play('click'); Navigator.pop(context); }, child: const Text('إلغاء')),
+              TextButton(onPressed: () { _play('click'); Navigator.pop(context); }, child: const Text('إلغاء', style: TextStyle(color: Colors.grey))),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                 onPressed: activeBanks.isEmpty ? null : () {
@@ -249,9 +245,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     );
   }
 
-  // ==========================================
-  // 2. نافذة التحويل المتقدمة 
-  // ==========================================
   void _showAdvancedTransferDialog() {
     _play('click');
     final sys = Provider.of<SystemProvider>(context, listen: false);
@@ -351,7 +344,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                     ),
                     const SizedBox(height: 10),
 
-                    // لوحة عرض بيانات المستلم
                     if (targetData != null)
                       Container(
                         margin: const EdgeInsets.only(bottom: 15),
@@ -497,9 +489,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     );
   }
 
-  // ==========================================
-  // 🎨 بناء الشاشة بنظام NestedScrollView 
-  // ==========================================
   @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
@@ -629,9 +618,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     );
   }
 
-  // ==========================================
-  // التبويب الأول: أزرار العمليات 
-  // ==========================================
   Widget _buildWalletAndLedgerTab(SystemProvider sys, List<Map<String, dynamic>> realTransactions, bool isDark, Color cardColor, Color textColor) {
     return Column(
       children: [
@@ -667,9 +653,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     );
   }
 
-  // ==========================================
-  // التبويب الثاني: طلبات الشحن
-  // ==========================================
   Widget _buildRequestsTab(SystemProvider sys) {
     return StreamBuilder<QuerySnapshot>(
       stream: _db.collection('user_recharges').where('targetPhone', isEqualTo: sys.currentUserPhone).where('status', isEqualTo: 'قيد الانتظار').snapshots(),
@@ -763,9 +746,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
     );
   }
 
-  // ==========================================
-  // واجهات مساعدة وموافقة الطلبات
-  // ==========================================
   Widget _buildQuickBtn(IconData icon, String label, Color iconColor, VoidCallback onTap) {
     final textColor = Provider.of<ThemeProvider>(context).adaptiveTextColor;
     return InkWell(
@@ -859,13 +839,13 @@ class _AgentWalletScreenState extends State<AgentWalletScreen> with SingleTicker
                 await sys.agentAcceptUserRecharge(reqDoc.id, req['userPhone'], reqAmount);
               }
               if (mounted) { 
-                Navigator.pop(context); 
+                Navigator.pop(context); // close loader
                 _play('success'); 
                 _showSnack('تمت الموافقة على جميع الطلبات بنجاح! ✅'); 
               }
             } catch (e) {
               if (mounted) { 
-                Navigator.pop(context); 
+                Navigator.pop(context); // close loader
                 _play('error'); 
                 _showSnack('حدث خطأ أثناء المعالجة الجماعية', isErr: true); 
               }
