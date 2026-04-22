@@ -1,45 +1,38 @@
-name: cards_net_app
-description: A new Flutter project.
-publish_to: 'none'
-version: 1.0.0+1
+name: Deploy Flutter Web to GitHub Pages
 
-environment:
-  sdk: '>=2.17.0 <4.0.0'
+on:
+  push:
+    branches:
+      - main
+      - master
 
-dependencies:
-  flutter:
-    sdk: flutter
-  cupertino_icons: ^1.0.2
-  provider: ^6.1.2 
-  local_auth: ^2.1.6 
-  flutter_colorpicker: ^1.1.0 
-  shared_preferences: ^2.2.2    
-  firebase_core: ^3.6.0 
-  cloud_firestore: ^5.4.4 
-  firebase_auth: ^5.3.1  
-  pdf: ^3.11.0          
-  printing: ^5.12.0     
-  intl: ^0.19.0         
-  marquee: ^2.2.3        
-  image_picker: ^1.1.2
-  path_provider: ^2.1.2
-  excel: ^4.0.3
-  google_fonts: ^6.1.0  
-  audioplayers: ^6.0.0  
-  url_launcher: ^6.2.5
-  http: ^1.2.0 
-  # 👇 الإصدار الذي يحل التعارض مع الفايربيز
-  share_plus: ^13.1.0 
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
 
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  flutter_lints: ^2.0.0
+    steps:
+      - name: جلب الكود من المستودع
+        uses: actions/checkout@v3
 
-flutter:
-  uses-material-design: true
+      - name: تجهيز بيئة فلاتر
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
 
-  assets:
-    - assets/sounds/
-    # - assets/fonts/Cairo-Regular.ttf
-    # - assets/fonts/Cairo-Bold.ttf
+      - name: تنظيف بيئة العمل
+        run: flutter clean
+
+      - name: تحميل المكاتب والإضافات
+        run: flutter pub get
+
+      - name: تفعيل دعم الويب
+        run: flutter create . --platforms web
+
+      - name: بناء نسخة الويب
+        run: flutter build web --base-href "/cards-net-app/" --no-wasm-dry-run
+
+      - name: النشر على رابط جيت هاب
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build/web
