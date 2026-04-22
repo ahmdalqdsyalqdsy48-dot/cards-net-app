@@ -25,11 +25,11 @@ dependencies:
   path_provider: ^2.1.2
   excel: ^4.0.3
   google_fonts: ^6.1.0  
-  # 👇 الإصدارات الحديثة المتوافقة مع بناء الويب
   audioplayers: ^6.0.0  
   url_launcher: ^6.2.5
-  http: ^1.2.0
-  share_plus: ^9.0.0
+  http: ^1.2.0 
+  # 👇 الإصدار الذي يحل التعارض
+  share_plus: ^13.1.0 
 
 dev_dependencies:
   flutter_test:
