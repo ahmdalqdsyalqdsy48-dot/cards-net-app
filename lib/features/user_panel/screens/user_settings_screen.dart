@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // 👈 لمؤثرات الصوت والاهتزاز الحقيقية (النظام)
-import 'package:flutter/foundation.dart' show kIsWeb; // 👈 لمعرفة هل نحن على الويب
+import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
-import 'package:flutter_colorpicker/flutter_colorpicker.dart'; // 👈 مكتبة عجلة الألوان
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_user_drawer.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/providers/system_provider.dart';
-
-import '../../auth/screens/sso_login_screen.dart'; 
+import '../../auth/screens/sso_login_screen.dart';
 
 class UserSettingsScreen extends StatefulWidget {
   const UserSettingsScreen({super.key});
@@ -19,132 +19,202 @@ class UserSettingsScreen extends StatefulWidget {
 }
 
 class _UserSettingsScreenState extends State<UserSettingsScreen> {
-  bool _appSounds = true; 
+  // --- الإعدادات المحفوظة محلياً ---
+  bool _appSounds = true;
+  double _dailyLimit = 0.0;
+  String _userPin = '';
 
-  // الألوان التي ستغير خلفية التطبيق بالكامل
-  final List<Color> _availableColors = [
-    Colors.blue, Colors.teal, Colors.green, Colors.orange, Colors.deepPurple, Colors.pink, Colors.redAccent
-  ];
+  // --- لون تفضيلي خاص بالمستخدم (يُحفظ في Firestore وليس في ThemeProvider) ---
+  Color _userPreferredColor = Colors.blue; // اللون الافتراضي
+  bool _isLoading = false;
 
-  // دالة تشغيل الصوت والاهتزاز (آمنة للويب والهواتف ومدمجة في النظام)
-  void _playFeedback() {
-    if (_appSounds) {
-      SystemSound.play(SystemSoundType.click);
-      HapticFeedback.lightImpact(); // اهتزاز خفيف عند النقر
+  @override
+  void initState() {
+    super.initState();
+    _loadLocalSettings();
+    _loadUserColorPreference();
+  }
+
+  Future<void> _loadLocalSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _appSounds = prefs.getBool('user_app_sounds') ?? true;
+      _dailyLimit = prefs.getDouble('user_daily_limit') ?? 0.0;
+      _userPin = prefs.getString('user_pin') ?? '';
+    });
+  }
+
+  Future<void> _loadUserColorPreference() async {
+    final sys = Provider.of<SystemProvider>(context, listen: false);
+    // نفترض أن SystemProvider لديه دالة لجلب اللون المفضل للمستخدم
+    final savedColor = await sys.getUserPreferredColor();
+    if (savedColor != null) {
+      setState(() => _userPreferredColor = savedColor);
     }
+  }
+
+  Future<void> _saveUserColorPreference(Color color) async {
+    final sys = Provider.of<SystemProvider>(context, listen: false);
+    await sys.saveUserPreferredColor(color);
+    setState(() => _userPreferredColor = color);
+  }
+
+  void _playFeedback() {
+    if (_appSounds && !kIsWeb) {
+      SystemSound.play(SystemSoundType.click);
+      HapticFeedback.lightImpact();
+    }
+  }
+
+  void _showToast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, textDirection: TextDirection.rtl),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final systemProvider = Provider.of<SystemProvider>(context);
-    
-    final primaryColor = themeProvider.primaryColor; 
-    final isDark = themeProvider.isDarkMode;
 
+    final isDark = themeProvider.isDarkMode;
     final userName = systemProvider.currentUserName;
     final userPhone = systemProvider.currentUserPhone;
-    final useBiometrics = systemProvider.isBiometricCurrentlyEnabled; 
+    final useBiometrics = systemProvider.isBiometricCurrentlyEnabled;
+
+    // نستخدم اللون المفضل للمستخدم بدلاً من لون ThemeProvider العام
+    final primaryColor = _userPreferredColor;
 
     return Scaffold(
-      // 👈 هنا السحر: تغيير خلفية التطبيق بالكامل بناءً على اللون المختار
       backgroundColor: isDark ? primaryColor.withOpacity(0.15) : primaryColor.withOpacity(0.05),
-      appBar: const CustomHeader(title: 'الإعدادات والمظهر'),
+      appBar: CustomHeader(
+        title: 'الإعدادات والمظهر',
+        // يمكن تمرير لون مخصص للـ AppBar إذا أردت، لكننا نتركه كما هو
+      ),
       drawer: CustomUserDrawer(userName: userName, phoneNumber: userPhone),
       body: Directionality(
-        textDirection: TextDirection.rtl, 
+        textDirection: TextDirection.rtl,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
             _buildProfileHeader(primaryColor, userName, userPhone),
             const SizedBox(height: 20),
 
-            // زر التخصيص السحري الشامل
-            _buildCustomizationButton(themeProvider),
+            // --- بطاقة تخصيص اللون الشخصي (جديدة) ---
+            _buildPersonalColorCard(primaryColor, isDark),
             const SizedBox(height: 15),
 
             // المظهر والتفضيلات
             _buildSectionTitle('المظهر والتفضيلات 🎨', primaryColor),
             _buildSettingsCard([
               _buildSwitchTile(
-                Icons.dark_mode, 'الوضع الليلي', 'تفعيل المظهر الداكن', 
-                isDark, 
+                Icons.dark_mode,
+                'الوضع الليلي',
+                'تفعيل المظهر الداكن',
+                isDark,
                 (val) {
                   _playFeedback();
                   themeProvider.toggleTheme(val);
-                }, primaryColor
+                },
+                primaryColor,
               ),
               _buildSwitchTile(
-                Icons.volume_up, 'الأصوات التفاعلية', 'تشغيل الأصوات والاهتزاز عند النقر', 
-                _appSounds, 
-                (val) {
+                Icons.volume_up,
+                'الأصوات التفاعلية',
+                'تشغيل الأصوات والاهتزاز عند النقر',
+                _appSounds,
+                (val) async {
                   setState(() => _appSounds = val);
-                  if (val) {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('user_app_sounds', val);
+                  if (val && !kIsWeb) {
                     SystemSound.play(SystemSoundType.click);
                     HapticFeedback.heavyImpact();
                   }
                   _showToast(val ? 'تم تفعيل الأصوات 🔊' : 'تم كتم الأصوات 🔇');
-                }, primaryColor
+                },
+                primaryColor,
               ),
-              const Padding(
-                padding: EdgeInsets.only(right: 16, top: 10, bottom: 5),
-                child: Text('الألوان السريعة:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              ),
-              _buildColorPicker(themeProvider),
             ], primaryColor, isDark),
 
             // الأمان والدخول
             _buildSectionTitle('الأمان والدخول 🛡️', primaryColor),
             _buildSettingsCard([
-              _buildListTile(Icons.password, 'إعداد رمز PIN (6 أرقام)', 'للدخول السريع وتأكيد المشتريات', primaryColor, onTap: () {
-                _playFeedback();
-                _showPinDialog();
-              }),
+              _buildListTile(
+                Icons.password,
+                'إعداد رمز PIN (6 أرقام)',
+                _userPin.isNotEmpty ? 'تم تعيين رمز PIN' : 'للدخول السريع وتأكيد المشتريات',
+                primaryColor,
+                onTap: () => _showPinDialog(),
+              ),
               _buildSwitchTile(
-                Icons.fingerprint, 'الدخول بالبصمة', 'استخدام بصمة الإصبع أو الوجه', 
-                useBiometrics, 
+                Icons.fingerprint,
+                'الدخول بالبصمة',
+                'استخدام بصمة الإصبع أو الوجه',
+                useBiometrics,
                 (val) {
                   _playFeedback();
-                  // منع البصمة على الويب برمجياً لتجنب الأخطاء
                   if (kIsWeb) {
                     _showToast('عذراً، البصمة مدعومة فقط على الهواتف (Android/iOS) وليس على الويب!');
-                    return; 
+                    return;
                   }
-                  systemProvider.toggleBiometric(val); 
+                  systemProvider.toggleBiometric(val);
                   _showToast(val ? 'تم تفعيل الدخول بالبصمة 👆' : 'تم إيقاف الدخول بالبصمة');
-                }, primaryColor
+                },
+                primaryColor,
               ),
               const Divider(height: 1),
-              _buildListTile(Icons.lock_reset, 'تغيير كلمة المرور الأساسية', '', primaryColor, onTap: () {
-                _playFeedback();
-                _showPasswordDialog(systemProvider); 
-              }),
-              _buildListTile(Icons.devices, 'إدارة الأجهزة المتصلة', 'تسجيل الخروج من الهواتف الأخرى', primaryColor, onTap: () {
-                _playFeedback();
-                _showToast('لا يوجد أجهزة أخرى متصلة بحسابك حالياً.');
-              }),
+              _buildListTile(
+                Icons.lock_reset,
+                'تغيير كلمة المرور الأساسية',
+                '',
+                primaryColor,
+                onTap: () => _showPasswordDialog(systemProvider),
+              ),
+              _buildListTile(
+                Icons.devices,
+                'إدارة الأجهزة المتصلة',
+                'تسجيل الخروج من الهواتف الأخرى',
+                primaryColor,
+                onTap: () {
+                  _playFeedback();
+                  _showToast('لا يوجد أجهزة أخرى متصلة بحسابك حالياً.');
+                },
+              ),
             ], primaryColor, isDark),
 
             // الإعدادات المالية
             _buildSectionTitle('الإعدادات المالية 💳', primaryColor),
             _buildSettingsCard([
-              _buildListTile(Icons.security_update_warning, 'حدود التحويل والمشتريات', 'تعيين سقف يومي لحماية رصيدك', primaryColor, onTap: () {
-                _playFeedback();
-                _showLimitDialog();
-              }),
+              _buildListTile(
+                Icons.security_update_warning,
+                'حدود التحويل والمشتريات',
+                _dailyLimit > 0 ? 'الحد اليومي: ${_dailyLimit.toStringAsFixed(0)} ريال' : 'تعيين سقف يومي لحماية رصيدك',
+                primaryColor,
+                onTap: () => _showLimitDialog(),
+              ),
             ], primaryColor, isDark),
 
             // الحساب والمعلومات
             _buildSectionTitle('الحساب والمعلومات ℹ️', primaryColor),
             _buildSettingsCard([
-              _buildListTile(Icons.logout, 'تسجيل الخروج', '', Colors.orange, onTap: () {
-                _playFeedback();
-                _showLogoutDialog();
-              }),
-              _buildListTile(Icons.delete_forever, 'حذف الحساب نهائياً', 'لا يمكن التراجع عن هذه الخطوة', Colors.red, onTap: () {
-                _playFeedback();
-                _showDeleteAccountDialog();
-              }),
+              _buildListTile(
+                Icons.logout,
+                'تسجيل الخروج',
+                '',
+                Colors.orange,
+                onTap: () => _showLogoutDialog(),
+              ),
+              _buildListTile(
+                Icons.delete_forever,
+                'حذف الحساب نهائياً',
+                'لا يمكن التراجع عن هذه الخطوة',
+                Colors.red,
+                onTap: () => _showDeleteAccountDialog(systemProvider),
+              ),
             ], primaryColor, isDark),
             const SizedBox(height: 20),
           ],
@@ -154,27 +224,188 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
   }
 
   // =========================================================
-  // دوال مساعدة لإنشاء الواجهة بشكل ديناميكي
+  // بطاقة تخصيص اللون الشخصي (تحل محل دوائر الألوان الثابتة)
   // =========================================================
+  Widget _buildPersonalColorCard(Color currentColor, bool isDark) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.color_lens, color: currentColor),
+                const SizedBox(width: 8),
+                const Text(
+                  'لون لوحة التحكم الشخصية',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'اختر لوناً ينعكس على جميع شاشاتك فقط، دون التأثير على المستخدمين الآخرين.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                // زر اختيار اللون من العجلة (دائرة واحدة)
+                Column(
+                  children: [
+                    GestureDetector(
+                      onTap: () => _openColorWheelPicker(),
+                      child: Container(
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const SweepGradient(
+                            colors: [Colors.red, Colors.yellow, Colors.green, Colors.blue, Colors.purple, Colors.red],
+                          ),
+                          border: Border.all(color: Colors.grey.shade300, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: currentColor,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text('اختر لون', style: TextStyle(fontSize: 12)),
+                  ],
+                ),
+                // زر استعادة اللون الافتراضي (أبيض في الوضع الفاتح، لون أساسي في الداكن)
+                Column(
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () => _resetToDefaultColor(isDark),
+                      icon: const Icon(Icons.restore, size: 20),
+                      label: const Text('اللون الافتراضي'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+                        foregroundColor: isDark ? Colors.white : Colors.black87,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text('استعادة', style: TextStyle(fontSize: 12)),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
+  void _openColorWheelPicker() {
+    Color tempColor = _userPreferredColor;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('اختر لونك المفضل', textAlign: TextAlign.center),
+        content: SingleChildScrollView(
+          child: ColorPicker(
+            pickerColor: tempColor,
+            onColorChanged: (Color color) {
+              tempColor = color;
+            },
+            pickerAreaHeightPercent: 0.8,
+            enableAlpha: false,
+            displayThumbColor: true,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: tempColor),
+            onPressed: () async {
+              _playFeedback();
+              await _saveUserColorPreference(tempColor);
+              Navigator.pop(context);
+              _showToast('تم حفظ لونك الشخصي 🎨');
+            },
+            child: const Text('حفظ', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _resetToDefaultColor(bool isDark) async {
+    // اللون الافتراضي يمكن أن يكون أزرق فاتح أو حسب رغبتك
+    final defaultColor = isDark ? Colors.blueGrey.shade700 : Colors.blue;
+    await _saveUserColorPreference(defaultColor);
+    _playFeedback();
+    _showToast('تم استعادة اللون الافتراضي');
+  }
+
+  // =========================================================
+  // دوال مساعدة لإنشاء الواجهة
+  // =========================================================
   Widget _buildProfileHeader(Color primaryColor, String name, String phone) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [primaryColor, primaryColor.withOpacity(0.5)], begin: Alignment.topRight, end: Alignment.bottomLeft),
+        gradient: LinearGradient(
+          colors: [primaryColor, primaryColor.withOpacity(0.5)],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: primaryColor.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
+        boxShadow: [
+          BoxShadow(
+            color: primaryColor.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          const CircleAvatar(radius: 35, backgroundColor: Colors.white24, child: Icon(Icons.person, size: 35, color: Colors.white)),
+          const CircleAvatar(
+            radius: 35,
+            backgroundColor: Colors.white24,
+            child: Icon(Icons.person, size: 35, color: Colors.white),
+          ),
           const SizedBox(width: 15),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
-                Text(phone, style: const TextStyle(color: Colors.white70, fontSize: 15), textDirection: TextDirection.ltr),
+                Text(
+                  name,
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+                Text(
+                  phone,
+                  style: const TextStyle(color: Colors.white70, fontSize: 15),
+                  textDirection: TextDirection.ltr,
+                ),
               ],
             ),
           ),
@@ -183,154 +414,84 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     );
   }
 
-  // زر التخصيص المتدرج
-  Widget _buildCustomizationButton(ThemeProvider themeProvider) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Colors.purpleAccent, Colors.pinkAccent]),
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))],
-      ),
-      child: ListTile(
-        leading: Container(
-          width: 35, height: 35,
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: SweepGradient(colors: [Colors.red, Colors.yellow, Colors.green, Colors.blue, Colors.purple, Colors.red]),
-          ),
-        ),
-        title: const Text('تخصيص مظهر التطبيق بالكامل', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        subtitle: const Text('اختر أي لون من عجلة الألوان', style: TextStyle(color: Colors.white70, fontSize: 12)),
-        trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 15),
-        onTap: () {
-          _playFeedback();
-          _showColorPickerWheelDialog(themeProvider); 
-        },
-      ),
-    );
-  }
-
-  // نافذة اختيار الألوان (Color Picker)
-  void _showColorPickerWheelDialog(ThemeProvider themeProvider) {
-    Color pickerColor = themeProvider.primaryColor;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('اختر لونك المفضل', textAlign: TextAlign.center),
-        content: SingleChildScrollView(
-          child: ColorPicker(
-            pickerColor: pickerColor,
-            onColorChanged: (Color color) {
-              pickerColor = color;
-            },
-            pickerAreaHeightPercent: 0.8,
-            enableAlpha: false,
-            displayThumbColor: true,
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: themeProvider.primaryColor),
-            onPressed: () {
-              _playFeedback();
-              themeProvider.changeColor(pickerColor);
-              Navigator.pop(context);
-              _showToast('تم تلوين التطبيق بنجاح 🎨');
-            },
-            child: const Text('تطبيق اللون', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildColorPicker(ThemeProvider themeProvider) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Wrap(
-        spacing: 15,
-        runSpacing: 10,
-        alignment: WrapAlignment.center,
-        children: _availableColors.map((color) {
-          final isSelected = themeProvider.primaryColor == color;
-          return GestureDetector(
-            onTap: () {
-              _playFeedback();
-              themeProvider.changeColor(color);
-            },
-            child: CircleAvatar(
-              radius: 18,
-              backgroundColor: color,
-              child: isSelected ? const Icon(Icons.check, color: Colors.white, size: 20) : null,
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
   Widget _buildSectionTitle(String title, Color primaryColor) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8, top: 15, right: 5), 
-      child: Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor))
+      padding: const EdgeInsets.only(bottom: 8, top: 15, right: 5),
+      child: Text(
+        title,
+        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor),
+      ),
     );
   }
 
-  // البطاقات تتأثر باللون المختار لتتناسب مع الخلفية
   Widget _buildSettingsCard(List<Widget> children, Color primaryColor, bool isDark) {
     return Card(
-      elevation: 0, 
-      color: isDark ? Colors.black45 : Colors.white.withOpacity(0.9),
+      elevation: 0,
+      color: isDark ? Colors.grey.shade900 : Colors.white,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15), 
-        side: BorderSide(color: primaryColor.withOpacity(0.3), width: 1.5)
-      ), 
-      child: Column(children: children)
+        borderRadius: BorderRadius.circular(15),
+        side: BorderSide(color: primaryColor.withOpacity(0.3), width: 1.5),
+      ),
+      child: Column(children: children),
     );
   }
 
-  Widget _buildListTile(IconData icon, String title, String subtitle, Color color, {required VoidCallback onTap}) {
+  Widget _buildListTile(
+    IconData icon,
+    String title,
+    String subtitle,
+    Color color, {
+    required VoidCallback onTap,
+  }) {
     return ListTile(
       leading: Container(
         padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
-        child: Icon(icon, color: color, size: 20)
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: color, size: 20),
       ),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-      subtitle: subtitle.isNotEmpty ? Text(subtitle, style: const TextStyle(fontSize: 11, color: Colors.grey)) : null,
-      trailing: const Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+      subtitle: subtitle.isNotEmpty
+          ? Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey))
+          : null,
+      trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
       onTap: onTap,
     );
   }
 
-  Widget _buildSwitchTile(IconData icon, String title, String subtitle, bool value, ValueChanged<bool> onChanged, Color activeColor) {
+  Widget _buildSwitchTile(
+    IconData icon,
+    String title,
+    String subtitle,
+    bool value,
+    ValueChanged<bool> onChanged,
+    Color activeColor,
+  ) {
     return SwitchListTile(
       secondary: Container(
         padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(color: activeColor.withOpacity(0.1), shape: BoxShape.circle),
-        child: Icon(icon, color: activeColor, size: 20)
+        decoration: BoxDecoration(
+          color: activeColor.withOpacity(0.1),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: activeColor, size: 20),
       ),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-      subtitle: Text(subtitle, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey)),
       value: value,
       activeColor: activeColor,
       onChanged: onChanged,
     );
   }
 
-  void _showToast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message, textDirection: TextDirection.rtl), duration: const Duration(seconds: 2)));
-  }
-
   // =========================================================
-  // النوافذ المنبثقة التفاعلية الذكية (جميعها مربوطة وتعمل)
+  // النوافذ المنبثقة التفاعلية (محدثة لحفظ البيانات فعلياً)
   // =========================================================
-
   void _showPasswordDialog(SystemProvider systemProvider) {
-    final TextEditingController oldPass = TextEditingController();
-    final TextEditingController newPass = TextEditingController();
+    final oldPassController = TextEditingController();
+    final newPassController = TextEditingController();
 
     showDialog(
       context: context,
@@ -340,31 +501,44 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           title: const Text('تغيير كلمة المرور'),
           content: Column(
-            mainAxisSize: MainAxisSize.min, 
+            mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: oldPass, obscureText: true, decoration: const InputDecoration(hintText: 'كلمة المرور الحالية')), 
-              const SizedBox(height: 10), 
-              TextField(controller: newPass, obscureText: true, decoration: const InputDecoration(hintText: 'كلمة المرور الجديدة'))
-            ]
+              TextField(
+                controller: oldPassController,
+                obscureText: true,
+                decoration: const InputDecoration(hintText: 'كلمة المرور الحالية'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: newPassController,
+                obscureText: true,
+                decoration: const InputDecoration(hintText: 'كلمة المرور الجديدة'),
+              ),
+            ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إلغاء'),
+            ),
             ElevatedButton(
               onPressed: () {
                 _playFeedback();
-                if (oldPass.text.isNotEmpty && newPass.text.isNotEmpty) {
-                  bool success = systemProvider.changeUserPassword(oldPass.text, newPass.text);
-                  if (success) {
-                    Navigator.pop(context);
-                    _showToast('تم تحديث كلمة المرور بنجاح 🔒');
-                  } else {
-                    _showToast('كلمة المرور الحالية غير صحيحة!'); 
-                  }
-                } else {
-                  _showToast('يرجى تعبئة جميع الحقول!');
+                final oldPass = oldPassController.text.trim();
+                final newPass = newPassController.text.trim();
+                if (oldPass.isEmpty || newPass.isEmpty) {
+                  _showToast('يرجى تعبئة جميع الحقول');
+                  return;
                 }
-              }, 
-              child: const Text('تحديث')
+                final success = systemProvider.changeUserPassword(oldPass, newPass);
+                if (success) {
+                  Navigator.pop(context);
+                  _showToast('تم تحديث كلمة المرور بنجاح 🔒');
+                } else {
+                  _showToast('كلمة المرور الحالية غير صحيحة');
+                }
+              },
+              child: const Text('تحديث'),
             ),
           ],
         ),
@@ -373,7 +547,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
   }
 
   void _showPinDialog() {
-    final TextEditingController pinController = TextEditingController();
+    final pinController = TextEditingController(text: _userPin);
+
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -383,24 +558,37 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
           title: const Text('إعداد رمز PIN', textAlign: TextAlign.center),
           content: TextField(
             controller: pinController,
-            keyboardType: TextInputType.number, 
-            maxLength: 6, 
-            obscureText: true, 
-            decoration: const InputDecoration(hintText: 'أدخل 6 أرقام', border: OutlineInputBorder())
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            obscureText: true,
+            decoration: const InputDecoration(
+              hintText: 'أدخل 6 أرقام',
+              border: OutlineInputBorder(),
+            ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إلغاء'),
+            ),
             ElevatedButton(
-              onPressed: () { 
+              onPressed: () async {
                 _playFeedback();
-                if (pinController.text.length == 6) {
-                  Navigator.pop(context); 
+                final newPin = pinController.text.trim();
+                if (newPin.length == 6) {
+                  // حفظ PIN في SharedPreferences و Firestore عبر SystemProvider
+                  final sys = Provider.of<SystemProvider>(context, listen: false);
+                  await sys.updateUserPin(newPin);
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setString('user_pin', newPin);
+                  setState(() => _userPin = newPin);
+                  Navigator.pop(context);
                   _showToast('تم حفظ رمز PIN بنجاح ✅');
                 } else {
-                  _showToast('يرجى إدخال 6 أرقام بالضبط!');
+                  _showToast('يرجى إدخال 6 أرقام بالضبط');
                 }
-              }, 
-              child: const Text('حفظ')
+              },
+              child: const Text('حفظ'),
             ),
           ],
         ),
@@ -409,7 +597,10 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
   }
 
   void _showLimitDialog() {
-    final TextEditingController limitController = TextEditingController();
+    final limitController = TextEditingController(
+      text: _dailyLimit > 0 ? _dailyLimit.toStringAsFixed(0) : '',
+    );
+
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -419,22 +610,33 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
           title: const Text('الحد اليومي للمشتريات'),
           content: TextField(
             controller: limitController,
-            keyboardType: TextInputType.number, 
-            decoration: const InputDecoration(hintText: 'مثال: 5000', suffixText: 'ريال')
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              hintText: 'مثال: 5000',
+              suffixText: 'ريال',
+              border: OutlineInputBorder(),
+            ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إلغاء'),
+            ),
             ElevatedButton(
-              onPressed: () { 
+              onPressed: () async {
                 _playFeedback();
-                if (limitController.text.isNotEmpty) {
-                  Navigator.pop(context); 
-                  _showToast('تم تحديث الحد اليومي بنجاح 🛡️');
-                } else {
-                  _showToast('يرجى إدخال مبلغ الحد اليومي.');
-                }
-              }, 
-              child: const Text('تأكيد')
+                final newLimit = double.tryParse(limitController.text.trim()) ?? 0.0;
+                final sys = Provider.of<SystemProvider>(context, listen: false);
+                await sys.updateUserDailyLimit(newLimit);
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setDouble('user_daily_limit', newLimit);
+                setState(() => _dailyLimit = newLimit);
+                Navigator.pop(context);
+                _showToast(newLimit > 0
+                    ? 'تم تعيين الحد اليومي إلى $newLimit ريال 🛡️'
+                    : 'تم إلغاء الحد اليومي');
+              },
+              child: const Text('حفظ'),
             ),
           ],
         ),
@@ -452,12 +654,21 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
           title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.orange)),
           content: const Text('هل أنت متأكد أنك تريد تسجيل الخروج من حسابك؟'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إلغاء'),
+            ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
               onPressed: () {
                 _playFeedback();
-                Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const SSOLoginScreen()), (Route<dynamic> route) => false);
+                final sys = Provider.of<SystemProvider>(context, listen: false);
+                sys.clearAllData(); // مسح بيانات الجلسة
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (context) => const SSOLoginScreen()),
+                  (route) => false,
+                );
               },
               child: const Text('تأكيد الخروج', style: TextStyle(color: Colors.white)),
             ),
@@ -467,7 +678,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     );
   }
 
-  void _showDeleteAccountDialog() {
+  void _showDeleteAccountDialog(SystemProvider systemProvider) {
+    final passwordController = TextEditingController();
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -481,14 +693,51 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
               Text('حذف الحساب نهائياً', style: TextStyle(color: Colors.red)),
             ],
           ),
-          content: const Text('إذا قمت بحذف حسابك، ستفقد جميع كروتك ومحفظتك ونقاط المكافآت. هل أنت متأكد تماماً من هذا الإجراء؟'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'إذا قمت بحذف حسابك، ستفقد جميع كروتك ومحفظتك ونقاط المكافآت. هل أنت متأكد تماماً؟',
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'أدخل كلمة المرور للتأكيد',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('تراجع')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('تراجع'),
+            ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () {
+              onPressed: () async {
                 _playFeedback();
-                Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const SSOLoginScreen()), (Route<dynamic> route) => false);
+                final password = passwordController.text.trim();
+                if (password.isEmpty) {
+                  _showToast('يرجى إدخال كلمة المرور');
+                  return;
+                }
+                // التحقق من كلمة المرور وحذف الحساب عبر SystemProvider
+                final success = await systemProvider.deleteUserAccount(password);
+                if (success) {
+                  Navigator.pop(context); // إغلاق حوار التأكيد
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (context) => const SSOLoginScreen()),
+                    (route) => false,
+                  );
+                  _showToast('تم حذف الحساب بنجاح');
+                } else {
+                  Navigator.pop(context);
+                  _showToast('كلمة المرور غير صحيحة أو فشل الحذف');
+                }
               },
               child: const Text('نعم، احذف حسابي', style: TextStyle(color: Colors.white)),
             ),
