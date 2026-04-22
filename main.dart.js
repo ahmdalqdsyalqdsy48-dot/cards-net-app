@@ -72605,7 +72605,7 @@ A.bgf.prototype={
 $1(a){return J.h(J.n(a,"phone"),this.a.d)},
 $S:13}
 A.bgg.prototype={
-$0(){return A.c(["pin",""],t.N,t.z)},
+$0(){return A.c(["pin","123456"],t.N,t.z)},
 $S:36}
 A.bg8.prototype={
 $1(a){return J.h(J.n(a,"phone"),this.a.d)},
