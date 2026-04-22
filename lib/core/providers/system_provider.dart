@@ -2077,12 +2077,9 @@ class SystemProvider extends ChangeNotifier {
     await batch.commit();
   }
 
-  // ==================== الدوال المضافة حديثًا للوحة المحفظة ====================
-  /// جلب طلبات الحصة المعلقة الخاصة بالوكيل الحالي
+  // ==================== دوال المحفظة ====================
   Stream<List<Map<String, dynamic>>> getMyPendingQuotaRequests() {
-    if (_activeUserPhone == null) {
-      return Stream.value([]);
-    }
+    if (_activeUserPhone == null) return Stream.value([]);
     return _db
         .collection('recharge_requests')
         .where('userPhone', isEqualTo: _activeUserPhone)
@@ -2096,11 +2093,8 @@ class SystemProvider extends ChangeNotifier {
             }).toList());
   }
 
-  /// جلب طلبات الشحن المعلقة الموجهة لهذا الوكيل (من نقاط البيع)
   Stream<List<Map<String, dynamic>>> getPendingPosRechargeRequests() {
-    if (_activeUserPhone == null) {
-      return Stream.value([]);
-    }
+    if (_activeUserPhone == null) return Stream.value([]);
     return _db
         .collection('user_recharges')
         .where('targetPhone', isEqualTo: _activeUserPhone)
@@ -2113,9 +2107,85 @@ class SystemProvider extends ChangeNotifier {
             }).toList());
   }
 
-  /// إلغاء طلب حصة (حذفه من Firestore)
   Future<void> cancelQuotaRequest(String docId) async {
     await _db.collection('recharge_requests').doc(docId).delete();
   }
-  // ===========================================================================
+
+  // ==================== دوال إعدادات المستخدم المضافة حديثاً ====================
+
+  /// حفظ اللون المفضل للمستخدم الحالي في Firestore
+  Future<void> saveUserPreferredColor(Color color) async {
+    if (_activeUserPhone == null) return;
+    final colorValue = color.value; // int يمثل قيمة ARGB
+    await _db.collection('users').doc(_activeUserPhone).update({
+      'preferredColor': colorValue,
+    });
+    // يمكن تحديث _usersDatabase إذا أردت لكن ليس ضرورياً لأن اللون يُقرأ عند الحاجة
+  }
+
+  /// استرجاع اللون المفضل للمستخدم الحالي من Firestore
+  Future<Color?> getUserPreferredColor() async {
+    if (_activeUserPhone == null) return null;
+    try {
+      final doc = await _db.collection('users').doc(_activeUserPhone).get();
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data() as Map<String, dynamic>;
+        final colorValue = data['preferredColor'];
+        if (colorValue != null) {
+          return Color(colorValue);
+        }
+      }
+    } catch (e) {
+      debugPrint('خطأ في جلب اللون المفضل: $e');
+    }
+    return null;
+  }
+
+  /// تحديث رمز PIN للمستخدم الحالي
+  Future<void> updateUserPin(String pin) async {
+    if (_activeUserPhone == null) return;
+    await _db.collection('users').doc(_activeUserPhone).update({'pin': pin});
+    // تحديث الذاكرة المحلية للمستخدم الحالي
+    final index = _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
+    if (index != -1) {
+      _usersDatabase[index]['pin'] = pin;
+      notifyListeners();
+    }
+  }
+
+  /// تحديث الحد اليومي للمشتريات
+  Future<void> updateUserDailyLimit(double limit) async {
+    if (_activeUserPhone == null) return;
+    await _db.collection('users').doc(_activeUserPhone).update({'dailyLimit': limit});
+    final index = _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
+    if (index != -1) {
+      _usersDatabase[index]['dailyLimit'] = limit;
+      notifyListeners();
+    }
+  }
+
+  /// حذف حساب المستخدم الحالي بعد التحقق من كلمة المرور
+  Future<bool> deleteUserAccount(String password) async {
+    if (_activeUserPhone == null) return false;
+    try {
+      // التحقق من كلمة المرور
+      final doc = await _db.collection('users').doc(_activeUserPhone).get();
+      if (!doc.exists) return false;
+      final data = doc.data() as Map<String, dynamic>;
+      if (data['password'] != password) return false;
+
+      // حذف المستند
+      await _db.collection('users').doc(_activeUserPhone).delete();
+
+      // (اختياري) حذف البيانات المرتبطة مثل الكروت والإشعارات
+      // يمكن إضافة منطق إضافي هنا حسب الحاجة
+
+      // مسح بيانات الجلسة
+      clearAllData();
+      return true;
+    } catch (e) {
+      debugPrint('خطأ في حذف الحساب: $e');
+      return false;
+    }
+  }
 }
