@@ -14,9 +14,6 @@ class SystemProvider extends ChangeNotifier {
   String _currentUserRole = 'guest';
   Map<String, bool> _currentUserPermissions = {};
 
-  // ==========================================
-  // ⚙️ 1. إعدادات النظام الأساسية
-  // ==========================================
   bool _isMaintenanceMode = false;
   bool _isForcedUpdate = false;
   bool _showNewsBar = true;
@@ -25,9 +22,6 @@ class SystemProvider extends ChangeNotifier {
   String _termsAndConditions = '';
   String _supportNumbers = '';
 
-  // ==========================================
-  // 🚪 2. إعدادات بوابة تسجيل الدخول (Public Portal)
-  // ==========================================
   String _appName = 'كروت نت';
   String _appLogoUrl = '';
   int _loginBgColor = 0xFFFFFFFF; 
@@ -43,9 +37,6 @@ class SystemProvider extends ChangeNotifier {
   String _appNameFont = 'Cairo';
   int _appNameColor = 0xFF2196F3;
 
-  // ==========================================
-  // 💼 3. إعدادات بوابة الوكلاء (Agents Portal)
-  // ==========================================
   List<String> _agentUniversalHiddenSections = [];
   List<Map<String, dynamic>> _agentBanners = [];
   Map<String, dynamic> _agentEmergencyAlert = {'isActive': false, 'text': '', 'targetType': 'all', 'targetPhones': []};
@@ -53,9 +44,6 @@ class SystemProvider extends ChangeNotifier {
   bool _leaderboardEnabled = false;
   bool _forceAgentTheme = false;
 
-  // ==========================================
-  // 👥 4. إعدادات بوابة المستخدمين (Users Portal)
-  // ==========================================
   List<String> _userUniversalHiddenSections = [];
   bool _guestModeEnabled = false;
   bool _kycRequired = false;
@@ -85,9 +73,6 @@ class SystemProvider extends ChangeNotifier {
   int _smsBalance = 0; 
   DateTimeRange? _dashboardDateRange; 
 
-  // ==========================================
-  // 🔔 إعدادات الإشعارات المباشرة والحسابات (Real-time)
-  // ==========================================
   List<Map<String, dynamic>> _notifications = [];
   StreamSubscription? _notificationSubscription; 
   
@@ -298,9 +283,6 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  // ==========================================
-  // 🔍 دوال القراءة (Getters) 
-  // ==========================================
   double get adminMainBalance => _adminMainBalance;
   int get totalSystemCards => _totalSystemCards;
   List<String> get announcements => _announcements; 
@@ -375,7 +357,6 @@ class SystemProvider extends ChangeNotifier {
   DateTimeRange? get dashboardDateRange => _dashboardDateRange;
   int get smsBalance => _smsBalance;
 
-  // 👈 إضافة مهمة: جلب اسم شبكة المستخدم الحالي
   String get currentUserNetwork {
     if (_activeUserPhone == null) return 'غير محدد';
     final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone, orElse: () => {'networkName': 'غير محدد'});
@@ -511,11 +492,6 @@ class SystemProvider extends ChangeNotifier {
     } catch (e) {}
   }
 
-  // ==========================================
-  // 🚀 5. دوال الإدارة والتحكم (وتغيير اسم التطبيق)
-  // ==========================================
-  
-  // 👈 دالة خاصة بتغيير اسم النظام العالمي لينعكس عند الجميع
   Future<void> updateGlobalAppName(String newName) async {
     await _db.collection('system').doc('main_info').update({'appName': newName});
     _appName = newName;
@@ -635,10 +611,6 @@ class SystemProvider extends ChangeNotifier {
     return false; 
   }
 
-  // ==========================================
-  // 👥 6. دوال إدارة الحسابات والمصادقة
-  // ==========================================
-  
   Future<void> updateNewsSpeed(double newSpeed) async { 
     _newsScrollSpeed = newSpeed;
     notifyListeners();
@@ -757,10 +729,6 @@ class SystemProvider extends ChangeNotifier {
     } catch (e) {}
   }
 
-  // ==========================================
-  // 🛒 دالة الشراء الحقيقية (الإنتاج الفعلي والتوثيق المحاسبي)
-  // ==========================================
-  
   Future<String> executeRealPurchase(double price, String cardTitle, String agentPhone) async {
     if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً لإتمام الشراء.';
 
@@ -827,17 +795,16 @@ class SystemProvider extends ChangeNotifier {
         'totalSystemCards': FieldValue.increment(-1)
       });
       
-      // 👈 تسجيل المبيعات بتفصيل محاسبي كامل للوكيل (البائع)
       DocumentReference txnRef = _db.collection('transactions').doc();
       transaction.set(txnRef, {
         'fromPhone': _activeUserPhone,
         'toPhone': agentPhone,
-        'agentPhone': agentPhone, // المالك للمحفظة
+        'agentPhone': agentPhone, 
         'agentName': currentUserName,
-        'targetName': userData['name'] ?? 'زبون', // المشتري
+        'targetName': userData['name'] ?? 'زبون', 
         'networkName': userData['networkName'] ?? 'غير محدد',
         'amount': price,
-        'fee': 0.0, // رسوم (لا يوجد في البيع المباشر حالياً)
+        'fee': 0.0, 
         'paymentMethod': 'خصم من المحفظة',
         'type': 'sale',
         'title': 'بيع كرت: $cardTitle لـ ${userData['name'] ?? 'زبون'}',
@@ -848,10 +815,6 @@ class SystemProvider extends ChangeNotifier {
 
     return actualPin;
   }
-
-  // ==========================================
-  // 🏪 دوال البقالات متعددة الوكلاء 
-  // ==========================================
 
   Future<void> upgradeUserToPos({
     required String posPhone, 
@@ -945,7 +908,6 @@ class SystemProvider extends ChangeNotifier {
      batch.update(agentDoc.reference, {'balance': FieldValue.increment(-amount)});
      batch.update(_db.collection('users').doc(posPhone), {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
 
-     // 👈 توثيق التحويل في سجل الوكيل
      batch.set(_db.collection('transactions').doc(), {
        'fromPhone': _activeUserPhone,
        'toPhone': posPhone,
@@ -982,7 +944,6 @@ class SystemProvider extends ChangeNotifier {
       
       batch.update(_db.collection('users').doc(posPhone), {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
       
-      // 👈 توثيق استلام السداد
       batch.set(_db.collection('transactions').doc(), {
         'fromPhone': posPhone,
         'toPhone': _activeUserPhone,
@@ -1004,11 +965,61 @@ class SystemProvider extends ChangeNotifier {
     } catch (e) { throw e.toString(); }
   }
 
-  // ==========================================
-  // 💸 دوال الشحن اللامركزي و SaaS (الرسوم التشغيلية)
-  // ==========================================
+  // 👈 الدوال المعبرية التي كانت تسبب الخطأ القديم (لحل مشكلة البناء في الشاشات الأخرى)
+  Future<void> requestWalletRecharge(String targetPhone, double amount) async {
+     await submitSaaSRechargeRequest(quotaAmount: amount, feeAmount: 0.0, adminBankName: 'غير محدد', transferSource: 'طلب قديم', reference: 'N/A', base64Image: '');
+  }
 
-  // 👈 1. طلب الوكيل لحصة (Quota) ودفع الرسوم التشغيلية لمالك النظام
+  Future<void> acceptRechargeRequest({required String requestId, required String agentPhone, required String agentName, required double amount}) async {
+     await adminAcceptSaaSRecharge(requestId, agentPhone, amount, 0.0);
+  }
+
+  Future<void> agentAcceptUserRecharge(String requestId, String requesterPhone, double amount) async {
+    if (_activeUserPhone == null) return;
+    
+    final myDoc = await _db.collection('users').doc(_activeUserPhone).get();
+    final myData = myDoc.data() as Map<String, dynamic>? ?? {};
+    if ((myData['balance'] ?? 0.0) < amount) {
+       throw 'رصيدك لا يكفي! قم بتغذية رصيدك أولاً لتتمكن من إعطاء رصيد للآخرين.';
+    }
+
+    final requesterDoc = await _db.collection('users').doc(requesterPhone).get();
+    final requesterData = requesterDoc.data() as Map<String, dynamic>? ?? {};
+
+    WriteBatch batch = _db.batch();
+
+    batch.update(_db.collection('user_recharges').doc(requestId), {'status': 'مقبول'});
+    batch.update(myDoc.reference, {'balance': FieldValue.increment(-amount)});
+    
+    batch.update(requesterDoc.reference, {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
+
+    batch.set(_db.collection('transactions').doc(), {
+      'fromPhone': _activeUserPhone,
+      'toPhone': requesterPhone,
+      'agentPhone': _activeUserPhone,
+      'agentName': currentUserName,
+      'targetName': requesterData['name'] ?? 'مستخدم',
+      'networkName': requesterData['networkName'] ?? 'غير محدد',
+      'amount': amount,
+      'type': 'transfer', 
+      'paymentMethod': 'آجل (من حصة الوكيل)',
+      'title': 'موافقة على طلب شحن من ${requesterData['name'] ?? 'مستخدم'}',
+      'reference': 'RCH-$requestId',
+      'timestamp': FieldValue.serverTimestamp()
+    });
+
+    DocumentReference notifRef = _db.collection('notifications').doc();
+    batch.set(notifRef, {
+      'targetPhones': [requesterPhone],
+      'title': 'تم شحن محفظتك 🎉',
+      'body': 'تمت الموافقة وإضافة $amount ريال لمحفظتك من $currentUserName.',
+      'timestamp': FieldValue.serverTimestamp(),
+      'isRead': false, 'readBy': [],
+    });
+
+    await batch.commit();
+  }
+
   Future<void> submitSaaSRechargeRequest({
     required double quotaAmount, 
     required double feeAmount, 
@@ -1023,9 +1034,9 @@ class SystemProvider extends ChangeNotifier {
       'userPhone': _activeUserPhone,
       'userName': currentUserName,
       'networkName': currentUserNetwork,
-      'targetPhone': '774578241', // رقم مالك النظام (Super Admin)
-      'amount': quotaAmount, // الحصة المطلوبة للبيع
-      'fee': feeAmount, // الرسوم التي تم تحويلها فعلياً
+      'targetPhone': '774578241', 
+      'amount': quotaAmount, 
+      'fee': feeAmount, 
       'bankName': adminBankName,
       'transferSource': transferSource,
       'reference': reference,
@@ -1039,21 +1050,17 @@ class SystemProvider extends ChangeNotifier {
     _sendNotification(targetPhones: ['774578241'], title: 'طلب شحن حصة جديد 🚀', body: 'الوكيل $currentUserName يطلب حصة بقيمة $quotaAmount (الرسوم المودعة: $feeAmount).');
   }
 
-  // 👈 2. موافقة مالك النظام على طلب الحصة وإضافتها لرصيد الوكيل
   Future<void> adminAcceptSaaSRecharge(String requestId, String agentPhone, double quotaAmount, double feeAmount) async {
     try {
       WriteBatch batch = _db.batch();
       DocumentReference agentRef = _db.collection('users').doc(agentPhone);
       
-      // إضافة الحصة للوكيل
       batch.update(agentRef, {'balance': FieldValue.increment(quotaAmount)});
       batch.update(_db.collection('recharge_requests').doc(requestId), {'status': 'مقبول'});
       
-      // جلب بيانات الوكيل للسجل
       final agentDoc = await _db.collection('users').doc(agentPhone).get();
       final agentData = agentDoc.data() as Map<String, dynamic>? ?? {};
 
-      // تسجيل العملية في سجل الوكيل (اكتساب حصة)
       DocumentReference transactionRef = _db.collection('transactions').doc();
       batch.set(transactionRef, {
         'fromPhone': '774578241',
@@ -1066,7 +1073,7 @@ class SystemProvider extends ChangeNotifier {
         'paymentMethod': 'حوالة بنكية',
         'title': 'تغذية حصة مبيعات (Quota)', 
         'amount': quotaAmount, 
-        'fee': feeAmount, // الرسوم التي دفعها الوكيل
+        'fee': feeAmount, 
         'reference': 'DEP-$requestId',
         'timestamp': FieldValue.serverTimestamp()
       });
@@ -1089,7 +1096,7 @@ class SystemProvider extends ChangeNotifier {
       final reqDoc = await _db.collection('recharge_requests').doc(requestId).get();
       if(reqDoc.exists){
          final reqData = reqDoc.data() as Map<String, dynamic>;
-         String userPhone = reqData['userPhone']; // الوكيل أو الزبون
+         String userPhone = reqData['userPhone']; 
          
          WriteBatch batch = _db.batch();
          batch.update(reqDoc.reference, {'status': 'مرفوض', 'rejectReason': reason});
@@ -1108,10 +1115,6 @@ class SystemProvider extends ChangeNotifier {
       }
     } catch(e){}
   }
-
-  // ==========================================
-  // 🔐 محرك البحث والتحويل المتقدم للغير
-  // ==========================================
 
   Future<Map<String, dynamic>?> searchUserForTransfer(String targetPhone) async {
     if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول.';
@@ -1158,7 +1161,6 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  // 👈 الدالة المحدثة للتحويل (مع تسجيل الشبكات والديون)
   Future<void> advancedSecureTransferBalance({
     required String targetPhone,
     required String targetName,
@@ -1199,22 +1201,18 @@ class SystemProvider extends ChangeNotifier {
       double currentSenderBalance = (sData['balance'] ?? 0.0).toDouble();
       if (currentSenderBalance < amount) throw 'رصيد المحفظة الفعلي غير كافٍ.';
       
-      // الخصم من الوكيل
       transaction.update(senderRef, {'balance': FieldValue.increment(-amount)});
 
-      // الإضافة للمستلم
       if (rData['role'] == 'user' || rData['role'] == 'pos') {
          transaction.update(receiverRef, {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
       } else {
          transaction.update(receiverRef, {'balance': FieldValue.increment(amount)});
       }
 
-      // تسجيل الدين آلياً إذا كان "آجل"
       if (paymentMethod == 'آجل') {
          transaction.update(receiverRef, {'agent_debts.$_activeUserPhone': FieldValue.increment(totalDebt)});
       }
 
-      // 👈 توثيق التحويل في السجل بكل تفاصيله
       DocumentReference txnRef = _db.collection('transactions').doc();
       transaction.set(txnRef, {
         'fromPhone': _activeUserPhone,
@@ -1224,7 +1222,7 @@ class SystemProvider extends ChangeNotifier {
         'targetName': targetName,
         'networkName': rData['networkName'] ?? 'غير محدد',
         'amount': amount,
-        'fee': taxAmount, // تم تسجيل الضريبة كرسوم هنا
+        'fee': taxAmount, 
         'totalDebt': paymentMethod == 'آجل' ? totalDebt : 0,
         'paymentMethod': paymentMethod,
         'note': note,
@@ -1246,10 +1244,10 @@ class SystemProvider extends ChangeNotifier {
     });
   }
 
-  // ==========================================
-  // 🏦 إدارة الحسابات البنكية الخاصة بالوكيل 
-  // ==========================================
-  
+  Future<void> secureTransferBalance({required String targetPhone, required String targetName, required double amount, required String password}) async {
+    await advancedSecureTransferBalance(targetPhone: targetPhone, targetName: targetName, amount: amount, taxPercentage: 0.0, note: '', paymentMethod: 'نقد', password: password);
+  }
+
   Future<void> addAgentBankAccount(String networkName, String agentName, String bankName, String accNumber, String note) async {
     if (_activeUserPhone == null) return;
     try {
@@ -1298,8 +1296,6 @@ class SystemProvider extends ChangeNotifier {
     }
     await batch.commit();
   }
-
-  // ==========================================
 
   Future<void> updateDangerLimit(String phone, double newLimit) async {
     await _db.collection('users').doc(phone).update({'dangerLimit': newLimit});
@@ -1430,10 +1426,6 @@ class SystemProvider extends ChangeNotifier {
       _sendNotification(targetPhones: [agentPhone], title: 'حالة الحساب', body: 'تم تحويل حالة حسابك إلى: $newStatus');
     } catch (e) { throw 'فشل التغيير: $e'; }
   }
-
-  // ==========================================
-  // 🏦 8. الحسابات البنكية والنسخ الاحتياطي
-  // ==========================================
 
   bool changeUserPassword(String oldPassword, String newPassword) {
     if (_activeUserPhone == null) return false;
