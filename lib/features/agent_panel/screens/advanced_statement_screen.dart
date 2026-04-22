@@ -68,7 +68,206 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
   }
 
   // ==========================================
-  // تصدير PDF احترافي (ملون ومرتب)
+  // معالجة البيانات والمحرك المحاسبي العميق (تحديث SaaS)
+  // ==========================================
+  List<Map<String, dynamic>> _processData(List<QueryDocumentSnapshot> docs) {
+    List<Map<String, dynamic>> rawList = [];
+    
+    for (var doc in docs) {
+      var data = doc.data() as Map<String, dynamic>;
+      // الفايربيز قد يخزن الوقت في timestamp أو createdAt، ندعم الاثنين
+      Timestamp? ts = data['timestamp'] ?? data['createdAt'];
+      DateTime dt = ts != null ? ts.toDate() : DateTime.now();
+      
+      double amount = (data['amount'] ?? 0).toDouble();
+      double fee = (data['fee'] ?? 0).toDouble(); // رسوم النظام/الضريبة
+      String rawType = data['type'] ?? 'أخرى';
+      
+      String uiType = 'أخرى';
+      double credit = 0.0;
+      double debit = 0.0;
+      
+      // تصنيف العمليات لزيادة ونقصان
+      if (rawType == 'income' || rawType == 'deposit' || rawType == 'receive') {
+        uiType = rawType == 'deposit' ? 'شحن حصة' : 'إيراد/استلام';
+        credit = amount;
+      } else if (rawType == 'expense' || rawType == 'sale' || rawType == 'transfer') {
+        uiType = rawType == 'sale' ? 'مبيعات كروت' : 'تحويل/خصم';
+        debit = amount;
+      }
+
+      // 👈 بناء النص البارز (العنوان الديناميكي للعملية)
+      String desc = data['title'] ?? data['desc'] ?? '';
+      if (desc.isEmpty) {
+        if (rawType == 'sale') {
+          desc = 'بيع كرت لـ ${data['targetName'] ?? 'زبون'} - شبكة: ${data['networkName'] ?? 'غير محدد'}';
+        } else if (rawType == 'transfer') {
+          String payMethod = data['paymentMethod'] ?? 'نقدي';
+          desc = 'تحويل ($payMethod) إلى: ${data['targetName'] ?? 'مجهول'}';
+        }
+      }
+
+      rawList.add({
+        'id': doc.id.substring(0, 6).toUpperCase(),
+        'rawDate': dt,
+        'date': intl.DateFormat('yyyy-MM-dd').format(dt),
+        'time': intl.DateFormat('hh:mm a').format(dt),
+        'desc': desc,
+        'credit': credit,
+        'debit': debit,
+        'fee': fee,
+        'paymentMethod': data['paymentMethod'] ?? 'غير محدد',
+        'targetName': data['targetName'] ?? data['senderName'] ?? '-',
+        'networkName': data['networkName'] ?? '-',
+        'type': uiType,
+        'balance': 0.0 // سيتم حسابه لاحقاً
+      });
+    }
+
+    // الترتيب من الأقدم للأحدث لحساب الرصيد التراكمي الدقيق
+    rawList.sort((a, b) => (a['rawDate'] as DateTime).compareTo(b['rawDate'] as DateTime));
+
+    double runningBalance = 0.0;
+    for (int i = 0; i < rawList.length; i++) {
+      runningBalance += rawList[i]['credit'];
+      runningBalance -= rawList[i]['debit'];
+      rawList[i]['balance'] = runningBalance;
+    }
+
+    // عكس القائمة ليظهر الأحدث في الأعلى (في الواجهة)
+    List<Map<String, dynamic>> reversedList = rawList.reversed.toList();
+
+    // الفلترة 
+    return reversedList.where((row) {
+      if (_selectedType != 'الكل' && !row['type'].toString().contains(_selectedType)) return false;
+      if (_searchQuery.isNotEmpty && 
+          !row['desc'].toString().toLowerCase().contains(_searchQuery) &&
+          !row['targetName'].toString().toLowerCase().contains(_searchQuery) &&
+          !row['networkName'].toString().toLowerCase().contains(_searchQuery)) {
+        return false;
+      }
+      if (_selectedDateRange != null) {
+        DateTime rowDate = row['rawDate'];
+        DateTime start = DateTime(_selectedDateRange!.start.year, _selectedDateRange!.start.month, _selectedDateRange!.start.day);
+        DateTime end = DateTime(_selectedDateRange!.end.year, _selectedDateRange!.end.month, _selectedDateRange!.end.day, 23, 59, 59);
+        if (rowDate.isBefore(start) || rowDate.isAfter(end)) return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  // ==========================================
+  // عرض الإيصال الإلكتروني التفصيلي (Smart Receipt)
+  // ==========================================
+  void _showReceiptDialog(Map<String, dynamic> row, SystemProvider sys) {
+    _play('click');
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                Icon(
+                  row['credit'] > 0 ? Icons.arrow_downward : Icons.arrow_upward, 
+                  color: row['credit'] > 0 ? Colors.green : Colors.red
+                ),
+                const SizedBox(width: 10),
+                const Text('فاتورة تفصيلية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildReceiptRow('رقم المرجع:', '#${row['id']}'),
+                  const Divider(thickness: 0.5),
+                  _buildReceiptRow('التاريخ والوقت:', '${row['date']}  ${row['time']}'),
+                  const Divider(thickness: 0.5),
+                  _buildReceiptRow('نوع العملية:', row['type']),
+                  const Divider(thickness: 0.5),
+                  _buildReceiptRow('البيان:', row['desc'], isBold: true),
+                  
+                  if (row['targetName'] != '-') ...[
+                    const Divider(thickness: 0.5),
+                    _buildReceiptRow('الطرف الآخر:', row['targetName'], color: Colors.blueAccent, isBold: true),
+                  ],
+                  if (row['networkName'] != '-') ...[
+                    const Divider(thickness: 0.5),
+                    _buildReceiptRow('الشبكة التابعة:', row['networkName']),
+                  ],
+                  if (row['paymentMethod'] != 'غير محدد') ...[
+                    const Divider(thickness: 0.5),
+                    _buildReceiptRow('طريقة الدفع:', row['paymentMethod'], color: row['paymentMethod'] == 'آجل' ? Colors.deepOrange : Colors.black87, isBold: row['paymentMethod'] == 'آجل'),
+                  ],
+
+                  const Divider(color: Colors.black, thickness: 1.5),
+                  
+                  _buildReceiptRow(
+                    'المبلغ الأساسي:', 
+                    '${row['credit'] > 0 ? row['credit'] : row['debit']} ريال', 
+                    isBold: true, 
+                    color: row['credit'] > 0 ? Colors.green : Colors.red
+                  ),
+
+                  if (row['fee'] > 0) ...[
+                    const SizedBox(height: 5),
+                    _buildReceiptRow('الرسوم / الضريبة:', '${row['fee']} ريال', color: Colors.red, isBold: true),
+                  ],
+
+                  const Divider(thickness: 0.5),
+                  _buildReceiptRow('الرصيد بعد العملية:', '${row['balance']} ريال', isBold: true, color: Colors.blue.shade900),
+                ],
+              ),
+            ),
+            actionsAlignment: MainAxisAlignment.spaceBetween,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context), 
+                child: const Text('إغلاق', style: TextStyle(color: Colors.grey))
+              ),
+              ElevatedButton.icon(
+                onPressed: () {
+                  _play('click');
+                  String text = "🧾 *إشعار عملية مالية - ${sys.appName}*\n";
+                  text += "الوكيل: ${sys.currentUserName}\n";
+                  text += "المرجع: #${row['id']}\nالتاريخ: ${row['date']} ${row['time']}\n";
+                  text += "البيان: ${row['desc']}\n";
+                  if(row['targetName'] != '-') text += "الطرف الآخر: ${row['targetName']}\n";
+                  if(row['paymentMethod'] != 'غير محدد') text += "طريقة الدفع: ${row['paymentMethod']}\n";
+                  text += "المبلغ: ${row['credit'] > 0 ? row['credit'] : row['debit']} ريال\n";
+                  if(row['fee'] > 0) text += "الرسوم/الضريبة: ${row['fee']} ريال\n";
+                  text += "الرصيد الحالي: ${row['balance']} ريال";
+                  Share.share(text);
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.cyan.shade700),
+                icon: const Icon(Icons.share, size: 18, color: Colors.white),
+                label: const Text('مشاركة', style: TextStyle(color: Colors.white)),
+              )
+            ],
+          ),
+        );
+      }
+    );
+  }
+
+  Widget _buildReceiptRow(String title, String value, {bool isBold = false, Color? color}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(flex: 2, child: Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12))),
+          Expanded(flex: 3, child: Text(value, style: TextStyle(fontWeight: isBold ? FontWeight.bold : FontWeight.normal, color: color ?? Colors.black87, fontSize: 13))),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================
+  // تصدير PDF احترافي (الآن مع اسم النظام المتغير وتفاصيل الأطراف)
   // ==========================================
   Future<void> _exportToPDF(List<Map<String, dynamic>> data, SystemProvider sys, double tCredit, double tDebit, double net) async {
     _play('click');
@@ -88,7 +287,6 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
         textDirection: pw.TextDirection.rtl,
         build: (pw.Context context) {
           return [
-            // الترويسة
             pw.Container(
               padding: const pw.EdgeInsets.all(15),
               decoration: pw.BoxDecoration(
@@ -110,6 +308,9 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.end,
                     children: [
+                      // 👈 استخدام اسم النظام العالمي هنا
+                      pw.Text('نظام ${sys.appName}', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.cyan800)),
+                      pw.SizedBox(height: 5),
                       pw.Text('تاريخ الإصدار', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey)),
                       pw.Text(intl.DateFormat('yyyy-MM-dd hh:mm a').format(DateTime.now()), style: const pw.TextStyle(fontSize: 12)),
                     ]
@@ -119,17 +320,18 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
             ),
             pw.SizedBox(height: 20),
 
-            // الجدول
+            // الجدول بعد تحديث أعمدته
             pw.TableHelper.fromTextArray(
-              headers: ['التاريخ والوقت', 'البيان', 'دائن (+)', 'مدين (-)', 'الرصيد'],
-              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+              headers: ['التاريخ/الوقت', 'البيان', 'الطرف الآخر/طريقة الدفع', 'دائن (+)', 'مدين (-)', 'الرصيد'],
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 10),
               headerDecoration: const pw.BoxDecoration(color: PdfColors.cyan800),
               cellAlignment: pw.Alignment.center,
               oddRowDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
-              cellStyle: const pw.TextStyle(fontSize: 10),
+              cellStyle: const pw.TextStyle(fontSize: 9),
               data: data.map((row) => [
                 '${row['date']}\n${row['time']}',
                 row['desc'],
+                '${row['targetName'] != '-' ? row['targetName'] : ''}\n${row['paymentMethod'] != 'غير محدد' ? '(${row['paymentMethod']})' : ''}',
                 row['credit'] > 0 ? '+${row['credit']}' : '-',
                 row['debit'] > 0 ? '-${row['debit']}' : '-',
                 row['balance'].toString(),
@@ -137,7 +339,6 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
             ),
             pw.SizedBox(height: 20),
 
-            // تذييل الملخص
             pw.Container(
               padding: const pw.EdgeInsets.all(10),
               decoration: pw.BoxDecoration(
@@ -178,7 +379,6 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
     excel.setDefaultSheet('كشف الحساب');
     excel.delete('Sheet1'); 
 
-    // تنسيق الترويسة
     ex.CellStyle headerStyle = ex.CellStyle(
       backgroundColorHex: ex.ExcelColor.blueGrey,
       fontColorHex: ex.ExcelColor.white,
@@ -186,20 +386,24 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
       horizontalAlign: ex.HorizontalAlign.Center,
     );
 
-    List<String> headers = ['رقم العملية', 'التاريخ', 'الوقت', 'البيان', 'دائن (+)', 'مدين (-)', 'الرصيد'];
+    List<String> headers = ['رقم العملية', 'التاريخ', 'الوقت', 'نوع العملية', 'البيان', 'الطرف الآخر', 'الشبكة', 'طريقة الدفع', 'الرسوم', 'دائن (+)', 'مدين (-)', 'الرصيد'];
     sheet.appendRow(headers.map((e) => ex.TextCellValue(e)).toList());
     
     for (int i = 0; i < headers.length; i++) {
       sheet.cell(ex.CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0)).cellStyle = headerStyle;
     }
 
-    // تعبئة البيانات
     for (var row in data) {
       sheet.appendRow([
         ex.TextCellValue(row['id'].toString()),
         ex.TextCellValue(row['date'].toString()),
         ex.TextCellValue(row['time'].toString()),
+        ex.TextCellValue(row['type'].toString()),
         ex.TextCellValue(row['desc'].toString()),
+        ex.TextCellValue(row['targetName'].toString()),
+        ex.TextCellValue(row['networkName'].toString()),
+        ex.TextCellValue(row['paymentMethod'].toString()),
+        ex.DoubleCellValue(row['fee'].toDouble()),
         ex.DoubleCellValue(row['credit'].toDouble()),
         ex.DoubleCellValue(row['debit'].toDouble()),
         ex.DoubleCellValue(row['balance'].toDouble()),
@@ -213,162 +417,8 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
         name: 'Statement_${sys.currentUserPhone}.xlsx', 
         mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       );
-      await Share.shareXFiles([xFile], text: 'كشف حساب الوكيل: ${sys.currentUserName}');
+      await Share.shareXFiles([xFile], text: 'كشف حساب الوكيل: ${sys.currentUserName} - نظام ${sys.appName}');
     }
-  }
-
-  // ==========================================
-  // عرض السند الإلكتروني التفصيلي
-  // ==========================================
-  void _showReceiptDialog(Map<String, dynamic> row, SystemProvider sys) {
-    _play('click');
-    showDialog(
-      context: context,
-      builder: (context) {
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: Row(
-              children: [
-                Icon(
-                  row['credit'] > 0 ? Icons.arrow_downward : Icons.arrow_upward, 
-                  color: row['credit'] > 0 ? Colors.green : Colors.red
-                ),
-                const SizedBox(width: 10),
-                const Text('إشعار عملية تفصيلي', style: TextStyle(fontWeight: FontWeight.bold)),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildReceiptRow('رقم المرجع:', '#${row['id']}'),
-                const Divider(),
-                _buildReceiptRow('التاريخ والوقت:', '${row['date']}  ${row['time']}'),
-                const Divider(),
-                _buildReceiptRow('نوع العملية:', row['type']),
-                const Divider(),
-                _buildReceiptRow('البيان:', row['desc']),
-                const Divider(),
-                _buildReceiptRow(
-                  'المبلغ:', 
-                  '${row['credit'] > 0 ? row['credit'] : row['debit']} ريال', 
-                  isBold: true, 
-                  color: row['credit'] > 0 ? Colors.green : Colors.red
-                ),
-                const Divider(),
-                _buildReceiptRow('الرصيد بعد العملية:', '${row['balance']} ريال', isBold: true, color: Colors.blue),
-              ],
-            ),
-            actionsAlignment: MainAxisAlignment.spaceBetween,
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context), 
-                child: const Text('إغلاق', style: TextStyle(color: Colors.grey))
-              ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  _play('click');
-                  String text = "🧾 *إشعار عملية - ${sys.currentUserName}*\n";
-                  text += "المرجع: #${row['id']}\nالتاريخ: ${row['date']} ${row['time']}\n";
-                  text += "البيان: ${row['desc']}\n";
-                  text += "المبلغ: ${row['credit'] > 0 ? row['credit'] : row['debit']} ريال\n";
-                  text += "الرصيد الحالي: ${row['balance']} ريال";
-                  Share.share(text);
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.cyan.shade700),
-                icon: const Icon(Icons.share, size: 18, color: Colors.white),
-                label: const Text('مشاركة الإشعار', style: TextStyle(color: Colors.white)),
-              )
-            ],
-          ),
-        );
-      }
-    );
-  }
-
-  Widget _buildReceiptRow(String title, String value, {bool isBold = false, Color? color}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(flex: 2, child: Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12))),
-          Expanded(flex: 3, child: Text(value, style: TextStyle(fontWeight: isBold ? FontWeight.bold : FontWeight.normal, color: color ?? Colors.black87, fontSize: 13))),
-        ],
-      ),
-    );
-  }
-
-  // ==========================================
-  // معالجة البيانات والمحرك المحاسبي
-  // ==========================================
-  List<Map<String, dynamic>> _processData(List<QueryDocumentSnapshot> docs) {
-    List<Map<String, dynamic>> rawList = [];
-    
-    for (var doc in docs) {
-      var data = doc.data() as Map<String, dynamic>;
-      Timestamp? ts = data['createdAt'];
-      DateTime dt = ts != null ? ts.toDate() : DateTime.now();
-      
-      double amount = (data['amount'] ?? 0).toDouble();
-      String rawType = data['type'] ?? 'أخرى';
-      
-      String uiType = 'أخرى';
-      double credit = 0.0;
-      double debit = 0.0;
-      
-      if (rawType == 'sale') {
-        uiType = 'مبيعات';
-        debit = amount;
-      } else if (rawType == 'deposit') {
-        uiType = 'شحن رصيد';
-        credit = amount;
-      }
-
-      String desc = data['desc'] ?? '';
-      if (desc.isEmpty && rawType == 'sale') {
-        desc = 'بيع كروت: ${data['networkName'] ?? ''} - ${data['categoryName'] ?? ''} (${data['quantity'] ?? 1} كرت)';
-      }
-
-      rawList.add({
-        'id': doc.id.substring(0, 6).toUpperCase(),
-        'rawDate': dt,
-        'date': intl.DateFormat('yyyy-MM-dd').format(dt),
-        'time': intl.DateFormat('hh:mm a').format(dt),
-        'desc': desc,
-        'credit': credit,
-        'debit': debit,
-        'type': uiType,
-        'balance': 0.0 
-      });
-    }
-
-    // الترتيب من الأقدم للأحدث لحساب الرصيد التراكمي
-    rawList.sort((a, b) => (a['rawDate'] as DateTime).compareTo(b['rawDate'] as DateTime));
-
-    double runningBalance = 0.0;
-    for (int i = 0; i < rawList.length; i++) {
-      runningBalance += rawList[i]['credit'];
-      runningBalance -= rawList[i]['debit'];
-      rawList[i]['balance'] = runningBalance;
-    }
-
-    // عكس القائمة ليظهر الأحدث أولاً
-    List<Map<String, dynamic>> reversedList = rawList.reversed.toList();
-
-    // الفلترة (محلية)
-    return reversedList.where((row) {
-      if (_selectedType != 'الكل' && row['type'] != _selectedType) return false;
-      if (_searchQuery.isNotEmpty && !row['desc'].toString().toLowerCase().contains(_searchQuery)) return false;
-      if (_selectedDateRange != null) {
-        DateTime rowDate = row['rawDate'];
-        DateTime start = DateTime(_selectedDateRange!.start.year, _selectedDateRange!.start.month, _selectedDateRange!.start.day);
-        DateTime end = DateTime(_selectedDateRange!.end.year, _selectedDateRange!.end.month, _selectedDateRange!.end.day, 23, 59, 59);
-        if (rowDate.isBefore(start) || rowDate.isAfter(end)) return false;
-      }
-      return true;
-    }).toList();
   }
 
   // ==========================================
@@ -381,7 +431,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
     
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: const CustomHeader(title: 'كشف الحساب المتقدم'),
+      appBar: CustomHeader(title: 'كشف الحساب - ${sys.appName}'),
       drawer: CustomAgentDrawer(
         agentName: sys.currentUserName,
         phoneNumber: sys.currentUserPhone,
@@ -392,7 +442,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // 1. الفلاتر والبحث (تم فصلها عن StreamBuilder لحل مشكلة الكيبورد)
+            // الفلاتر والبحث
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -431,7 +481,8 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
                             fillColor: Theme.of(context).cardColor,
                           ),
                           style: TextStyle(fontSize: 12, color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontFamily: 'Tajawal'),
-                          items: ['الكل', 'مبيعات', 'شحن رصيد', 'أخرى'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                          // 👈 فلاتر ذكية تتناسب مع طبيعة العمليات
+                          items: ['الكل', 'مبيعات كروت', 'شحن حصة', 'تحويل/خصم', 'إيراد/استلام'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                           onChanged: (val) { 
                             _play('click'); 
                             setState(() => _selectedType = val!); 
@@ -447,7 +498,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
                       controller: _searchController,
                       onChanged: (val) => setState(() => _searchQuery = val.toLowerCase()),
                       decoration: InputDecoration(
-                        hintText: 'ابحث عن اسم الشبكة أو الفئة أو البيان...',
+                        hintText: 'ابحث عن اسم الطرف الآخر، الشبكة، أو البيان...',
                         hintStyle: const TextStyle(fontSize: 13),
                         prefixIcon: const Icon(Icons.search),
                         filled: true,
@@ -462,23 +513,21 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
             ),
             const SizedBox(height: 10),
 
-            // 2. StreamBuilder لجلب البيانات الحية
+            // StreamBuilder لجلب البيانات الحية
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
-                // تم إزالة orderBy و limit لحل مشكلة الفايربيز
+                // نجلب كل العمليات الخاصة بهذا الوكيل لضمان عدم ضياع أي بيانات
                 stream: _db.collection('transactions').where('agentPhone', isEqualTo: sys.currentUserPhone).snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
                     return Center(child: Text('حدث خطأ في الاتصال: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
                   }
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const Center(child: CircularProgressIndicator(color: Colors.cyan));
                   }
                   
-                  // معالجة وتصفية البيانات
                   List<Map<String, dynamic>> finalData = _processData(snapshot.hasData ? snapshot.data!.docs : []);
 
-                  // حساب الإجماليات للفترة المحددة
                   final double totalCredit = finalData.fold(0.0, (sum, item) => sum + item['credit']);
                   final double totalDebit = finalData.fold(0.0, (sum, item) => sum + item['debit']);
                   final double netMovement = totalCredit - totalDebit;
@@ -523,7 +572,7 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
                       ),
                       const SizedBox(height: 10),
 
-                      // ترويسة الجدول (كما صممتها أنت سابقاً)
+                      // ترويسة الجدول 
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Container(
@@ -540,17 +589,19 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
                         ),
                       ),
 
-                      // محتوى الجدول الفعلي
+                      // محتوى السجل الفعلي
                       Expanded(
                         child: finalData.isEmpty
                             ? const Center(child: Text('لا توجد عمليات مطابقة في هذه الفترة.', style: TextStyle(color: Colors.grey)))
                             : ListView.builder(
                                 padding: const EdgeInsets.all(16),
                                 itemCount: finalData.length,
+                                physics: const BouncingScrollPhysics(),
                                 itemBuilder: (context, index) {
                                   final row = finalData[index];
                                   Color creditColor = row['credit'] > 0 ? Colors.green.shade700 : Colors.grey.shade400;
                                   Color debitColor = row['debit'] > 0 ? Colors.red.shade700 : Colors.grey.shade400;
+                                  bool isDebt = row['paymentMethod'] == 'آجل';
 
                                   return InkWell(
                                     onTap: () => _showReceiptDialog(row, sys),
@@ -559,9 +610,9 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
                                       margin: const EdgeInsets.only(bottom: 8),
                                       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                                       decoration: BoxDecoration(
-                                        color: Theme.of(context).cardColor,
+                                        color: isDebt ? Colors.orange.withOpacity(0.05) : Theme.of(context).cardColor,
                                         borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: Colors.grey.shade200),
+                                        border: Border.all(color: isDebt ? Colors.orange.shade200 : Colors.grey.shade200),
                                         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
                                       ),
                                       child: Row(
