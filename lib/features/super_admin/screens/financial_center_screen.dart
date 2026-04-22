@@ -1,11 +1,16 @@
 import 'dart:convert'; 
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart' as intl; 
 import 'package:pdf/pdf.dart'; 
 import 'package:pdf/widgets.dart' as pw; 
 import 'package:printing/printing.dart'; 
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/providers/system_provider.dart'; 
 import '../../../core/providers/ui_provider.dart'; 
@@ -46,6 +51,17 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
 
   void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
 
+  void _showSnack(String m, {bool isErr = false}) {
+    if(!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(m, textDirection: TextDirection.rtl, style: const TextStyle(fontWeight: FontWeight.bold)), 
+        backgroundColor: isErr ? Colors.red.shade800 : Colors.green.shade800,
+        behavior: SnackBarBehavior.floating,
+      )
+    );
+  }
+
   // ==========================================
   // النوافذ المنبثقة لطلبات الشحن (SaaS)
   // ==========================================
@@ -53,7 +69,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     _play('warning'); 
     final docId = req['docId'];
     
-    // استخراج بيانات الحصة والرسوم من الطلب المحدث
     String agentPhone = req['userPhone'] ?? req['agentPhone'];
     String agentName = req['userName'] ?? req['agentName'] ?? 'مجهول';
     double quotaAmount = double.tryParse(req['amount'].toString()) ?? 0.0;
@@ -82,17 +97,15 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
 
                 try {
                   _play('click');
-                  // 👈 استدعاء الدالة المحدثة التي تتعامل مع الحصص والرسوم
                   await provider.adminAcceptSaaSRecharge(docId, agentPhone, quotaAmount, feeAmount);
-                  
                   if (mounted) {
                     _play('success'); 
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تأكيد الشحن وإيداع الحصة بنجاح ✅'), backgroundColor: Colors.green));
+                    _showSnack('تم تأكيد الشحن وإيداع الحصة بنجاح ✅');
                   }
                 } catch (e) {
                   if (mounted) {
                     _play('error'); 
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
+                    _showSnack('خطأ: $e', isErr: true);
                   }
                 } finally {
                   if (mounted) setState(() => _processingRequests.remove(docId)); 
@@ -146,7 +159,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                   onPressed: isRejecting ? null : () async {
                     if (reasonController.text.trim().isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى كتابة السبب أولاً!'), backgroundColor: Colors.orange));
+                      _showSnack('يرجى كتابة السبب أولاً!', isErr: true);
                       return;
                     }
                     setStateDialog(() => isRejecting = true);
@@ -156,13 +169,13 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                       if (mounted) {
                         _play('success'); 
                         Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم رفض الطلب وإشعار الوكيل.'), backgroundColor: Colors.red));
+                        _showSnack('تم رفض الطلب وإشعار الوكيل.');
                       }
                     } catch (e) {
                       setStateDialog(() => isRejecting = false);
                       if (mounted) {
                         _play('error');
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
+                        _showSnack('خطأ: $e', isErr: true);
                       }
                     }
                   },
@@ -174,6 +187,140 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
             ),
           );
         }
+      ),
+    );
+  }
+
+  // ==========================================
+  // الإيصال الذكي للتفاصيل (الميزة الجديدة) 🎨
+  // ==========================================
+  void _showTransactionReceipt(Map<String, dynamic> log, SystemProvider sys) {
+    _play('click');
+    final GlobalKey receiptKey = GlobalKey();
+    
+    final double amount = double.tryParse(log['amount'].toString()) ?? 0.0;
+    final bool isPositive = log['type'] == 'deposit' || log['type'] == 'income';
+    final Color color = isPositive ? Colors.green : Colors.red;
+    final String dateStr = log['timestamp'] != null ? intl.DateFormat('yyyy-MM-dd hh:mm a').format((log['timestamp'] as Timestamp).toDate()) : 'الآن';
+
+    showDialog(
+      context: context,
+      builder: (c) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          contentPadding: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          content: RepaintBoundary(
+            key: receiptKey,
+            child: Container(
+              width: 320,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Theme.of(context).cardColor, color.withOpacity(0.08)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: color.withOpacity(0.3), width: 2),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+                    child: Icon(isPositive ? Icons.arrow_downward : Icons.arrow_upward, size: 30, color: color),
+                  ),
+                  const SizedBox(height: 10),
+                  Text('نظام ${sys.appName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueGrey)),
+                  Text('إشعار عملية مالية', style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
+                  const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(thickness: 1.5)),
+                  
+                  Text(log['title'] ?? log['type'] ?? 'عملية مسجلة', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                  const SizedBox(height: 15),
+                  
+                  _buildReceiptRow('المرجع', log['reference'] ?? 'لا يوجد', isBold: true),
+                  _buildReceiptRow('التاريخ', dateStr),
+                  _buildReceiptRow('المبلغ', '${intl.NumberFormat('#,###').format(amount)} ريال', valueColor: color, isBold: true),
+                  _buildReceiptRow('الطرف الآخر', log['agentName'] ?? 'مجهول'),
+                  
+                  if (log['networkName'] != null && log['networkName'] != 'غير محدد')
+                    _buildReceiptRow('الشبكة', log['networkName']),
+                  if (log['paymentMethod'] != null)
+                    _buildReceiptRow('طريقة الدفع', log['paymentMethod']),
+                  if (log['fee'] != null && double.tryParse(log['fee'].toString()) != 0)
+                    _buildReceiptRow('الرسوم التشغيلية', '${intl.NumberFormat('#,###').format(log['fee'])} ريال', valueColor: Colors.red),
+                  if (log['reason'] != null)
+                    _buildReceiptRow('السبب', log['reason']),
+                  
+                  const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(thickness: 1.5)),
+                  const Text('المركز المالي لمالك النظام', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                ],
+              ),
+            ),
+          ),
+          actionsAlignment: MainAxisAlignment.spaceEvenly,
+          actions: [
+            TextButton(onPressed: ()=> Navigator.pop(c), child: const Text('إغلاق', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))),
+            IconButton(
+              icon: const Icon(Icons.copy, color: Colors.blue),
+              tooltip: 'نسخ كنص',
+              onPressed: () {
+                _play('click');
+                String text = "🧾 *إشعار عملية - ${sys.appName}*\n";
+                text += "المرجع: ${log['reference'] ?? 'لا يوجد'}\n";
+                text += "التاريخ: $dateStr\n";
+                text += "البيان: ${log['title'] ?? log['type']}\n";
+                text += "المبلغ: ${intl.NumberFormat('#,###').format(amount)} ريال\n";
+                text += "الطرف: ${log['agentName'] ?? 'مجهول'}\n";
+                Clipboard.setData(ClipboardData(text: text));
+                _showSnack('تم نسخ النص بنجاح');
+              },
+            ),
+            ElevatedButton.icon(
+               icon: const Icon(Icons.image, color: Colors.white, size: 16),
+               label: const Text('مشاركة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+               style: ElevatedButton.styleFrom(backgroundColor: color, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+               onPressed: () async {
+                  _play('click');
+                  _showSnack('جاري تجهيز الصورة... ⏳');
+                  try {
+                    RenderRepaintBoundary boundary = receiptKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+                    ui.Image image = await boundary.toImage(pixelRatio: 3.0); 
+                    ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+                    Uint8List pngBytes = byteData!.buffer.asUint8List();
+                    
+                    await Share.shareXFiles([XFile.fromData(pngBytes, mimeType: 'image/png', name: 'receipt.png')], text: 'إيصال عملية مالية - ${sys.appName}');
+                    _play('success');
+                  } catch (e) {
+                    _play('error');
+                    _showSnack('حدث خطأ أثناء التقاط الصورة', isErr: true);
+                  }
+               }
+            )
+          ]
+        )
+      )
+    );
+  }
+
+  Widget _buildReceiptRow(String label, String value, {Color? valueColor, bool isBold = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          Expanded(
+            child: Text(
+              value, 
+              textAlign: TextAlign.end,
+              style: TextStyle(fontSize: isBold ? 14 : 12, fontWeight: isBold ? FontWeight.bold : FontWeight.w600, color: valueColor),
+              maxLines: 2, overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -237,7 +384,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                   onPressed: isProcessing ? null : () async {
                     if (amountController.text.isEmpty || reasonController.text.isEmpty) {
                       _play('error');
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرجاء إدخال المبلغ والسبب!')));
+                      _showSnack('الرجاء إدخال المبلغ والسبب!', isErr: true);
                       return;
                     }
                     setStateDialog(() => isProcessing = true);
@@ -256,13 +403,13 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                       if (mounted) {
                         _play('success');
                         Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت التسوية بنجاح ✅'), backgroundColor: Colors.green));
+                        _showSnack('تمت التسوية بنجاح ✅');
                       }
                     } catch (e) {
                       setStateDialog(() => isProcessing = false);
                       if (mounted) {
                         _play('error');
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
+                        _showSnack('خطأ: $e', isErr: true);
                       }
                     }
                   },
@@ -307,7 +454,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                   if (mounted) {
                     _play('success');
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث حد الخطر بنجاح.')));
+                    _showSnack('تم تحديث حد الخطر بنجاح.');
                   }
                 } catch (e) {
                   _play('error');
@@ -372,12 +519,12 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                 onPressed: () async {
                   if (startDate == null || endDate == null) {
                     _play('error');
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى تحديد فترة الكشف!'), backgroundColor: Colors.orange));
+                    _showSnack('يرجى تحديد فترة الكشف!', isErr: true);
                     return;
                   }
                   _play('click');
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري توليد الـ PDF... ⏳')));
-                  await _generateAndDownloadPdf(agent, startDate!, endDate!, provider.transactionsLedger);
+                  _showSnack('جاري توليد الـ PDF... ⏳');
+                  await _generateAndDownloadPdf(agent, startDate!, endDate!, provider.transactionsLedger, provider.appName);
                   if (mounted) Navigator.pop(context);
                 },
                 icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
@@ -390,7 +537,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
     );
   }
 
-  Future<void> _generateAndDownloadPdf(Map<String, dynamic> agent, DateTime start, DateTime end, List<Map<String, dynamic>> allLedger) async {
+  Future<void> _generateAndDownloadPdf(Map<String, dynamic> agent, DateTime start, DateTime end, List<Map<String, dynamic>> allLedger, String appName) async {
     final endInclusive = DateTime(end.year, end.month, end.day, 23, 59, 59); 
     final startInclusive = DateTime(start.year, start.month, start.day, 0, 0, 0);
 
@@ -420,7 +567,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
                     pw.Text('كشف حساب وكيل', style: pw.TextStyle(color: PdfColors.white, fontSize: 20, fontWeight: pw.FontWeight.bold)),
-                    pw.Text('نظام كروت نت', style: pw.TextStyle(color: PdfColors.white, fontSize: 14)),
+                    pw.Text('نظام $appName', style: pw.TextStyle(color: PdfColors.white, fontSize: 14)),
                   ]
                 )
               ),
@@ -632,7 +779,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                 
                 const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider()),
                 
-                // 👈 عرض الرسوم والحصة بذكاء إذا كان الطلب بنظام SaaS
                 if (isSaaS) ...[
                   Container(
                     padding: const EdgeInsets.all(10),
@@ -652,7 +798,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('الرسوم المحولة (للمالك):', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red)),
+                        const Text('الرسوم المحولة لك:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red)),
                         Text('${intl.NumberFormat('#,###').format(feeAmount)} ريال', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.red)),
                       ],
                     ),
@@ -667,7 +813,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                 _buildInfoRow('رقم المرجع:', req['reference'] ?? req['ref'] ?? 'لا يوجد', textColor: textColor),
                 const SizedBox(height: 15),
                 
-                // زر عرض الصورة
                 OutlinedButton.icon(
                   onPressed: () {
                     _play('click');
@@ -686,7 +831,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
                         ),
                       );
                     } else {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الوكيل لم يقم بإرفاق صورة السند ⏳'), backgroundColor: Colors.orange));
+                      _showSnack('الوكيل لم يقم بإرفاق صورة السند ⏳', isErr: true);
                     }
                   },
                   icon: Icon(Icons.image, size: 18, color: req['hasReceipt'] == true ? Colors.green : Colors.grey),
@@ -823,43 +968,47 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen> with Sing
       itemBuilder: (context, index) {
         final log = ledger[index];
         final amount = double.parse(log['amount'].toString());
-        final isPositive = log['type'] == 'deposit' || log['type'] == 'income'; // الإيداع والأرباح للمالك
+        final isPositive = log['type'] == 'deposit' || log['type'] == 'income'; 
         final color = isPositive ? Colors.green : Colors.red;
 
         return Card(
           color: cardColor,
           margin: const EdgeInsets.only(bottom: 10),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.grey.withOpacity(0.1))),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
-                  child: Icon(isPositive ? Icons.arrow_downward : Icons.arrow_upward, color: color, size: 20),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(log['title'] ?? log['type'] ?? 'حركة مالية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: textColor), maxLines: 1, overflow: TextOverflow.ellipsis),
-                      const SizedBox(height: 4),
-                      Text('${log['agentName'] ?? 'مجهول'} (${log['agentPhone'] ?? ''})', style: const TextStyle(fontSize: 11, color: Colors.blueGrey)),
-                      if (log['reason'] != null) Text('السبب: ${log['reason']}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                    ],
+          child: InkWell(
+            onTap: () => _showTransactionReceipt(log, provider), // 👈 النقر لعرض الفاتورة
+            borderRadius: BorderRadius.circular(15),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+                    child: Icon(isPositive ? Icons.arrow_downward : Icons.arrow_upward, color: color, size: 20),
                   ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text('${isPositive ? '+' : ''}${intl.NumberFormat('#,###').format(amount)}', style: TextStyle(fontWeight: FontWeight.bold, color: color, fontSize: 14), textDirection: TextDirection.ltr),
-                    const SizedBox(height: 4),
-                    Text(log['timestamp'] != null ? intl.DateFormat('yyyy-MM-dd hh:mm a').format((log['timestamp'] as Timestamp).toDate()) : 'الآن', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                  ],
-                )
-              ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(log['title'] ?? log['type'] ?? 'حركة مالية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: textColor), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 4),
+                        Text('${log['agentName'] ?? 'مجهول'} (${log['agentPhone'] ?? ''})', style: const TextStyle(fontSize: 11, color: Colors.blueGrey)),
+                        if (log['reason'] != null) Text('السبب: ${log['reason']}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text('${isPositive ? '+' : ''}${intl.NumberFormat('#,###').format(amount)}', style: TextStyle(fontWeight: FontWeight.bold, color: color, fontSize: 14), textDirection: TextDirection.ltr),
+                      const SizedBox(height: 4),
+                      Text(log['timestamp'] != null ? intl.DateFormat('yyyy-MM-dd hh:mm a').format((log['timestamp'] as Timestamp).toDate()) : 'الآن', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                    ],
+                  )
+                ],
+              ),
             ),
           ),
         );
