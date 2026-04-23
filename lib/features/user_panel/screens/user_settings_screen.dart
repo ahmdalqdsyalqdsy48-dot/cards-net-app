@@ -136,7 +136,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ---------- تبويب الأمان ----------
   Widget _buildSecurityTab(SystemProvider sys, Color primaryColor, bool isDark, Color textColor) {
     final useBiometrics = sys.isBiometricCurrentlyEnabled;
 
@@ -248,7 +247,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ---------- تبويب المظهر (تخصيص اللون فقط في الوضع الليلي) ----------
   Widget _buildAppearanceTab(ThemeProvider themeProvider, UiProvider uiProvider, Color primaryColor, bool isDark, Color textColor) {
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -435,7 +433,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ---------- تبويب الحساب ----------
   Widget _buildAccountTab(SystemProvider sys, Color primaryColor, bool isDark, Color textColor) {
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -477,7 +474,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 onChanged: (val) async {
                   _playFeedback();
                   setState(() => _selectedLanguage = val!);
-                  await sys.saveLanguage(val!);   // ✅ val! آمنة
+                  await sys.saveLanguage(val!);
                   _showToast('تم تغيير اللغة إلى العربية');
                 },
               ),
@@ -489,7 +486,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 onChanged: (val) async {
                   _playFeedback();
                   setState(() => _selectedLanguage = val!);
-                  await sys.saveLanguage(val!);   // ✅ val! آمنة
+                  await sys.saveLanguage(val!);
                   _showToast('Language changed to English');
                 },
               ),
@@ -552,7 +549,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ---------- تبويب الإشعارات ----------
   Widget _buildNotificationsTab(Color primaryColor, bool isDark, Color textColor) {
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -641,7 +637,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ---------- تبويب الخصوصية ----------
   Widget _buildPrivacyTab(SystemProvider sys, Color primaryColor, bool isDark, Color textColor) {
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -707,7 +702,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ---------- دوال مساعدة ----------
   Widget _buildSectionTitle(String title, Color textColor) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, right: 4),
@@ -732,7 +726,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ---------- نافذة كلمة المرور (3 حقول + معاينة) ----------
   void _showPasswordDialog(SystemProvider sys) {
     final oldPassController = TextEditingController();
     final newPassController = TextEditingController();
@@ -831,7 +824,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ---------- نافذة PIN بثلاثة حقول (قديم، جديد، تأكيد) + معاينة ----------
   void _showPinDialog(SystemProvider sys) {
     final oldPinController = TextEditingController();
     final newPinController = TextEditingController();
