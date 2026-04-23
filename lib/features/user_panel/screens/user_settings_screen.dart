@@ -22,19 +22,14 @@ class UserSettingsScreen extends StatefulWidget {
 class _UserSettingsScreenState extends State<UserSettingsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-
-  // الإعدادات المحفوظة محلياً
   bool _appSounds = true;
   double _dailyLimit = 0.0;
   String _userPin = '';
-  // إعدادات الإشعارات
   bool _notificationsEnabled = true;
   bool _marketingNotifications = true;
   bool _transactionNotifications = true;
-  // إعدادات الخصوصية
   bool _hideBalanceFromOthers = false;
   bool _showFullName = true;
-  // اللغة (افتراضية)
   String _selectedLanguage = 'ar';
 
   @override
@@ -86,7 +81,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     final themeProvider = Provider.of<ThemeProvider>(context);
     final systemProvider = Provider.of<SystemProvider>(context);
     final uiProvider = Provider.of<UiProvider>(context);
-
     final isDark = themeProvider.isDarkMode;
     final primaryColor = themeProvider.primaryColor;
     final userName = systemProvider.currentUserName;
@@ -100,7 +94,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // تبويبات قابلة للتمرير
             Container(
               color: Theme.of(context).cardColor,
               child: TabBar(
@@ -120,7 +113,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 ],
               ),
             ),
-            // محتوى التبويبات
             Expanded(
               child: TabBarView(
                 controller: _tabController,
@@ -139,7 +131,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ==================== تبويب الأمان ====================
+  // ====================== تبويب الأمان ======================
   Widget _buildSecurityTab(SystemProvider sys, Color primaryColor, bool isDark) {
     final useBiometrics = sys.isBiometricCurrentlyEnabled;
 
@@ -250,8 +242,9 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ==================== تبويب المظهر ====================
-  Widget _buildAppearanceTab(ThemeProvider themeProvider, UiProvider uiProvider, Color primaryColor, bool isDark) {
+  // ====================== تبويب المظهر ======================
+  Widget _buildAppearanceTab(ThemeProvider themeProvider, UiProvider uiProvider,
+      Color primaryColor, bool isDark) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -275,7 +268,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   child: Icon(Icons.dark_mode, color: primaryColor, size: 20),
                 ),
                 title: const Text('الوضع الليلي', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text('تفعيل المظهر الداكن', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                subtitle:
+                    const Text('تفعيل المظهر الداكن', style: TextStyle(fontSize: 12, color: Colors.grey)),
                 value: themeProvider.isDarkMode,
                 activeColor: primaryColor,
                 onChanged: (val) {
@@ -294,7 +288,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   child: Icon(Icons.volume_up, color: primaryColor, size: 20),
                 ),
                 title: const Text('الأصوات التفاعلية', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text('تشغيل الأصوات والاهتزاز', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                subtitle: const Text('تشغيل الأصوات والاهتزاز',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
                 value: _appSounds,
                 activeColor: primaryColor,
                 onChanged: (val) async {
@@ -314,93 +309,109 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
         ),
         const SizedBox(height: 20),
 
-        _buildSectionTitle('تخصيص لون الواجهة', primaryColor),
-        Card(
-          elevation: 0,
-          color: Theme.of(context).cardColor,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-            side: BorderSide(color: primaryColor.withOpacity(0.3)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'اختر لوناً شخصياً ينعكس على جميع الشاشات والقوائم والبطاقات.',
-                  style: TextStyle(fontSize: 13, color: Colors.grey),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    // زر عجلة الألوان
-                    Column(
-                      children: [
-                        GestureDetector(
-                          onTap: () => _openColorWheelPicker(themeProvider),
-                          child: Container(
-                            width: 60,
-                            height: 60,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: const SweepGradient(
-                                colors: [Colors.red, Colors.yellow, Colors.green, Colors.blue, Colors.purple, Colors.red],
+        // 👇 تخصيص اللون يظهر فقط في الوضع الليلي
+        if (themeProvider.isDarkMode) ...[
+          _buildSectionTitle('تخصيص لون الواجهة', primaryColor),
+          Card(
+            elevation: 0,
+            color: Theme.of(context).cardColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(15),
+              side: BorderSide(color: primaryColor.withOpacity(0.3)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'اختر لوناً شخصياً ينعكس على جميع الشاشات والقوائم والبطاقات.',
+                    style: TextStyle(fontSize: 13, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      // زر عجلة الألوان
+                      Column(
+                        children: [
+                          GestureDetector(
+                            onTap: () => _openColorWheelPicker(themeProvider),
+                            child: Container(
+                              width: 60,
+                              height: 60,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: const SweepGradient(
+                                  colors: [
+                                    Colors.red,
+                                    Colors.yellow,
+                                    Colors.green,
+                                    Colors.blue,
+                                    Colors.purple,
+                                    Colors.red
+                                  ],
+                                ),
+                                border: Border.all(color: Colors.grey.shade300),
+                                boxShadow: [
+                                  BoxShadow(
+                                      color: Colors.black.withOpacity(0.1),
+                                      blurRadius: 8),
+                                ],
                               ),
-                              border: Border.all(color: Colors.grey.shade300),
-                              boxShadow: [
-                                BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8),
-                              ],
-                            ),
-                            child: Center(
-                              child: Container(
-                                width: 50,
-                                height: 50,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: primaryColor,
-                                  border: Border.all(color: Colors.white, width: 2),
+                              child: Center(
+                                child: Container(
+                                  width: 50,
+                                  height: 50,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: primaryColor,
+                                    border: Border.all(color: Colors.white, width: 2),
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text('اختر لوناً', style: TextStyle(fontSize: 12, color: primaryColor)),
-                      ],
-                    ),
-                    // زر استعادة اللون الافتراضي (الأبيض)
-                    Column(
-                      children: [
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            _playFeedback();
-                            themeProvider.resetToDefaultColor();
-                            _showToast('تم استعادة اللون الافتراضي');
-                          },
-                          icon: const Icon(Icons.restore, size: 20),
-                          label: const Text('اللون الافتراضي'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
-                            foregroundColor: isDark ? Colors.white : Colors.black87,
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                          const SizedBox(height: 4),
+                          Text('اختر لوناً',
+                              style: TextStyle(fontSize: 12, color: primaryColor)),
+                        ],
+                      ),
+                      // زر استعادة اللون الافتراضي
+                      Column(
+                        children: [
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              _playFeedback();
+                              themeProvider.resetToDefaultColor();
+                              _showToast('تم استعادة اللون الافتراضي');
+                            },
+                            icon: const Icon(Icons.restore, size: 20),
+                            label: const Text('اللون الافتراضي'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor:
+                                  isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+                              foregroundColor: isDark ? Colors.white : Colors.black87,
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(30)),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        const Text('استعادة', style: TextStyle(fontSize: 12)),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
+                          const SizedBox(height: 4),
+                          const Text('استعادة', style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 20),
+        ],
 
+        const SizedBox(height: 20),
         _buildSectionTitle('حجم الخط', primaryColor),
         Card(
           elevation: 0,
@@ -436,7 +447,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ==================== تبويب الحساب ====================
+  // ====================== تبويب الحساب ======================
   Widget _buildAccountTab(SystemProvider sys, Color primaryColor, bool isDark) {
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -454,7 +465,9 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
               _buildListTile(
                 Icons.account_balance_wallet,
                 'الحد اليومي للمشتريات',
-                _dailyLimit > 0 ? 'الحد الحالي: ${_dailyLimit.toStringAsFixed(0)} ريال' : 'لم يتم تعيين حد يومي',
+                _dailyLimit > 0
+                    ? 'الحد الحالي: ${_dailyLimit.toStringAsFixed(0)} ريال'
+                    : 'لم يتم تعيين حد يومي',
                 primaryColor,
                 onTap: () => _showLimitDialog(sys),
               ),
@@ -489,7 +502,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 onChanged: (val) async {
                   setState(() => _selectedLanguage = val!);
                   final prefs = await SharedPreferences.getInstance();
-                  await prefs.setString('language', val!);
+                  await prefs.setString('language', val);
                   _showToast('سيتم تطبيق اللغة عند إعادة التشغيل');
                 },
               ),
@@ -501,7 +514,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 onChanged: (val) async {
                   setState(() => _selectedLanguage = val!);
                   final prefs = await SharedPreferences.getInstance();
-                  await prefs.setString('language', val!);
+                  await prefs.setString('language', val);
                   _showToast('Language will be applied after restart');
                 },
               ),
@@ -544,7 +557,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   children: [
                     const Icon(Icons.info_outline, size: 16, color: Colors.grey),
                     const SizedBox(width: 8),
-                    Text('إصدار التطبيق: 2.0.0', style: TextStyle(color: Colors.grey.shade600)),
+                    Text('إصدار التطبيق: 2.0.0',
+                        style: TextStyle(color: Colors.grey.shade600)),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -552,7 +566,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   children: [
                     const Icon(Icons.policy, size: 16, color: Colors.grey),
                     const SizedBox(width: 8),
-                    Text('سياسة الخصوصية', style: TextStyle(color: Colors.grey.shade600)),
+                    Text('سياسة الخصوصية',
+                        style: TextStyle(color: Colors.grey.shade600)),
                   ],
                 ),
               ],
@@ -563,7 +578,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ==================== تبويب الإشعارات ====================
+  // ====================== تبويب الإشعارات ======================
   Widget _buildNotificationsTab(Color primaryColor, bool isDark) {
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -585,10 +600,13 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                     color: primaryColor.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.notifications_active, color: primaryColor, size: 20),
+                  child:
+                      Icon(Icons.notifications_active, color: primaryColor, size: 20),
                 ),
-                title: const Text('تفعيل الإشعارات', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text('استلام إشعارات داخل التطبيق', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                title: const Text('تفعيل الإشعارات',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('استلام إشعارات داخل التطبيق',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
                 value: _notificationsEnabled,
                 activeColor: primaryColor,
                 onChanged: (val) async {
@@ -609,8 +627,10 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ),
                   child: Icon(Icons.campaign, color: primaryColor, size: 20),
                 ),
-                title: const Text('إشعارات التسويق والعروض', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text('استلام عروض وكوبونات', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                title: const Text('إشعارات التسويق والعروض',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('استلام عروض وكوبونات',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
                 value: _marketingNotifications,
                 activeColor: primaryColor,
                 onChanged: _notificationsEnabled
@@ -632,8 +652,10 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ),
                   child: Icon(Icons.payments, color: primaryColor, size: 20),
                 ),
-                title: const Text('إشعارات المعاملات المالية', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text('تنبيهات الشراء والتحويل', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                title: const Text('إشعارات المعاملات المالية',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('تنبيهات الشراء والتحويل',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
                 value: _transactionNotifications,
                 activeColor: primaryColor,
                 onChanged: _notificationsEnabled
@@ -652,7 +674,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ==================== تبويب الخصوصية ====================
+  // ====================== تبويب الخصوصية ======================
   Widget _buildPrivacyTab(SystemProvider sys, Color primaryColor, bool isDark) {
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -674,10 +696,13 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                     color: primaryColor.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.visibility_off, color: primaryColor, size: 20),
+                  child:
+                      Icon(Icons.visibility_off, color: primaryColor, size: 20),
                 ),
-                title: const Text('إخفاء الرصيد عن الآخرين', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text('لن يظهر رصيدك للمستخدمين عند البحث', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                title: const Text('إخفاء الرصيد عن الآخرين',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('لن يظهر رصيدك للمستخدمين عند البحث',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
                 value: _hideBalanceFromOthers,
                 activeColor: primaryColor,
                 onChanged: (val) async {
@@ -699,8 +724,10 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ),
                   child: Icon(Icons.person, color: primaryColor, size: 20),
                 ),
-                title: const Text('إظهار الاسم الكامل', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text('عند استقبال التحويلات', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                title: const Text('إظهار الاسم الكامل',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('عند استقبال التحويلات',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
                 value: _showFullName,
                 activeColor: primaryColor,
                 onChanged: (val) async {
@@ -718,32 +745,40 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ==================== دوال مساعدة ====================
+  // ====================== دوال مساعدة ======================
   Widget _buildSectionTitle(String title, Color primaryColor) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, right: 4),
       child: Text(
         title,
-        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor),
+        style: TextStyle(
+            fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor),
       ),
     );
   }
 
-  Widget _buildListTile(IconData icon, String title, String subtitle, Color color, {required VoidCallback onTap}) {
+  Widget _buildListTile(
+      IconData icon, String title, String subtitle, Color color,
+      {required VoidCallback onTap}) {
     return ListTile(
       leading: Container(
         padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+        decoration:
+            BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
         child: Icon(icon, color: color, size: 20),
       ),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-      subtitle: subtitle.isNotEmpty ? Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey)) : null,
-      trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+      title: Text(title,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+      subtitle: subtitle.isNotEmpty
+          ? Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey))
+          : null,
+      trailing:
+          const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
       onTap: onTap,
     );
   }
 
-  // ==================== نافذة تغيير كلمة المرور ====================
+  // ====================== نافذة تغيير كلمة المرور ======================
   void _showPasswordDialog(SystemProvider sys) {
     final oldPassController = TextEditingController();
     final newPassController = TextEditingController();
@@ -769,8 +804,11 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                       labelText: 'كلمة المرور الحالية',
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
-                        icon: Icon(obscureOld ? Icons.visibility_off : Icons.visibility),
-                        onPressed: () => setStateDialog(() => obscureOld = !obscureOld),
+                        icon: Icon(obscureOld
+                            ? Icons.visibility_off
+                            : Icons.visibility),
+                        onPressed: () =>
+                            setStateDialog(() => obscureOld = !obscureOld),
                       ),
                     ),
                   ),
@@ -782,8 +820,11 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                       labelText: 'كلمة المرور الجديدة',
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
-                        icon: Icon(obscureNew ? Icons.visibility_off : Icons.visibility),
-                        onPressed: () => setStateDialog(() => obscureNew = !obscureNew),
+                        icon: Icon(obscureNew
+                            ? Icons.visibility_off
+                            : Icons.visibility),
+                        onPressed: () =>
+                            setStateDialog(() => obscureNew = !obscureNew),
                       ),
                     ),
                   ),
@@ -795,8 +836,11 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                       labelText: 'تأكيد كلمة المرور',
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
-                        icon: Icon(obscureConfirm ? Icons.visibility_off : Icons.visibility),
-                        onPressed: () => setStateDialog(() => obscureConfirm = !obscureConfirm),
+                        icon: Icon(obscureConfirm
+                            ? Icons.visibility_off
+                            : Icons.visibility),
+                        onPressed: () => setStateDialog(
+                            () => obscureConfirm = !obscureConfirm),
                       ),
                     ),
                   ),
@@ -859,10 +903,12 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
             keyboardType: TextInputType.number,
             maxLength: 6,
             obscureText: true,
-            decoration: const InputDecoration(hintText: 'أدخل 6 أرقام', border: OutlineInputBorder()),
+            decoration: const InputDecoration(
+                hintText: 'أدخل 6 أرقام', border: OutlineInputBorder()),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            TextButton(
+                onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
             ElevatedButton(
               onPressed: () async {
                 _playFeedback();
@@ -887,7 +933,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
   }
 
   void _showLimitDialog(SystemProvider sys) {
-    final limitController = TextEditingController(text: _dailyLimit > 0 ? _dailyLimit.toStringAsFixed(0) : '');
+    final limitController = TextEditingController(
+        text: _dailyLimit > 0 ? _dailyLimit.toStringAsFixed(0) : '');
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -898,20 +945,25 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
           content: TextField(
             controller: limitController,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(hintText: 'مثال: 5000', suffixText: 'ريال', border: OutlineInputBorder()),
+            decoration: const InputDecoration(
+                hintText: 'مثال: 5000', suffixText: 'ريال', border: OutlineInputBorder()),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            TextButton(
+                onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
             ElevatedButton(
               onPressed: () async {
                 _playFeedback();
-                final newLimit = double.tryParse(limitController.text.trim()) ?? 0.0;
+                final newLimit =
+                    double.tryParse(limitController.text.trim()) ?? 0.0;
                 await sys.updateUserDailyLimit(newLimit);
                 final prefs = await SharedPreferences.getInstance();
                 await prefs.setDouble('user_daily_limit', newLimit);
                 setState(() => _dailyLimit = newLimit);
                 Navigator.pop(context);
-                _showToast(newLimit > 0 ? 'تم تعيين الحد اليومي إلى $newLimit ريال' : 'تم إلغاء الحد اليومي');
+                _showToast(newLimit > 0
+                    ? 'تم تعيين الحد اليومي إلى $newLimit ريال'
+                    : 'تم إلغاء الحد اليومي');
               },
               child: const Text('حفظ'),
             ),
@@ -933,19 +985,23 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.orange)),
+          title:
+              const Text('تسجيل الخروج', style: TextStyle(color: Colors.orange)),
           content: const Text('هل أنت متأكد أنك تريد تسجيل الخروج؟'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            TextButton(
+                onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
               onPressed: () {
                 _playFeedback();
-                final sys = Provider.of<SystemProvider>(context, listen: false);
+                final sys =
+                    Provider.of<SystemProvider>(context, listen: false);
                 sys.clearAllData();
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (context) => const SSOLoginScreen()),
+                  MaterialPageRoute(
+                      builder: (context) => const SSOLoginScreen()),
                   (route) => false,
                 );
               },
@@ -980,12 +1036,14 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
               TextField(
                 controller: passwordController,
                 obscureText: true,
-                decoration: const InputDecoration(labelText: 'كلمة المرور', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                    labelText: 'كلمة المرور', border: OutlineInputBorder()),
               ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('تراجع')),
+            TextButton(
+                onPressed: () => Navigator.pop(context), child: const Text('تراجع')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () async {
@@ -1000,7 +1058,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   Navigator.pop(context);
                   Navigator.pushAndRemoveUntil(
                     context,
-                    MaterialPageRoute(builder: (context) => const SSOLoginScreen()),
+                    MaterialPageRoute(
+                        builder: (context) => const SSOLoginScreen()),
                     (route) => false,
                   );
                 } else {
@@ -1008,7 +1067,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   _showToast('كلمة المرور غير صحيحة');
                 }
               },
-              child: const Text('نعم، احذف حسابي', style: TextStyle(color: Colors.white)),
+              child: const Text('نعم، احذف حسابي',
+                  style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -1032,7 +1092,9 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إلغاء')),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: tempColor),
             onPressed: () async {
