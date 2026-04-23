@@ -1,4 +1,3 @@
-// يرجى نسخ الملف بالكامل من هنا
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -302,6 +301,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   setState(() => _appSounds = val);
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setBool('user_app_sounds', val);
+                  uiProvider.setSoundsEnabled(val);
                   if (val) {
                     uiProvider.playSound('click');
                     HapticFeedback.lightImpact();
@@ -491,7 +491,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setString('language', val);
                   _showToast('سيتم تطبيق اللغة عند إعادة التشغيل');
-                  // يمكن استدعاء EasyLocalization.setLocale إذا كنت تستخدمها
                 },
               ),
               RadioListTile<String>(
@@ -685,7 +684,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   setState(() => _hideBalanceFromOthers = val);
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setBool('hide_balance', val);
-                  // يمكن تحديث Firestore هنا
                   await sys.updatePrivacySetting('hideBalance', val);
                   _playFeedback();
                   _showToast(val ? 'تم إخفاء الرصيد' : 'سيظهر رصيدك للآخرين');
@@ -745,7 +743,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ==================== نافذة تغيير كلمة المرور (3 حقول + معاينة) ====================
+  // ==================== نافذة تغيير كلمة المرور ====================
   void _showPasswordDialog(SystemProvider sys) {
     final oldPassController = TextEditingController();
     final newPassController = TextEditingController();
@@ -924,10 +922,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
   }
 
   void _showBankAccountsDialog(SystemProvider sys) {
-    // يمكن فتح شاشة منفصلة لإدارة الحسابات البنكية
     _playFeedback();
     _showToast('سيتم تطوير إدارة الحسابات البنكية قريباً');
-    // بدلاً من ذلك، يمكن استدعاء شاشة bank_accounts_screen مخصصة للمستخدم
   }
 
   void _showLogoutDialog() {
