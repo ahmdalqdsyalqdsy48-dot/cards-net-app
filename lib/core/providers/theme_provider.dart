@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_fonts/google_fonts.dart'; // 🆕 لدعم الخطوط
 
 class ThemeProvider extends ChangeNotifier {
   // ==========================================
@@ -183,5 +184,103 @@ class ThemeProvider extends ChangeNotifier {
     changeFontFamily(_defaultFontFamily);
     changeFontSizeScale(_defaultFontSizeScale);
     toggleTheme(false); // يعيد الوضع النهاري
+  }
+
+  // ==========================================
+  // 5. بناء الثيمات الكاملة لـ MaterialApp (Light & Dark)
+  // ==========================================
+  
+  TextTheme _applyFont(TextTheme base, Color textColor) {
+    if (_fontFamily == 'System') {
+      return base.apply(bodyColor: textColor, displayColor: textColor);
+    }
+    try {
+      return GoogleFonts.getTextTheme(_fontFamily, base)
+          .apply(bodyColor: textColor, displayColor: textColor);
+    } catch (e) {
+      return GoogleFonts.cairoTextTheme(base)
+          .apply(bodyColor: textColor, displayColor: textColor);
+    }
+  }
+
+  ThemeData get lightTheme {
+    final base = ThemeData.light();
+    final Color activeColor = primaryColor;
+    final Color textColor = adaptiveTextColor;
+
+    return base.copyWith(
+      primaryColor: activeColor,
+      scaffoldBackgroundColor: activeColor.withOpacity(0.05),
+      cardColor: Colors.white,
+      colorScheme: ColorScheme.light(
+        primary: activeColor,
+        secondary: activeColor,
+        surface: Colors.white,
+        background: activeColor.withOpacity(0.05),
+      ),
+      appBarTheme: AppBarTheme(
+        backgroundColor: activeColor,
+        foregroundColor: textColor,
+        elevation: 0,
+      ),
+      drawerTheme: DrawerThemeData(
+        backgroundColor: Colors.white,
+      ),
+      textTheme: _applyFont(base.textTheme, textColor),
+      iconTheme: IconThemeData(color: textColor),
+      listTileTheme: ListTileThemeData(
+        iconColor: activeColor,
+        textColor: textColor,
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: activeColor,
+          foregroundColor: textColor,
+        ),
+      ),
+    );
+  }
+
+  ThemeData get darkTheme {
+    final base = ThemeData.dark();
+    final Color activeColor = primaryColor;
+
+    return base.copyWith(
+      primaryColor: activeColor,
+      scaffoldBackgroundColor: Color.alphaBlend(
+        activeColor.withOpacity(0.2),
+        const Color(0xFF121212),
+      ),
+      cardColor: Colors.grey.shade900,
+      colorScheme: ColorScheme.dark(
+        primary: activeColor,
+        secondary: activeColor,
+        surface: Colors.grey.shade900,
+        background: Color.alphaBlend(activeColor.withOpacity(0.2), const Color(0xFF121212)),
+      ),
+      appBarTheme: AppBarTheme(
+        backgroundColor: Color.alphaBlend(
+          activeColor.withOpacity(0.2),
+          const Color(0xFF121212),
+        ),
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+      drawerTheme: DrawerThemeData(
+        backgroundColor: Colors.grey.shade900,
+      ),
+      textTheme: _applyFont(base.textTheme, Colors.white),
+      iconTheme: const IconThemeData(color: Colors.white),
+      listTileTheme: ListTileThemeData(
+        iconColor: activeColor,
+        textColor: Colors.white,
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: activeColor,
+          foregroundColor: Colors.white,
+        ),
+      ),
+    );
   }
 }
