@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; 
-import 'package:marquee/marquee.dart'; 
-import 'package:cloud_firestore/cloud_firestore.dart'; 
-import 'package:intl/intl.dart' hide TextDirection; 
+import 'package:provider/provider.dart';
+import 'package:marquee/marquee.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 
-import '../providers/theme_provider.dart'; 
-import '../providers/system_provider.dart'; 
-import '../providers/ui_provider.dart'; 
+import '../providers/theme_provider.dart';
+import '../providers/system_provider.dart';
+import '../providers/ui_provider.dart';
 
 class CustomHeader extends StatefulWidget implements PreferredSizeWidget {
   final String title;
@@ -14,21 +14,25 @@ class CustomHeader extends StatefulWidget implements PreferredSizeWidget {
   const CustomHeader({super.key, required this.title});
 
   @override
-  Size get preferredSize => const Size.fromHeight(125.0); 
+  Size get preferredSize => const Size.fromHeight(125.0);
 
   @override
   State<CustomHeader> createState() => _CustomHeaderState();
 }
 
-class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderStateMixin {
+class _CustomHeaderState extends State<CustomHeader>
+    with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(vsync: this, duration: const Duration(milliseconds: 800))..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut));
+    _pulseController = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 800))
+      ..repeat(reverse: true);
+    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
+        CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut));
   }
 
   @override
@@ -37,61 +41,101 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
     super.dispose();
   }
 
-  // 👈 تم تمرير systemProvider بدلاً من uiProvider لجلب البيانات الحقيقية
-  void _showNotifications(BuildContext context, UiProvider uiProvider, SystemProvider systemProvider) {
-    uiProvider.playSound('click'); 
-    final List<Map<String, dynamic>> currentNotifications = List.from(systemProvider.notifications);
-    final adaptiveTextColor = Provider.of<ThemeProvider>(context, listen: false).adaptiveTextColor;
+  void _showNotifications(BuildContext context, UiProvider uiProvider,
+      SystemProvider systemProvider) {
+    uiProvider.playSound('click');
+    final List<Map<String, dynamic>> currentNotifications =
+        List.from(systemProvider.notifications);
+    final adaptiveTextColor =
+        Provider.of<ThemeProvider>(context, listen: false).adaptiveTextColor;
 
     showDialog(
       context: context,
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          backgroundColor: Theme.of(context).cardColor, // 👈 متوافق مع الثيم
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: const Row(children: [Icon(Icons.notifications_active, color: Colors.orange), SizedBox(width: 10), Text('الإشعارات الحديثة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))]),
+          backgroundColor: Theme.of(context).cardColor,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          title: const Row(children: [
+            Icon(Icons.notifications_active, color: Colors.orange),
+            SizedBox(width: 10),
+            Text('الإشعارات الحديثة',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))
+          ]),
           content: SizedBox(
             width: double.maxFinite,
             child: currentNotifications.isEmpty
-                ? const Center(heightFactor: 3, child: Text('لا توجد إشعارات جديدة 📭', style: TextStyle(color: Colors.grey)))
+                ? const Center(
+                    heightFactor: 3,
+                    child: Text('لا توجد إشعارات جديدة 📭',
+                        style: TextStyle(color: Colors.grey)))
                 : ListView.separated(
-                    shrinkWrap: true, itemCount: currentNotifications.length, separatorBuilder: (_, __) => Divider(color: Colors.grey.shade300),
+                    shrinkWrap: true,
+                    itemCount: currentNotifications.length,
+                    separatorBuilder: (_, __) =>
+                        Divider(color: Colors.grey.shade300),
                     itemBuilder: (context, index) {
                       final notif = currentNotifications[index];
-                      // تخصيص الأيقونة حسب محتوى الإشعار
-                      IconData icon = Icons.notifications; Color iconColor = Colors.blue;
-                      if (notif['title'].toString().contains('رفض') || notif['title'].toString().contains('طوارئ') || notif['title'].toString().contains('تحذير')) { icon = Icons.warning; iconColor = Colors.red; }
-                      if (notif['title'].toString().contains('نجاح') || notif['title'].toString().contains('موافقة') || notif['title'].toString().contains('تأكيد')) { icon = Icons.check_circle; iconColor = Colors.green; }
-                      
+                      IconData icon = Icons.notifications;
+                      Color iconColor = Colors.blue;
+                      if (notif['title'].toString().contains('رفض') ||
+                          notif['title'].toString().contains('طوارئ') ||
+                          notif['title'].toString().contains('تحذير')) {
+                        icon = Icons.warning;
+                        iconColor = Colors.red;
+                      }
+                      if (notif['title'].toString().contains('نجاح') ||
+                          notif['title'].toString().contains('موافقة') ||
+                          notif['title'].toString().contains('تأكيد')) {
+                        icon = Icons.check_circle;
+                        iconColor = Colors.green;
+                      }
+
                       String timeStr = 'الآن';
-                      if(notif['timestamp'] != null) {
-                         timeStr = DateFormat('yyyy-MM-dd hh:mm a').format((notif['timestamp'] as Timestamp).toDate());
+                      if (notif['timestamp'] != null) {
+                        timeStr = DateFormat('yyyy-MM-dd hh:mm a').format(
+                            (notif['timestamp'] as Timestamp).toDate());
                       }
 
                       return ListTile(
-                        leading: CircleAvatar(backgroundColor: iconColor.withOpacity(0.1), child: Icon(icon, color: iconColor, size: 20)), 
-                        title: Text(notif['title'] ?? 'إشعار', style: TextStyle(fontWeight: notif['isReadLocal'] ? FontWeight.normal : FontWeight.bold, fontSize: 14, color: adaptiveTextColor)), 
+                        leading: CircleAvatar(
+                            backgroundColor: iconColor.withOpacity(0.1),
+                            child: Icon(icon, color: iconColor, size: 20)),
+                        title: Text(notif['title'] ?? 'إشعار',
+                            style: TextStyle(
+                                fontWeight: notif['isReadLocal']
+                                    ? FontWeight.normal
+                                    : FontWeight.bold,
+                                fontSize: 14,
+                                color: adaptiveTextColor)),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(notif['body'] ?? '', style: TextStyle(fontSize: 12, color: adaptiveTextColor.withOpacity(0.8))),
+                            Text(notif['body'] ?? '',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color:
+                                        adaptiveTextColor.withOpacity(0.8))),
                             const SizedBox(height: 4),
-                            Text(timeStr, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                            Text(timeStr,
+                                style: const TextStyle(
+                                    fontSize: 10, color: Colors.grey)),
                           ],
-                        )
+                        ),
                       );
                     },
                   ),
           ),
           actions: [
             TextButton(
-              onPressed: () { 
-                uiProvider.playSound('click'); 
-                systemProvider.markNotificationsAsRead(); // 👈 تصفير العداد في السيرفر
-                Navigator.pop(context); 
-              }, 
-              child: const Text('مقروء وإغلاق', style: TextStyle(fontWeight: FontWeight.bold))
+              onPressed: () {
+                uiProvider.playSound('click');
+                systemProvider.markNotificationsAsRead();
+                Navigator.pop(context);
+              },
+              child: const Text('مقروء وإغلاق',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
             )
           ],
         ),
@@ -102,70 +146,106 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    final systemProvider = Provider.of<SystemProvider>(context); 
-    final uiProvider = Provider.of<UiProvider>(context); 
-    
+    final systemProvider = Provider.of<SystemProvider>(context);
+    final uiProvider = Provider.of<UiProvider>(context);
+
     final bool isDark = themeProvider.isDarkMode;
-    final bool isOnline = uiProvider.isOnline; 
-    
-    // 👈 القراءة من النظام الفعلي
+    final bool isOnline = uiProvider.isOnline;
+
     final int unreadCount = systemProvider.unreadNotificationsCount;
-    final bool hasNotifications = unreadCount > 0; 
+    final bool hasNotifications = unreadCount > 0;
 
-    final String liveNews = systemProvider.announcements.isNotEmpty ? systemProvider.announcements.join('   🔴   ') : 'مرحباً بك في نظام كروت نت...';
+    final String liveNews = systemProvider.announcements.isNotEmpty
+        ? systemProvider.announcements.join('   🔴   ')
+        : 'مرحباً بك في نظام كروت نت...';
 
-    final Color headerColor = isDark ? const Color(0xFF121212) : themeProvider.primaryColor;
-    final Color iconTextColor = isDark ? Colors.white : themeProvider.adaptiveTextColor;
+    // ✅ استخدام ألوان السمة الحالية لتطبيق اللون المخصص
+    final Color headerColor =
+        Theme.of(context).appBarTheme.backgroundColor ??
+            themeProvider.primaryColor;
+    final Color iconTextColor =
+        Theme.of(context).appBarTheme.foregroundColor ??
+            (isDark ? Colors.white : themeProvider.adaptiveTextColor);
     final Color marqueeBg = Color(systemProvider.marqueeBgColor);
     final Color marqueeTextCol = Color(systemProvider.marqueeTextColor);
 
     return AppBar(
       elevation: 0,
-      backgroundColor: headerColor, 
-      iconTheme: IconThemeData(color: iconTextColor), 
-      
+      backgroundColor: headerColor,
+      iconTheme: IconThemeData(color: iconTextColor),
+
       title: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(widget.title, style: TextStyle(fontWeight: FontWeight.bold, color: iconTextColor, fontSize: 16)),
+          Text(widget.title,
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: iconTextColor,
+                  fontSize: 16)),
           const SizedBox(width: 8),
-          Container(width: 10, height: 10, decoration: BoxDecoration(shape: BoxShape.circle, color: isOnline ? Colors.greenAccent.shade400 : Colors.redAccent, boxShadow: [BoxShadow(color: isOnline ? Colors.green.withOpacity(0.5) : Colors.red.withOpacity(0.5), blurRadius: 6, spreadRadius: 1)])),
+          Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isOnline
+                      ? Colors.greenAccent.shade400
+                      : Colors.redAccent,
+                  boxShadow: [
+                    BoxShadow(
+                        color: isOnline
+                            ? Colors.green.withOpacity(0.5)
+                            : Colors.red.withOpacity(0.5),
+                        blurRadius: 6,
+                        spreadRadius: 1)
+                  ])),
         ],
       ),
       centerTitle: true,
       actions: [
         IconButton(
-          icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode), 
-          tooltip: 'تبديل السمة', 
-          onPressed: () {
-            uiProvider.playSound('click'); 
-            themeProvider.toggleTheme(!isDark);
-          }
-        ),
+            icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode),
+            tooltip: 'تبديل السمة',
+            onPressed: () {
+              uiProvider.playSound('click');
+              themeProvider.toggleTheme(!isDark);
+            }),
         Padding(
           padding: const EdgeInsets.only(left: 8.0, right: 8.0),
           child: Stack(
             alignment: Alignment.center,
             children: [
               IconButton(
-                icon: const Icon(Icons.notifications_active), 
-                color: iconTextColor, 
-                tooltip: 'الإشعارات', 
-                onPressed: () => _showNotifications(context, uiProvider, systemProvider) // 👈 تمرير النظام
-              ),
+                  icon: const Icon(Icons.notifications_active),
+                  color: iconTextColor,
+                  tooltip: 'الإشعارات',
+                  onPressed: () => _showNotifications(
+                      context, uiProvider, systemProvider)),
               if (hasNotifications)
                 Positioned(
-                  right: 8, 
-                  top: 10, 
+                  right: 8,
+                  top: 10,
                   child: ScaleTransition(
-                    scale: _pulseAnimation, 
+                    scale: _pulseAnimation,
                     child: Container(
                       padding: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 1.5)),
-                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                      child: Text('$unreadCount', style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold), textAlign: TextAlign.center,),
+                      decoration: BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                          border:
+                              Border.all(color: Colors.white, width: 1.5)),
+                      constraints: const BoxConstraints(
+                          minWidth: 16, minHeight: 16),
+                      child: Text(
+                        '$unreadCount',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
                     ),
-                  )
+                  ),
                 ),
             ],
           ),
@@ -177,45 +257,64 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
           children: [
             if (systemProvider.showNewsBar)
               Container(
-                width: double.infinity, height: 25, color: marqueeBg, padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+                width: double.infinity,
+                height: 25,
+                color: marqueeBg,
+                padding:
+                    const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
                 child: Row(
                   children: [
-                    Icon(Icons.campaign, color: marqueeTextCol, size: 18), const SizedBox(width: 8),
+                    Icon(Icons.campaign, color: marqueeTextCol, size: 18),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Marquee(
-                        text: liveNews, 
-                        style: TextStyle(color: marqueeTextCol, fontSize: systemProvider.marqueeFontSize, fontWeight: FontWeight.bold), 
-                        scrollAxis: Axis.horizontal, 
-                        crossAxisAlignment: CrossAxisAlignment.center, 
-                        blankSpace: 50.0, 
-                        velocity: systemProvider.newsScrollSpeed, 
-                        pauseAfterRound: const Duration(milliseconds: 500), 
-                        startPadding: 10.0, 
-                        textDirection: systemProvider.marqueeDirection == 'rtl' ? TextDirection.rtl : TextDirection.ltr
-                      )
+                        text: liveNews,
+                        style: TextStyle(
+                            color: marqueeTextCol,
+                            fontSize: systemProvider.marqueeFontSize,
+                            fontWeight: FontWeight.bold),
+                        scrollAxis: Axis.horizontal,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        blankSpace: 50.0,
+                        velocity: systemProvider.newsScrollSpeed,
+                        pauseAfterRound: const Duration(milliseconds: 500),
+                        startPadding: 10.0,
+                        textDirection: systemProvider.marqueeDirection == 'rtl'
+                            ? TextDirection.rtl
+                            : TextDirection.ltr,
+                      ),
                     ),
                   ],
                 ),
               ),
-            
+
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: InkWell(
                 onTap: () {
-                  uiProvider.playSound('click'); 
-                  showSearch(context: context, delegate: SystemSearchDelegate(uiProvider));
+                  uiProvider.playSound('click');
+                  showSearch(
+                      context: context,
+                      delegate: SystemSearchDelegate(uiProvider));
                 },
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  height: 35, 
-                  decoration: BoxDecoration(color: isDark ? Colors.grey.shade800 : Colors.white.withOpacity(0.9), borderRadius: BorderRadius.circular(8)),
+                  height: 35,
+                  decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.grey.shade800
+                          : Colors.white.withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(8)),
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   alignment: Alignment.centerRight,
                   child: Row(
                     children: [
                       const Icon(Icons.search, color: Colors.grey, size: 20),
                       const SizedBox(width: 10),
-                      Text('ابحث في النظام...', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                      Text('ابحث في النظام...',
+                          style: TextStyle(
+                              color: Colors.grey.shade600, fontSize: 13)),
                     ],
                   ),
                 ),
@@ -232,8 +331,8 @@ class _CustomHeaderState extends State<CustomHeader> with SingleTickerProviderSt
 // 🚀 محرك البحث الذكي للنظام (Search Delegate)
 // ==========================================
 class SystemSearchDelegate extends SearchDelegate<String> {
-  final UiProvider uiProvider; 
-  
+  final UiProvider uiProvider;
+
   SystemSearchDelegate(this.uiProvider);
 
   final Map<String, String> searchMap = {
@@ -256,24 +355,22 @@ class SystemSearchDelegate extends SearchDelegate<String> {
     return [
       if (query.isNotEmpty)
         IconButton(
-          icon: const Icon(Icons.clear), 
-          onPressed: () {
-            uiProvider.playSound('click'); 
-            query = '';
-          }
-        )
+            icon: const Icon(Icons.clear),
+            onPressed: () {
+              uiProvider.playSound('click');
+              query = '';
+            })
     ];
   }
 
   @override
   Widget? buildLeading(BuildContext context) {
     return IconButton(
-      icon: const Icon(Icons.arrow_back), 
-      onPressed: () {
-        uiProvider.playSound('click'); 
-        close(context, '');
-      }
-    );
+        icon: const Icon(Icons.arrow_back),
+        onPressed: () {
+          uiProvider.playSound('click');
+          close(context, '');
+        });
   }
 
   @override
@@ -283,10 +380,15 @@ class SystemSearchDelegate extends SearchDelegate<String> {
   Widget buildSuggestions(BuildContext context) => _buildSearchResults();
 
   Widget _buildSearchResults() {
-    final List<String> results = searchMap.keys.where((element) => element.contains(query) || searchMap[element]!.contains(query)).toList();
+    final List<String> results = searchMap.keys
+        .where((element) =>
+            element.contains(query) || searchMap[element]!.contains(query))
+        .toList();
 
     if (results.isEmpty) {
-      return const Center(child: Text('لا توجد نتائج مطابقة لبحثك 🔍', style: TextStyle(fontSize: 16, color: Colors.grey)));
+      return const Center(
+          child: Text('لا توجد نتائج مطابقة لبحثك 🔍',
+              style: TextStyle(fontSize: 16, color: Colors.grey)));
     }
 
     return Directionality(
@@ -296,13 +398,17 @@ class SystemSearchDelegate extends SearchDelegate<String> {
         itemBuilder: (context, index) {
           String key = results[index];
           return ListTile(
-            leading: const Icon(Icons.screen_search_desktop, color: Colors.blueAccent),
+            leading: const Icon(Icons.screen_search_desktop,
+                color: Colors.blueAccent),
             title: Text(key, style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text(searchMap[key]!),
             onTap: () {
-              uiProvider.playSound('click'); 
+              uiProvider.playSound('click');
               close(context, key);
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('سيتم نقلك إلى قسم: $key', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('سيتم نقلك إلى قسم: $key',
+                      textDirection: TextDirection.rtl),
+                  backgroundColor: Colors.green));
             },
           );
         },
