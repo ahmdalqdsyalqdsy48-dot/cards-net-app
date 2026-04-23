@@ -240,7 +240,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ---------- تبويب المظهر (يظهر تخصيص اللون فقط في الوضع الليلي) ----------
+  // ---------- تبويب المظهر (تخصيص اللون فقط في الوضع الليلي) ----------
   Widget _buildAppearanceTab(ThemeProvider themeProvider, UiProvider uiProvider, Color primaryColor, bool isDark) {
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -296,6 +296,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                     uiProvider.playSound('click');
                     HapticFeedback.lightImpact();
                   }
+                  _playFeedback(); // صوت إضافي لتأكيد التغيير
                   _showToast(val ? 'تم تفعيل الأصوات' : 'تم كتم الأصوات');
                 },
               ),
@@ -427,7 +428,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ---------- تبويب الحساب ----------
+  // ---------- تبويب الحساب (تمت إزالة الحسابات البنكية) ----------
   Widget _buildAccountTab(SystemProvider sys, Color primaryColor, bool isDark) {
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -440,24 +441,12 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
             borderRadius: BorderRadius.circular(15),
             side: BorderSide(color: primaryColor.withOpacity(0.3)),
           ),
-          child: Column(
-            children: [
-              _buildListTile(
-                Icons.account_balance_wallet,
-                'الحد اليومي للمشتريات',
-                _dailyLimit > 0 ? 'الحد الحالي: ${_dailyLimit.toStringAsFixed(0)} ريال' : 'لم يتم تعيين حد يومي',
-                primaryColor,
-                onTap: () => _showLimitDialog(sys),
-              ),
-              const Divider(height: 1),
-              _buildListTile(
-                Icons.account_balance,
-                'حساباتي البنكية',
-                'إدارة الحسابات التي تظهر للمحولين إليك',
-                primaryColor,
-                onTap: () => _showBankAccountsDialog(sys),
-              ),
-            ],
+          child: _buildListTile(
+            Icons.account_balance_wallet,
+            'الحد اليومي للمشتريات',
+            _dailyLimit > 0 ? 'الحد الحالي: ${_dailyLimit.toStringAsFixed(0)} ريال' : 'لم يتم تعيين حد يومي',
+            primaryColor,
+            onTap: () => _showLimitDialog(sys),
           ),
         ),
         const SizedBox(height: 20),
@@ -478,9 +467,10 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 groupValue: _selectedLanguage,
                 activeColor: primaryColor,
                 onChanged: (val) async {
+                  _playFeedback();
                   setState(() => _selectedLanguage = val!);
                   final prefs = await SharedPreferences.getInstance();
-                  await prefs.setString('language', val); // ✅ val! مضمون
+                  await prefs.setString('language', val ?? 'ar');
                   _showToast('سيتم تطبيق اللغة عند إعادة التشغيل');
                 },
               ),
@@ -490,9 +480,10 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 groupValue: _selectedLanguage,
                 activeColor: primaryColor,
                 onChanged: (val) async {
+                  _playFeedback();
                   setState(() => _selectedLanguage = val!);
                   final prefs = await SharedPreferences.getInstance();
-                  await prefs.setString('language', val); // ✅ val! مضمون
+                  await prefs.setString('language', val ?? 'ar');
                   _showToast('Language will be applied after restart');
                 },
               ),
@@ -583,10 +574,10 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 value: _notificationsEnabled,
                 activeColor: primaryColor,
                 onChanged: (val) async {
+                  _playFeedback();
                   setState(() => _notificationsEnabled = val);
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setBool('notifications_enabled', val);
-                  _playFeedback();
                   _showToast(val ? 'تم تفعيل الإشعارات' : 'تم تعطيل الإشعارات');
                 },
               ),
@@ -606,10 +597,10 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 activeColor: primaryColor,
                 onChanged: _notificationsEnabled
                     ? (val) async {
+                        _playFeedback();
                         setState(() => _marketingNotifications = val);
                         final prefs = await SharedPreferences.getInstance();
                         await prefs.setBool('marketing_notifications', val);
-                        _playFeedback();
                       }
                     : null,
               ),
@@ -629,10 +620,10 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 activeColor: primaryColor,
                 onChanged: _notificationsEnabled
                     ? (val) async {
+                        _playFeedback();
                         setState(() => _transactionNotifications = val);
                         final prefs = await SharedPreferences.getInstance();
                         await prefs.setBool('transaction_notifications', val);
-                        _playFeedback();
                       }
                     : null,
               ),
@@ -672,11 +663,11 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 value: _hideBalanceFromOthers,
                 activeColor: primaryColor,
                 onChanged: (val) async {
+                  _playFeedback();
                   setState(() => _hideBalanceFromOthers = val);
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setBool('hide_balance', val);
                   await sys.updatePrivacySetting('hideBalance', val);
-                  _playFeedback();
                   _showToast(val ? 'تم إخفاء الرصيد' : 'سيظهر رصيدك للآخرين');
                 },
               ),
@@ -695,11 +686,11 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 value: _showFullName,
                 activeColor: primaryColor,
                 onChanged: (val) async {
+                  _playFeedback();
                   setState(() => _showFullName = val);
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setBool('show_full_name', val);
                   await sys.updatePrivacySetting('showFullName', val);
-                  _playFeedback();
                 },
               ),
             ],
@@ -907,11 +898,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
         ),
       ),
     );
-  }
-
-  void _showBankAccountsDialog(SystemProvider sys) {
-    _playFeedback();
-    _showToast('سيتم تطوير إدارة الحسابات البنكية قريباً');
   }
 
   void _showLogoutDialog() {
