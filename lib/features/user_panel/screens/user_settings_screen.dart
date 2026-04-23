@@ -76,6 +76,10 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
+  Color _getTextColor(BuildContext context) {
+    return Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
@@ -85,6 +89,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     final primaryColor = themeProvider.primaryColor;
     final userName = systemProvider.currentUserName;
     final userPhone = systemProvider.currentUserPhone;
+    final textColor = _getTextColor(context);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -103,7 +108,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 unselectedLabelColor: Colors.grey,
                 indicatorColor: primaryColor,
                 indicatorWeight: 3,
-                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textColor),
                 tabs: const [
                   Tab(text: 'الأمان'),
                   Tab(text: 'المظهر'),
@@ -117,11 +122,11 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildSecurityTab(systemProvider, primaryColor, isDark),
-                  _buildAppearanceTab(themeProvider, uiProvider, primaryColor, isDark),
-                  _buildAccountTab(systemProvider, primaryColor, isDark),
-                  _buildNotificationsTab(primaryColor, isDark),
-                  _buildPrivacyTab(systemProvider, primaryColor, isDark),
+                  _buildSecurityTab(systemProvider, primaryColor, isDark, textColor),
+                  _buildAppearanceTab(themeProvider, uiProvider, primaryColor, isDark, textColor),
+                  _buildAccountTab(systemProvider, primaryColor, isDark, textColor),
+                  _buildNotificationsTab(primaryColor, isDark, textColor),
+                  _buildPrivacyTab(systemProvider, primaryColor, isDark, textColor),
                 ],
               ),
             ),
@@ -132,13 +137,13 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
   }
 
   // ---------- تبويب الأمان ----------
-  Widget _buildSecurityTab(SystemProvider sys, Color primaryColor, bool isDark) {
+  Widget _buildSecurityTab(SystemProvider sys, Color primaryColor, bool isDark, Color textColor) {
     final useBiometrics = sys.isBiometricCurrentlyEnabled;
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _buildSectionTitle('معلومات الدخول', primaryColor),
+        _buildSectionTitle('معلومات الدخول', textColor),
         Card(
           elevation: 0,
           color: Theme.of(context).cardColor,
@@ -153,6 +158,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 'رمز PIN',
                 _userPin.isNotEmpty ? 'تم تعيين رمز PIN مكون من 6 أرقام' : 'لم يتم تعيين رمز PIN بعد',
                 primaryColor,
+                textColor,
                 onTap: () => _showPinDialog(sys),
               ),
               const Divider(height: 1),
@@ -165,7 +171,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ),
                   child: Icon(Icons.fingerprint, color: primaryColor, size: 20),
                 ),
-                title: const Text('الدخول بالبصمة', style: TextStyle(fontWeight: FontWeight.bold)),
+                title: Text('الدخول بالبصمة', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
                 subtitle: Text(kIsWeb ? 'غير مدعوم على الويب' : 'بصمة الإصبع أو الوجه',
                     style: const TextStyle(fontSize: 12, color: Colors.grey)),
                 value: useBiometrics && !kIsWeb,
@@ -184,7 +190,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
           ),
         ),
         const SizedBox(height: 20),
-        _buildSectionTitle('تغيير كلمة المرور', primaryColor),
+        _buildSectionTitle('تغيير كلمة المرور', textColor),
         Card(
           elevation: 0,
           color: Theme.of(context).cardColor,
@@ -201,14 +207,14 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
               ),
               child: Icon(Icons.lock_reset, color: primaryColor, size: 20),
             ),
-            title: const Text('تغيير كلمة المرور', style: TextStyle(fontWeight: FontWeight.bold)),
+            title: Text('تغيير كلمة المرور', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
             subtitle: const Text('تحديث كلمة المرور الأساسية', style: TextStyle(fontSize: 12, color: Colors.grey)),
             trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
             onTap: () => _showPasswordDialog(sys),
           ),
         ),
         const SizedBox(height: 20),
-        _buildSectionTitle('خيارات متقدمة', primaryColor),
+        _buildSectionTitle('خيارات متقدمة', textColor),
         Card(
           elevation: 0,
           color: Theme.of(context).cardColor,
@@ -223,6 +229,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 'الأجهزة المتصلة',
                 'إدارة الجلسات النشطة',
                 primaryColor,
+                textColor,
                 onTap: () => _showToast('لا توجد جلسات أخرى نشطة حالياً'),
               ),
               const Divider(height: 1),
@@ -231,6 +238,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 'حذف الحساب',
                 'لا يمكن التراجع عن هذا الإجراء',
                 Colors.red,
+                textColor,
                 onTap: () => _showDeleteAccountDialog(sys),
               ),
             ],
@@ -241,11 +249,11 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
   }
 
   // ---------- تبويب المظهر (تخصيص اللون فقط في الوضع الليلي) ----------
-  Widget _buildAppearanceTab(ThemeProvider themeProvider, UiProvider uiProvider, Color primaryColor, bool isDark) {
+  Widget _buildAppearanceTab(ThemeProvider themeProvider, UiProvider uiProvider, Color primaryColor, bool isDark, Color textColor) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _buildSectionTitle('المظهر العام', primaryColor),
+        _buildSectionTitle('المظهر العام', textColor),
         Card(
           elevation: 0,
           color: Theme.of(context).cardColor,
@@ -264,7 +272,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ),
                   child: Icon(Icons.dark_mode, color: primaryColor, size: 20),
                 ),
-                title: const Text('الوضع الليلي', style: TextStyle(fontWeight: FontWeight.bold)),
+                title: Text('الوضع الليلي', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
                 subtitle: const Text('تفعيل المظهر الداكن', style: TextStyle(fontSize: 12, color: Colors.grey)),
                 value: themeProvider.isDarkMode,
                 activeColor: primaryColor,
@@ -283,7 +291,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ),
                   child: Icon(Icons.volume_up, color: primaryColor, size: 20),
                 ),
-                title: const Text('الأصوات التفاعلية', style: TextStyle(fontWeight: FontWeight.bold)),
+                title: Text('الأصوات التفاعلية', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
                 subtitle: const Text('تشغيل الأصوات والاهتزاز', style: TextStyle(fontSize: 12, color: Colors.grey)),
                 value: _appSounds,
                 activeColor: primaryColor,
@@ -296,7 +304,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                     uiProvider.playSound('click');
                     HapticFeedback.lightImpact();
                   }
-                  _playFeedback(); // صوت إضافي لتأكيد التغيير
+                  _playFeedback();
                   _showToast(val ? 'تم تفعيل الأصوات' : 'تم كتم الأصوات');
                 },
               ),
@@ -305,9 +313,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
         ),
         const SizedBox(height: 20),
 
-        // 👇 تخصيص اللون يظهر فقط في الوضع الليلي
         if (themeProvider.isDarkMode) ...[
-          _buildSectionTitle('تخصيص لون الواجهة', primaryColor),
+          _buildSectionTitle('تخصيص لون الواجهة', textColor),
           Card(
             elevation: 0,
             color: Theme.of(context).cardColor,
@@ -393,7 +400,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
         ],
 
         const SizedBox(height: 20),
-        _buildSectionTitle('حجم الخط', primaryColor),
+        _buildSectionTitle('حجم الخط', textColor),
         Card(
           elevation: 0,
           color: Theme.of(context).cardColor,
@@ -405,7 +412,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                const Text('صغير', style: TextStyle(fontSize: 12)),
+                Text('صغير', style: TextStyle(fontSize: 12, color: textColor)),
                 Expanded(
                   child: Slider(
                     value: themeProvider.fontSizeScale,
@@ -419,7 +426,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                     },
                   ),
                 ),
-                const Text('كبير', style: TextStyle(fontSize: 16)),
+                Text('كبير', style: TextStyle(fontSize: 16, color: textColor)),
               ],
             ),
           ),
@@ -428,12 +435,12 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ---------- تبويب الحساب (تمت إزالة الحسابات البنكية) ----------
-  Widget _buildAccountTab(SystemProvider sys, Color primaryColor, bool isDark) {
+  // ---------- تبويب الحساب ----------
+  Widget _buildAccountTab(SystemProvider sys, Color primaryColor, bool isDark, Color textColor) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _buildSectionTitle('الإعدادات المالية', primaryColor),
+        _buildSectionTitle('الإعدادات المالية', textColor),
         Card(
           elevation: 0,
           color: Theme.of(context).cardColor,
@@ -446,12 +453,13 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
             'الحد اليومي للمشتريات',
             _dailyLimit > 0 ? 'الحد الحالي: ${_dailyLimit.toStringAsFixed(0)} ريال' : 'لم يتم تعيين حد يومي',
             primaryColor,
+            textColor,
             onTap: () => _showLimitDialog(sys),
           ),
         ),
         const SizedBox(height: 20),
 
-        _buildSectionTitle('اللغة', primaryColor),
+        _buildSectionTitle('اللغة', textColor),
         Card(
           elevation: 0,
           color: Theme.of(context).cardColor,
@@ -462,29 +470,27 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
           child: Column(
             children: [
               RadioListTile<String>(
-                title: const Text('العربية'),
+                title: Text('العربية', style: TextStyle(color: textColor)),
                 value: 'ar',
                 groupValue: _selectedLanguage,
                 activeColor: primaryColor,
                 onChanged: (val) async {
                   _playFeedback();
                   setState(() => _selectedLanguage = val!);
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setString('language', val ?? 'ar');
-                  _showToast('سيتم تطبيق اللغة عند إعادة التشغيل');
+                  await sys.saveLanguage(val);
+                  _showToast('تم تغيير اللغة إلى العربية');
                 },
               ),
               RadioListTile<String>(
-                title: const Text('English'),
+                title: Text('English', style: TextStyle(color: textColor)),
                 value: 'en',
                 groupValue: _selectedLanguage,
                 activeColor: primaryColor,
                 onChanged: (val) async {
                   _playFeedback();
                   setState(() => _selectedLanguage = val!);
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setString('language', val ?? 'ar');
-                  _showToast('Language will be applied after restart');
+                  await sys.saveLanguage(val);
+                  _showToast('Language changed to English');
                 },
               ),
             ],
@@ -492,7 +498,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
         ),
         const SizedBox(height: 20),
 
-        _buildSectionTitle('الجلسة', primaryColor),
+        _buildSectionTitle('الجلسة', textColor),
         Card(
           elevation: 0,
           color: Theme.of(context).cardColor,
@@ -505,12 +511,13 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
             'تسجيل الخروج',
             'إنهاء الجلسة الحالية',
             Colors.orange,
+            textColor,
             onTap: () => _showLogoutDialog(),
           ),
         ),
         const SizedBox(height: 20),
 
-        _buildSectionTitle('معلومات', primaryColor),
+        _buildSectionTitle('معلومات', textColor),
         Card(
           elevation: 0,
           color: Theme.of(context).cardColor,
@@ -546,11 +553,11 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
   }
 
   // ---------- تبويب الإشعارات ----------
-  Widget _buildNotificationsTab(Color primaryColor, bool isDark) {
+  Widget _buildNotificationsTab(Color primaryColor, bool isDark, Color textColor) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _buildSectionTitle('إعدادات الإشعارات', primaryColor),
+        _buildSectionTitle('إعدادات الإشعارات', textColor),
         Card(
           elevation: 0,
           color: Theme.of(context).cardColor,
@@ -569,7 +576,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ),
                   child: Icon(Icons.notifications_active, color: primaryColor, size: 20),
                 ),
-                title: const Text('تفعيل الإشعارات', style: TextStyle(fontWeight: FontWeight.bold)),
+                title: Text('تفعيل الإشعارات', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
                 subtitle: const Text('استلام إشعارات داخل التطبيق', style: TextStyle(fontSize: 12, color: Colors.grey)),
                 value: _notificationsEnabled,
                 activeColor: primaryColor,
@@ -591,7 +598,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ),
                   child: Icon(Icons.campaign, color: primaryColor, size: 20),
                 ),
-                title: const Text('إشعارات التسويق والعروض', style: TextStyle(fontWeight: FontWeight.bold)),
+                title: Text('إشعارات التسويق والعروض', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
                 subtitle: const Text('استلام عروض وكوبونات', style: TextStyle(fontSize: 12, color: Colors.grey)),
                 value: _marketingNotifications,
                 activeColor: primaryColor,
@@ -614,7 +621,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ),
                   child: Icon(Icons.payments, color: primaryColor, size: 20),
                 ),
-                title: const Text('إشعارات المعاملات المالية', style: TextStyle(fontWeight: FontWeight.bold)),
+                title: Text('إشعارات المعاملات المالية', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
                 subtitle: const Text('تنبيهات الشراء والتحويل', style: TextStyle(fontSize: 12, color: Colors.grey)),
                 value: _transactionNotifications,
                 activeColor: primaryColor,
@@ -635,11 +642,11 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
   }
 
   // ---------- تبويب الخصوصية ----------
-  Widget _buildPrivacyTab(SystemProvider sys, Color primaryColor, bool isDark) {
+  Widget _buildPrivacyTab(SystemProvider sys, Color primaryColor, bool isDark, Color textColor) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _buildSectionTitle('الخصوصية', primaryColor),
+        _buildSectionTitle('الخصوصية', textColor),
         Card(
           elevation: 0,
           color: Theme.of(context).cardColor,
@@ -658,7 +665,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ),
                   child: Icon(Icons.visibility_off, color: primaryColor, size: 20),
                 ),
-                title: const Text('إخفاء الرصيد عن الآخرين', style: TextStyle(fontWeight: FontWeight.bold)),
+                title: Text('إخفاء الرصيد عن الآخرين', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
                 subtitle: const Text('لن يظهر رصيدك للمستخدمين عند البحث', style: TextStyle(fontSize: 12, color: Colors.grey)),
                 value: _hideBalanceFromOthers,
                 activeColor: primaryColor,
@@ -681,7 +688,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ),
                   child: Icon(Icons.person, color: primaryColor, size: 20),
                 ),
-                title: const Text('إظهار الاسم الكامل', style: TextStyle(fontWeight: FontWeight.bold)),
+                title: Text('إظهار الاسم الكامل', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
                 subtitle: const Text('عند استقبال التحويلات', style: TextStyle(fontSize: 12, color: Colors.grey)),
                 value: _showFullName,
                 activeColor: primaryColor,
@@ -701,31 +708,31 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
   }
 
   // ---------- دوال مساعدة ----------
-  Widget _buildSectionTitle(String title, Color primaryColor) {
+  Widget _buildSectionTitle(String title, Color textColor) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, right: 4),
       child: Text(
         title,
-        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor),
+        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: textColor),
       ),
     );
   }
 
-  Widget _buildListTile(IconData icon, String title, String subtitle, Color color, {required VoidCallback onTap}) {
+  Widget _buildListTile(IconData icon, String title, String subtitle, Color color, Color textColor, {required VoidCallback onTap}) {
     return ListTile(
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
         child: Icon(icon, color: color, size: 20),
       ),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+      title: Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textColor)),
       subtitle: subtitle.isNotEmpty ? Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey)) : null,
       trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
       onTap: onTap,
     );
   }
 
-  // ---------- نافذة كلمة المرور (3 حقول + معاينة) ----------
+  // ---------- نافذة تغيير كلمة المرور (3 حقول + معاينة) ----------
   void _showPasswordDialog(SystemProvider sys) {
     final oldPassController = TextEditingController();
     final newPassController = TextEditingController();
@@ -824,42 +831,95 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
+  // ---------- نافذة PIN بثلاثة حقول (قديم، جديد، تأكيد) + معاينة ----------
   void _showPinDialog(SystemProvider sys) {
-    final pinController = TextEditingController(text: _userPin);
+    final oldPinController = TextEditingController();
+    final newPinController = TextEditingController();
+    final confirmPinController = TextEditingController();
+    bool obscureOld = true, obscureNew = true, obscureConfirm = true;
+
     showDialog(
       context: context,
-      builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: const Text('رمز PIN', textAlign: TextAlign.center),
-          content: TextField(
-            controller: pinController,
-            keyboardType: TextInputType.number,
-            maxLength: 6,
-            obscureText: true,
-            decoration: const InputDecoration(hintText: 'أدخل 6 أرقام', border: OutlineInputBorder()),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-            ElevatedButton(
-              onPressed: () async {
-                _playFeedback();
-                final newPin = pinController.text.trim();
-                if (newPin.length == 6) {
-                  await sys.updateUserPin(newPin);
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setString('user_pin', newPin);
-                  setState(() => _userPin = newPin);
-                  Navigator.pop(context);
-                  _showToast('تم حفظ رمز PIN بنجاح');
-                } else {
-                  _showToast('يجب إدخال 6 أرقام');
-                }
-              },
-              child: const Text('حفظ'),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            title: const Text('تغيير رمز PIN', textAlign: TextAlign.center),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: oldPinController,
+                    obscureText: obscureOld,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    decoration: InputDecoration(
+                      labelText: 'رمز PIN القديم',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureOld ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () => setStateDialog(() => obscureOld = !obscureOld),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: newPinController,
+                    obscureText: obscureNew,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    decoration: InputDecoration(
+                      labelText: 'رمز PIN الجديد',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureNew ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () => setStateDialog(() => obscureNew = !obscureNew),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: confirmPinController,
+                    obscureText: obscureConfirm,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    decoration: InputDecoration(
+                      labelText: 'تأكيد رمز PIN الجديد',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureConfirm ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () => setStateDialog(() => obscureConfirm = !obscureConfirm),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ],
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+              ElevatedButton(
+                onPressed: () async {
+                  _playFeedback();
+                  final oldPin = oldPinController.text.trim();
+                  final newPin = newPinController.text.trim();
+                  final confirmPin = confirmPinController.text.trim();
+                  final result = await sys.changeUserPinWithOld(oldPin, newPin, confirmPin);
+                  if (result == 'تم تحديث رمز PIN بنجاح.') {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setString('user_pin', newPin);
+                    setState(() => _userPin = newPin);
+                    Navigator.pop(context);
+                    _showToast(result);
+                  } else {
+                    _showToast(result);
+                  }
+                },
+                child: const Text('حفظ'),
+              ),
+            ],
+          ),
         ),
       ),
     );
