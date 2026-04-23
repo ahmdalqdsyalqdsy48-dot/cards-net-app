@@ -9,6 +9,7 @@ import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_user_drawer.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/ui_provider.dart'; // 👈 جديد: للأصوات
 import '../../auth/screens/sso_login_screen.dart';
 
 class UserSettingsScreen extends StatefulWidget {
@@ -19,20 +20,14 @@ class UserSettingsScreen extends StatefulWidget {
 }
 
 class _UserSettingsScreenState extends State<UserSettingsScreen> {
-  // --- الإعدادات المحفوظة محلياً ---
   bool _appSounds = true;
   double _dailyLimit = 0.0;
   String _userPin = '';
-
-  // --- لون تفضيلي خاص بالمستخدم (يُحفظ في Firestore وليس في ThemeProvider) ---
-  Color _userPreferredColor = Colors.blue; // اللون الافتراضي
-  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
     _loadLocalSettings();
-    _loadUserColorPreference();
   }
 
   Future<void> _loadLocalSettings() async {
@@ -44,24 +39,12 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     });
   }
 
-  Future<void> _loadUserColorPreference() async {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    // نفترض أن SystemProvider لديه دالة لجلب اللون المفضل للمستخدم
-    final savedColor = await sys.getUserPreferredColor();
-    if (savedColor != null) {
-      setState(() => _userPreferredColor = savedColor);
-    }
-  }
-
-  Future<void> _saveUserColorPreference(Color color) async {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    await sys.saveUserPreferredColor(color);
-    setState(() => _userPreferredColor = color);
-  }
-
+  // 👈 تشغيل الصوت الحقيقي مع الاهتزاز (إن وجد)
   void _playFeedback() {
-    if (_appSounds && !kIsWeb) {
-      SystemSound.play(SystemSoundType.click);
+    if (!_appSounds) return;
+    final uiProvider = Provider.of<UiProvider>(context, listen: false);
+    uiProvider.playSound('click'); // يشغل click.mp3 من assets/sounds
+    if (!kIsWeb) {
       HapticFeedback.lightImpact();
     }
   }
@@ -85,15 +68,12 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     final userPhone = systemProvider.currentUserPhone;
     final useBiometrics = systemProvider.isBiometricCurrentlyEnabled;
 
-    // نستخدم اللون المفضل للمستخدم بدلاً من لون ThemeProvider العام
-    final primaryColor = _userPreferredColor;
+    // اللون النشط (المخصص أو العام)
+    final primaryColor = themeProvider.activePrimaryColor;
 
     return Scaffold(
       backgroundColor: isDark ? primaryColor.withOpacity(0.15) : primaryColor.withOpacity(0.05),
-      appBar: CustomHeader(
-        title: 'الإعدادات والمظهر',
-        // يمكن تمرير لون مخصص للـ AppBar إذا أردت، لكننا نتركه كما هو
-      ),
+      appBar: CustomHeader(title: 'الإعدادات والمظهر'),
       drawer: CustomUserDrawer(userName: userName, phoneNumber: userPhone),
       body: Directionality(
         textDirection: TextDirection.rtl,
@@ -103,8 +83,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
             _buildProfileHeader(primaryColor, userName, userPhone),
             const SizedBox(height: 20),
 
-            // --- بطاقة تخصيص اللون الشخصي (جديدة) ---
-            _buildPersonalColorCard(primaryColor, isDark),
+            // بطاقة تخصيص اللون الشخصي
+            _buildPersonalColorCard(themeProvider, primaryColor, isDark),
             const SizedBox(height: 15),
 
             // المظهر والتفضيلات
@@ -130,9 +110,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
                   setState(() => _appSounds = val);
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setBool('user_app_sounds', val);
-                  if (val && !kIsWeb) {
-                    SystemSound.play(SystemSoundType.click);
-                    HapticFeedback.heavyImpact();
+                  if (val) {
+                    _playFeedback(); // سيشغل صوتاً فور التفعيل
                   }
                   _showToast(val ? 'تم تفعيل الأصوات 🔊' : 'تم كتم الأصوات 🔇');
                 },
@@ -148,7 +127,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
                 'إعداد رمز PIN (6 أرقام)',
                 _userPin.isNotEmpty ? 'تم تعيين رمز PIN' : 'للدخول السريع وتأكيد المشتريات',
                 primaryColor,
-                onTap: () => _showPinDialog(),
+                onTap: () => _showPinDialog(systemProvider),
               ),
               _buildSwitchTile(
                 Icons.fingerprint,
@@ -158,7 +137,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
                 (val) {
                   _playFeedback();
                   if (kIsWeb) {
-                    _showToast('عذراً، البصمة مدعومة فقط على الهواتف (Android/iOS) وليس على الويب!');
+                    _showToast('عذراً، البصمة مدعومة فقط على الهواتف وليس على الويب!');
                     return;
                   }
                   systemProvider.toggleBiometric(val);
@@ -194,7 +173,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
                 'حدود التحويل والمشتريات',
                 _dailyLimit > 0 ? 'الحد اليومي: ${_dailyLimit.toStringAsFixed(0)} ريال' : 'تعيين سقف يومي لحماية رصيدك',
                 primaryColor,
-                onTap: () => _showLimitDialog(),
+                onTap: () => _showLimitDialog(systemProvider),
               ),
             ], primaryColor, isDark),
 
@@ -223,10 +202,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     );
   }
 
-  // =========================================================
-  // بطاقة تخصيص اللون الشخصي (تحل محل دوائر الألوان الثابتة)
-  // =========================================================
-  Widget _buildPersonalColorCard(Color currentColor, bool isDark) {
+  // ---------- بطاقة تخصيص اللون (معدلة لاستخدام ThemeProvider) ----------
+  Widget _buildPersonalColorCard(ThemeProvider themeProvider, Color currentColor, bool isDark) {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -247,18 +224,18 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
             ),
             const SizedBox(height: 12),
             const Text(
-              'اختر لوناً ينعكس على جميع شاشاتك فقط، دون التأثير على المستخدمين الآخرين.',
+              'اختر لوناً ينعكس على جميع شاشاتك فقط.',
               style: TextStyle(fontSize: 12, color: Colors.grey),
             ),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                // زر اختيار اللون من العجلة (دائرة واحدة)
+                // زر اختيار اللون
                 Column(
                   children: [
                     GestureDetector(
-                      onTap: () => _openColorWheelPicker(),
+                      onTap: () => _openColorWheelPicker(themeProvider),
                       child: Container(
                         width: 60,
                         height: 60,
@@ -269,10 +246,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
                           ),
                           border: Border.all(color: Colors.grey.shade300, width: 2),
                           boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 8,
-                            ),
+                            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8),
                           ],
                         ),
                         child: Center(
@@ -292,11 +266,15 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
                     const Text('اختر لون', style: TextStyle(fontSize: 12)),
                   ],
                 ),
-                // زر استعادة اللون الافتراضي (أبيض في الوضع الفاتح، لون أساسي في الداكن)
+                // زر استعادة الافتراضي
                 Column(
                   children: [
                     ElevatedButton.icon(
-                      onPressed: () => _resetToDefaultColor(isDark),
+                      onPressed: () {
+                        _playFeedback();
+                        themeProvider.resetToDefaultColor();
+                        _showToast('تم استعادة اللون الافتراضي');
+                      },
                       icon: const Icon(Icons.restore, size: 20),
                       label: const Text('اللون الافتراضي'),
                       style: ElevatedButton.styleFrom(
@@ -319,8 +297,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     );
   }
 
-  void _openColorWheelPicker() {
-    Color tempColor = _userPreferredColor;
+  void _openColorWheelPicker(ThemeProvider themeProvider) {
+    Color tempColor = themeProvider.activePrimaryColor;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -328,9 +306,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
         content: SingleChildScrollView(
           child: ColorPicker(
             pickerColor: tempColor,
-            onColorChanged: (Color color) {
-              tempColor = color;
-            },
+            onColorChanged: (Color color) => tempColor = color,
             pickerAreaHeightPercent: 0.8,
             enableAlpha: false,
             displayThumbColor: true,
@@ -345,9 +321,12 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: tempColor),
             onPressed: () async {
               _playFeedback();
-              await _saveUserColorPreference(tempColor);
+              themeProvider.setUserCustomColor(tempColor);
               Navigator.pop(context);
               _showToast('تم حفظ لونك الشخصي 🎨');
+              // حفظ في Firestore أيضاً للنسخ الاحتياطي (اختياري)
+              final sys = Provider.of<SystemProvider>(context, listen: false);
+              await sys.saveUserPreferredColor(tempColor);
             },
             child: const Text('حفظ', style: TextStyle(color: Colors.white)),
           ),
@@ -356,17 +335,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     );
   }
 
-  Future<void> _resetToDefaultColor(bool isDark) async {
-    // اللون الافتراضي يمكن أن يكون أزرق فاتح أو حسب رغبتك
-    final defaultColor = isDark ? Colors.blueGrey.shade700 : Colors.blue;
-    await _saveUserColorPreference(defaultColor);
-    _playFeedback();
-    _showToast('تم استعادة اللون الافتراضي');
-  }
-
-  // =========================================================
-  // دوال مساعدة لإنشاء الواجهة
-  // =========================================================
+  // ---------- باقي دوال الواجهة (مثل السابق مع تعديلات طفيفة) ----------
   Widget _buildProfileHeader(Color primaryColor, String name, String phone) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -377,35 +346,18 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
           end: Alignment.bottomLeft,
         ),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: primaryColor.withOpacity(0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: primaryColor.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
       ),
       child: Row(
         children: [
-          const CircleAvatar(
-            radius: 35,
-            backgroundColor: Colors.white24,
-            child: Icon(Icons.person, size: 35, color: Colors.white),
-          ),
+          const CircleAvatar(radius: 35, backgroundColor: Colors.white24, child: Icon(Icons.person, size: 35, color: Colors.white)),
           const SizedBox(width: 15),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  name,
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
-                ),
-                Text(
-                  phone,
-                  style: const TextStyle(color: Colors.white70, fontSize: 15),
-                  textDirection: TextDirection.ltr,
-                ),
+                Text(name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                Text(phone, style: const TextStyle(color: Colors.white70, fontSize: 15), textDirection: TextDirection.ltr),
               ],
             ),
           ),
@@ -417,10 +369,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
   Widget _buildSectionTitle(String title, Color primaryColor) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, top: 15, right: 5),
-      child: Text(
-        title,
-        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor),
-      ),
+      child: Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor)),
     );
   }
 
@@ -436,46 +385,25 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     );
   }
 
-  Widget _buildListTile(
-    IconData icon,
-    String title,
-    String subtitle,
-    Color color, {
-    required VoidCallback onTap,
-  }) {
+  Widget _buildListTile(IconData icon, String title, String subtitle, Color color, {required VoidCallback onTap}) {
     return ListTile(
       leading: Container(
         padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          shape: BoxShape.circle,
-        ),
+        decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
         child: Icon(icon, color: color, size: 20),
       ),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-      subtitle: subtitle.isNotEmpty
-          ? Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey))
-          : null,
+      subtitle: subtitle.isNotEmpty ? Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey)) : null,
       trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
       onTap: onTap,
     );
   }
 
-  Widget _buildSwitchTile(
-    IconData icon,
-    String title,
-    String subtitle,
-    bool value,
-    ValueChanged<bool> onChanged,
-    Color activeColor,
-  ) {
+  Widget _buildSwitchTile(IconData icon, String title, String subtitle, bool value, ValueChanged<bool> onChanged, Color activeColor) {
     return SwitchListTile(
       secondary: Container(
         padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: activeColor.withOpacity(0.1),
-          shape: BoxShape.circle,
-        ),
+        decoration: BoxDecoration(color: activeColor.withOpacity(0.1), shape: BoxShape.circle),
         child: Icon(icon, color: activeColor, size: 20),
       ),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
@@ -486,13 +414,10 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     );
   }
 
-  // =========================================================
-  // النوافذ المنبثقة التفاعلية (محدثة لحفظ البيانات فعلياً)
-  // =========================================================
+  // ---------- نوافذ الإعدادات (محدثة) ----------
   void _showPasswordDialog(SystemProvider systemProvider) {
     final oldPassController = TextEditingController();
     final newPassController = TextEditingController();
-
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -503,24 +428,13 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
-                controller: oldPassController,
-                obscureText: true,
-                decoration: const InputDecoration(hintText: 'كلمة المرور الحالية'),
-              ),
+              TextField(controller: oldPassController, obscureText: true, decoration: const InputDecoration(hintText: 'كلمة المرور الحالية')),
               const SizedBox(height: 10),
-              TextField(
-                controller: newPassController,
-                obscureText: true,
-                decoration: const InputDecoration(hintText: 'كلمة المرور الجديدة'),
-              ),
+              TextField(controller: newPassController, obscureText: true, decoration: const InputDecoration(hintText: 'كلمة المرور الجديدة')),
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('إلغاء'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
             ElevatedButton(
               onPressed: () {
                 _playFeedback();
@@ -546,9 +460,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     );
   }
 
-  void _showPinDialog() {
+  void _showPinDialog(SystemProvider systemProvider) {
     final pinController = TextEditingController(text: _userPin);
-
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -561,24 +474,16 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
             keyboardType: TextInputType.number,
             maxLength: 6,
             obscureText: true,
-            decoration: const InputDecoration(
-              hintText: 'أدخل 6 أرقام',
-              border: OutlineInputBorder(),
-            ),
+            decoration: const InputDecoration(hintText: 'أدخل 6 أرقام', border: OutlineInputBorder()),
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('إلغاء'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
             ElevatedButton(
               onPressed: () async {
                 _playFeedback();
                 final newPin = pinController.text.trim();
                 if (newPin.length == 6) {
-                  // حفظ PIN في SharedPreferences و Firestore عبر SystemProvider
-                  final sys = Provider.of<SystemProvider>(context, listen: false);
-                  await sys.updateUserPin(newPin);
+                  await systemProvider.updateUserPin(newPin);
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setString('user_pin', newPin);
                   setState(() => _userPin = newPin);
@@ -596,11 +501,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     );
   }
 
-  void _showLimitDialog() {
-    final limitController = TextEditingController(
-      text: _dailyLimit > 0 ? _dailyLimit.toStringAsFixed(0) : '',
-    );
-
+  void _showLimitDialog(SystemProvider systemProvider) {
+    final limitController = TextEditingController(text: _dailyLimit > 0 ? _dailyLimit.toStringAsFixed(0) : '');
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -611,30 +513,20 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
           content: TextField(
             controller: limitController,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              hintText: 'مثال: 5000',
-              suffixText: 'ريال',
-              border: OutlineInputBorder(),
-            ),
+            decoration: const InputDecoration(hintText: 'مثال: 5000', suffixText: 'ريال', border: OutlineInputBorder()),
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('إلغاء'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
             ElevatedButton(
               onPressed: () async {
                 _playFeedback();
                 final newLimit = double.tryParse(limitController.text.trim()) ?? 0.0;
-                final sys = Provider.of<SystemProvider>(context, listen: false);
-                await sys.updateUserDailyLimit(newLimit);
+                await systemProvider.updateUserDailyLimit(newLimit);
                 final prefs = await SharedPreferences.getInstance();
                 await prefs.setDouble('user_daily_limit', newLimit);
                 setState(() => _dailyLimit = newLimit);
                 Navigator.pop(context);
-                _showToast(newLimit > 0
-                    ? 'تم تعيين الحد اليومي إلى $newLimit ريال 🛡️'
-                    : 'تم إلغاء الحد اليومي');
+                _showToast(newLimit > 0 ? 'تم تعيين الحد اليومي إلى $newLimit ريال 🛡️' : 'تم إلغاء الحد اليومي');
               },
               child: const Text('حفظ'),
             ),
@@ -654,16 +546,13 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
           title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.orange)),
           content: const Text('هل أنت متأكد أنك تريد تسجيل الخروج من حسابك؟'),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('إلغاء'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
               onPressed: () {
                 _playFeedback();
                 final sys = Provider.of<SystemProvider>(context, listen: false);
-                sys.clearAllData(); // مسح بيانات الجلسة
+                sys.clearAllData();
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(builder: (context) => const SSOLoginScreen()),
@@ -696,25 +585,17 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'إذا قمت بحذف حسابك، ستفقد جميع كروتك ومحفظتك ونقاط المكافآت. هل أنت متأكد تماماً؟',
-              ),
+              const Text('إذا قمت بحذف حسابك، ستفقد جميع كروتك ومحفظتك ونقاط المكافآت. هل أنت متأكد تماماً؟'),
               const SizedBox(height: 16),
               TextField(
                 controller: passwordController,
                 obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'أدخل كلمة المرور للتأكيد',
-                  border: OutlineInputBorder(),
-                ),
+                decoration: const InputDecoration(labelText: 'أدخل كلمة المرور للتأكيد', border: OutlineInputBorder()),
               ),
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('تراجع'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('تراجع')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () async {
@@ -724,10 +605,9 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
                   _showToast('يرجى إدخال كلمة المرور');
                   return;
                 }
-                // التحقق من كلمة المرور وحذف الحساب عبر SystemProvider
                 final success = await systemProvider.deleteUserAccount(password);
                 if (success) {
-                  Navigator.pop(context); // إغلاق حوار التأكيد
+                  Navigator.pop(context);
                   Navigator.pushAndRemoveUntil(
                     context,
                     MaterialPageRoute(builder: (context) => const SSOLoginScreen()),
