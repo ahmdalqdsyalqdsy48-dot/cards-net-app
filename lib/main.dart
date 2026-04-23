@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_localizations/flutter_localizations.dart'; // 🆕 دعم الترجمة
 
 import 'core/providers/theme_provider.dart';
 import 'core/providers/system_provider.dart';
@@ -54,16 +55,43 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
+    final systemProvider = Provider.of<SystemProvider>(context);
 
+    // 🆕 تحديد اللغة الحالية بناءً على ما هو محفوظ في `SystemProvider`.
+    // ملاحظة: يتم تحميل اللغة في `SystemProvider.getLanguage()` من `SharedPreferences`.
+    // وللتأكد من أنها جاهزة، نستخدم `FutureBuilder` أو نعتمد على القيمة الافتراضية.
+    // هنا نستخدم قيمة افتراضية 'ar' لأن `SystemProvider` يحملها بشكل متزامن تقريبًا.
+    final String currentLang = systemProvider.getLanguage(); // تمت إضافتها مسبقًا
+    
     return MaterialApp(
       title: 'نظام كروت نت',
       debugShowCheckedModeBanner: false,
+      
+      // 🆕 تفعيل دعم اللغة العربية والإنجليزية
+      locale: Locale(currentLang),
+      supportedLocales: const [Locale('ar'), Locale('en')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      localeResolutionCallback: (locale, supportedLocales) {
+        // لو المستخدم دخل لأول مرة، استخدم العربية
+        if (locale == null) return const Locale('ar');
+        for (var supportedLocale in supportedLocales) {
+          if (supportedLocale.languageCode == locale.languageCode) {
+            return supportedLocale;
+          }
+        }
+        return const Locale('ar');
+      },
+
       themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-      // ✅ استخدام الثيمات المبنية مسبقاً داخل ThemeProvider
       theme: themeProvider.lightTheme,
       darkTheme: themeProvider.darkTheme,
-      // تطبيق حجم الخط المخصص
+      
       builder: (context, child) {
+        // 🆕 إعادة بناء التطبيق لتطبيق اللغة الجديدة فوراً
         return MediaQuery(
           data: MediaQuery.of(context).copyWith(
             textScaler: TextScaler.linear(themeProvider.fontSizeScale),
