@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; 
+import 'package:provider/provider.dart';
 
 import '../../../core/providers/theme_provider.dart';
-import '../../../core/providers/system_provider.dart'; 
+import '../../../core/providers/system_provider.dart';
 
 // الاستدعاءات الخاصة بالشاشات
-import '../screens/user_dashboard_screen.dart'; 
+import '../screens/user_dashboard_screen.dart';
 import '../screens/user_wallet_screen.dart';
 import '../screens/network_store_screen.dart';
 import '../screens/my_cards_screen.dart';
 import '../screens/rewards_screen.dart';
 import '../screens/user_transactions_screen.dart';
 import '../screens/user_support_screen.dart';
-import '../screens/user_settings_screen.dart'; 
+import '../screens/user_settings_screen.dart';
 import '../../auth/screens/sso_login_screen.dart';
 
 class CustomUserDrawer extends StatefulWidget {
@@ -33,7 +33,7 @@ class CustomUserDrawer extends StatefulWidget {
 
 class _CustomUserDrawerState extends State<CustomUserDrawer> {
   bool _isBalanceHidden = false;
-  String? _currentLocalImageUrl; 
+  String? _currentLocalImageUrl;
 
   @override
   void initState() {
@@ -42,7 +42,7 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
   }
 
   void _navigateTo(BuildContext context, Widget screen) {
-    Navigator.pop(context); 
+    Navigator.pop(context);
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (context) => screen),
@@ -54,19 +54,25 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('استقبال رصيد', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('استقبال رصيد',
+            textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('امسح الباركود لتحويل الرصيد إليّ مباشرة', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 13)),
+            const Text('امسح الباركود لتحويل الرصيد إليّ مباشرة',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey, fontSize: 13)),
             const SizedBox(height: 20),
             Icon(Icons.qr_code_2, size: 150, color: Theme.of(context).primaryColor),
             const SizedBox(height: 20),
-            Text(realPhone, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 2)),
+            Text(realPhone,
+                style: const TextStyle(
+                    fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 2)),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
         ],
       ),
     );
@@ -81,7 +87,8 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('إدارة الصورة الشخصية', style: TextStyle(fontWeight: FontWeight.bold)),
+          title: const Text('إدارة الصورة الشخصية',
+              style: TextStyle(fontWeight: FontWeight.bold)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -91,13 +98,17 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: Colors.grey.shade100,
-                  border: Border.all(color: Theme.of(context).primaryColor.withOpacity(0.5), width: 3),
+                  border: Border.all(
+                      color: Theme.of(context).primaryColor.withOpacity(0.5), width: 3),
                   boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)],
-                  image: hasImage 
-                      ? DecorationImage(image: NetworkImage(_currentLocalImageUrl!), fit: BoxFit.cover) 
+                  image: hasImage
+                      ? DecorationImage(
+                          image: NetworkImage(_currentLocalImageUrl!), fit: BoxFit.cover)
                       : null,
                 ),
-                child: !hasImage ? const Icon(Icons.person, size: 60, color: Colors.blueGrey) : null,
+                child: !hasImage
+                    ? const Icon(Icons.person, size: 60, color: Colors.blueGrey)
+                    : null,
               ),
               const SizedBox(height: 25),
               Row(
@@ -106,18 +117,22 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                   ElevatedButton.icon(
                     onPressed: () {
                       Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سيتم فتح المعرض لاختيار صورة.')));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('سيتم فتح المعرض لاختيار صورة.')));
                     },
-                    icon: Icon(hasImage ? Icons.sync : Icons.add_photo_alternate, color: Colors.white, size: 18),
-                    label: Text(hasImage ? 'تغيير' : 'إضافة', style: const TextStyle(color: Colors.white)),
+                    icon: Icon(hasImage ? Icons.sync : Icons.add_photo_alternate,
+                        color: Colors.white, size: 18),
+                    label: Text(hasImage ? 'تغيير' : 'إضافة',
+                        style: const TextStyle(color: Colors.white)),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade600),
                   ),
-                  if (hasImage) 
+                  if (hasImage)
                     ElevatedButton.icon(
                       onPressed: () {
                         setState(() => _currentLocalImageUrl = null);
                         Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف الصورة.'), backgroundColor: Colors.red));
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text('تم حذف الصورة.'), backgroundColor: Colors.red));
                       },
                       icon: const Icon(Icons.delete_forever, color: Colors.white, size: 18),
                       label: const Text('حذف', style: TextStyle(color: Colors.white)),
@@ -132,18 +147,24 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
     );
   }
 
+  /// توليد تدرج لوني ديناميكي من اللون الأساسي
+  List<Color> _generateGradientColors(Color baseColor) {
+    final hsv = HSVColor.fromColor(baseColor);
+    final darker = hsv.withValue((hsv.value - 0.2).clamp(0.0, 1.0)).toColor();
+    final lighter = hsv.withValue((hsv.value + 0.1).clamp(0.0, 1.0)).toColor();
+    return [darker, lighter];
+  }
+
   @override
   Widget build(BuildContext context) {
     bool hasImage = _currentLocalImageUrl != null;
-    
+
     final themeProvider = Provider.of<ThemeProvider>(context);
     final systemProvider = Provider.of<SystemProvider>(context);
     final primaryColor = themeProvider.primaryColor;
 
     final String dynamicUserName = systemProvider.currentUserName;
     final String dynamicUserPhone = systemProvider.currentUserPhone;
-    
-    // 👈 تحديد هوية الزائر
     final bool isPos = systemProvider.currentUserRole == 'pos';
 
     return Drawer(
@@ -155,15 +176,13 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
               child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
-                  // ==========================================
-                  // 1. الترويسة العلوية 
-                  // ==========================================
+                  // ========== الترويسة العلوية ==========
                   SafeArea(
                     bottom: false,
                     child: Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-                      color: primaryColor.withOpacity(0.05), 
+                      color: primaryColor.withOpacity(0.05),
                       child: Column(
                         children: [
                           Stack(
@@ -172,50 +191,60 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                               Align(
                                 alignment: Alignment.centerLeft,
                                 child: IconButton(
-                                  icon: Icon(Icons.qr_code_scanner, color: primaryColor, size: 28),
-                                  onPressed: () => _showQRCodeDialog(context, dynamicUserPhone),
+                                  icon: Icon(Icons.qr_code_scanner,
+                                      color: primaryColor, size: 28),
+                                  onPressed: () =>
+                                      _showQRCodeDialog(context, dynamicUserPhone),
                                 ),
                               ),
                               GestureDetector(
                                 onTap: () => _showProfileImageActionDialog(context),
                                 child: Container(
-                                  width: 90, 
+                                  width: 90,
                                   height: 90,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
                                     color: Colors.white,
-                                    border: Border.all(color: primaryColor.withOpacity(0.5), width: 2),
-                                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))],
-                                    image: hasImage 
-                                        ? DecorationImage(image: NetworkImage(_currentLocalImageUrl!), fit: BoxFit.cover) 
+                                    border: Border.all(
+                                        color: primaryColor.withOpacity(0.5), width: 2),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                          color: Colors.black12,
+                                          blurRadius: 8,
+                                          offset: Offset(0, 3))
+                                    ],
+                                    image: hasImage
+                                        ? DecorationImage(
+                                            image: NetworkImage(_currentLocalImageUrl!),
+                                            fit: BoxFit.cover)
                                         : null,
                                   ),
-                                  child: !hasImage ? Icon(Icons.person, size: 45, color: primaryColor.withOpacity(0.7)) : null,
+                                  child: !hasImage
+                                      ? Icon(Icons.person,
+                                          size: 45, color: primaryColor.withOpacity(0.7))
+                                      : null,
                                 ),
                               ),
                             ],
                           ),
                           const SizedBox(height: 15),
 
+                          // بطاقات التدرج الديناميكية
                           _buildGradientCard(
-                            text: dynamicUserName, 
+                            text: dynamicUserName,
                             icon: Icons.person,
-                            colors: [Colors.blue.shade800, Colors.blue.shade500],
+                            colors: _generateGradientColors(primaryColor),
                           ),
-
                           _buildGradientCard(
-                            text: dynamicUserPhone, 
+                            text: dynamicUserPhone,
                             icon: Icons.phone,
-                            colors: [Colors.teal.shade800, Colors.teal.shade500],
+                            colors: _generateGradientColors(primaryColor),
                           ),
-
-                          // 👈 تغيير الشارة بناءً على الهوية
                           _buildGradientCard(
                             text: isPos ? 'نقطة بيع معتمدة 🏪' : 'المستوى: عضو ذهبي 🥇',
                             icon: isPos ? Icons.verified : Icons.stars,
-                            colors: isPos ? [Colors.purple.shade800, Colors.purple.shade500] : [Colors.orange.shade800, Colors.orange.shade500],
+                            colors: _generateGradientColors(primaryColor),
                           ),
-
                           GestureDetector(
                             onTap: () {
                               setState(() {
@@ -223,14 +252,16 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                               });
                             },
                             child: _buildGradientCard(
-                              // 👈 تغيير المسمى بناءً على الهوية
-                              text: _isBalanceHidden ? 'الرصيد: ******' : '${isPos ? "الرصيد العام" : "المحفظة"}: ${systemProvider.currentUserBalance.toStringAsFixed(0)} ريال',
+                              text: _isBalanceHidden
+                                  ? 'الرصيد: ******'
+                                  : '${isPos ? "الرصيد العام" : "المحفظة"}: ${systemProvider.currentUserBalance.toStringAsFixed(0)} ريال',
                               icon: Icons.account_balance_wallet,
-                              colors: isPos ? [Colors.deepPurple.shade800, Colors.deepPurple.shade500] : [Colors.indigo.shade800, Colors.indigo.shade500],
-                              trailingIcon: _isBalanceHidden ? Icons.visibility_off : Icons.visibility,
+                              colors: _generateGradientColors(primaryColor),
+                              trailingIcon: _isBalanceHidden
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
                             ),
                           ),
-                          
                           const SizedBox(height: 10),
                           const Divider(height: 1),
                         ],
@@ -238,52 +269,72 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                     ),
                   ),
 
-                  // ==========================================
-                  // 2. خيارات القائمة المخصصة
-                  // ==========================================
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Text('المالية والمشتريات', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
-                  
-                  _buildDrawerItem(context, 'الرئيسية', Icons.dashboard, Colors.blue, const UserDashboardScreen()),
-                  
-                  // 👈 الزبون العادي يحتاج إدارة المحافظ المتعددة، البقالة لا تحتاجها
+                  // ========== المالية والمشتريات ==========
+                  const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Text('المالية والمشتريات',
+                          style: TextStyle(
+                              color: Colors.grey,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold))),
+                  _buildDrawerItem(context, 'الرئيسية', Icons.dashboard, Colors.blue,
+                      const UserDashboardScreen()),
                   if (!isPos)
-                    _buildDrawerItem(context, 'المحفظة الذكية والتحويلات', Icons.account_balance_wallet, Colors.teal, const UserWalletScreen()),
-                  
-                  _buildDrawerItem(context, isPos ? 'سوق الجملة للشبكات' : 'سوق الشبكات ونقاط البيع', Icons.storefront, Colors.orange, const NetworkStoreScreen()),
-                  
-                  // 👈 تسمية مختلفة للبقالات
-                  _buildDrawerItem(context, isPos ? 'سجل المبيعات والكروت' : 'كروتي ومشترياتي', Icons.receipt_long, isPos ? Colors.purple : Colors.green, const MyCardsScreen()),
-                  
+                    _buildDrawerItem(context, 'المحفظة الذكية والتحويلات',
+                        Icons.account_balance_wallet, Colors.teal, const UserWalletScreen()),
+                  _buildDrawerItem(
+                      context,
+                      isPos ? 'سوق الجملة للشبكات' : 'سوق الشبكات ونقاط البيع',
+                      Icons.storefront,
+                      Colors.orange,
+                      const NetworkStoreScreen()),
+                  _buildDrawerItem(
+                      context,
+                      isPos ? 'سجل المبيعات والكروت' : 'كروتي ومشترياتي',
+                      Icons.receipt_long,
+                      isPos ? Colors.purple : Colors.green,
+                      const MyCardsScreen()),
                   const Divider(),
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Text('الامتيازات والسجلات', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
-                  
-                  // 👈 إخفاء المكافآت عن البقالات
+                  const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Text('الامتيازات والسجلات',
+                          style: TextStyle(
+                              color: Colors.grey,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold))),
                   if (!isPos)
-                    _buildDrawerItem(context, 'برنامج الولاء والمكافآت', Icons.stars, Colors.amber.shade700, const RewardsScreen()),
-                  
-                  _buildDrawerItem(context, 'سجل العمليات المالية', Icons.history, Colors.indigo, const UserTransactionsScreen()),
-                  
+                    _buildDrawerItem(context, 'برنامج الولاء والمكافآت', Icons.stars,
+                        Colors.amber.shade700, const RewardsScreen()),
+                  _buildDrawerItem(context, 'سجل العمليات المالية', Icons.history,
+                      Colors.indigo, const UserTransactionsScreen()),
                   const Divider(),
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Text('الإعدادات والدعم', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold))),
-                  _buildDrawerItem(context, 'الدعم الفني والشكاوى', Icons.support_agent, Colors.redAccent, const UserSupportScreen()),
-                  _buildDrawerItem(context, 'الملف الشخصي والإعدادات', Icons.settings, Colors.blueGrey, const UserSettingsScreen()),
+                  const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Text('الإعدادات والدعم',
+                          style: TextStyle(
+                              color: Colors.grey,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold))),
+                  _buildDrawerItem(context, 'الدعم الفني والشكاوى', Icons.support_agent,
+                      Colors.redAccent, const UserSupportScreen()),
+                  _buildDrawerItem(context, 'الملف الشخصي والإعدادات', Icons.settings,
+                      Colors.blueGrey, const UserSettingsScreen()),
                 ],
               ),
             ),
-            
-            // ==========================================
-            // 3. الفوتر
-            // ==========================================
+
+            // ========== الفوتر ==========
             const Divider(height: 1),
             ListTile(
               dense: true,
               leading: const Icon(Icons.logout, color: Colors.red, size: 20),
-              title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+              title: const Text('تسجيل الخروج',
+                  style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
               onTap: () {
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(builder: (context) => const SSOLoginScreen()),
-                  (route) => false, 
+                  (route) => false,
                 );
               },
             ),
@@ -294,22 +345,25 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
     );
   }
 
-  // ==========================================
-  // أدوات مساعدة 
-  // ==========================================
-
-  Widget _buildGradientCard({required String text, required IconData icon, required List<Color> colors, IconData? trailingIcon}) {
+  Widget _buildGradientCard({
+    required String text,
+    required IconData icon,
+    required List<Color> colors,
+    IconData? trailingIcon,
+  }) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8), 
+      margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: colors,
-          begin: Alignment.topRight, 
+          begin: Alignment.topRight,
           end: Alignment.bottomLeft,
         ),
-        borderRadius: BorderRadius.circular(10), 
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))], 
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: const [
+          BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))
+        ],
       ),
       child: Row(
         children: [
@@ -318,17 +372,23 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5),
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  letterSpacing: 0.5),
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (trailingIcon != null) Icon(trailingIcon, color: Colors.white70, size: 17),
+          if (trailingIcon != null)
+            Icon(trailingIcon, color: Colors.white70, size: 17),
         ],
       ),
     );
   }
 
-  Widget _buildDrawerItem(BuildContext context, String title, IconData icon, Color iconColor, Widget targetScreen) {
+  Widget _buildDrawerItem(BuildContext context, String title, IconData icon,
+      Color iconColor, Widget targetScreen) {
     return ListTile(
       dense: true,
       visualDensity: VisualDensity.compact,
