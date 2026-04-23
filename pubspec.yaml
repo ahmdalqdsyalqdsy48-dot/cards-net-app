@@ -4,7 +4,6 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  # 👇 تم تحديث بيئة التطوير لتتوافق مع المكتبات الحديثة
   sdk: '>=3.3.0 <4.0.0'
 
 dependencies:
@@ -29,7 +28,9 @@ dependencies:
   audioplayers: ^6.0.0  
   url_launcher: ^6.2.5
   http: ^1.2.0 
-  share_plus: ^13.1.0 
+  share_plus: ^13.1.0
+  flutter_localizations:    # 🆕 لدعم الترجمة
+    sdk: flutter
 
 dev_dependencies:
   flutter_test:
@@ -41,5 +42,3 @@ flutter:
 
   assets:
     - assets/sounds/
-    # - assets/fonts/Cairo-Regular.ttf
-    # - assets/fonts/Cairo-Bold.ttf
