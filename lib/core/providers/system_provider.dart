@@ -1350,7 +1350,7 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  // الدوال المعبرية التي كانت تسبب الخطأ القديم (لحل مشكلة البناء في الشاشات الأخرى)
+  // الدوال المعبرية
   Future<void> requestWalletRecharge(String targetPhone, double amount) async {
     await submitSaaSRechargeRequest(
         quotaAmount: amount,
@@ -2111,19 +2111,15 @@ class SystemProvider extends ChangeNotifier {
     await _db.collection('recharge_requests').doc(docId).delete();
   }
 
-  // ==================== دوال إعدادات المستخدم المضافة حديثاً ====================
-
-  /// حفظ اللون المفضل للمستخدم الحالي في Firestore
+  // ==================== دوال إعدادات المستخدم ====================
   Future<void> saveUserPreferredColor(Color color) async {
     if (_activeUserPhone == null) return;
-    final colorValue = color.value; // int يمثل قيمة ARGB
+    final colorValue = color.value;
     await _db.collection('users').doc(_activeUserPhone).update({
       'preferredColor': colorValue,
     });
-    // يمكن تحديث _usersDatabase إذا أردت لكن ليس ضرورياً لأن اللون يُقرأ عند الحاجة
   }
 
-  /// استرجاع اللون المفضل للمستخدم الحالي من Firestore
   Future<Color?> getUserPreferredColor() async {
     if (_activeUserPhone == null) return null;
     try {
@@ -2141,11 +2137,9 @@ class SystemProvider extends ChangeNotifier {
     return null;
   }
 
-  /// تحديث رمز PIN للمستخدم الحالي
   Future<void> updateUserPin(String pin) async {
     if (_activeUserPhone == null) return;
     await _db.collection('users').doc(_activeUserPhone).update({'pin': pin});
-    // تحديث الذاكرة المحلية للمستخدم الحالي
     final index = _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
     if (index != -1) {
       _usersDatabase[index]['pin'] = pin;
@@ -2153,7 +2147,6 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  /// تحديث الحد اليومي للمشتريات
   Future<void> updateUserDailyLimit(double limit) async {
     if (_activeUserPhone == null) return;
     await _db.collection('users').doc(_activeUserPhone).update({'dailyLimit': limit});
@@ -2164,28 +2157,26 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  /// حذف حساب المستخدم الحالي بعد التحقق من كلمة المرور
   Future<bool> deleteUserAccount(String password) async {
     if (_activeUserPhone == null) return false;
     try {
-      // التحقق من كلمة المرور
       final doc = await _db.collection('users').doc(_activeUserPhone).get();
       if (!doc.exists) return false;
       final data = doc.data() as Map<String, dynamic>;
       if (data['password'] != password) return false;
 
-      // حذف المستند
       await _db.collection('users').doc(_activeUserPhone).delete();
-
-      // (اختياري) حذف البيانات المرتبطة مثل الكروت والإشعارات
-      // يمكن إضافة منطق إضافي هنا حسب الحاجة
-
-      // مسح بيانات الجلسة
       clearAllData();
       return true;
     } catch (e) {
       debugPrint('خطأ في حذف الحساب: $e');
       return false;
     }
+  }
+
+  // 🆕 إعدادات الخصوصية
+  Future<void> updatePrivacySetting(String key, bool value) async {
+    if (_activeUserPhone == null) return;
+    await _db.collection('users').doc(_activeUserPhone).update({'privacy_$key': value});
   }
 }
