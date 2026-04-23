@@ -489,7 +489,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 onChanged: (val) async {
                   setState(() => _selectedLanguage = val!);
                   final prefs = await SharedPreferences.getInstance();
-                  await prefs.setString('language', val);
+                  await prefs.setString('language', val!);
                   _showToast('سيتم تطبيق اللغة عند إعادة التشغيل');
                 },
               ),
@@ -501,7 +501,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 onChanged: (val) async {
                   setState(() => _selectedLanguage = val!);
                   final prefs = await SharedPreferences.getInstance();
-                  await prefs.setString('language', val);
+                  await prefs.setString('language', val!);
                   _showToast('Language will be applied after restart');
                 },
               ),
