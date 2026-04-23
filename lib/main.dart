@@ -57,7 +57,7 @@ class MyApp extends StatelessWidget {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final systemProvider = Provider.of<SystemProvider>(context);
 
-    final String currentLang = systemProvider.getLanguageSync(); // ✅ متزامنة
+    final String currentLang = systemProvider.getLanguage(); // دالة متزامنة
 
     return MaterialApp(
       title: 'نظام كروت نت',
