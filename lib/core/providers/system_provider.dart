@@ -94,8 +94,13 @@ class SystemProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _myAgentBankAccounts = [];
   StreamSubscription? _agentBankSubscription;
 
+  SharedPreferences? _prefs;
+
   SystemProvider() {
     _initDatabaseSync();
+    SharedPreferences.getInstance().then((p) {
+      _prefs = p;
+    });
   }
 
   void _initDatabaseSync() {
@@ -2181,19 +2186,15 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==================== دوال الترقية والشرائح (Discount Tiers) ====================
-
-  /// جلب أعلى شريحة خصم مؤهلة للمستخدم الحالي مع وكيل معين
   Future<Map<String, dynamic>?> getUserTierForAgent(String agentPhone) async {
     if (_activeUserPhone == null) return null;
 
-    // رصيد المستخدم لدى هذا الوكيل
     final user = _usersDatabase.firstWhere(
         (u) => u['phone'] == _activeUserPhone,
         orElse: () => {});
     Map<String, dynamic> wallets = user['wallets'] ?? {};
     double walletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
 
-    // جلب جميع الشرائح النشطة لهذا الوكيل
     final tierQuery = await _db.collection('discount_tiers')
         .where('agentPhone', isEqualTo: agentPhone)
         .where('isActive', isEqualTo: true)
@@ -2205,19 +2206,16 @@ class SystemProvider extends ChangeNotifier {
         .map((doc) => doc.data() as Map<String, dynamic>)
         .toList();
 
-    // ترتيب تنازلي حسب الشرط (أكبر عتبة أولاً)
     tiers.sort((a, b) => (b['condition'] as int).compareTo(a['condition'] as int));
 
-    // البحث عن أول شريحة شرطها ≤ الرصيد
     for (var tier in tiers) {
       if (walletBalance >= (tier['condition'] as num).toDouble()) {
         return tier;
       }
     }
-    return null; // لا يوجد شريحة مؤهلة
+    return null;
   }
 
-  /// جلب أعلى شريحة عبر جميع الوكلاء (للقائمة الجانبية)
   Future<Map<String, dynamic>?> getUserHighestTier() async {
     if (_activeUserPhone == null) return null;
 
@@ -2269,13 +2267,16 @@ class SystemProvider extends ChangeNotifier {
   }
 
   // ==================== دوال اللغة ====================
-  Future<void> saveLanguage(String langCode) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('language', langCode);
+  String getLanguageSync() {
+    if (_prefs == null) return 'ar';
+    return _prefs!.getString('language') ?? 'ar';
   }
 
-  Future<String> getLanguage() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('language') ?? 'ar';
+  Future<void> saveLanguage(String langCode) async {
+    if (_prefs == null) {
+      _prefs = await SharedPreferences.getInstance();
+    }
+    await _prefs!.setString('language', langCode);
+    notifyListeners();
   }
 }
