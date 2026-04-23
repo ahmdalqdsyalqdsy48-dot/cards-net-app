@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/ui_provider.dart';
 
 import '../screens/user_dashboard_screen.dart';
 import '../screens/user_wallet_screen.dart';
@@ -33,14 +34,33 @@ class CustomUserDrawer extends StatefulWidget {
 class _CustomUserDrawerState extends State<CustomUserDrawer> {
   bool _isBalanceHidden = false;
   String? _currentLocalImageUrl;
+  Map<String, dynamic>? _userTier; // المستوى الديناميكي
 
   @override
   void initState() {
     super.initState();
     _currentLocalImageUrl = widget.profileImageUrl;
+    _loadUserTier();
+  }
+
+  Future<void> _loadUserTier() async {
+    // تحميل المستوى بعد بناء الواجهة
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final sys = Provider.of<SystemProvider>(context, listen: false);
+      sys.getUserHighestTier().then((tier) {
+        if (mounted) {
+          setState(() => _userTier = tier);
+        }
+      });
+    });
+  }
+
+  void _playSound() {
+    Provider.of<UiProvider>(context, listen: false).playSound('click');
   }
 
   void _navigateTo(BuildContext context, Widget screen) {
+    _playSound();
     Navigator.pop(context);
     Navigator.pushReplacement(
       context,
@@ -49,6 +69,7 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
   }
 
   void _showQRCodeDialog(BuildContext context, String realPhone) {
+    _playSound();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -71,13 +92,18 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
+              onPressed: () {
+                _playSound();
+                Navigator.pop(context);
+              },
+              child: const Text('إغلاق')),
         ],
       ),
     );
   }
 
   void _showProfileImageActionDialog(BuildContext context) {
+    _playSound();
     bool hasImage = _currentLocalImageUrl != null;
 
     showDialog(
@@ -115,6 +141,7 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                 children: [
                   ElevatedButton.icon(
                     onPressed: () {
+                      _playSound();
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('سيتم فتح المعرض لاختيار صورة.')));
@@ -128,6 +155,7 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                   if (hasImage)
                     ElevatedButton.icon(
                       onPressed: () {
+                        _playSound();
                         setState(() => _currentLocalImageUrl = null);
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -159,11 +187,36 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
 
     final themeProvider = Provider.of<ThemeProvider>(context);
     final systemProvider = Provider.of<SystemProvider>(context);
+    final isDark = themeProvider.isDarkMode;
     final primaryColor = themeProvider.primaryColor;
 
     final String dynamicUserName = systemProvider.currentUserName;
     final String dynamicUserPhone = systemProvider.currentUserPhone;
     final bool isPos = systemProvider.currentUserRole == 'pos';
+
+    // الألوان حسب الوضع
+    final nameColors = isDark
+        ? _generateGradientColors(primaryColor)
+        : [Colors.blue.shade800, Colors.blue.shade500];
+    final phoneColors = isDark
+        ? _generateGradientColors(primaryColor)
+        : [Colors.teal.shade800, Colors.teal.shade500];
+    final tierColors = isDark
+        ? _generateGradientColors(primaryColor)
+        : [Colors.orange.shade800, Colors.orange.shade500];
+    final balanceColors = isDark
+        ? _generateGradientColors(primaryColor)
+        : [Colors.purple.shade800, Colors.purple.shade500];
+
+    // تحديد نص المستوى
+    String tierText;
+    if (isPos) {
+      tierText = 'نقطة بيع معتمدة 🏪';
+    } else if (_userTier != null) {
+      tierText = 'المستوى: ${_userTier!['title']}';
+    } else {
+      tierText = 'المستوى: عضو جديد 🆕';
+    }
 
     return Drawer(
       child: Directionality(
@@ -229,30 +282,29 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                           _buildGradientCard(
                             text: dynamicUserName,
                             icon: Icons.person,
-                            colors: _generateGradientColors(primaryColor),
+                            colors: nameColors,
                           ),
                           _buildGradientCard(
                             text: dynamicUserPhone,
                             icon: Icons.phone,
-                            colors: _generateGradientColors(primaryColor),
+                            colors: phoneColors,
                           ),
                           _buildGradientCard(
-                            text: isPos ? 'نقطة بيع معتمدة 🏪' : 'المستوى: عضو ذهبي 🥇',
+                            text: tierText,
                             icon: isPos ? Icons.verified : Icons.stars,
-                            colors: _generateGradientColors(primaryColor),
+                            colors: tierColors,
                           ),
                           GestureDetector(
                             onTap: () {
-                              setState(() {
-                                _isBalanceHidden = !_isBalanceHidden;
-                              });
+                              _playSound();
+                              setState(() => _isBalanceHidden = !_isBalanceHidden);
                             },
                             child: _buildGradientCard(
                               text: _isBalanceHidden
                                   ? 'الرصيد: ******'
                                   : '${isPos ? "الرصيد العام" : "المحفظة"}: ${systemProvider.currentUserBalance.toStringAsFixed(0)} ريال',
                               icon: Icons.account_balance_wallet,
-                              colors: _generateGradientColors(primaryColor),
+                              colors: balanceColors,
                               trailingIcon: _isBalanceHidden
                                   ? Icons.visibility_off
                                   : Icons.visibility,
@@ -325,6 +377,7 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
               title: const Text('تسجيل الخروج',
                   style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
               onTap: () {
+                _playSound();
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(builder: (context) => const SSOLoginScreen()),
