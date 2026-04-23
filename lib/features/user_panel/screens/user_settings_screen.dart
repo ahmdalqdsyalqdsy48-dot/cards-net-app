@@ -477,7 +477,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 onChanged: (val) async {
                   _playFeedback();
                   setState(() => _selectedLanguage = val!);
-                  await sys.saveLanguage(val);
+                  await sys.saveLanguage(val!);   // ✅ val! آمنة
                   _showToast('تم تغيير اللغة إلى العربية');
                 },
               ),
@@ -489,7 +489,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 onChanged: (val) async {
                   _playFeedback();
                   setState(() => _selectedLanguage = val!);
-                  await sys.saveLanguage(val);
+                  await sys.saveLanguage(val!);   // ✅ val! آمنة
                   _showToast('Language changed to English');
                 },
               ),
@@ -732,7 +732,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ---------- نافذة تغيير كلمة المرور (3 حقول + معاينة) ----------
+  // ---------- نافذة كلمة المرور (3 حقول + معاينة) ----------
   void _showPasswordDialog(SystemProvider sys) {
     final oldPassController = TextEditingController();
     final newPassController = TextEditingController();
