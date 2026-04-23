@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart' hide TextDirection;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SystemProvider extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -2174,9 +2175,107 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  // 🆕 إعدادات الخصوصية
   Future<void> updatePrivacySetting(String key, bool value) async {
     if (_activeUserPhone == null) return;
     await _db.collection('users').doc(_activeUserPhone).update({'privacy_$key': value});
+  }
+
+  // ==================== دوال الترقية والشرائح (Discount Tiers) ====================
+
+  /// جلب أعلى شريحة خصم مؤهلة للمستخدم الحالي مع وكيل معين
+  Future<Map<String, dynamic>?> getUserTierForAgent(String agentPhone) async {
+    if (_activeUserPhone == null) return null;
+
+    // رصيد المستخدم لدى هذا الوكيل
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _activeUserPhone,
+        orElse: () => {});
+    Map<String, dynamic> wallets = user['wallets'] ?? {};
+    double walletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
+
+    // جلب جميع الشرائح النشطة لهذا الوكيل
+    final tierQuery = await _db.collection('discount_tiers')
+        .where('agentPhone', isEqualTo: agentPhone)
+        .where('isActive', isEqualTo: true)
+        .get();
+
+    if (tierQuery.docs.isEmpty) return null;
+
+    List<Map<String, dynamic>> tiers = tierQuery.docs
+        .map((doc) => doc.data() as Map<String, dynamic>)
+        .toList();
+
+    // ترتيب تنازلي حسب الشرط (أكبر عتبة أولاً)
+    tiers.sort((a, b) => (b['condition'] as int).compareTo(a['condition'] as int));
+
+    // البحث عن أول شريحة شرطها ≤ الرصيد
+    for (var tier in tiers) {
+      if (walletBalance >= (tier['condition'] as num).toDouble()) {
+        return tier;
+      }
+    }
+    return null; // لا يوجد شريحة مؤهلة
+  }
+
+  /// جلب أعلى شريحة عبر جميع الوكلاء (للقائمة الجانبية)
+  Future<Map<String, dynamic>?> getUserHighestTier() async {
+    if (_activeUserPhone == null) return null;
+
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _activeUserPhone,
+        orElse: () => {});
+    Map<String, dynamic> wallets = user['wallets'] ?? {};
+    if (wallets.isEmpty) return null;
+
+    Map<String, dynamic>? bestTier;
+    double bestCondition = 0;
+
+    for (var agentPhone in wallets.keys) {
+      final tier = await getUserTierForAgent(agentPhone);
+      if (tier != null && (tier['condition'] as num).toDouble() > bestCondition) {
+        bestCondition = (tier['condition'] as num).toDouble();
+        bestTier = tier;
+      }
+    }
+    return bestTier;
+  }
+
+  // ==================== PIN مع التحقق الثلاثي ====================
+  Future<String> changeUserPinWithOld(String oldPin, String newPin, String confirmPin) async {
+    if (_activeUserPhone == null) return 'يرجى تسجيل الدخول.';
+    if (newPin.length != 6) return 'يجب أن يتكون رمز PIN من 6 أرقام.';
+    if (newPin != confirmPin) return 'رمز PIN الجديد غير متطابق.';
+
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _activeUserPhone,
+        orElse: () => {});
+    if (user.isEmpty) return 'المستخدم غير موجود.';
+
+    String storedPin = user['pin'] ?? '123456';
+    if (storedPin != oldPin) return 'رمز PIN القديم غير صحيح.';
+
+    await _db.collection('users').doc(_activeUserPhone).update({'pin': newPin});
+    final index = _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
+    if (index != -1) {
+      _usersDatabase[index]['pin'] = newPin;
+      notifyListeners();
+    }
+    return 'تم تحديث رمز PIN بنجاح.';
+  }
+
+  bool validatePin(String pin) {
+    if (_activeUserPhone == null) return false;
+    return currentUserPin == pin;
+  }
+
+  // ==================== دوال اللغة ====================
+  Future<void> saveLanguage(String langCode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('language', langCode);
+  }
+
+  Future<String> getLanguage() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('language') ?? 'ar';
   }
 }
