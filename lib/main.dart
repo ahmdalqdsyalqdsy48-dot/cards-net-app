@@ -3,13 +3,48 @@ import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // للقراءة المباشرة
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/providers/theme_provider.dart';
 import 'core/providers/system_provider.dart';
 import 'core/providers/ui_provider.dart';
 
 import 'features/auth/screens/sso_login_screen.dart';
+
+// استيراد الشاشات الأساسية لتعريف المسارات
+import 'features/super_admin/screens/super_admin_dashboard.dart';
+import 'features/super_admin/screens/agent_management_screen.dart';
+import 'features/super_admin/screens/subscriptions_screen.dart';
+import 'features/super_admin/screens/financial_center_screen.dart';
+import 'features/super_admin/screens/bank_accounts_screen.dart';
+import 'features/super_admin/screens/reports_screen.dart';
+import 'features/super_admin/screens/portals_management_screen.dart';
+import 'features/super_admin/screens/staff_support_screen.dart';
+import 'features/super_admin/screens/banners_screen.dart';
+import 'features/super_admin/screens/sms_gateway_screen.dart';
+import 'features/super_admin/screens/audit_log_screen.dart';
+import 'features/super_admin/screens/settings_screen.dart';
+import 'features/super_admin/screens/backup_screen.dart';
+
+import 'features/agent_panel/screens/agent_dashboard_screen.dart';
+import 'features/agent_panel/screens/quick_pos_screen.dart';
+import 'features/agent_panel/screens/mikrotik_categories_screen.dart';
+import 'features/agent_panel/screens/sub_agents_screen.dart';
+import 'features/agent_panel/screens/marketing_offers_screen.dart';
+import 'features/agent_panel/screens/agent_wallet_screen.dart';
+import 'features/agent_panel/screens/advanced_statement_screen.dart';
+import 'features/agent_panel/screens/analytics_reports_screen.dart';
+import 'features/agent_panel/screens/agent_support_screen.dart';
+import 'features/agent_panel/screens/agent_settings_screen.dart';
+
+import 'features/user_panel/screens/user_dashboard_screen.dart';
+import 'features/user_panel/screens/user_wallet_screen.dart';
+import 'features/user_panel/screens/network_store_screen.dart';
+import 'features/user_panel/screens/my_cards_screen.dart';
+import 'features/user_panel/screens/rewards_screen.dart';
+import 'features/user_panel/screens/user_transactions_screen.dart';
+import 'features/user_panel/screens/user_support_screen.dart';
+import 'features/user_panel/screens/user_settings_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,9 +66,8 @@ void main() async {
     cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
   );
 
-  // قراءة اللغة بشكل مستقل عن SystemProvider
   final prefs = await SharedPreferences.getInstance();
-  final String savedLang = prefs.getString('language') ?? 'en'; // الافتراضي إنجليزي
+  final String savedLang = prefs.getString('language') ?? 'en';
 
   runApp(
     MultiProvider(
@@ -67,14 +101,13 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
 
       locale: Locale(initialLang),
-      supportedLocales: const [Locale('en'), Locale('ar')], // الإنجليزية أولاً
+      supportedLocales: const [Locale('en'), Locale('ar')],
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
       localeResolutionCallback: (locale, supportedLocales) {
-        // جعل الإنجليزية هي الاحتياطي دائمًا
         if (locale == null) return const Locale('en');
         for (var supportedLocale in supportedLocales) {
           if (supportedLocale.languageCode == locale.languageCode) {
@@ -87,6 +120,44 @@ class MyApp extends StatelessWidget {
       themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
       theme: themeProvider.lightTheme,
       darkTheme: themeProvider.darkTheme,
+
+      // ✅ تعريف المسارات للبحث
+      routes: {
+        '/super_admin_dashboard': (context) => const SuperAdminDashboard(),
+        '/agent_management': (context) => const AgentManagementScreen(),
+        '/subscriptions': (context) => const SubscriptionsScreen(),
+        '/financial_center': (context) => const FinancialCenterScreen(),
+        '/bank_accounts': (context) => const BankAccountsScreen(),
+        '/reports': (context) => const ReportsScreen(),
+        '/portals_management': (context) => const PortalsManagementScreen(),
+        '/staff_support': (context) => const StaffSupportScreen(),
+        '/banners': (context) => const BannersScreen(),
+        '/sms_gateway': (context) => const SmsGatewayScreen(),
+        '/audit_log': (context) => const AuditLogScreen(),
+        '/settings': (context) => const GlobalSettingsScreen(),
+        '/backup': (context) => const BackupScreen(),
+
+        '/agent_dashboard': (context) => const AgentDashboardScreen(),
+        '/quick_pos': (context) => const QuickPosScreen(),
+        '/mikrotik_categories': (context) => const MikrotikCategoriesScreen(),
+        '/sub_agents': (context) => const SubAgentsScreen(),
+        '/marketing_offers': (context) => const MarketingOffersScreen(),
+        '/agent_wallet': (context) => const AgentWalletScreen(),
+        '/advanced_statement': (context) => const AdvancedStatementScreen(),
+        '/analytics_reports': (context) => const AnalyticsReportsScreen(),
+        '/agent_support': (context) => const AgentSupportScreen(),
+        '/agent_settings': (context) => const AgentSettingsScreen(),
+
+        '/user_dashboard': (context) => const UserDashboardScreen(),
+        '/user_wallet': (context) => const UserWalletScreen(),
+        '/network_store': (context) => const NetworkStoreScreen(),
+        '/my_cards': (context) => const MyCardsScreen(),
+        '/rewards': (context) => const RewardsScreen(),
+        '/user_transactions': (context) => const UserTransactionsScreen(),
+        '/user_support': (context) => const UserSupportScreen(),
+        '/user_settings': (context) => const UserSettingsScreen(),
+      },
+
       builder: (context, child) {
         return MediaQuery(
           data: MediaQuery.of(context).copyWith(
