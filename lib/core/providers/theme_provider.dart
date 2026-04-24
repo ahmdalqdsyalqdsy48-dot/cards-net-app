@@ -108,7 +108,6 @@ class ThemeProvider extends ChangeNotifier {
   void toggleTheme(bool isDark) {
     _isDark = isDark;
     _prefs.setBool('${_currentUserPhone}_isDark', isDark);
-    // إذا عاد المستخدم للوضع النهاري، يتم مسح اللون المخصص
     if (!isDark) {
       resetToDefaultColor();
     }
@@ -213,7 +212,7 @@ class ThemeProvider extends ChangeNotifier {
     return base.copyWith(
       primaryColor: activeColor,
       scaffoldBackgroundColor: Color.alphaBlend(
-        activeColor.withOpacity(0.2),
+        activeColor.withOpacity(0.4), // ✅ تمت زيادة الشفافية إلى 40% ليكون اللون أكثر وضوحاً
         const Color(0xFF121212),
       ),
       cardColor: Colors.grey.shade900,
@@ -222,11 +221,11 @@ class ThemeProvider extends ChangeNotifier {
         secondary: activeColor,
         surface: Colors.grey.shade900,
         background: Color.alphaBlend(
-            activeColor.withOpacity(0.2), const Color(0xFF121212)),
+            activeColor.withOpacity(0.4), const Color(0xFF121212)), // ✅ تمت زيادة الشفافية إلى 40%
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: Color.alphaBlend(
-          activeColor.withOpacity(0.2),
+          activeColor.withOpacity(0.4), // ✅ تمت زيادة الشفافية إلى 40%
           const Color(0xFF121212),
         ),
         foregroundColor: Colors.white,
