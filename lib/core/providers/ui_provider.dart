@@ -7,7 +7,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 class UiProvider extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // مشغلات منفصلة لكل نوع صوت
   final AudioPlayer _clickPlayer = AudioPlayer();
   final AudioPlayer _successPlayer = AudioPlayer();
   final AudioPlayer _errorPlayer = AudioPlayer();
@@ -34,29 +33,22 @@ class UiProvider extends ChangeNotifier {
   String get globalSearchQuery => _globalSearchQuery;
   bool get isSoundsEnabled => _soundsEnabled;
 
-  // ==========================================
-  // 🎵 محرك الأصوات الديناميكي
-  // ==========================================
   Future<void> _loadSoundSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    // تم توحيد المفتاح مع شاشة الإعدادات: user_app_sounds
     _soundsEnabled = prefs.getBool('user_app_sounds') ?? true;
     notifyListeners();
   }
 
-  /// تحديث حالة الصوت وحفظها (تُستدعى من شاشة الإعدادات)
   Future<void> setSoundsEnabled(bool value) async {
     _soundsEnabled = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('user_app_sounds', value);
     notifyListeners();
-    // تجربة الصوت فوراً عند التفعيل للتأكد من عمله
     if (value) {
       playSound('success');
     }
   }
 
-  // للتوافق مع الاستدعاءات القديمة
   Future<void> updateSoundSettings(bool value) async {
     await setSoundsEnabled(value);
   }
@@ -65,23 +57,45 @@ class UiProvider extends ChangeNotifier {
     if (!_soundsEnabled) return;
 
     try {
-      if (type == 'click') {
-        await _clickPlayer.play(AssetSource('sounds/click.mp3'), volume: 0.5);
-      } else if (type == 'success') {
-        await _successPlayer.play(AssetSource('sounds/success.mp3'), volume: 1.0);
-      } else if (type == 'error') {
-        await _errorPlayer.play(AssetSource('sounds/error.mp3'), volume: 0.8);
-      } else if (type == 'notification') {
-        await _notifPlayer.play(AssetSource('sounds/notification.mp3'), volume: 1.0);
+      // تحديد المسار الصحيح بناءً على النوع
+      String assetPath;
+      switch (type) {
+        case 'click':
+          assetPath = 'sounds/click.mp3';
+          break;
+        case 'success':
+          assetPath = 'sounds/success.mp3';
+          break;
+        case 'error':
+          assetPath = 'sounds/error.mp3';
+          break;
+        case 'notification':
+          assetPath = 'sounds/notification.mp3';
+          break;
+        default:
+          return;
+      }
+
+      // التشغيل الفعلي
+      switch (type) {
+        case 'click':
+          await _clickPlayer.play(AssetSource(assetPath), volume: 0.5);
+          break;
+        case 'success':
+          await _successPlayer.play(AssetSource(assetPath), volume: 1.0);
+          break;
+        case 'error':
+          await _errorPlayer.play(AssetSource(assetPath), volume: 0.8);
+          break;
+        case 'notification':
+          await _notifPlayer.play(AssetSource(assetPath), volume: 1.0);
+          break;
       }
     } catch (e) {
       debugPrint('تحذير الصوت (طبيعي في المتصفحات قبل التفاعل): $e');
     }
   }
 
-  // ==========================================
-  // 🌐 إدارة الاتصال والإشعارات
-  // ==========================================
   void _monitorInternetConnection() {
     _isOnline = true;
     notifyListeners();
