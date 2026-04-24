@@ -55,10 +55,9 @@ class _CustomHeaderState extends State<CustomHeader>
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           backgroundColor: Theme.of(context).cardColor,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           title: const Row(children: [
-            Icon(Icons.notifications_active, color: Colors.orange),
+            Icon(Icons.notifications_active, color: Colors.amber),
             SizedBox(width: 10),
             Text('الإشعارات الحديثة',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))
@@ -115,8 +114,7 @@ class _CustomHeaderState extends State<CustomHeader>
                             Text(notif['body'] ?? '',
                                 style: TextStyle(
                                     fontSize: 12,
-                                    color:
-                                        adaptiveTextColor.withOpacity(0.8))),
+                                    color: adaptiveTextColor.withOpacity(0.8))),
                             const SizedBox(height: 4),
                             Text(timeStr,
                                 style: const TextStyle(
@@ -150,7 +148,9 @@ class _CustomHeaderState extends State<CustomHeader>
     final uiProvider = Provider.of<UiProvider>(context);
 
     final bool isDark = themeProvider.isDarkMode;
-    final bool isOnline = uiProvider.isOnline;
+
+    // ✅ النقطة الخضراء/الحمراء تعتمد على الاتصال وحالة الصيانة
+    final bool isOnline = uiProvider.isOnline && !systemProvider.isMaintenanceMode;
 
     final int unreadCount = systemProvider.unreadNotificationsCount;
     final bool hasNotifications = unreadCount > 0;
@@ -159,7 +159,6 @@ class _CustomHeaderState extends State<CustomHeader>
         ? systemProvider.announcements.join('   🔴   ')
         : 'مرحباً بك في نظام كروت نت...';
 
-    // ✅ استخدام ألوان السمة الحالية لتطبيق اللون المخصص
     final Color headerColor =
         Theme.of(context).appBarTheme.backgroundColor ??
             themeProvider.primaryColor;
@@ -216,8 +215,7 @@ class _CustomHeaderState extends State<CustomHeader>
             alignment: Alignment.center,
             children: [
               IconButton(
-                  icon: const Icon(Icons.notifications_active),
-                  color: iconTextColor,
+                  icon: const Icon(Icons.notifications_active, color: Colors.amber), // ✅ لون ذهبي
                   tooltip: 'الإشعارات',
                   onPressed: () => _showNotifications(
                       context, uiProvider, systemProvider)),
@@ -232,10 +230,8 @@ class _CustomHeaderState extends State<CustomHeader>
                       decoration: BoxDecoration(
                           color: Colors.red,
                           shape: BoxShape.circle,
-                          border:
-                              Border.all(color: Colors.white, width: 1.5)),
-                      constraints: const BoxConstraints(
-                          minWidth: 16, minHeight: 16),
+                          border: Border.all(color: Colors.white, width: 1.5)),
+                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
                       child: Text(
                         '$unreadCount',
                         style: const TextStyle(
@@ -260,8 +256,7 @@ class _CustomHeaderState extends State<CustomHeader>
                 width: double.infinity,
                 height: 25,
                 color: marqueeBg,
-                padding:
-                    const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+                padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
                 child: Row(
                   children: [
                     Icon(Icons.campaign, color: marqueeTextCol, size: 18),
@@ -289,8 +284,7 @@ class _CustomHeaderState extends State<CustomHeader>
               ),
 
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: InkWell(
                 onTap: () {
                   uiProvider.playSound('click');
@@ -313,8 +307,7 @@ class _CustomHeaderState extends State<CustomHeader>
                       const Icon(Icons.search, color: Colors.grey, size: 20),
                       const SizedBox(width: 10),
                       Text('ابحث في النظام...',
-                          style: TextStyle(
-                              color: Colors.grey.shade600, fontSize: 13)),
+                          style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
                     ],
                   ),
                 ),
@@ -398,8 +391,7 @@ class SystemSearchDelegate extends SearchDelegate<String> {
         itemBuilder: (context, index) {
           String key = results[index];
           return ListTile(
-            leading: const Icon(Icons.screen_search_desktop,
-                color: Colors.blueAccent),
+            leading: const Icon(Icons.screen_search_desktop, color: Colors.blueAccent),
             title: Text(key, style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text(searchMap[key]!),
             onTap: () {
