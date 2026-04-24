@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class UiProvider extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -17,11 +16,12 @@ class UiProvider extends ChangeNotifier {
   bool _hasNewNotifications = false;
   String _globalSearchQuery = '';
 
+  // نجبر الصوت على العمل دائماً بدون الاعتماد على ذاكرة المتصفح.
   bool _soundsEnabled = true;
 
   UiProvider(String? currentUserId) {
     _monitorInternetConnection();
-    _loadSoundSettings();
+    // لا نقرأ الإعداد القديم. الصوت مفتوح دائماً.
     if (currentUserId != null) {
       _listenToNotifications(currentUserId);
     }
@@ -33,24 +33,15 @@ class UiProvider extends ChangeNotifier {
   String get globalSearchQuery => _globalSearchQuery;
   bool get isSoundsEnabled => _soundsEnabled;
 
-  Future<void> _loadSoundSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    // إذا كان الإعداد غير موجود، نعيد true
-    _soundsEnabled = prefs.getBool('soundsEnabled') ?? true;
-    notifyListeners();
-  }
-
+  // هذه الدالة كانت تُستخدم في شاشة الإعدادات. سنبقيها ولكنها لن تؤثر.
   Future<void> updateSoundSettings(bool value) async {
-    _soundsEnabled = value;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('soundsEnabled', value);
+    _soundsEnabled = true; // الصوت مفتوح دائماً
     notifyListeners();
     if (value) playSound('success');
   }
 
   Future<void> playSound(String type) async {
-    if (!_soundsEnabled) return;
-
+    // لا نتحقق من _soundsEnabled. نمرر الصوت مباشرة.
     try {
       if (type == 'click') {
         await _clickPlayer.play(AssetSource('sounds/click.mp3'), volume: 0.5);
