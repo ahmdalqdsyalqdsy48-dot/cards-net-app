@@ -297,7 +297,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   setState(() => _appSounds = val);
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setBool('user_app_sounds', val);
-                  uiProvider.setSoundsEnabled(val);
+                  uiProvider.updateSoundSettings(val); // ✅ تم التصحيح
                   if (val) {
                     uiProvider.playSound('click');
                     HapticFeedback.lightImpact();
