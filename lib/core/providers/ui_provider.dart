@@ -18,12 +18,12 @@ class UiProvider extends ChangeNotifier {
   String _globalSearchQuery = '';
 
   bool _soundsEnabled = true;
+  bool _audioContextReady = false; // للتأكد من جاهزية السياق الصوتي
 
   UiProvider(String? currentUserId) {
     _monitorInternetConnection();
     _loadSoundSettings();
-    // إعداد المشغلات الصوتية للتشغيل على الويب
-    _setupAudioPlayers();
+    _initAudioPlayers();
     if (currentUserId != null) {
       _listenToNotifications(currentUserId);
     }
@@ -35,18 +35,23 @@ class UiProvider extends ChangeNotifier {
   String get globalSearchQuery => _globalSearchQuery;
   bool get isSoundsEnabled => _soundsEnabled;
 
-  void _setupAudioPlayers() {
-    // تفعيل وضع التشغيل المنخفض لمنع التأخير على الويب
-    _clickPlayer.setReleaseMode(ReleaseMode.stop);
-    _successPlayer.setReleaseMode(ReleaseMode.stop);
-    _errorPlayer.setReleaseMode(ReleaseMode.stop);
-    _notifPlayer.setReleaseMode(ReleaseMode.stop);
-
-    // تعيين حجم الصوت الافتراضي
-    _clickPlayer.setVolume(0.5);
-    _successPlayer.setVolume(1.0);
-    _errorPlayer.setVolume(0.8);
-    _notifPlayer.setVolume(1.0);
+  void _initAudioPlayers() {
+    // الإعدادات اللازمة للويب
+    final audioContext = AudioContext(
+      iOS: AudioContextIOS(
+        category: AVAudioSessionCategory.playback,
+        options: [AVAudioSessionOptions.mixWithOthers],
+      ),
+      android: AudioContextAndroid(
+        audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+        contentType: AndroidContentType.music,
+        usageType: AndroidUsageType.game,
+      ),
+    );
+    _clickPlayer.setAudioContext(audioContext);
+    _successPlayer.setAudioContext(audioContext);
+    _errorPlayer.setAudioContext(audioContext);
+    _notifPlayer.setAudioContext(audioContext);
   }
 
   Future<void> _loadSoundSettings() async {
@@ -91,30 +96,29 @@ class UiProvider extends ChangeNotifier {
           return;
       }
 
-      // استخدام اللاعب المناسب لكل نوع صوت
+      final source = AssetSource(assetPath);
       switch (type) {
         case 'click':
-          await _clickPlayer.play(AssetSource(assetPath));
+          await _clickPlayer.play(source);
           break;
         case 'success':
-          await _successPlayer.play(AssetSource(assetPath));
+          await _successPlayer.play(source);
           break;
         case 'error':
-          await _errorPlayer.play(AssetSource(assetPath));
+          await _errorPlayer.play(source);
           break;
         case 'notification':
-          await _notifPlayer.play(AssetSource(assetPath));
+          await _notifPlayer.play(source);
           break;
       }
     } catch (e) {
-      debugPrint('تحذير الصوت (طبيعي في المتصفحات قبل التفاعل): $e');
+      debugPrint('تحذير الصوت: $e');
     }
   }
 
   void _monitorInternetConnection() {
     _isOnline = true;
     notifyListeners();
-    // يمكن إضافة مراقبة فعلية للاتصال إذا أردت
   }
 
   void toggleOfflineModeForTesting(bool isOffline) {
