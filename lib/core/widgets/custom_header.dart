@@ -148,8 +148,7 @@ class _CustomHeaderState extends State<CustomHeader>
     final uiProvider = Provider.of<UiProvider>(context);
 
     final bool isDark = themeProvider.isDarkMode;
-
-    // ✅ النقطة الخضراء/الحمراء تعتمد على الاتصال وحالة الصيانة
+    // النقطة حمراء إذا كان الإنترنت مقطوعاً أو كان وضع الصيانة مفعلاً
     final bool isOnline = uiProvider.isOnline && !systemProvider.isMaintenanceMode;
 
     final int unreadCount = systemProvider.unreadNotificationsCount;
@@ -215,7 +214,7 @@ class _CustomHeaderState extends State<CustomHeader>
             alignment: Alignment.center,
             children: [
               IconButton(
-                  icon: const Icon(Icons.notifications_active, color: Colors.amber), // ✅ لون ذهبي
+                  icon: const Icon(Icons.notifications_active, color: Colors.amber),
                   tooltip: 'الإشعارات',
                   onPressed: () => _showNotifications(
                       context, uiProvider, systemProvider)),
@@ -284,13 +283,15 @@ class _CustomHeaderState extends State<CustomHeader>
               ),
 
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: InkWell(
                 onTap: () {
                   uiProvider.playSound('click');
                   showSearch(
                       context: context,
-                      delegate: SystemSearchDelegate(uiProvider));
+                      delegate: SystemSearchDelegate(uiProvider,
+                          userRole: systemProvider.currentUserRole));
                 },
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
@@ -307,7 +308,8 @@ class _CustomHeaderState extends State<CustomHeader>
                       const Icon(Icons.search, color: Colors.grey, size: 20),
                       const SizedBox(width: 10),
                       Text('ابحث في النظام...',
-                          style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                          style: TextStyle(
+                              color: Colors.grey.shade600, fontSize: 13)),
                     ],
                   ),
                 ),
@@ -321,27 +323,62 @@ class _CustomHeaderState extends State<CustomHeader>
 }
 
 // ==========================================
-// 🚀 محرك البحث الذكي للنظام (Search Delegate)
+// 🚀 محرك البحث الذكي – شامل لكل الأقسام حسب الدور
 // ==========================================
 class SystemSearchDelegate extends SearchDelegate<String> {
   final UiProvider uiProvider;
+  final String userRole;
 
-  SystemSearchDelegate(this.uiProvider);
+  SystemSearchDelegate(this.uiProvider, {required this.userRole});
 
-  final Map<String, String> searchMap = {
-    'المركز المالي': 'إدارة الأموال والأرباح',
-    'التقارير': 'التقارير الشاملة والتحليلات',
-    'الوكلاء': 'إدارة الوكلاء والمستخدمين',
-    'ميكروتيك': 'فئات وباقات شبكات الميكروتيك',
-    'المبيعات': 'نقطة البيع السريعة',
-    'رسائل': 'بوابة الـ SMS والإشعارات',
-    'إعدادات': 'الإعدادات العامة للمظهر والسياسات',
-    'إعلانات': 'إدارة الإعلانات والبنرات التسويقية',
-    'النسخ الاحتياطي': 'حفظ واستعادة البيانات',
-  };
+  Map<String, Map<String, String>> _buildSearchMap() {
+    switch (userRole) {
+      case 'super_admin':
+        return {
+          'الرئيسية (غرفة العمليات)': {'desc': 'لوحة التحكم الرئيسية', 'route': '/super_admin_dashboard'},
+          'إدارة الوكلاء': {'desc': 'إضافة وتعديل وحذف الوكلاء', 'route': '/agent_management'},
+          'إدارة الاشتراكات': {'desc': 'باقات وصلاحيات الوكلاء', 'route': '/subscriptions'},
+          'المركز المالي والمحافظ': {'desc': 'إدارة الأرصدة والتسويات', 'route': '/financial_center'},
+          'الحسابات البنكية': {'desc': 'حسابات التحويل للنظام', 'route': '/bank_accounts'},
+          'التقارير الشاملة': {'desc': 'تقارير المبيعات والأرباح', 'route': '/reports'},
+          'إدارة بوابات النظام': {'desc': 'تخصيص مظهر التطبيق', 'route': '/portals_management'},
+          'إدارة الموظفين والدعم': {'desc': 'تذاكر الدعم والصلاحيات', 'route': '/staff_support'},
+          'الإعلانات والبنرات': {'desc': 'الحملات التسويقية', 'route': '/banners'},
+          'بوابة رسائل SMS': {'desc': 'إرسال الرسائل النصية', 'route': '/sms_gateway'},
+          'السجل الأسود للنشاط': {'desc': 'سجل تدقيق العمليات', 'route': '/audit_log'},
+          'الإعدادات العامة': {'desc': 'سياسات النظام والصيانة', 'route': '/settings'},
+          'النسخ الاحتياطي': {'desc': 'حفظ واستعادة البيانات', 'route': '/backup'},
+        };
+      case 'agent':
+        return {
+          'الرئيسية (غرفة القيادة)': {'desc': 'لوحة التحكم', 'route': '/agent_dashboard'},
+          'المتجر السريع (الكاشير)': {'desc': 'نقطة البيع السريعة', 'route': '/quick_pos'},
+          'إدارة الفئات والميكروتك': {'desc': 'فئات وباقات الشبكات', 'route': '/mikrotik_categories'},
+          'إدارة نقاط البيع (البقالات)': {'desc': 'إدارة البقالات التابعة', 'route': '/sub_agents'},
+          'التسويق والعروض': {'desc': 'العروض والكوبونات', 'route': '/marketing_offers'},
+          'محفظة الوكيل': {'desc': 'إدارة الحصة والتحويلات', 'route': '/agent_wallet'},
+          'كشف الحساب المتقدم': {'desc': 'البيانات المالية', 'route': '/advanced_statement'},
+          'التقارير التحليلية': {'desc': 'تحليلات المبيعات', 'route': '/analytics_reports'},
+          'الدعم الفني الموحد': {'desc': 'تذاكر الدعم', 'route': '/agent_support'},
+          'إعدادات النظام الموسعة': {'desc': 'إعدادات الحساب', 'route': '/agent_settings'},
+        };
+      case 'user':
+      default:
+        return {
+          'الرئيسية': {'desc': 'لوحة المستخدم', 'route': '/user_dashboard'},
+          'المحفظة الذكية والتحويلات': {'desc': 'إدارة المحفظة والتحويلات', 'route': '/user_wallet'},
+          'سوق الشبكات ونقاط البيع': {'desc': 'شراء كروت الشحن', 'route': '/network_store'},
+          'كروتي ومشترياتي': {'desc': 'سجل الكروت المشتراة', 'route': '/my_cards'},
+          'برنامج الولاء والمكافآت': {'desc': 'المكافآت والنقاط', 'route': '/rewards'},
+          'سجل العمليات المالية': {'desc': 'سجل الحركات المالية', 'route': '/user_transactions'},
+          'الدعم الفني والشكاوى': {'desc': 'تذاكر الدعم', 'route': '/user_support'},
+          'الملف الشخصي والإعدادات': {'desc': 'الإعدادات والمظهر', 'route': '/user_settings'},
+        };
+    }
+  }
 
   @override
-  String get searchFieldLabel => 'اكتب للبحث...';
+  String get searchFieldLabel => 'ابحث عن قسم...';
 
   @override
   List<Widget>? buildActions(BuildContext context) {
@@ -373,9 +410,11 @@ class SystemSearchDelegate extends SearchDelegate<String> {
   Widget buildSuggestions(BuildContext context) => _buildSearchResults();
 
   Widget _buildSearchResults() {
+    final searchMap = _buildSearchMap();
     final List<String> results = searchMap.keys
         .where((element) =>
-            element.contains(query) || searchMap[element]!.contains(query))
+            element.contains(query) ||
+            searchMap[element]!['desc']!.contains(query))
         .toList();
 
     if (results.isEmpty) {
@@ -390,21 +429,29 @@ class SystemSearchDelegate extends SearchDelegate<String> {
         itemCount: results.length,
         itemBuilder: (context, index) {
           String key = results[index];
+          final item = searchMap[key]!;
           return ListTile(
             leading: const Icon(Icons.screen_search_desktop, color: Colors.blueAccent),
             title: Text(key, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text(searchMap[key]!),
+            subtitle: Text(item['desc']!),
             onTap: () {
               uiProvider.playSound('click');
               close(context, key);
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text('سيتم نقلك إلى قسم: $key',
-                      textDirection: TextDirection.rtl),
-                  backgroundColor: Colors.green));
+              _navigateToRoute(context, item['route']!);
             },
           );
         },
       ),
     );
+  }
+
+  void _navigateToRoute(BuildContext context, String route) {
+    try {
+      Navigator.pushNamed(context, route);
+    } catch (_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('هذا القسم غير متاح حالياً.')),
+      );
+    }
   }
 }
