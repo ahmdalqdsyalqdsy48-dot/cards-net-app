@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // للقراءة المباشرة
 
 import 'core/providers/theme_provider.dart';
 import 'core/providers/system_provider.dart';
@@ -30,6 +31,10 @@ void main() async {
     cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
   );
 
+  // قراءة اللغة بشكل مستقل عن SystemProvider
+  final prefs = await SharedPreferences.getInstance();
+  final String savedLang = prefs.getString('language') ?? 'en'; // الافتراضي إنجليزي
+
   runApp(
     MultiProvider(
       providers: [
@@ -44,40 +49,39 @@ void main() async {
           ),
         ),
       ],
-      child: const MyApp(),
+      child: MyApp(initialLang: savedLang),
     ),
   );
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final String initialLang;
+  const MyApp({super.key, required this.initialLang});
 
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    final systemProvider = Provider.of<SystemProvider>(context);
-
-    final String currentLang = systemProvider.getLanguageSync(); // ✅ الاسم الصحيح
 
     return MaterialApp(
       title: 'نظام كروت نت',
       debugShowCheckedModeBanner: false,
 
-      locale: Locale(currentLang),
-      supportedLocales: const [Locale('ar'), Locale('en')],
+      locale: Locale(initialLang),
+      supportedLocales: const [Locale('en'), Locale('ar')], // الإنجليزية أولاً
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
       localeResolutionCallback: (locale, supportedLocales) {
-        if (locale == null) return const Locale('ar');
+        // جعل الإنجليزية هي الاحتياطي دائمًا
+        if (locale == null) return const Locale('en');
         for (var supportedLocale in supportedLocales) {
           if (supportedLocale.languageCode == locale.languageCode) {
             return supportedLocale;
           }
         }
-        return const Locale('ar');
+        return const Locale('en');
       },
 
       themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
