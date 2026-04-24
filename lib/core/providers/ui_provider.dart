@@ -1,23 +1,23 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:audioplayers/audioplayers.dart'; 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class UiProvider extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  
+
   final AudioPlayer _clickPlayer = AudioPlayer();
   final AudioPlayer _successPlayer = AudioPlayer();
   final AudioPlayer _errorPlayer = AudioPlayer();
   final AudioPlayer _notifPlayer = AudioPlayer();
 
-  bool _isOnline = true; 
+  bool _isOnline = true;
   List<Map<String, dynamic>> _unreadNotifications = [];
   bool _hasNewNotifications = false;
   String _globalSearchQuery = '';
-  
-  bool _soundsEnabled = true; 
+
+  bool _soundsEnabled = true;
 
   UiProvider(String? currentUserId) {
     _monitorInternetConnection();
@@ -35,15 +35,8 @@ class UiProvider extends ChangeNotifier {
 
   Future<void> _loadSoundSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    // نتجاهل أي قيمة خاطئة محفوظة سابقاً ونجعل الصوت يعمل دائماً بشكل افتراضي
-    _soundsEnabled = true;
-    // نقرأ الإعداد فقط إذا كان المستخدم قد ألغى الصوت بشكل صريح
-    if (prefs.containsKey('soundsEnabled')) {
-      _soundsEnabled = prefs.getBool('soundsEnabled') ?? true;
-    }
-    if (prefs.containsKey('user_app_sounds')) {
-      _soundsEnabled = prefs.getBool('user_app_sounds') ?? true;
-    }
+    // إذا كان الإعداد غير موجود، نعيد true
+    _soundsEnabled = prefs.getBool('soundsEnabled') ?? true;
     notifyListeners();
   }
 
@@ -51,13 +44,12 @@ class UiProvider extends ChangeNotifier {
     _soundsEnabled = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('soundsEnabled', value);
-    await prefs.setBool('user_app_sounds', value); // لضمان التوافق مع شاشة الإعدادات
     notifyListeners();
-    if (value) playSound('success'); 
+    if (value) playSound('success');
   }
 
   Future<void> playSound(String type) async {
-    if (!_soundsEnabled) return; 
+    if (!_soundsEnabled) return;
 
     try {
       if (type == 'click') {
@@ -85,14 +77,16 @@ class UiProvider extends ChangeNotifier {
   }
 
   void _listenToNotifications(String userId) {
-    _db.collection('notifications')
+    _db
+        .collection('notifications')
         .where('targetUserId', isEqualTo: userId)
         .where('isRead', isEqualTo: false)
         .orderBy('timestamp', descending: true)
-        .snapshots().listen((snapshot) {
-      
+        .snapshots()
+        .listen((snapshot) {
       bool hadNew = _hasNewNotifications;
-      _unreadNotifications = snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
+      _unreadNotifications =
+          snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
       _hasNewNotifications = _unreadNotifications.isNotEmpty;
 
       if (_hasNewNotifications && !hadNew) {
@@ -112,7 +106,11 @@ class UiProvider extends ChangeNotifier {
     _unreadNotifications.clear();
     _hasNewNotifications = false;
     notifyListeners();
-    try { await batch.commit(); } catch (e) { debugPrint('خطأ: $e'); }
+    try {
+      await batch.commit();
+    } catch (e) {
+      debugPrint('خطأ: $e');
+    }
   }
 
   void updateSearchQuery(String query) {
