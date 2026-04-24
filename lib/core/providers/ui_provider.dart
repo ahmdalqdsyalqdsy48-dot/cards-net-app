@@ -18,7 +18,6 @@ class UiProvider extends ChangeNotifier {
   String _globalSearchQuery = '';
 
   bool _soundsEnabled = true;
-  bool _audioContextReady = false; // للتأكد من جاهزية السياق الصوتي
 
   UiProvider(String? currentUserId) {
     _monitorInternetConnection();
@@ -36,11 +35,10 @@ class UiProvider extends ChangeNotifier {
   bool get isSoundsEnabled => _soundsEnabled;
 
   void _initAudioPlayers() {
-    // الإعدادات اللازمة للويب
     final audioContext = AudioContext(
       iOS: AudioContextIOS(
         category: AVAudioSessionCategory.playback,
-        options: [AVAudioSessionOptions.mixWithOthers],
+        options: {AVAudioSessionOptions.mixWithOthers}, // ✅ Set بدلاً من List
       ),
       android: AudioContextAndroid(
         audioFocus: AndroidAudioFocus.gainTransientMayDuck,
