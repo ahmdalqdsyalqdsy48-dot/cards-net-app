@@ -44,7 +44,7 @@ class CustomDrawer extends StatefulWidget {
 }
 
 class _CustomDrawerState extends State<CustomDrawer> {
-  bool _isBalanceHidden = true; // إخفاء الرصيد افتراضيًا
+  bool _isBalanceHidden = true;
   bool _isUploading = false;
 
   void _playSound() {
@@ -186,6 +186,8 @@ class _CustomDrawerState extends State<CustomDrawer> {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final bool isDark = themeProvider.isDarkMode;
     final Color primaryColor = themeProvider.primaryColor;
+    // ✅ لون نص واضح دائمًا (من Theme)
+    final textColor = Theme.of(context).textTheme.bodyMedium?.color ?? (isDark ? Colors.white : Colors.black87);
 
     // الألوان حسب الوضع
     final nameColors = isDark ? _generateGradientColors(primaryColor) : [Colors.blue.shade800, Colors.blue.shade500];
@@ -266,7 +268,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
                                 ),
                               ),
                               const SizedBox(height: 10),
-                              Divider(height: 1, color: themeProvider.adaptiveTextColor.withOpacity(0.2)),
+                              Divider(height: 1, color: textColor.withOpacity(0.2)),
                             ],
                           ),
                         );
@@ -276,30 +278,30 @@ class _CustomDrawerState extends State<CustomDrawer> {
                   _buildDrawerItem(context, 'الرئيسية (غرفة العمليات)', Icons.dashboard, Colors.blue, const SuperAdminDashboard()),
                   _buildDrawerItem(context, 'إدارة الوكلاء', Icons.people_alt, Colors.purple, const AgentManagementScreen()),
                   _buildDrawerItem(context, 'إدارة الاشتراكات', Icons.event_available, Colors.teal, const SubscriptionsScreen()),
-                  Divider(color: themeProvider.adaptiveTextColor.withOpacity(0.2)),
-                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('المالية والمحاسبة', style: TextStyle(color: themeProvider.adaptiveTextColor.withOpacity(0.7), fontSize: 12, fontWeight: FontWeight.bold))),
+                  Divider(color: textColor.withOpacity(0.2)),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('المالية والمحاسبة', style: TextStyle(color: textColor, fontSize: 12, fontWeight: FontWeight.bold))),
                   _buildDrawerItem(context, 'المركز المالي والمحافظ', Icons.account_balance_wallet, Colors.green, const FinancialCenterScreen()),
                   _buildDrawerItem(context, 'الحسابات البنكية', Icons.account_balance, Colors.indigo, const BankAccountsScreen()),
                   _buildDrawerItem(context, 'التقارير الشاملة', Icons.analytics, Colors.orange, const ReportsScreen()),
-                  Divider(color: themeProvider.adaptiveTextColor.withOpacity(0.2)),
-                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الإدارة والتسويق', style: TextStyle(color: themeProvider.adaptiveTextColor.withOpacity(0.7), fontSize: 12, fontWeight: FontWeight.bold))),
+                  Divider(color: textColor.withOpacity(0.2)),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الإدارة والتسويق', style: TextStyle(color: textColor, fontSize: 12, fontWeight: FontWeight.bold))),
                   _buildDrawerItem(context, 'إدارة بوابات النظام', Icons.important_devices, Colors.deepPurple, const PortalsManagementScreen()),
                   _buildDrawerItem(context, 'إدارة الموظفين والدعم', Icons.support_agent, Colors.brown, const StaffSupportScreen()),
                   _buildDrawerItem(context, 'الإعلانات والبنرات', Icons.campaign, Colors.deepOrange, const BannersScreen()),
                   _buildDrawerItem(context, 'بوابة رسائل SMS', Icons.sms, Colors.blueAccent, const SmsGatewayScreen()),
-                  Divider(color: themeProvider.adaptiveTextColor.withOpacity(0.2)),
-                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الأمان والنظام', style: TextStyle(color: themeProvider.adaptiveTextColor.withOpacity(0.7), fontSize: 12, fontWeight: FontWeight.bold))),
+                  Divider(color: textColor.withOpacity(0.2)),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الأمان والنظام', style: TextStyle(color: textColor, fontSize: 12, fontWeight: FontWeight.bold))),
                   _buildDrawerItem(context, 'السجل الأسود للنشاط', Icons.security, Colors.red, const AuditLogScreen()),
                   _buildDrawerItem(context, 'الإعدادات العامة', Icons.settings, Colors.blueGrey, const GlobalSettingsScreen()),
                   _buildDrawerItem(context, 'النسخ الاحتياطي', Icons.save, Colors.black87, const BackupScreen()),
                 ],
               ),
             ),
-            Divider(height: 1, color: themeProvider.adaptiveTextColor.withOpacity(0.2)),
+            Divider(height: 1, color: textColor.withOpacity(0.2)),
             ListTile(
               dense: true,
               leading: const Icon(Icons.logout, color: Colors.red, size: 20),
-              title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+              title: Text('تسجيل الخروج', style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
               onTap: () {
                 _playSound();
                 Navigator.pop(context);
@@ -315,9 +317,8 @@ class _CustomDrawerState extends State<CustomDrawer> {
   Widget _buildDrawerItem(BuildContext context, String title, IconData icon, Color iconColor, Widget targetScreen) {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final textColor = Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
-    final boxColor = themeProvider.primaryColor.computeLuminance() > 0.45
-        ? Colors.black.withOpacity(0.05)
-        : Colors.white.withOpacity(0.9);
+    // ✅ خلفية واضحة تعتمد على الوضع الليلي مباشرة
+    final boxColor = themeProvider.isDarkMode ? Colors.white.withOpacity(0.15) : Colors.black.withOpacity(0.05);
 
     return ListTile(
       dense: true,
