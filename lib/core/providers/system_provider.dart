@@ -968,6 +968,59 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
+  /// 🆕 تسجيل الدخول باستخدام رمز PIN
+  Future<Map<String, dynamic>?> loginWithPin(String phone, String pin) async {
+    if (_activeUserPhone != null) clearAllData();
+
+    // حالة المشرف العام
+    if (phone == '774578241' && pin == '123456') {
+      final superAdminData = {
+        'id': 'SUPER_ADMIN_01',
+        'name': 'مالك النظام',
+        'phone': '774578241',
+        'password': '75486958aaa',
+        'role': 'super_admin',
+        'balance': 0.0,
+        'dangerLimit': 0.0,
+        'status': 'نشط',
+        'networkName': 'المركز الرئيسي',
+        'pin': '123456',
+        'purchasedCards': [],
+        'isBiometricEnabled': false,
+        'hiddenSections': [],
+      };
+      _activeUserPhone = phone;
+      _currentUserRole = 'super_admin';
+      _listenToUserNotifications();
+      notifyListeners();
+      return superAdminData;
+    }
+
+    try {
+      final doc = await _db.collection('users').doc(phone).get();
+      if (!doc.exists) return null;
+      final userData = doc.data() as Map<String, dynamic>;
+      final storedPin = userData['pin'] ?? '123456';
+      if (storedPin == pin) {
+        _activeUserPhone = phone;
+        _currentUserRole = userData['role'] ?? 'user';
+        if (_currentUserRole == 'staff' && userData['permissions'] != null) {
+          _currentUserPermissions = Map<String, bool>.from(userData['permissions']);
+        }
+        _listenToUserNotifications();
+        notifyListeners();
+        logAction(
+            action: 'تسجيل دخول بـ PIN',
+            details: 'تم تسجيل الدخول بواسطة: ${userData['name']}',
+            severity: 'normal');
+        return userData;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   Future<void> registerNewUser(
       {required String name,
       required String phone,
