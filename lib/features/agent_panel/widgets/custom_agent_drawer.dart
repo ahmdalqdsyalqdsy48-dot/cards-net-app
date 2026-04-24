@@ -60,9 +60,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
   /// توليد تدرج لوني ديناميكي من اللون الأساسي
   List<Color> _generateGradientColors(Color baseColor) {
     final hsv = HSVColor.fromColor(baseColor);
-    // لون أغمق (أقل إضاءة بنسبة 20%)
     final darker = hsv.withValue((hsv.value - 0.2).clamp(0.0, 1.0)).toColor();
-    // لون أفتح قليلاً (أعلى إضاءة بنسبة 10%)
     final lighter = hsv.withValue((hsv.value + 0.1).clamp(0.0, 1.0)).toColor();
     return [darker, lighter];
   }
@@ -214,7 +212,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final isDark = themeProvider.isDarkMode;
     final textColor = themeProvider.adaptiveTextColor;
-    final primaryColor = themeProvider.primaryColor; // 🆕 اللون الأساسي الديناميكي
+    final primaryColor = themeProvider.primaryColor;
 
     // قراءة البيانات الحية للوكيل بدلاً من البيانات الثابتة
     final myData = sys.agentsList.firstWhere(
@@ -225,6 +223,17 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     final String liveName = myData['name'] ?? widget.agentName;
     final String? base64Image = myData['profileImageBase64'];
     bool hasImage = base64Image != null && base64Image.isNotEmpty;
+
+    // ✅ ألوان البطاقات حسب الوضع (نهاري = زاهية، ليلي = ديناميكية)
+    final nameColors = isDark
+        ? _generateGradientColors(primaryColor)
+        : [Colors.blue.shade800, Colors.blue.shade500];
+    final phoneColors = isDark
+        ? _generateGradientColors(primaryColor)
+        : [Colors.teal.shade800, Colors.teal.shade500];
+    final balanceColors = isDark
+        ? _generateGradientColors(primaryColor)
+        : [Colors.purple.shade800, Colors.purple.shade500];
 
     return Drawer(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -254,10 +263,10 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                               height: 90,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: primaryColor.withOpacity(0.1), // 🆕
+                                color: primaryColor.withOpacity(0.1),
                                 border: Border.all(
                                     color: primaryColor.withOpacity(0.5),
-                                    width: 2), // 🆕
+                                    width: 2),
                                 boxShadow: const [
                                   BoxShadow(
                                       color: Colors.black12,
@@ -273,7 +282,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                               child: !hasImage
                                   ? Icon(Icons.person,
                                       size: 50,
-                                      color: primaryColor.withOpacity(0.7)) // 🆕
+                                      color: primaryColor.withOpacity(0.7))
                                   : null,
                             ),
                           ),
@@ -283,14 +292,14 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                           _buildGradientCard(
                             text: liveName,
                             icon: Icons.store,
-                            colors: _generateGradientColors(primaryColor), // 🆕
+                            colors: nameColors, // ✅ تم الإصلاح
                           ),
 
                           // البطاقة 2: رقم الهاتف
                           _buildGradientCard(
                             text: widget.phoneNumber,
                             icon: Icons.phone,
-                            colors: _generateGradientColors(primaryColor), // 🆕
+                            colors: phoneColors, // ✅ تم الإصلاح
                           ),
 
                           // البطاقة 3: المحفظة (الرصيد الحي)
@@ -304,7 +313,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                                   ? 'المحفظة: ******'
                                   : 'المحفظة: ${liveBalance.toStringAsFixed(0)} ريال',
                               icon: Icons.account_balance_wallet,
-                              colors: _generateGradientColors(primaryColor), // 🆕
+                              colors: balanceColors, // ✅ تم الإصلاح
                               trailingIcon: _isBalanceHidden
                                   ? Icons.visibility_off
                                   : Icons.visibility,
@@ -335,14 +344,14 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                       context,
                       'الرئيسية (غرفة القيادة)',
                       Icons.dashboard,
-                      primaryColor, // يمكن استخدام لون ثابت أو primaryColor
+                      Colors.blue,
                       const AgentDashboardScreen(),
                       textColor),
                   _buildDrawerItem(
                       context,
                       'المتجر السريع (الكاشير)',
                       Icons.point_of_sale,
-                      Colors.green, // لون ثابت مقبول
+                      Colors.green,
                       const QuickPosScreen(),
                       textColor),
                   _buildDrawerItem(
