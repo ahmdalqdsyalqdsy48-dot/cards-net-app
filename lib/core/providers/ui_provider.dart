@@ -35,7 +35,15 @@ class UiProvider extends ChangeNotifier {
 
   Future<void> _loadSoundSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    _soundsEnabled = prefs.getBool('soundsEnabled') ?? true;
+    // نتجاهل أي قيمة خاطئة محفوظة سابقاً ونجعل الصوت يعمل دائماً بشكل افتراضي
+    _soundsEnabled = true;
+    // نقرأ الإعداد فقط إذا كان المستخدم قد ألغى الصوت بشكل صريح
+    if (prefs.containsKey('soundsEnabled')) {
+      _soundsEnabled = prefs.getBool('soundsEnabled') ?? true;
+    }
+    if (prefs.containsKey('user_app_sounds')) {
+      _soundsEnabled = prefs.getBool('user_app_sounds') ?? true;
+    }
     notifyListeners();
   }
 
@@ -43,6 +51,7 @@ class UiProvider extends ChangeNotifier {
     _soundsEnabled = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('soundsEnabled', value);
+    await prefs.setBool('user_app_sounds', value); // لضمان التوافق مع شاشة الإعدادات
     notifyListeners();
     if (value) playSound('success'); 
   }
