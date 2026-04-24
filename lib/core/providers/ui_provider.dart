@@ -22,6 +22,8 @@ class UiProvider extends ChangeNotifier {
   UiProvider(String? currentUserId) {
     _monitorInternetConnection();
     _loadSoundSettings();
+    // إعداد المشغلات الصوتية للتشغيل على الويب
+    _setupAudioPlayers();
     if (currentUserId != null) {
       _listenToNotifications(currentUserId);
     }
@@ -32,6 +34,20 @@ class UiProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get unreadNotifications => _unreadNotifications;
   String get globalSearchQuery => _globalSearchQuery;
   bool get isSoundsEnabled => _soundsEnabled;
+
+  void _setupAudioPlayers() {
+    // تفعيل وضع التشغيل المنخفض لمنع التأخير على الويب
+    _clickPlayer.setReleaseMode(ReleaseMode.stop);
+    _successPlayer.setReleaseMode(ReleaseMode.stop);
+    _errorPlayer.setReleaseMode(ReleaseMode.stop);
+    _notifPlayer.setReleaseMode(ReleaseMode.stop);
+
+    // تعيين حجم الصوت الافتراضي
+    _clickPlayer.setVolume(0.5);
+    _successPlayer.setVolume(1.0);
+    _errorPlayer.setVolume(0.8);
+    _notifPlayer.setVolume(1.0);
+  }
 
   Future<void> _loadSoundSettings() async {
     final prefs = await SharedPreferences.getInstance();
@@ -57,7 +73,6 @@ class UiProvider extends ChangeNotifier {
     if (!_soundsEnabled) return;
 
     try {
-      // تحديد المسار الصحيح بناءً على النوع
       String assetPath;
       switch (type) {
         case 'click':
@@ -76,19 +91,19 @@ class UiProvider extends ChangeNotifier {
           return;
       }
 
-      // التشغيل الفعلي
+      // استخدام اللاعب المناسب لكل نوع صوت
       switch (type) {
         case 'click':
-          await _clickPlayer.play(AssetSource(assetPath), volume: 0.5);
+          await _clickPlayer.play(AssetSource(assetPath));
           break;
         case 'success':
-          await _successPlayer.play(AssetSource(assetPath), volume: 1.0);
+          await _successPlayer.play(AssetSource(assetPath));
           break;
         case 'error':
-          await _errorPlayer.play(AssetSource(assetPath), volume: 0.8);
+          await _errorPlayer.play(AssetSource(assetPath));
           break;
         case 'notification':
-          await _notifPlayer.play(AssetSource(assetPath), volume: 1.0);
+          await _notifPlayer.play(AssetSource(assetPath));
           break;
       }
     } catch (e) {
@@ -99,6 +114,7 @@ class UiProvider extends ChangeNotifier {
   void _monitorInternetConnection() {
     _isOnline = true;
     notifyListeners();
+    // يمكن إضافة مراقبة فعلية للاتصال إذا أردت
   }
 
   void toggleOfflineModeForTesting(bool isOffline) {
