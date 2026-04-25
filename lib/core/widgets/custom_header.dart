@@ -148,7 +148,6 @@ class _CustomHeaderState extends State<CustomHeader>
     final uiProvider = Provider.of<UiProvider>(context);
 
     final bool isDark = themeProvider.isDarkMode;
-    // النقطة حمراء إذا كان الإنترنت مقطوعاً أو كان وضع الصيانة مفعلاً
     final bool isOnline = uiProvider.isOnline && !systemProvider.isMaintenanceMode;
 
     final int unreadCount = systemProvider.unreadNotificationsCount;
@@ -161,9 +160,8 @@ class _CustomHeaderState extends State<CustomHeader>
     final Color headerColor =
         Theme.of(context).appBarTheme.backgroundColor ??
             themeProvider.primaryColor;
-    final Color iconTextColor =
-        Theme.of(context).appBarTheme.foregroundColor ??
-            (isDark ? Colors.white : themeProvider.adaptiveTextColor);
+    // ✅ لون الأيقونات ثابت وواضح في جميع الأوضاع
+    final Color iconTextColor = isDark ? Colors.white : Colors.black87;
     final Color marqueeBg = Color(systemProvider.marqueeBgColor);
     final Color marqueeTextCol = Color(systemProvider.marqueeTextColor);
 
