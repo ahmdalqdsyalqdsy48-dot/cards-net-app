@@ -211,16 +211,22 @@ class ThemeProvider extends ChangeNotifier {
 
     return base.copyWith(
       primaryColor: activeColor,
-      // ✅ زيادة الشفافية إلى 60% ليكون اللون المخصص أكثر وضوحاً وطغياناً
       scaffoldBackgroundColor: Color.alphaBlend(
         activeColor.withOpacity(0.6),
         const Color(0xFF121212),
       ),
-      cardColor: Colors.grey.shade900,
+      // ✅ لون البطاقات الديناميكي يعكس اللون المخصص في الوضع الليلي
+      cardColor: Color.alphaBlend(
+        activeColor.withOpacity(0.4),
+        const Color(0xFF1E1E1E),
+      ),
       colorScheme: ColorScheme.dark(
         primary: activeColor,
         secondary: activeColor,
-        surface: Colors.grey.shade900,
+        surface: Color.alphaBlend(
+          activeColor.withOpacity(0.4),
+          const Color(0xFF1E1E1E),
+        ),
         background: Color.alphaBlend(
             activeColor.withOpacity(0.6), const Color(0xFF121212)),
       ),
