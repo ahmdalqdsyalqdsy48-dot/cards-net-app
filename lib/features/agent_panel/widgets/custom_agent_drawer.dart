@@ -211,8 +211,9 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     final sys = Provider.of<SystemProvider>(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
     final isDark = themeProvider.isDarkMode;
-    final textColor = themeProvider.adaptiveTextColor;
     final primaryColor = themeProvider.primaryColor;
+    // ✅ لون النص الأساسي الواضح دائماً
+    final textColor = isDark ? Colors.white : Colors.black87;
 
     // قراءة البيانات الحية للوكيل بدلاً من البيانات الثابتة
     final myData = sys.agentsList.firstWhere(
@@ -236,7 +237,8 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
         : [Colors.purple.shade800, Colors.purple.shade500];
 
     return Drawer(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      // ✅ خلفية معتمة تمامًا في النهاري (بيضاء) وداكنة في الليلي
+      backgroundColor: Theme.of(context).cardColor,
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
@@ -292,14 +294,14 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                           _buildGradientCard(
                             text: liveName,
                             icon: Icons.store,
-                            colors: nameColors, // ✅ تم الإصلاح
+                            colors: nameColors,
                           ),
 
                           // البطاقة 2: رقم الهاتف
                           _buildGradientCard(
                             text: widget.phoneNumber,
                             icon: Icons.phone,
-                            colors: phoneColors, // ✅ تم الإصلاح
+                            colors: phoneColors,
                           ),
 
                           // البطاقة 3: المحفظة (الرصيد الحي)
@@ -313,7 +315,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                                   ? 'المحفظة: ******'
                                   : 'المحفظة: ${liveBalance.toStringAsFixed(0)} ريال',
                               icon: Icons.account_balance_wallet,
-                              colors: balanceColors, // ✅ تم الإصلاح
+                              colors: balanceColors,
                               trailingIcon: _isBalanceHidden
                                   ? Icons.visibility_off
                                   : Icons.visibility,
@@ -337,7 +339,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                           horizontal: 16, vertical: 6),
                       child: Text('عمليات البيع والشبكة',
                           style: TextStyle(
-                              color: textColor.withOpacity(0.5),
+                              color: textColor.withOpacity(0.8),
                               fontSize: 11,
                               fontWeight: FontWeight.bold))),
                   _buildDrawerItem(
@@ -371,7 +373,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                           horizontal: 16, vertical: 6),
                       child: Text('الإدارة والتسويق',
                           style: TextStyle(
-                              color: textColor.withOpacity(0.5),
+                              color: textColor.withOpacity(0.8),
                               fontSize: 11,
                               fontWeight: FontWeight.bold))),
                   _buildDrawerItem(
@@ -398,7 +400,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                           horizontal: 16, vertical: 6),
                       child: Text('المالية والمحاسبة',
                           style: TextStyle(
-                              color: textColor.withOpacity(0.5),
+                              color: textColor.withOpacity(0.8),
                               fontSize: 11,
                               fontWeight: FontWeight.bold))),
                   _buildDrawerItem(
@@ -432,7 +434,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                           horizontal: 16, vertical: 6),
                       child: Text('الإعدادات والدعم',
                           style: TextStyle(
-                              color: textColor.withOpacity(0.5),
+                              color: textColor.withOpacity(0.8),
                               fontSize: 11,
                               fontWeight: FontWeight.bold))),
                   _buildDrawerItem(
@@ -460,8 +462,8 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
             ListTile(
               dense: true,
               leading: const Icon(Icons.logout, color: Colors.red, size: 20),
-              title: const Text('تسجيل الخروج',
-                  style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+              title: Text('تسجيل الخروج',
+                  style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
               onTap: () {
                 _play('click');
                 Navigator.pushAndRemoveUntil(
