@@ -126,13 +126,11 @@ class _CustomAppBarState extends State<CustomAppBar>
         ? systemProvider.announcements.join('   🔴   ')
         : 'مرحباً بك في نظام كروت نت...';
 
-    // ✅ استخدام ألوان السمة الحالية بدلاً من الألوان الثابتة
     final Color bgColor = Theme.of(context).appBarTheme.backgroundColor ??
         (isDark ? Colors.grey.shade900 : Colors.white);
-    final Color iconTextColor =
-        Theme.of(context).appBarTheme.foregroundColor ??
-            (isDark ? Colors.white : Colors.blueAccent);
-    final Color titleColor = iconTextColor; // نفس لون الأيقونات للوضوح
+    // ✅ لون الأيقونات ثابت وواضح في جميع الأوضاع
+    final Color iconTextColor = isDark ? Colors.white : Colors.black87;
+    final Color titleColor = iconTextColor;
 
     final Color marqueeBg = Color(systemProvider.marqueeBgColor);
     final Color marqueeTextCol = Color(systemProvider.marqueeTextColor);
