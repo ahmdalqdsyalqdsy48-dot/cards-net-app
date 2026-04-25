@@ -141,7 +141,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
                 width: 130, height: 130,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Theme.of(context).primaryColor.withOpacity(0.2), // أكثر وضوحًا
+                  color: Theme.of(context).primaryColor.withOpacity(0.1),
                   border: Border.all(color: Colors.blue.shade100, width: 3),
                   boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)],
                   image: hasImage ? DecorationImage(image: MemoryImage(base64Decode(currentBase64)), fit: BoxFit.cover) : null,
@@ -174,12 +174,10 @@ class _CustomDrawerState extends State<CustomDrawer> {
     );
   }
 
-  // دالة محسنة لتوليد ألوان تدرج أوضح في الوضع الليلي
   List<Color> _generateGradientColors(Color baseColor) {
     final hsv = HSVColor.fromColor(baseColor);
-    // زيادة التباين للوضع الليلي
-    final darker = hsv.withValue((hsv.value - 0.3).clamp(0.0, 1.0)).toColor();
-    final lighter = hsv.withValue((hsv.value + 0.2).clamp(0.0, 1.0)).toColor();
+    final darker = hsv.withValue((hsv.value - 0.2).clamp(0.0, 1.0)).toColor();
+    final lighter = hsv.withValue((hsv.value + 0.1).clamp(0.0, 1.0)).toColor();
     return [darker, lighter];
   }
 
@@ -188,25 +186,18 @@ class _CustomDrawerState extends State<CustomDrawer> {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final bool isDark = themeProvider.isDarkMode;
     final Color primaryColor = themeProvider.primaryColor;
-    final textColor = Theme.of(context).textTheme.bodyMedium?.color ?? (isDark ? Colors.white : Colors.black87);
+    
+    // ✅ لون النص الصحيح: داكن في النهاري، أبيض في الليلي
+    final textColor = isDark ? Colors.white : Colors.black87;
 
-    // ألوان البطاقات: زاهية في النهاري، ديناميكية ومحسّنة في الليلي
-    final nameColors = isDark
-        ? _generateGradientColors(primaryColor)
-        : [Colors.blue.shade800, Colors.blue.shade500];
-    final phoneColors = isDark
-        ? _generateGradientColors(primaryColor)
-        : [Colors.teal.shade800, Colors.teal.shade500];
-    final roleColors = isDark
-        ? _generateGradientColors(primaryColor)
-        : [Colors.orange.shade800, Colors.orange.shade500];
-    final balanceColors = isDark
-        ? _generateGradientColors(primaryColor)
-        : [Colors.purple.shade800, Colors.purple.shade500];
+    // الألوان حسب الوضع
+    final nameColors = isDark ? _generateGradientColors(primaryColor) : [Colors.blue.shade800, Colors.blue.shade500];
+    final phoneColors = isDark ? _generateGradientColors(primaryColor) : [Colors.teal.shade800, Colors.teal.shade500];
+    final roleColors = isDark ? _generateGradientColors(primaryColor) : [Colors.orange.shade800, Colors.orange.shade500];
+    final balanceColors = isDark ? _generateGradientColors(primaryColor) : [Colors.purple.shade800, Colors.purple.shade500];
 
     return Drawer(
-      // استخدام drawerTheme الجديد من ThemeProvider
-      backgroundColor: Theme.of(context).drawerTheme.backgroundColor ?? Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
@@ -245,8 +236,8 @@ class _CustomDrawerState extends State<CustomDrawer> {
                                       width: 100, height: 100,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: primaryColor.withOpacity(0.2), // أكثر وضوحًا
-                                        border: Border.all(color: primaryColor.withOpacity(0.5), width: 2),
+                                        color: primaryColor.withOpacity(0.1),
+                                        border: Border.all(color: primaryColor.withOpacity(0.3), width: 2),
                                         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))],
                                         image: hasImage ? DecorationImage(image: MemoryImage(base64Decode(base64Image!)), fit: BoxFit.cover) : null,
                                       ),
@@ -338,8 +329,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
         child: Icon(icon, color: iconColor, size: 18),
       ),
       title: Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: textColor)),
-      // أيقونة السهم أصبحت أوضح (0.7 بدلاً من 0.5)
-      trailing: Icon(Icons.arrow_forward_ios, size: 11, color: textColor.withOpacity(0.7)),
+      trailing: Icon(Icons.arrow_forward_ios, size: 11, color: textColor.withOpacity(0.5)),
       onTap: () => _navigateTo(context, targetScreen),
     );
   }
