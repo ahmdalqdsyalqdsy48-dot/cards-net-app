@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // 👈 ضرورية لعملية النسخ (Clipboard)
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'dart:math'; // 👈 ضرورية لتوليد أرقام الكروت العشوائية
-import 'package:http/http.dart' as http; // 👈 الاتصال بالسيرفر
+import 'dart:math';
+import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 import '../../../core/providers/system_provider.dart';
@@ -25,7 +25,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
   final String _renderUrl = "https://mikrotik-server-qu6a.onrender.com";
   bool _isProcessing = false;
 
-  // 👇 إضافة: متحكمات الكمية للتوليد المتعدد في نفس الوقت
   final Map<String, TextEditingController> _multiGenControllers = {};
 
   @override
@@ -37,7 +36,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
   void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
 
   // ==========================================
-  // دالة التأكيد (موجودة في الهيكل المطور)
+  // دالة التأكيد
   // ==========================================
   Future<bool> _confirmAction(String title, String message, Color color) async {
     _play('warning');
@@ -63,7 +62,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
   }
 
   // ==========================================
-  // فحص الاتصال بالميكروتك (موجودة في الهيكل المطور)
+  // فحص الاتصال بالميكروتك
   // ==========================================
   Future<void> _testConnection(Map<String, dynamic> net) async {
     _play('click');
@@ -86,7 +85,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
   }
 
   // ==========================================
-  // 1. إضافة وتعديل سيرفر ميكروتك (📡)
+  // 1. إضافة وتعديل سيرفر ميكروتك
   // ==========================================
   void _showAddServerBottomSheet(SystemProvider sys, {Map<String, dynamic>? existingData, String? docId}) {
     _play('click');
@@ -187,7 +186,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
   }
 
   // ==========================================
-  // 2. إضافة وتعديل فئة كروت للشبكة 🎟️
+  // 2. إضافة وتعديل فئة كروت للشبكة
   // ==========================================
   void _showAddCategoryBottomSheet(List<QueryDocumentSnapshot> agentNetworks, {Map? existingCat, String? preSelectedNetId}) {
     _play('click');
@@ -269,7 +268,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
                                 'capacity': newCapacity.isNotEmpty ? newCapacity : 'مفتوح',
                                 'price': int.tryParse(newPrice) ?? 0, 'color': selectedColor.value, 
                                 'stock': existingCat?['stock'] ?? 0, 'isActive': existingCat?['isActive'] ?? true, 
-                                'botMinStock': existingCat?['botMinStock'] ?? 5, // إعدادات البوت الافتراضية
+                                'botMinStock': existingCat?['botMinStock'] ?? 5,
                                 'botRefillAmount': existingCat?['botRefillAmount'] ?? 50,
                                 'isBotEnabled': existingCat?['isBotEnabled'] ?? false,
                               };
@@ -308,7 +307,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
   }
 
   // ==========================================
-  // 👇 الوظيفة المطلوبة 1: عرض وإدارة الكروت داخل الفئة (أرشفة، نسخ، حذف)
+  // عرض وإدارة الكروت داخل الفئة
   // ==========================================
   void _showCardsList(String netId, String catId, String catName, Color catColor) {
     _play('click');
@@ -367,7 +366,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
                                   onPressed: () async {
                                     if (await _confirmAction("أرشفة الكرت", "سيتم سحب هذا الكرت من السوق ونقله للأرشيف. هل أنت متأكد؟", Colors.orange)) {
                                       await card.reference.update({'status': 'archived'});
-                                      // يجب أيضاً إنقاص المخزون
                                       var netDoc = await _db.collection('networks').doc(netId).get();
                                       List cats = List.from(netDoc['categories']);
                                       int idx = cats.indexWhere((c) => c['id'] == catId);
@@ -382,7 +380,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
                                   onPressed: () async {
                                     if (await _confirmAction("حذف الكرت", "سيتم حذف الكرت نهائياً من قاعدة البيانات (لن يحذف من راوتر الميكروتك تلقائياً). هل توافق؟", Colors.red)) {
                                       await card.reference.delete();
-                                      // يجب أيضاً إنقاص المخزون
                                       var netDoc = await _db.collection('networks').doc(netId).get();
                                       List cats = List.from(netDoc['categories']);
                                       int idx = cats.indexWhere((c) => c['id'] == catId);
@@ -408,7 +405,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
   }
 
   // ==========================================
-  // 👇 الوظيفة المطلوبة 3 (جزء أ): إعدادات التوليد التلقائي (البوت)
+  // إعدادات التوليد التلقائي (البوت)
   // ==========================================
   void _showBotSettings(String netId, String catId, Map category) {
     _play('click');
@@ -479,7 +476,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
   }
 
   // ==========================================
-  // 3. إدارة شرائح الخصم الديناميكية 🏆
+  // إدارة شرائح الخصم الديناميكية
   // ==========================================
   void _showDiscountTierBottomSheet(SystemProvider sys, {Map<String, dynamic>? existingTier, String? docId}) {
     _play('click');
@@ -596,6 +593,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final themeProvider = Provider.of<ThemeProvider>(context); // استخدام الثيم الموفر
 
     return Scaffold(
       appBar: const CustomHeader(title: 'إدارة الميكروتك والفئات'),
@@ -615,7 +613,10 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
               children: [
                 Container(
                   width: double.infinity, padding: const EdgeInsets.only(bottom: 5, top: 5),
-                  decoration: BoxDecoration(color: isDark ? Colors.grey.shade900 : Colors.blue.shade800, borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20))),
+                  decoration: BoxDecoration(
+                    color: isDark ? themeProvider.primaryColor.withOpacity(0.4).withAlpha(100) : themeProvider.primaryColor.withOpacity(0.8),
+                    borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20))
+                  ),
                   child: TabBar(
                     controller: _tabController, isScrollable: true,
                     labelColor: Colors.white, unselectedLabelColor: Colors.white54,
@@ -637,7 +638,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
                       _buildServersTab(sys, agentNetworks),
                       _buildCategoriesTab(agentNetworks),
                       _buildDiscountTiersTab(sys), 
-                      _buildGenerateCardsTab(sys, agentNetworks), // 👈 التبويب الجديد للتوليد المتعدد
+                      _buildGenerateCardsTab(sys, agentNetworks),
                     ],
                   ),
                 ),
@@ -650,150 +651,201 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
   }
 
   // ==========================================
-  // تبويب السيرفرات 
+  // تبويب السيرفرات (متجاوب كليًا)
   // ==========================================
   Widget _buildServersTab(SystemProvider sys, List<QueryDocumentSnapshot> networks) {
     return Scaffold(
-      backgroundColor: Colors.transparent, 
-      body: networks.isEmpty 
-        ? const Center(child: Text('لم تقم بربط أي شبكة ميكروتك حتى الآن.', style: TextStyle(color: Colors.grey)))
-        : ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: networks.length,
-          itemBuilder: (context, index) {
-            var net = networks[index].data() as Map<String, dynamic>;
-            bool isActive = net['isActive'] ?? true; 
-            return Card(
-              color: isActive ? null : Colors.grey.shade300, 
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)), elevation: 3,
-              child: ListTile(
-                contentPadding: const EdgeInsets.all(16),
-                leading: CircleAvatar(backgroundColor: isActive ? Colors.green : Colors.grey, child: const Icon(Icons.router, color: Colors.white)),
-                title: Text(net['name'] ?? '', style: TextStyle(fontWeight: FontWeight.bold, decoration: isActive ? null : TextDecoration.lineThrough)),
-                subtitle: Text('الموقع: ${net['location']}\nIP: ${net['ip']}\nالحالة: ${isActive ? 'نشط' : 'مجمد'}'),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(icon: const Icon(Icons.bolt, color: Colors.blue), onPressed: () => _testConnection(net)),
-                    IconButton(icon: Icon(isActive ? Icons.pause_circle_filled : Icons.play_circle_fill, color: Colors.orange), 
-                      onPressed: () async {
-                        bool confirm = await _confirmAction(isActive ? "تجميد الشبكة" : "تنشيط الشبكة", "هل تريد تغيير حالة الشبكة؟", Colors.orange);
-                        if(confirm) _db.collection('networks').doc(networks[index].id).update({'isActive': !isActive});
-                      }),
-                    IconButton(icon: const Icon(Icons.edit, color: Colors.grey), onPressed: () => _showAddServerBottomSheet(sys, existingData: net, docId: networks[index].id)),
-                    IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () async {
-                      bool confirm = await _confirmAction("حذف الشبكة نهائياً", "سيتم مسح بيانات الشبكة، هل أنت متأكد؟", Colors.red);
-                      if(confirm) { _play('click'); await _db.collection('networks').doc(networks[index].id).delete(); }
-                    }),
-                  ],
-                ),
-              ),
-            );
-          }
-        ),
+      backgroundColor: Colors.transparent,
+      body: networks.isEmpty
+          ? const Center(child: Text('لم تقم بربط أي شبكة ميكروتك حتى الآن.', style: TextStyle(color: Colors.grey)))
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: networks.length,
+              itemBuilder: (context, index) {
+                var net = networks[index].data() as Map<String, dynamic>;
+                bool isActive = net['isActive'] ?? true;
+                final textColor = Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
+
+                return Card(
+                  color: isActive ? Theme.of(context).cardColor : Colors.grey.shade300,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  elevation: 3,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            CircleAvatar(backgroundColor: isActive ? Colors.green : Colors.grey, radius: 20, child: const Icon(Icons.router, color: Colors.white, size: 22)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                net['name'] ?? '',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, decoration: isActive ? null : TextDecoration.lineThrough, color: textColor),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(color: isActive ? Colors.green.withOpacity(0.15) : Colors.red.withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
+                              child: Text(isActive ? 'نشط' : 'مجمد', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isActive ? Colors.green.shade700 : Colors.red.shade700)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _buildInfoRow(Icons.location_on, 'الموقع', net['location'] ?? '', textColor),
+                        const SizedBox(height: 6),
+                        _buildInfoRow(Icons.wifi, 'IP', net['ip'] ?? '', textColor),
+                        const SizedBox(height: 6),
+                        _buildInfoRow(Icons.info_outline, 'الحالة', isActive ? 'نشط' : 'مجمد', textColor),
+                        const SizedBox(height: 16),
+                        _buildActionButtons(sys, networks, index, net, isActive),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddServerBottomSheet(sys), backgroundColor: Colors.blue.shade800,
-        icon: const Icon(Icons.add, color: Colors.white), label: const Text('إضافة سيرفر', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        onPressed: () => _showAddServerBottomSheet(sys),
+        backgroundColor: Colors.blue.shade800,
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text('إضافة سيرفر', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
     );
   }
 
+  // دالة مساعدة لبناء صف معلومات
+  Widget _buildInfoRow(IconData icon, String label, String value, Color textColor) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: Colors.grey),
+        const SizedBox(width: 8),
+        Text('$label: ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey)),
+        Expanded(child: Text(value, style: TextStyle(fontSize: 13, color: textColor))),
+      ],
+    );
+  }
+
+  // دالة مساعدة لبناء الأزرار متجاوبة
+  Widget _buildActionButtons(SystemProvider sys, List<QueryDocumentSnapshot> networks, int index, Map<String, dynamic> net, bool isActive) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _actionButton(Icons.bolt, 'اختبار', Colors.blue, () => _testConnection(net)),
+        _actionButton(
+          isActive ? Icons.pause_circle_filled : Icons.play_circle_fill,
+          isActive ? 'تجميد' : 'تنشيط',
+          Colors.orange,
+          () async {
+            bool confirm = await _confirmAction(isActive ? "تجميد الشبكة" : "تنشيط الشبكة", "هل تريد تغيير حالة الشبكة؟", Colors.orange);
+            if (confirm) _db.collection('networks').doc(networks[index].id).update({'isActive': !isActive});
+          },
+        ),
+        _actionButton(Icons.edit, 'تعديل', Colors.grey, () => _showAddServerBottomSheet(sys, existingData: net, docId: networks[index].id)),
+        _actionButton(Icons.delete, 'حذف', Colors.red, () async {
+          bool confirm = await _confirmAction("حذف الشبكة نهائياً", "سيتم مسح بيانات الشبكة، هل أنت متأكد؟", Colors.red);
+          if (confirm) { _play('click'); await _db.collection('networks').doc(networks[index].id).delete(); }
+        }),
+      ],
+    );
+  }
+
+  // زر إجراء واحد
+  Widget _actionButton(IconData icon, String label, Color color, VoidCallback onTap) {
+    return TextButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 18, color: color),
+      label: Text(label, style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.bold)),
+      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4)),
+    );
+  }
+
   // ==========================================
-  // تبويب الفئات والمخزون (مع الوظائف الجديدة 👁️🤖)
+  // تبويب الفئات والمخزون (متجاوب)
   // ==========================================
   Widget _buildCategoriesTab(List<QueryDocumentSnapshot> networks) {
+    final textColor = Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: networks.isEmpty 
-        ? const Center(child: Text('أضف سيرفر شبكة أولاً لعرض فئاته.'))
-        : ListView.builder(
-          padding: const EdgeInsets.all(16), itemCount: networks.length,
-          itemBuilder: (context, netIndex) {
-            var netId = networks[netIndex].id;
-            var netData = networks[netIndex].data() as Map<String, dynamic>;
-            List categories = netData['categories'] ?? [];
+      body: networks.isEmpty
+          ? const Center(child: Text('أضف سيرفر شبكة أولاً لعرض فئاته.'))
+          : ListView.builder(
+              padding: const EdgeInsets.all(16), itemCount: networks.length,
+              itemBuilder: (context, netIndex) {
+                var netId = networks[netIndex].id;
+                var netData = networks[netIndex].data() as Map<String, dynamic>;
+                List categories = netData['categories'] ?? [];
 
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(padding: const EdgeInsets.symmetric(vertical: 8.0), child: Text('فئات شبكة: ${netData['name']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueGrey))),
-                if (categories.isEmpty) const Padding(padding: EdgeInsets.all(8.0), child: Text('لا توجد فئات لهذه الشبكة.', style: TextStyle(color: Colors.grey))),
-                ...categories.map((category) {
-                  int stock = category['stock'] ?? 0; bool isLowStock = stock < 10;
-                  Color catColor = Color(category['color'] ?? Colors.blue.value);
-                  bool isCatActive = category['isActive'] ?? true; 
-                  bool isBotEnabled = category['isBotEnabled'] ?? false; // حالة البوت
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(padding: const EdgeInsets.symmetric(vertical: 8.0), child: Text('فئات شبكة: ${netData['name']}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: textColor))),
+                    if (categories.isEmpty) const Padding(padding: EdgeInsets.all(8.0), child: Text('لا توجد فئات لهذه الشبكة.', style: TextStyle(color: Colors.grey))),
+                    ...categories.map((category) {
+                      int stock = category['stock'] ?? 0; bool isLowStock = stock < 10;
+                      Color catColor = Color(category['color'] ?? Colors.blue.value);
+                      bool isCatActive = category['isActive'] ?? true;
+                      bool isBotEnabled = category['isBotEnabled'] ?? false;
 
-                  return Card(
-                    color: isCatActive ? null : Colors.grey.shade200,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: isCatActive ? catColor.withOpacity(0.5) : Colors.grey)),
-                    margin: const EdgeInsets.only(bottom: 10),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      return Card(
+                        color: isCatActive ? Theme.of(context).cardColor : Colors.grey.shade200,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: isCatActive ? catColor.withOpacity(0.5) : Colors.grey)),
+                        margin: const EdgeInsets.only(bottom: 10),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(category['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: isCatActive ? catColor : Colors.grey, decoration: isCatActive ? null : TextDecoration.lineThrough)),
                               Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  // 👇 إضافة زر قائمة الكروت (العين)
-                                  IconButton(icon: const Icon(Icons.remove_red_eye, color: Colors.teal, size: 20), 
-                                    onPressed: () => _showCardsList(netId, category['id'], category['name'], catColor), 
-                                    constraints: const BoxConstraints(), padding: const EdgeInsets.symmetric(horizontal: 5), tooltip: 'عرض الكروت'),
-                                  
-                                  // 👇 إضافة زر البوت
-                                  IconButton(icon: Icon(Icons.smart_toy, color: isBotEnabled ? Colors.purple : Colors.grey, size: 20), 
-                                    onPressed: () => _showBotSettings(netId, category['id'], category), 
-                                    constraints: const BoxConstraints(), padding: const EdgeInsets.symmetric(horizontal: 5), tooltip: 'البوت الذكي'),
-                                  
-                                  IconButton(icon: Icon(isCatActive ? Icons.pause_circle_filled : Icons.play_circle_fill, color: Colors.orange, size: 20), 
-                                    onPressed: () async {
-                                      bool confirm = await _confirmAction(isCatActive ? "تجميد الفئة" : "تنشيط الفئة", "تغيير حالة الفئة؟", Colors.orange);
-                                      if(confirm) {
-                                        List updated = List.from(categories);
-                                        int idx = updated.indexWhere((c) => c['id'] == category['id']);
-                                        updated[idx]['isActive'] = !isCatActive;
-                                        await _db.collection('networks').doc(netId).update({'categories': updated});
-                                      }
-                                    }, constraints: const BoxConstraints(), padding: const EdgeInsets.symmetric(horizontal: 5)),
-                                  IconButton(icon: const Icon(Icons.edit, color: Colors.blue, size: 20), onPressed: () => _showAddCategoryBottomSheet(networks, existingCat: category, preSelectedNetId: netId), constraints: const BoxConstraints(), padding: const EdgeInsets.symmetric(horizontal: 5)),
-                                  IconButton(icon: const Icon(Icons.delete, color: Colors.red, size: 20), 
-                                    onPressed: () async {
-                                      bool confirm = await _confirmAction("حذف الفئة", "سيتم حذف الفئة نهائياً، متأكد؟", Colors.red);
-                                      if(confirm) { _play('click'); await _db.collection('networks').doc(netId).update({'categories': FieldValue.arrayRemove([category])}); }
-                                    }, constraints: const BoxConstraints(), padding: const EdgeInsets.symmetric(horizontal: 5)
+                                  Expanded(child: Text(category['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: isCatActive ? catColor : Colors.grey, decoration: isCatActive ? null : TextDecoration.lineThrough))),
+                                  // أزرار الفئة في Wrap للتجاوب
+                                  Wrap(
+                                    spacing: 4,
+                                    children: [
+                                      IconButton(icon: const Icon(Icons.remove_red_eye, color: Colors.teal, size: 20), onPressed: () => _showCardsList(netId, category['id'], category['name'], catColor), constraints: const BoxConstraints(), padding: const EdgeInsets.symmetric(horizontal: 5), tooltip: 'عرض الكروت'),
+                                      IconButton(icon: Icon(Icons.smart_toy, color: isBotEnabled ? Colors.purple : Colors.grey, size: 20), onPressed: () => _showBotSettings(netId, category['id'], category), constraints: const BoxConstraints(), padding: const EdgeInsets.symmetric(horizontal: 5), tooltip: 'البوت الذكي'),
+                                      IconButton(icon: Icon(isCatActive ? Icons.pause_circle_filled : Icons.play_circle_fill, color: Colors.orange, size: 20), onPressed: () async {
+                                        bool confirm = await _confirmAction(isCatActive ? "تجميد الفئة" : "تنشيط الفئة", "تغيير حالة الفئة؟", Colors.orange);
+                                        if(confirm) { List updated = List.from(categories); int idx = updated.indexWhere((c) => c['id'] == category['id']); updated[idx]['isActive'] = !isCatActive; await _db.collection('networks').doc(netId).update({'categories': updated}); }
+                                      }, constraints: const BoxConstraints(), padding: const EdgeInsets.symmetric(horizontal: 5)),
+                                      IconButton(icon: const Icon(Icons.edit, color: Colors.blue, size: 20), onPressed: () => _showAddCategoryBottomSheet(networks, existingCat: category, preSelectedNetId: netId), constraints: const BoxConstraints(), padding: const EdgeInsets.symmetric(horizontal: 5)),
+                                      IconButton(icon: const Icon(Icons.delete, color: Colors.red, size: 20), onPressed: () async {
+                                        bool confirm = await _confirmAction("حذف الفئة", "سيتم حذف الفئة نهائياً، متأكد؟", Colors.red);
+                                        if(confirm) { _play('click'); await _db.collection('networks').doc(netId).update({'categories': FieldValue.arrayRemove([category])}); }
+                                      }, constraints: const BoxConstraints(), padding: const EdgeInsets.symmetric(horizontal: 5)),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text('الوقت: ${category['time']} | السعة: ${category['capacity']}', style: TextStyle(color: textColor)),
+                              const Divider(),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text('سعر الجمهور: ${category['price']} ريال', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.grey)),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(color: isLowStock ? Colors.red.shade100 : Colors.green.shade100, borderRadius: BorderRadius.circular(10)),
+                                    child: Text('المخزون: $stock كرت', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: isLowStock ? Colors.red : Colors.green.shade800)),
                                   ),
                                 ],
                               ),
                             ],
                           ),
-                          const SizedBox(height: 8),
-                          Text('الوقت: ${category['time']} | السعة: ${category['capacity']}', style: const TextStyle(color: Colors.grey)),
-                          const Divider(),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('سعر الجمهور: ${category['price']} ريال', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                decoration: BoxDecoration(color: isLowStock ? Colors.red.shade100 : Colors.green.shade100, borderRadius: BorderRadius.circular(10)),
-                                child: Text('المخزون: $stock كرت', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: isLowStock ? Colors.red : Colors.green.shade800)),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }).toList(),
-                const SizedBox(height: 20),
-              ],
-            );
-          }
-        ),
+                        ),
+                      );
+                    }).toList(),
+                    const SizedBox(height: 20),
+                  ],
+                );
+              },
+            ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddCategoryBottomSheet(networks), backgroundColor: Colors.orange.shade700,
         icon: const Icon(Icons.add_circle, color: Colors.white), label: const Text('إضافة فئة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -802,17 +854,15 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
   }
 
   // ==========================================
-  // تبويب شرائح الخصم (مع الحل البرمجي للترتيب 💡)
+  // تبويب شرائح الخصم (متجاوب مع الألوان الديناميكية)
   // ==========================================
   Widget _buildDiscountTiersTab(SystemProvider sys) {
+    final textColor = Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
     return StreamBuilder<QuerySnapshot>(
-      // 👇 إزالة orderBy لحل مشكلة الفايربيز
       stream: _db.collection('discount_tiers').where('agentPhone', isEqualTo: sys.currentUserPhone).snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-        
         List<QueryDocumentSnapshot> tiers = snapshot.hasData ? snapshot.data!.docs : [];
-        // 👇 الترتيب يتم هنا محلياً في التطبيق لضمان ظهوره بشكل صحيح
         tiers.sort((a, b) => ((b.data() as Map)['condition'] as int).compareTo((a.data() as Map)['condition'] as int));
 
         return Scaffold(
@@ -821,68 +871,53 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
             children: [
               Container(
                 padding: const EdgeInsets.all(12), margin: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(10)), 
-                child: const Text('💡 قم بإعداد شرائح الخصم الخاصة بك. سيتم ترقية البقالات تلقائياً أو يدوياً بناءً على سياسة المبيعات التي تحددها هنا.', style: TextStyle(color: Colors.brown, fontWeight: FontWeight.bold, fontSize: 12))
+                decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(10)),
+                child: Text('💡 قم بإعداد شرائح الخصم الخاصة بك. سيتم ترقية البقالات تلقائياً أو يدوياً بناءً على سياسة المبيعات التي تحددها هنا.', style: TextStyle(color: Colors.brown, fontWeight: FontWeight.bold, fontSize: 12))
               ),
               Expanded(
                 child: tiers.isEmpty
-                  ? const Center(child: Text('لم تقم بإضافة أي شرائح خصم حتى الآن.', style: TextStyle(color: Colors.grey)))
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: tiers.length,
-                      itemBuilder: (context, index) {
-                        var tier = tiers[index].data() as Map<String, dynamic>;
-                        bool isActive = tier['isActive'] ?? true;
-                        Color tColor = Color(tier['color'] ?? Colors.amber.shade700.value);
-                        String dType = tier['discountType'] == 'percentage' ? '%' : 'ريال';
-                        
-                        return Card(
-                          color: isActive ? Colors.white : Colors.grey.shade200,
-                          elevation: 2, margin: const EdgeInsets.only(bottom: 12),
-                          child: ListTile(
-                            leading: Icon(isActive ? Icons.stars : Icons.block, color: isActive ? tColor : Colors.grey, size: 35),
-                            title: Text(tier['title'], style: TextStyle(fontWeight: FontWeight.bold, color: isActive ? tColor : Colors.grey, decoration: isActive ? null : TextDecoration.lineThrough)), 
-                            subtitle: Text('للبقالات التي تسحب أكثر من ${tier['condition']} ريال\nبقالات منضمة: ${tier['subscribersCount'] ?? 0} 🏪', style: const TextStyle(fontSize: 12)),
-                            trailing: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), 
-                                  decoration: BoxDecoration(color: isActive ? tColor.withOpacity(0.1) : Colors.grey.withOpacity(0.1), borderRadius: BorderRadius.circular(20)), 
-                                  child: Text('خصم: ${tier['discountValue']}$dType', style: TextStyle(fontWeight: FontWeight.bold, color: isActive ? tColor : Colors.grey, fontSize: 12))
-                                ),
-                                const SizedBox(height: 5),
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    GestureDetector(
-                                      onTap: () async {
-                                        bool confirm = await _confirmAction(isActive ? "تجميد الشريحة" : "تنشيط الشريحة", "تغيير حالة العرض؟", Colors.orange);
-                                        if (confirm) _db.collection('discount_tiers').doc(tiers[index].id).update({'isActive': !isActive});
-                                      },
-                                      child: Icon(isActive ? Icons.pause_circle_filled : Icons.play_circle_fill, color: Colors.orange, size: 20),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    GestureDetector(
-                                      onTap: () => _showDiscountTierBottomSheet(sys, existingTier: tier, docId: tiers[index].id),
-                                      child: const Icon(Icons.edit, color: Colors.blue, size: 20),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    GestureDetector(
-                                      onTap: () async {
-                                        bool confirm = await _confirmAction("حذف الشريحة", "سيتم إلغاء الخصم عن البقالات المنضمة، متأكد؟", Colors.red);
-                                        if (confirm) { _play('click'); await _db.collection('discount_tiers').doc(tiers[index].id).delete(); }
-                                      },
-                                      child: const Icon(Icons.delete, color: Colors.red, size: 20),
-                                    ),
-                                  ],
-                                ),
-                              ],
+                    ? const Center(child: Text('لم تقم بإضافة أي شرائح خصم حتى الآن.', style: TextStyle(color: Colors.grey)))
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: tiers.length,
+                        itemBuilder: (context, index) {
+                          var tier = tiers[index].data() as Map<String, dynamic>;
+                          bool isActive = tier['isActive'] ?? true;
+                          Color tColor = Color(tier['color'] ?? Colors.amber.shade700.value);
+                          String dType = tier['discountType'] == 'percentage' ? '%' : 'ريال';
+
+                          return Card(
+                            color: isActive ? Theme.of(context).cardColor : Colors.grey.shade200,
+                            elevation: 2, margin: const EdgeInsets.only(bottom: 12),
+                            child: ListTile(
+                              leading: Icon(isActive ? Icons.stars : Icons.block, color: isActive ? tColor : Colors.grey, size: 35),
+                              title: Text(tier['title'], style: TextStyle(fontWeight: FontWeight.bold, color: isActive ? tColor : Colors.grey, decoration: isActive ? null : TextDecoration.lineThrough)),
+                              subtitle: Text('للبقالات التي تسحب أكثر من ${tier['condition']} ريال\nبقالات منضمة: ${tier['subscribersCount'] ?? 0} 🏪', style: TextStyle(fontSize: 12, color: textColor)),
+                              trailing: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(color: isActive ? tColor.withOpacity(0.1) : Colors.grey.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+                                    child: Text('خصم: ${tier['discountValue']}$dType', style: TextStyle(fontWeight: FontWeight.bold, color: isActive ? tColor : Colors.grey, fontSize: 12))
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      GestureDetector(onTap: () async { bool confirm = await _confirmAction(isActive ? "تجميد الشريحة" : "تنشيط الشريحة", "تغيير حالة العرض؟", Colors.orange); if (confirm) _db.collection('discount_tiers').doc(tiers[index].id).update({'isActive': !isActive}); }, child: Icon(isActive ? Icons.pause_circle_filled : Icons.play_circle_fill, color: Colors.orange, size: 20)),
+                                      const SizedBox(width: 10),
+                                      GestureDetector(onTap: () => _showDiscountTierBottomSheet(sys, existingTier: tier, docId: tiers[index].id), child: const Icon(Icons.edit, color: Colors.blue, size: 20)),
+                                      const SizedBox(width: 10),
+                                      GestureDetector(onTap: () async { bool confirm = await _confirmAction("حذف الشريحة", "سيتم إلغاء الخصم عن البقالات المنضمة، متأكد؟", Colors.red); if (confirm) { _play('click'); await _db.collection('discount_tiers').doc(tiers[index].id).delete(); } }, child: const Icon(Icons.delete, color: Colors.red, size: 20)),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        );
-                      }
-                    )
+                          );
+                        },
+                      ),
               ),
             ],
           ),
@@ -893,24 +928,24 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
             label: const Text('إضافة شريحة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         );
-      }
+      },
     );
   }
 
   // ==========================================
-  // 👇 الوظيفة المطلوبة 3 (جزء ب): التوليد المتعدد المتزامن (الواجهة الجديدة)
+  // تبويب توليد الكروت (متجاوب)
   // ==========================================
   Widget _buildGenerateCardsTab(SystemProvider sys, List<QueryDocumentSnapshot> networks) {
+    final textColor = Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
     if (networks.isEmpty) return const Center(child: Text('يجب إضافة شبكة وفئات أولاً!'));
 
-    // تجميع كل الفئات النشطة في قائمة واحدة للتمكن من توليدها دفعة واحدة
     List<Map<String, dynamic>> allCategories = [];
     for (var net in networks) {
       String netId = net.id;
       List cats = (net.data() as Map)['categories'] ?? [];
       for (var cat in cats) {
         if ((net.data() as Map)['isActive'] != false && cat['isActive'] != false) {
-           allCategories.add({'networkId': netId, 'networkName': (net.data() as Map)['name'], 'category': cat});
+          allCategories.add({'networkId': netId, 'networkName': (net.data() as Map)['name'], 'category': cat});
         }
       }
     }
@@ -924,7 +959,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
           Container(
             padding: const EdgeInsets.all(12), margin: const EdgeInsets.all(16),
             decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.blue)),
-            child: const Text('🔌 توليد متعدد: اكتب الكمية المطلوبة بجانب كل فئة تريدها، ثم اضغط زر التوليد بالأسفل لتنفيذها دفعة واحدة.', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            child: Text('🔌 توليد متعدد: اكتب الكمية المطلوبة بجانب كل فئة تريدها، ثم اضغط زر التوليد بالأسفل لتنفيذها دفعة واحدة.', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textColor)),
           ),
           Expanded(
             child: ListView.builder(
@@ -934,12 +969,11 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
                 var item = allCategories[index];
                 String netId = item['networkId'];
                 String catId = item['category']['id'];
-                String key = "${netId}_$catId"; // مفتاح فريد لكل حقل
-                
-                // تهيئة المتحكم إذا لم يكن موجوداً
+                String key = "${netId}_$catId";
                 _multiGenControllers.putIfAbsent(key, () => TextEditingController());
 
                 return Card(
+                  color: Theme.of(context).cardColor,
                   elevation: 1,
                   margin: const EdgeInsets.only(bottom: 10),
                   child: Padding(
@@ -952,7 +986,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('${item['networkName']} - ${item['category']['name']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                              Text('${item['networkName']} - ${item['category']['name']}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textColor)),
                               Text('المخزون الحالي: ${item['category']['stock']}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
                             ],
                           ),
@@ -968,7 +1002,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
                               contentPadding: const EdgeInsets.symmetric(vertical: 10),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                               filled: true,
-                              fillColor: Colors.grey.withOpacity(0.1),
+                              fillColor: Theme.of(context).scaffoldBackgroundColor,
                             ),
                           ),
                         ),
@@ -985,7 +1019,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
               width: double.infinity, height: 55,
               child: ElevatedButton.icon(
                 onPressed: _isProcessing ? null : () async {
-                  // جمع الطلبات التي تم إدخال كمية فيها فقط
                   List<Map<String, dynamic>> orders = [];
                   _multiGenControllers.forEach((key, controller) {
                     if (controller.text.isNotEmpty) {
@@ -1003,7 +1036,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
                     return;
                   }
 
-                  // حماية من تجاوز 400 كرت في الدفعة الواحدة (لحماية الفايربيز والسيرفر)
                   int totalAmount = orders.fold(0, (sum, item) => sum + (item['amount'] as int));
                   if (totalAmount > 400) {
                     _play('error');
@@ -1018,8 +1050,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
                   setState(() => _isProcessing = true);
                   
                   bool hasError = false;
-                  
-                  // إرسال الطلبات للسيرفر بالتتابع
                   for (var order in orders) {
                     try {
                       final response = await http.post(
@@ -1033,19 +1063,15 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
                         }),
                       );
                       if (response.statusCode != 200) hasError = true;
-                    } catch (e) {
-                      hasError = true;
-                    }
+                    } catch (e) { hasError = true; }
                   }
 
                   setState(() => _isProcessing = false);
-
                   if (hasError) {
                     _play('error');
                     if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت العملية ولكن حدثت بعض الأخطاء في التوليد. يرجى مراجعة المخزون.', textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
                   } else {
                     _play('success');
-                    // مسح جميع الحقول بعد النجاح
                     _multiGenControllers.forEach((k, v) => v.clear());
                     if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم توليد جميع الكروت بنجاح! ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
                   }
