@@ -36,7 +36,7 @@ class CustomUserDrawer extends StatefulWidget {
 }
 
 class _CustomUserDrawerState extends State<CustomUserDrawer> {
-  bool _isBalanceHidden = true; // إخفاء الرصيد افتراضيًا
+  bool _isBalanceHidden = true;
   String? _currentLocalImageUrl;
   Map<String, dynamic>? _userTier;
 
@@ -93,7 +93,6 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
     );
   }
 
-  // دوال الصورة الشخصية
   Future<void> _updateProfileImage() async {
     _playSound();
     final picker = ImagePicker();
@@ -184,12 +183,12 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
     final systemProvider = Provider.of<SystemProvider>(context);
     final isDark = themeProvider.isDarkMode;
     final primaryColor = themeProvider.primaryColor;
+    final textColor = isDark ? Colors.white : Colors.black87;  // لون واضح لجميع النصوص
 
     final String dynamicUserName = systemProvider.currentUserName;
     final String dynamicUserPhone = systemProvider.currentUserPhone;
     final bool isPos = systemProvider.currentUserRole == 'pos';
 
-    // تحميل الصورة من Firestore عند الحاجة
     if (_currentLocalImageUrl == null) {
       FirebaseFirestore.instance.collection('users').doc(systemProvider.currentUserPhone).get().then((doc) {
         if (doc.exists && doc.data() != null) {
@@ -218,13 +217,14 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
     }
 
     return Drawer(
+      backgroundColor: Theme.of(context).cardColor,  // خلفية معتمة
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
             Expanded(
               child: ListView(
-                physics: const BouncingScrollPhysics(), // تمرير سلس
+                physics: const BouncingScrollPhysics(),
                 padding: EdgeInsets.zero,
                 children: [
                   SafeArea(
@@ -251,7 +251,7 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                                   width: 90, height: 90,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: Colors.white,
+                                    color: isDark ? Colors.grey.shade800 : Colors.white,
                                     border: Border.all(color: primaryColor.withOpacity(0.5), width: 2),
                                     boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))],
                                     image: hasImage ? DecorationImage(image: MemoryImage(base64Decode(_currentLocalImageUrl!)), fit: BoxFit.cover) : null,
@@ -278,43 +278,43 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                             ),
                           ),
                           const SizedBox(height: 10),
-                          const Divider(height: 1),
+                          Divider(height: 1, color: textColor.withOpacity(0.2)),
                         ],
                       ),
                     ),
                   ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Text('المالية والمشتريات', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text('المالية والمشتريات', style: TextStyle(color: textColor, fontSize: 12, fontWeight: FontWeight.bold)),
                   ),
                   _buildDrawerItem(context, 'الرئيسية', Icons.dashboard, Colors.blue, const UserDashboardScreen()),
                   if (!isPos)
                     _buildDrawerItem(context, 'المحفظة الذكية والتحويلات', Icons.account_balance_wallet, Colors.teal, const UserWalletScreen()),
                   _buildDrawerItem(context, isPos ? 'سوق الجملة للشبكات' : 'سوق الشبكات ونقاط البيع', Icons.storefront, Colors.orange, const NetworkStoreScreen()),
                   _buildDrawerItem(context, isPos ? 'سجل المبيعات والكروت' : 'كروتي ومشترياتي', Icons.receipt_long, isPos ? Colors.purple : Colors.green, const MyCardsScreen()),
-                  const Divider(),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Text('الامتيازات والسجلات', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                  Divider(height: 1, color: textColor.withOpacity(0.2)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text('الامتيازات والسجلات', style: TextStyle(color: textColor, fontSize: 12, fontWeight: FontWeight.bold)),
                   ),
                   if (!isPos)
                     _buildDrawerItem(context, 'برنامج الولاء والمكافآت', Icons.stars, Colors.amber.shade700, const RewardsScreen()),
                   _buildDrawerItem(context, 'سجل العمليات المالية', Icons.history, Colors.indigo, const UserTransactionsScreen()),
-                  const Divider(),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Text('الإعدادات والدعم', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                  Divider(height: 1, color: textColor.withOpacity(0.2)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text('الإعدادات والدعم', style: TextStyle(color: textColor, fontSize: 12, fontWeight: FontWeight.bold)),
                   ),
                   _buildDrawerItem(context, 'الدعم الفني والشكاوى', Icons.support_agent, Colors.redAccent, const UserSupportScreen()),
                   _buildDrawerItem(context, 'الملف الشخصي والإعدادات', Icons.settings, Colors.blueGrey, const UserSettingsScreen()),
                 ],
               ),
             ),
-            const Divider(height: 1),
+            Divider(height: 1, color: textColor.withOpacity(0.2)),
             ListTile(
               dense: true,
               leading: const Icon(Icons.logout, color: Colors.red, size: 20),
-              title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+              title: Text('تسجيل الخروج', style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
               onTap: () {
                 _playSound();
                 final sys = Provider.of<SystemProvider>(context, listen: false);
