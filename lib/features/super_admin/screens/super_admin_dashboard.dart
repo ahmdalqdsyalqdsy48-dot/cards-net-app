@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // 👈 استدعاء قاعدة البيانات الحقيقية
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-// مكتبات الـ PDF
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../../../core/providers/system_provider.dart';
-import '../../../core/providers/ui_provider.dart'; // 👈 استدعاء محرك الأصوات
+import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart';
+import '../../../core/providers/theme_provider.dart'; // 🆕 استدعاء ThemeProvider
 
 import 'financial_center_screen.dart';
 import 'staff_support_screen.dart';
@@ -18,7 +18,7 @@ import 'reports_screen.dart';
 import 'agent_management_screen.dart';
 import 'sms_gateway_screen.dart';
 import 'settings_screen.dart';
-import 'banners_screen.dart'; 
+import 'banners_screen.dart';
 
 class SuperAdminDashboard extends StatefulWidget {
   const SuperAdminDashboard({super.key});
@@ -28,17 +28,14 @@ class SuperAdminDashboard extends StatefulWidget {
 }
 
 class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
-  
-  // ==========================================
-  // دالة فتح التقويم وإرسال الفلتر 📅
-  // ==========================================
+
   Future<void> _selectDateRange(SystemProvider provider, UiProvider uiProvider) async {
-    uiProvider.playSound('click'); // 👈 صوت فتح التقويم
+    uiProvider.playSound('click');
     final DateTimeRange? picked = await showDateRangePicker(
       context: context,
       initialDateRange: provider.dashboardDateRange ?? DateTimeRange(start: DateTime.now(), end: DateTime.now()),
-      firstDate: DateTime(2023), 
-      lastDate: DateTime(2030),  
+      firstDate: DateTime(2023),
+      lastDate: DateTime(2030),
       helpText: 'حدد فترة الفلترة (من - إلى)',
       cancelText: 'إلغاء',
       confirmText: 'تأكيد الفلترة',
@@ -46,8 +43,8 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     );
 
     if (picked != null && picked != provider.dashboardDateRange) {
-      provider.setDashboardDateRange(picked); 
-      uiProvider.playSound('success'); // 👈 صوت تطبيق الفلتر
+      provider.setDashboardDateRange(picked);
+      uiProvider.playSound('success');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('تم تحديث الإحصائيات للفترة من ${_formatDate(picked.start)} إلى ${_formatDate(picked.end)} 📊', textDirection: TextDirection.rtl), backgroundColor: Colors.green)
       );
@@ -59,13 +56,10 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
   }
 
   void _navigateTo(Widget screen, UiProvider uiProvider) {
-    uiProvider.playSound('click'); // 👈 صوت التنقل السريع
+    uiProvider.playSound('click');
     Navigator.push(context, MaterialPageRoute(builder: (context) => screen));
   }
 
-  // ==========================================
-  // 📄 دالة إنشاء وتصدير الـ PDF
-  // ==========================================
   Future<void> _generateAndPrintPDF(SystemProvider provider, UiProvider uiProvider, String topAgent, int agentsDanger, double pendingTotal) async {
     uiProvider.playSound('click');
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري تجهيز تقرير الـ PDF... 📄', textDirection: TextDirection.rtl)));
@@ -122,12 +116,9 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     );
 
     await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save(), name: 'KrootNet_Report_${DateTime.now().millisecondsSinceEpoch}.pdf');
-    uiProvider.playSound('success'); // 👈 صوت عند الانتهاء من الطباعة
+    uiProvider.playSound('success');
   }
 
-  // ==========================================
-  // ⚡ نافذة ومنطق معالجة طلبات الشحن الحقيقية
-  // ==========================================
   void _showPendingRequestsModal(BuildContext context, List<QueryDocumentSnapshot> requests, UiProvider uiProvider) {
     uiProvider.playSound('click');
     showModalBottomSheet(
@@ -183,22 +174,19 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
   }
 
   Future<void> _handleRequest(String docId, Map<String, dynamic> reqData, bool isApprove, UiProvider uiProvider) async {
-    Navigator.pop(context); // إغلاق النافذة
+    Navigator.pop(context);
     try {
       WriteBatch batch = FirebaseFirestore.instance.batch();
       String agentPhone = reqData['agentPhone'];
       double amount = (reqData['amount'] as num).toDouble();
 
-      // 1. تحديث حالة الطلب
       DocumentReference reqRef = FirebaseFirestore.instance.collection('recharge_requests').doc(docId);
       batch.update(reqRef, {'status': isApprove ? 'approved' : 'rejected', 'processedAt': FieldValue.serverTimestamp()});
 
       if (isApprove) {
-        // 2. إضافة الرصيد للوكيل
         DocumentReference userRef = FirebaseFirestore.instance.collection('users').doc(agentPhone);
         batch.update(userRef, {'balance': FieldValue.increment(amount)});
 
-        // 3. تسجيل إشعار للوكيل
         DocumentReference notifRef = FirebaseFirestore.instance.collection('notifications').doc();
         batch.set(notifRef, {
           'targetUserId': agentPhone,
@@ -211,7 +199,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
         uiProvider.playSound('success');
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت الموافقة وإضافة الرصيد للوكيل بنجاح!'), backgroundColor: Colors.green));
       } else {
-        // رفض الطلب وإرسال إشعار
         DocumentReference notifRef = FirebaseFirestore.instance.collection('notifications').doc();
         batch.set(notifRef, {
           'targetUserId': agentPhone,
@@ -234,9 +221,12 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final themeProvider = Provider.of<ThemeProvider>(context); // 🆕
+    final isDark = themeProvider.isDarkMode;
+    final primaryColor = themeProvider.primaryColor; // 🆕 اللون الديناميكي
+    
     final systemProvider = Provider.of<SystemProvider>(context);
-    final uiProvider = Provider.of<UiProvider>(context, listen: false); // محرك الصوت
+    final uiProvider = Provider.of<UiProvider>(context, listen: false);
     
     final adminBalance = systemProvider.adminMainBalance;
     final userName = systemProvider.currentUserName;
@@ -268,6 +258,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     }
 
     return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor, // 🆕 خلفية ديناميكية
       appBar: const CustomHeader(title: 'غرفة العمليات المركزية'),
       drawer: CustomDrawer(
         userName: userName,
@@ -280,14 +271,12 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // ==========================================
-            // شريط الفلترة (تصدير PDF وتحديد التاريخ)
-            // ==========================================
+            // شريط الفلترة (يستخدم اللون الأساسي الآن)
             if (systemProvider.hasPermission('المركز المالي والمحافظ') || systemProvider.hasPermission('التقارير الشاملة'))
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: isDark ? Colors.grey.shade900 : Colors.blue.shade900,
+                color: isDark ? primaryColor.withOpacity(0.4).withAlpha(100) : primaryColor.withOpacity(0.8), // 🆕 لون ديناميكي
                 borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
               ),
               child: Row(
@@ -317,7 +306,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                       icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
                       tooltip: 'تصدير تقرير فوري',
                       onPressed: () {
-                        // هنا نمرر قيمة تقريبية للمتأخرات للتقرير في حال لم نستخدم الاستريم داخل التقرير
                         _generateAndPrintPDF(systemProvider, uiProvider, topAgentName, agentsInDanger, 0);
                       },
                     ),
@@ -328,9 +316,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
             
             const SizedBox(height: 10),
 
-            // ==========================================
-            // شبكة البطاقات الذكية 🔥
-            // ==========================================
+            // شبكة البطاقات الذكية
             Expanded(
               child: GridView.count(
                 crossAxisCount: 2, 
@@ -350,7 +336,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     onTap: () => _navigateTo(const FinancialCenterScreen(), uiProvider),
                   ),
                   
-                  // 🔥 البطاقة الحية (Real-time Stream) لطلبات الشحن
                   if (systemProvider.hasPermission('المركز المالي والمحافظ'))
                   StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance.collection('recharge_requests').where('status', isEqualTo: 'pending').snapshots(),
@@ -480,7 +465,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
         decoration: BoxDecoration(
           color: isAlert 
               ? (isDark ? Colors.red.withOpacity(0.2) : Colors.red.shade50) 
-              : Theme.of(context).cardColor,
+              : Theme.of(context).cardColor, // 🆕 لون ديناميكي للبطاقات
           borderRadius: BorderRadius.circular(15),
           border: Border.all(color: isAlert ? Colors.red.shade300 : color.withOpacity(0.3), width: 1.5),
           boxShadow: [
