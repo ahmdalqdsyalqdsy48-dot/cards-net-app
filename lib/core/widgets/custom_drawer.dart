@@ -187,17 +187,16 @@ class _CustomDrawerState extends State<CustomDrawer> {
     final bool isDark = themeProvider.isDarkMode;
     final Color primaryColor = themeProvider.primaryColor;
     
-    // ✅ لون النص الصحيح: داكن في النهاري، أبيض في الليلي
     final textColor = isDark ? Colors.white : Colors.black87;
 
-    // الألوان حسب الوضع
     final nameColors = isDark ? _generateGradientColors(primaryColor) : [Colors.blue.shade800, Colors.blue.shade500];
     final phoneColors = isDark ? _generateGradientColors(primaryColor) : [Colors.teal.shade800, Colors.teal.shade500];
     final roleColors = isDark ? _generateGradientColors(primaryColor) : [Colors.orange.shade800, Colors.orange.shade500];
     final balanceColors = isDark ? _generateGradientColors(primaryColor) : [Colors.purple.shade800, Colors.purple.shade500];
 
     return Drawer(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      // ✅ خلفية معتمة تمامًا في النهاري (بيضاء) وداكنة في الليلي
+      backgroundColor: Theme.of(context).cardColor,
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
