@@ -170,35 +170,36 @@ class ThemeProvider extends ChangeNotifier {
   ThemeData get lightTheme {
     final base = ThemeData.light();
     final Color activeColor = primaryColor;
+    final Color textColor = adaptiveTextColor;
 
     return base.copyWith(
       primaryColor: activeColor,
-      scaffoldBackgroundColor: Colors.white,
+      scaffoldBackgroundColor: activeColor.withOpacity(0.05),
       cardColor: Colors.white,
       colorScheme: ColorScheme.light(
         primary: activeColor,
         secondary: activeColor,
         surface: Colors.white,
-        background: Colors.white,
+        background: activeColor.withOpacity(0.05),
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: activeColor,
-        foregroundColor: Colors.white,
+        foregroundColor: textColor,
         elevation: 0,
       ),
-      drawerTheme: const DrawerThemeData(
+      drawerTheme: DrawerThemeData(
         backgroundColor: Colors.white,
       ),
-      textTheme: _applyFont(base.textTheme, Colors.black87),
-      iconTheme: const IconThemeData(color: Colors.black87),
-      listTileTheme: const ListTileThemeData(
-        iconColor: Colors.black87,
-        textColor: Colors.black87,
+      textTheme: _applyFont(base.textTheme, textColor),
+      iconTheme: IconThemeData(color: textColor),
+      listTileTheme: ListTileThemeData(
+        iconColor: activeColor,
+        textColor: textColor,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: activeColor,
-          foregroundColor: Colors.white,
+          foregroundColor: textColor,
         ),
       ),
     );
@@ -210,26 +211,34 @@ class ThemeProvider extends ChangeNotifier {
 
     return base.copyWith(
       primaryColor: activeColor,
-      scaffoldBackgroundColor: const Color(0xFF121212),
+      // ✅ زيادة الشفافية إلى 60% ليكون اللون المخصص أكثر وضوحاً وطغياناً
+      scaffoldBackgroundColor: Color.alphaBlend(
+        activeColor.withOpacity(0.6),
+        const Color(0xFF121212),
+      ),
       cardColor: Colors.grey.shade900,
       colorScheme: ColorScheme.dark(
         primary: activeColor,
         secondary: activeColor,
         surface: Colors.grey.shade900,
-        background: const Color(0xFF121212),
+        background: Color.alphaBlend(
+            activeColor.withOpacity(0.6), const Color(0xFF121212)),
       ),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xFF1E1E1E),
+      appBarTheme: AppBarTheme(
+        backgroundColor: Color.alphaBlend(
+          activeColor.withOpacity(0.6),
+          const Color(0xFF121212),
+        ),
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      drawerTheme: const DrawerThemeData(
-        backgroundColor: Color(0xFF1E1E1E),
+      drawerTheme: DrawerThemeData(
+        backgroundColor: Colors.grey.shade900,
       ),
       textTheme: _applyFont(base.textTheme, Colors.white),
       iconTheme: const IconThemeData(color: Colors.white),
-      listTileTheme: const ListTileThemeData(
-        iconColor: Colors.white,
+      listTileTheme: ListTileThemeData(
+        iconColor: activeColor,
         textColor: Colors.white,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
