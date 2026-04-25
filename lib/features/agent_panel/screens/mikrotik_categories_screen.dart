@@ -8,6 +8,7 @@ import 'dart:convert';
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
+import '../../../core/providers/theme_provider.dart'; // ✅ تمت إضافة الاستيراد المفقود
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart';
 
@@ -593,7 +594,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final themeProvider = Provider.of<ThemeProvider>(context); // استخدام الثيم الموفر
+    final primaryColor = Theme.of(context).primaryColor; // ✅ الحل المباشر دون الحاجة لمتغير ThemeProvider
 
     return Scaffold(
       appBar: const CustomHeader(title: 'إدارة الميكروتك والفئات'),
@@ -614,7 +615,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
                 Container(
                   width: double.infinity, padding: const EdgeInsets.only(bottom: 5, top: 5),
                   decoration: BoxDecoration(
-                    color: isDark ? themeProvider.primaryColor.withOpacity(0.4).withAlpha(100) : themeProvider.primaryColor.withOpacity(0.8),
+                    color: isDark ? primaryColor.withOpacity(0.4).withAlpha(100) : primaryColor.withOpacity(0.8), // ✅ استخدام primaryColor المباشر
                     borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20))
                   ),
                   child: TabBar(
@@ -803,7 +804,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen> wit
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   Expanded(child: Text(category['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: isCatActive ? catColor : Colors.grey, decoration: isCatActive ? null : TextDecoration.lineThrough))),
-                                  // أزرار الفئة في Wrap للتجاوب
                                   Wrap(
                                     spacing: 4,
                                     children: [
