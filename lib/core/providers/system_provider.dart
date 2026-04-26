@@ -365,6 +365,7 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
+  // ------------------- Getters -------------------
   double get adminMainBalance => _adminMainBalance;
   int get totalSystemCards => _totalSystemCards;
   List<String> get announcements => _announcements;
@@ -636,6 +637,278 @@ class SystemProvider extends ChangeNotifier {
     } catch (e) {}
   }
 
+  // ------------------- دوال أرقام الحسابات الجديدة -------------------
+  bool _isSpecialAccountNumber(String numberStr) {
+    final num = int.tryParse(numberStr);
+    if (num == null || num < 10000) return true;
+    if (numberStr.length >= 5 && numberStr.split('').toSet().length == 1) return true;
+    final ascending = '0123456789';
+    if (ascending.contains(numberStr)) return true;
+    final descending = '9876543210';
+    if (descending.contains(numberStr)) return true;
+    return false;
+  }
+
+  Future<String> _generateNextAccountNumber() async {
+    final usersSnapshot = await _db
+        .collection('users')
+        .where('accountNumber', isNotEqualTo: null)
+        .get();
+
+    List<int> existingNumbers = [];
+    for (var doc in usersSnapshot.docs) {
+      final data = doc.data();
+      final acc = data['accountNumber'];
+      if (acc != null) {
+        final num = int.tryParse(acc.toString());
+        if (num != null) existingNumbers.add(num);
+      }
+    }
+
+    int candidate = 10000;
+    if (existingNumbers.isNotEmpty) {
+      candidate = existingNumbers.reduce((a, b) => a > b ? a : b) + 1;
+      if (candidate > 19999 && candidate < 100000) {
+        candidate = 100000;
+      } else if (candidate > 199999 && candidate < 1000000) {
+        candidate = 1000000;
+      } else if (candidate > 1999999 && candidate < 10000000) {
+        candidate = 10000000;
+      }
+    }
+
+    while (_isSpecialAccountNumber(candidate.toString())) {
+      candidate++;
+      if (candidate > 19999 && candidate < 100000) {
+        candidate = 100000;
+      } else if (candidate > 199999 && candidate < 1000000) {
+        candidate = 1000000;
+      } else if (candidate > 1999999 && candidate < 10000000) {
+        candidate = 10000000;
+      }
+    }
+
+    return candidate.toString();
+  }
+
+  Future<void> _ensureUserAccountNumber() async {
+    if (_activeUserPhone == null) return;
+    try {
+      final doc = await _db.collection('users').doc(_activeUserPhone).get();
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>;
+        if (data['accountNumber'] == null) {
+          final newAcc = await _generateNextAccountNumber();
+          await _db.collection('users').doc(_activeUserPhone).update({
+            'accountNumber': newAcc,
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('خطأ في ضمان رقم الحساب: $e');
+    }
+  }
+
+  Future<int> adminGenerateMissingAccountNumbers() async {
+    int generated = 0;
+    try {
+      final usersSnapshot = await _db.collection('users').get();
+      for (var doc in usersSnapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        if (data['accountNumber'] == null) {
+          final newAcc = await _generateNextAccountNumber();
+          await doc.reference.update({'accountNumber': newAcc});
+          generated++;
+        }
+      }
+    } catch (e) {
+      throw 'خطأ في التوليد الجماعي: $e';
+    }
+    return generated;
+  }
+
+  Future<void> adminUpdateUserAccountNumber(
+      String phone, String newAccountNumber) async {
+    final existing = await _db
+        .collection('users')
+        .where('accountNumber', isEqualTo: newAccountNumber)
+        .get();
+    if (existing.docs.isNotEmpty) {
+      if (existing.docs.length > 1 || existing.docs.first.id != phone) {
+        throw 'رقم الحساب مستخدم من قبل شخص آخر.';
+      }
+    }
+    await _db.collection('users').doc(phone).update({
+      'accountNumber': newAccountNumber,
+    });
+    logAction(
+        action: 'تعديل رقم حساب',
+        details: 'تم تغيير رقم حساب $phone إلى $newAccountNumber',
+        severity: 'high');
+  }
+
+  Future<void> adminToggleUserBan(String phone, bool ban) async {
+    await _db.collection('users').doc(phone).update({
+      'isBanned': ban,
+    });
+    logAction(
+        action: ban ? 'حظر حساب' : 'فك حظر حساب',
+        details: 'المستخدم: $phone',
+        severity: 'critical');
+  }
+
+  List<Map<String, dynamic>> getAllUsersWithAccountDetails() {
+    return _usersDatabase.map((user) {
+      return {
+        'phone': user['phone'],
+        'accountNumber': user['accountNumber'] ?? 'غير متوفر',
+        'name': user['name'] ?? 'غير معروف',
+        'role': user['role'] ?? 'مستخدم',
+        'isBanned': user['isBanned'] ?? false,
+        'privacyShowPhone': user['privacy_showPhone'] ?? true,
+      };
+    }).toList();
+  }
+
+  Future<Map<String, dynamic>?> searchUserByAccountOrName(
+      String query) async {
+    if (query.trim().isEmpty) return null;
+    final isNumeric = RegExp(r'^\d+$').hasMatch(query.trim());
+
+    try {
+      if (isNumeric) {
+        final snap = await _db
+            .collection('users')
+            .where('accountNumber', isEqualTo: query.trim())
+            .limit(1)
+            .get();
+        if (snap.docs.isNotEmpty) {
+          final data = snap.docs.first.data() as Map<String, dynamic>;
+          if (data['isBanned'] == true) return null;
+          return _buildSearchResult(data, snap.docs.first.id);
+        }
+      } else {
+        for (var user in _usersDatabase) {
+          final name = user['name']?.toString() ?? '';
+          if (name.contains(query.trim())) {
+            if (user['isBanned'] == true) continue;
+            return _buildSearchResult(user, user['phone'] ?? '');
+          }
+        }
+        final snap = await _db
+            .collection('users')
+            .where('name', isGreaterThanOrEqualTo: query.trim())
+            .where('name', isLessThan: '${query.trim()}z')
+            .limit(1)
+            .get();
+        if (snap.docs.isNotEmpty) {
+          final data = snap.docs.first.data() as Map<String, dynamic>;
+          return _buildSearchResult(data, snap.docs.first.id);
+        }
+      }
+      return null;
+    } catch (e) {
+      throw 'خطأ في البحث: $e';
+    }
+  }
+
+  Map<String, dynamic> _buildSearchResult(
+      Map<String, dynamic> data, String phone) {
+    final bool showPhone = data['privacy_showPhone'] ?? true;
+    return {
+      'accountNumber': data['accountNumber'] ?? 'غير متوفر',
+      'name': data['name'] ?? 'مجهول',
+      'role': data['role'] ?? 'user',
+      'phone': showPhone ? phone : 'مخفي',
+      'balance': _getUserBalance(data, phone),
+    };
+  }
+
+  double _getUserBalance(Map<String, dynamic> data, String phone) {
+    if (data['role'] == 'user' || data['role'] == 'pos') {
+      Map<String, dynamic> wallets = data['wallets'] ?? {};
+      return wallets.values.fold(0.0, (sum, val) => sum + (val as num).toDouble());
+    }
+    return (data['balance'] ?? 0.0).toDouble();
+  }
+
+  Future<Map<String, dynamic>?> searchUserByAdmin(String query) async {
+    if (query.trim().isEmpty) return null;
+    final isNumeric = RegExp(r'^\d+$').hasMatch(query.trim());
+    try {
+      if (isNumeric) {
+        var snap = await _db
+            .collection('users')
+            .where('accountNumber', isEqualTo: query.trim())
+            .limit(1)
+            .get();
+        if (snap.docs.isEmpty) {
+          snap = await _db
+              .collection('users')
+              .where('phone', isEqualTo: query.trim())
+              .limit(1)
+              .get();
+        }
+        if (snap.docs.isNotEmpty) {
+          final data = snap.docs.first.data() as Map<String, dynamic>;
+          return {
+            ...data,
+            'phone': snap.docs.first.id,
+          };
+        }
+      } else {
+        final snap = await _db
+            .collection('users')
+            .where('name', isGreaterThanOrEqualTo: query.trim())
+            .where('name', isLessThan: '${query.trim()}z')
+            .limit(1)
+            .get();
+        if (snap.docs.isNotEmpty) {
+          final data = snap.docs.first.data() as Map<String, dynamic>;
+          return {
+            ...data,
+            'phone': snap.docs.first.id,
+          };
+        }
+      }
+      return null;
+    } catch (e) {
+      throw 'خطأ في البحث الإداري: $e';
+    }
+  }
+
+  Future<void> updatePrivacySettings({
+    required bool showPhone,
+  }) async {
+    if (_activeUserPhone == null) return;
+    await _db.collection('users').doc(_activeUserPhone).update({
+      'privacy_showPhone': showPhone,
+    });
+    final index =
+        _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
+    if (index != -1) {
+      _usersDatabase[index]['privacy_showPhone'] = showPhone;
+      notifyListeners();
+    }
+  }
+
+  bool get currentUserPrivacyShowPhone {
+    if (_activeUserPhone == null) return true;
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _activeUserPhone,
+        orElse: () => {'privacy_showPhone': true});
+    return user['privacy_showPhone'] ?? true;
+  }
+
+  String? get currentUserAccountNumber {
+    if (_activeUserPhone == null) return null;
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _activeUserPhone,
+        orElse: () => {});
+    return user['accountNumber']?.toString();
+  }
+
+  // ------------------- باقي الدوال القديمة كاملة -------------------
   Future<void> updateGlobalAppName(String newName) async {
     await _db
         .collection('system')
@@ -649,19 +922,20 @@ class SystemProvider extends ChangeNotifier {
         severity: 'critical');
   }
 
-  Future<void> updateAdvancedLoginSettings(
-      {required String name,
-      required String logoUrl,
-      required int bgColor,
-      required List<String> images,
-      required String welcomeMsg,
-      required int intervalSeconds,
-      required String marqueeDir,
-      required int marqueeTextCol,
-      required int marqueeBgCol,
-      required String appNameAlign,
-      required String appNameFont,
-      required int appNameColor}) async {
+  Future<void> updateAdvancedLoginSettings({
+    required String name,
+    required String logoUrl,
+    required int bgColor,
+    required List<String> images,
+    required String welcomeMsg,
+    required int intervalSeconds,
+    required String marqueeDir,
+    required int marqueeTextCol,
+    required int marqueeBgCol,
+    required String appNameAlign,
+    required String appNameFont,
+    required int appNameColor,
+  }) async {
     _appName = name;
     _appLogoUrl = logoUrl;
     _loginBgColor = bgColor;
@@ -696,11 +970,12 @@ class SystemProvider extends ChangeNotifier {
         severity: 'critical');
   }
 
-  Future<void> updateAgentPortalSettings(
-      {required bool hideProfit,
-      required bool leaderboard,
-      required bool forceTheme,
-      required List<String> universalHidden}) async {
+  Future<void> updateAgentPortalSettings({
+    required bool hideProfit,
+    required bool leaderboard,
+    required bool forceTheme,
+    required List<String> universalHidden,
+  }) async {
     _hideProfitEnabled = hideProfit;
     _leaderboardEnabled = leaderboard;
     _forceAgentTheme = forceTheme;
@@ -719,12 +994,13 @@ class SystemProvider extends ChangeNotifier {
         severity: 'medium');
   }
 
-  Future<void> updateUserPortalSettings(
-      {required bool guestMode,
-      required bool kyc,
-      required bool loyalty,
-      required List<String> universalHidden,
-      required Map<String, dynamic> social}) async {
+  Future<void> updateUserPortalSettings({
+    required bool guestMode,
+    required bool kyc,
+    required bool loyalty,
+    required List<String> universalHidden,
+    required Map<String, dynamic> social,
+  }) async {
     _guestModeEnabled = guestMode;
     _kycRequired = kyc;
     _loyaltySystemEnabled = loyalty;
@@ -745,32 +1021,32 @@ class SystemProvider extends ChangeNotifier {
         severity: 'medium');
   }
 
-  Future<void> toggleSectionForSpecificUsers(
-      {required String sectionId,
-      required List<String> targetPhones,
-      required bool hide}) async {
+  Future<void> toggleSectionForSpecificUsers({
+    required String sectionId,
+    required List<String> targetPhones,
+    required bool hide,
+  }) async {
     WriteBatch batch = _db.batch();
     for (String phone in targetPhones) {
       DocumentReference ref = _db.collection('users').doc(phone);
       if (hide) {
         batch.update(ref, {'hiddenSections': FieldValue.arrayUnion([sectionId])});
       } else {
-        batch
-            .update(ref, {'hiddenSections': FieldValue.arrayRemove([sectionId])});
+        batch.update(ref, {'hiddenSections': FieldValue.arrayRemove([sectionId])});
       }
     }
     await batch.commit();
     logAction(
         action: 'استهداف الأقسام',
-        details:
-            'تم ${hide ? "إخفاء" : "إظهار"} قسم $sectionId لعدد ${targetPhones.length} مستخدم',
+        details: 'تم ${hide ? "إخفاء" : "إظهار"} قسم $sectionId لعدد ${targetPhones.length} مستخدم',
         severity: 'critical');
   }
 
-  Future<void> postTargetedBanner(
-      {required String imageUrl,
-      required String targetType,
-      required List<String> targetPhones}) async {
+  Future<void> postTargetedBanner({
+    required String imageUrl,
+    required String targetType,
+    required List<String> targetPhones,
+  }) async {
     final newBanner = {
       'id': DateTime.now().millisecondsSinceEpoch.toString(),
       'imageUrl': imageUrl,
@@ -786,11 +1062,12 @@ class SystemProvider extends ChangeNotifier {
         severity: 'normal');
   }
 
-  Future<void> setEmergencyAlert(
-      {required bool isActive,
-      required String text,
-      required String targetType,
-      required List<String> targetPhones}) async {
+  Future<void> setEmergencyAlert({
+    required bool isActive,
+    required String text,
+    required String targetType,
+    required List<String> targetPhones,
+  }) async {
     await _db.collection('system').doc('main_info').update({
       'agentEmergencyAlert': {
         'isActive': isActive,
@@ -805,10 +1082,11 @@ class SystemProvider extends ChangeNotifier {
         severity: 'critical');
   }
 
-  Future<void> updateSystemStatusSettings(
-      {required bool maintenance,
-      required bool forcedUpdate,
-      required bool showNews}) async {
+  Future<void> updateSystemStatusSettings({
+    required bool maintenance,
+    required bool forcedUpdate,
+    required bool showNews,
+  }) async {
     _isMaintenanceMode = maintenance;
     _isForcedUpdate = forcedUpdate;
     _showNewsBar = showNews;
@@ -821,11 +1099,12 @@ class SystemProvider extends ChangeNotifier {
     });
   }
 
-  Future<void> updatePoliciesSettings(
-      {required String terms,
-      required String support,
-      required String minCharge,
-      required bool autoRounding}) async {
+  Future<void> updatePoliciesSettings({
+    required String terms,
+    required String support,
+    required String minCharge,
+    required bool autoRounding,
+  }) async {
     _termsAndConditions = terms;
     _supportNumbers = support;
     _minimumChargeLimit = minCharge;
@@ -840,8 +1119,10 @@ class SystemProvider extends ChangeNotifier {
     });
   }
 
-  Future<void> addTargetedNews(
-      {required String text, required String targetRole}) async {
+  Future<void> addTargetedNews({
+    required String text,
+    required String targetRole,
+  }) async {
     final newNews = {
       'id': DateTime.now().millisecondsSinceEpoch.toString(),
       'text': text,
@@ -934,6 +1215,7 @@ class SystemProvider extends ChangeNotifier {
       _currentUserRole = 'super_admin';
       _listenToUserNotifications();
       notifyListeners();
+      await _ensureUserAccountNumber();
       return superAdminData;
     }
     try {
@@ -955,6 +1237,7 @@ class SystemProvider extends ChangeNotifier {
 
           _listenToUserNotifications();
           notifyListeners();
+          await _ensureUserAccountNumber();
           logAction(
               action: 'تسجيل دخول',
               details: 'تم تسجيل الدخول بواسطة: ${userData['name']}',
@@ -968,11 +1251,9 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  /// 🆕 تسجيل الدخول باستخدام رمز PIN
   Future<Map<String, dynamic>?> loginWithPin(String phone, String pin) async {
     if (_activeUserPhone != null) clearAllData();
 
-    // حالة المشرف العام
     if (phone == '774578241' && pin == '123456') {
       final superAdminData = {
         'id': 'SUPER_ADMIN_01',
@@ -993,6 +1274,7 @@ class SystemProvider extends ChangeNotifier {
       _currentUserRole = 'super_admin';
       _listenToUserNotifications();
       notifyListeners();
+      await _ensureUserAccountNumber();
       return superAdminData;
     }
 
@@ -1009,6 +1291,7 @@ class SystemProvider extends ChangeNotifier {
         }
         _listenToUserNotifications();
         notifyListeners();
+        await _ensureUserAccountNumber();
         logAction(
             action: 'تسجيل دخول بـ PIN',
             details: 'تم تسجيل الدخول بواسطة: ${userData['name']}',
@@ -1021,11 +1304,12 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> registerNewUser(
-      {required String name,
-      required String phone,
-      required String password,
-      required String role}) async {
+  Future<void> registerNewUser({
+    required String name,
+    required String phone,
+    required String password,
+    required String role,
+  }) async {
     try {
       await _db.collection('users').doc(phone).set({
         'id': 'USER_${DateTime.now().millisecondsSinceEpoch}',
@@ -1043,6 +1327,7 @@ class SystemProvider extends ChangeNotifier {
         'isBiometricEnabled': false,
         'createdAt': FieldValue.serverTimestamp(),
         'hiddenSections': [],
+        'privacy_showPhone': true,
       });
       _activeUserPhone = phone;
       _currentUserRole = role;
@@ -1053,13 +1338,14 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> addAgent(
-      {required String name,
-      required String phone,
-      required String password,
-      String? networkName,
-      String? profitMargin,
-      String? location}) async {
+  Future<void> addAgent({
+    required String name,
+    required String phone,
+    required String password,
+    String? networkName,
+    String? profitMargin,
+    String? location,
+  }) async {
     try {
       bool exists = await checkUserExists(phone);
       if (!exists) {
@@ -1088,6 +1374,7 @@ class SystemProvider extends ChangeNotifier {
           'isBiometricEnabled': false,
           'createdAt': FieldValue.serverTimestamp(),
           'hiddenSections': [],
+          'privacy_showPhone': true,
         });
         logAction(
             action: 'إضافة وكيل جديد',
@@ -1106,14 +1393,15 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> updateAgentDetails(
-      {required String oldPhone,
-      required String newPhone,
-      required String newName,
-      required String newNetwork,
-      required String newLocation,
-      required String newProfit,
-      required String newPassword}) async {
+  Future<void> updateAgentDetails({
+    required String oldPhone,
+    required String newPhone,
+    required String newName,
+    required String newNetwork,
+    required String newLocation,
+    required String newProfit,
+    required String newPassword,
+  }) async {
     try {
       final doc = await _db.collection('users').doc(oldPhone).get();
       if (doc.exists) {
@@ -1409,7 +1697,6 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  // الدوال المعبرية
   Future<void> requestWalletRecharge(String targetPhone, double amount) async {
     await submitSaaSRechargeRequest(
         quotaAmount: amount,
@@ -1420,11 +1707,12 @@ class SystemProvider extends ChangeNotifier {
         base64Image: '');
   }
 
-  Future<void> acceptRechargeRequest(
-      {required String requestId,
-      required String agentPhone,
-      required String agentName,
-      required double amount}) async {
+  Future<void> acceptRechargeRequest({
+    required String requestId,
+    required String agentPhone,
+    required String agentName,
+    required double amount,
+  }) async {
     await adminAcceptSaaSRecharge(requestId, agentPhone, amount, 0.0);
   }
 
@@ -1723,11 +2011,12 @@ class SystemProvider extends ChangeNotifier {
     });
   }
 
-  Future<void> secureTransferBalance(
-      {required String targetPhone,
-      required String targetName,
-      required double amount,
-      required String password}) async {
+  Future<void> secureTransferBalance({
+    required String targetPhone,
+    required String targetName,
+    required double amount,
+    required String password,
+  }) async {
     await advancedSecureTransferBalance(
         targetPhone: targetPhone,
         targetName: targetName,
@@ -1804,11 +2093,12 @@ class SystemProvider extends ChangeNotifier {
         .update({'dangerLimit': newLimit});
   }
 
-  Future<void> manualSettlement(
-      {required String agentPhone,
-      required String agentName,
-      required double amount,
-      required String reason}) async {
+  Future<void> manualSettlement({
+    required String agentPhone,
+    required String agentName,
+    required double amount,
+    required String reason,
+  }) async {
     try {
       WriteBatch batch = _db.batch();
       DocumentReference agentRef = _db.collection('users').doc(agentPhone);
@@ -1854,10 +2144,11 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> _sendNotification(
-      {required List<String> targetPhones,
-      required String title,
-      required String body}) async {
+  Future<void> _sendNotification({
+    required List<String> targetPhones,
+    required String title,
+    required String body,
+  }) async {
     await _db.collection('notifications').add({
       'targetPhones': targetPhones,
       'title': title,
@@ -1882,12 +2173,13 @@ class SystemProvider extends ChangeNotifier {
     await batch.commit();
   }
 
-  Future<void> applySubscriptionPlan(
-      {required int targetingFilter,
-      required String planName,
-      required double planPrice,
-      required int durationMonths,
-      String? targetAgentPhone}) async {
+  Future<void> applySubscriptionPlan({
+    required int targetingFilter,
+    required String planName,
+    required double planPrice,
+    required int durationMonths,
+    String? targetAgentPhone,
+  }) async {
     try {
       WriteBatch batch = _db.batch();
       final DateTime newExpiry =
@@ -1928,11 +2220,12 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> createSmartCoupon(
-      {required String code,
-      required String discountDetails,
-      required int maxUses,
-      required String sendMethod}) async {
+  Future<void> createSmartCoupon({
+    required String code,
+    required String discountDetails,
+    required int maxUses,
+    required String sendMethod,
+  }) async {
     try {
       final existing =
           await _db.collection('coupons').where('code', isEqualTo: code).get();
@@ -2238,7 +2531,6 @@ class SystemProvider extends ChangeNotifier {
     await _db.collection('users').doc(_activeUserPhone).update({'privacy_$key': value});
   }
 
-  // ==================== دوال الترقية والشرائح (Discount Tiers) ====================
   Future<Map<String, dynamic>?> getUserTierForAgent(String agentPhone) async {
     if (_activeUserPhone == null) return null;
 
@@ -2291,7 +2583,6 @@ class SystemProvider extends ChangeNotifier {
     return bestTier;
   }
 
-  // ==================== PIN مع التحقق الثلاثي ====================
   Future<String> changeUserPinWithOld(String oldPin, String newPin, String confirmPin) async {
     if (_activeUserPhone == null) return 'يرجى تسجيل الدخول.';
     if (newPin.length != 6) return 'يجب أن يتكون رمز PIN من 6 أرقام.';
@@ -2319,7 +2610,6 @@ class SystemProvider extends ChangeNotifier {
     return currentUserPin == pin;
   }
 
-  // ==================== دوال اللغة ====================
   String getLanguageSync() {
     if (_prefs == null) return 'ar';
     return _prefs!.getString('language') ?? 'ar';
