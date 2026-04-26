@@ -5,7 +5,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:math';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:flutter_colorpicker/flutter_colorpicker.dart'; // 🆕 عجلة ألوان شاملة
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:printing/printing.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -17,23 +21,53 @@ class MikrotikCategoriesScreen extends StatefulWidget {
   const MikrotikCategoriesScreen({super.key});
 
   @override
-  State<MikrotikCategoriesScreen> createState() => _MikrotikCategoriesScreenState();
+  State<MikrotikCategoriesScreen> createState() =>
+      _MikrotikCategoriesScreenState();
 }
 
 class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     with SingleTickerProviderStateMixin {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   late TabController _tabController;
+  final ImagePicker _imagePicker = ImagePicker();
 
   final String _renderUrl = "https://mikrotik-server-qu6a.onrender.com";
   bool _isProcessing = false;
 
   final Map<String, TextEditingController> _multiGenControllers = {};
 
+  // مسودات النوافذ
+  String _draftServerName = '';
+  String _draftServerLocation = '';
+  String _draftServerGovernorate = '';
+  String _draftServerDistrict = '';
+  List<String> _draftServerCoverageAreas = [];
+  String _draftServerIp = '';
+  String _draftServerUser = '';
+  String _draftServerPass = '';
+  String _draftServerPort = '8728';
+  String _draftServerLoginUrl = '';
+
+  String _draftCategoryName = '';
+  String _draftCategoryTime = '';
+  String _draftCategoryCapacity = '';
+  String _draftCategoryPrice = '';
+  String _draftCategoryNote = '';
+  Color _draftCategoryColor = Colors.blue;
+  String? _draftCategoryTemplateBase64;
+
+  String _draftTierTitle = '';
+  String _draftTierCondition = '';
+  String _draftTierDiscountValue = '';
+  String _draftTierDiscountType = 'percentage';
+  String _draftTierTargetType = 'all';
+  List<String> _draftTierTargetPhones = [];
+  Color _draftTierColor = Colors.amber.shade700;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this); // 5 تبويبات
   }
 
   void _play(String type) =>
@@ -51,9 +85,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
-  // ==========================================
-  // دالة التأكيد مع إدخال كلمة المرور للعمليات الحساسة
-  // ==========================================
   Future<bool> _confirmAction(String title, String message, Color color,
       {bool requirePassword = false}) async {
     _play('warning');
@@ -64,8 +95,10 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
           builder: (context) => Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-              title: Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15)),
+              title: Text(title,
+                  style: TextStyle(color: color, fontWeight: FontWeight.bold)),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -78,7 +111,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                       decoration: const InputDecoration(
                         labelText: 'أدخل كلمة المرور للتأكيد',
                         border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.lock),
+                        prefixIcon: Icon(Icons.lock, color: Colors.red),
                       ),
                     ),
                   ],
@@ -90,16 +123,19 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                     _play('click');
                     Navigator.pop(context, false);
                   },
-                  child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+                  child:
+                      const Text('إلغاء', style: TextStyle(color: Colors.grey)),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: color,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
                   ),
                   onPressed: () {
                     if (requirePassword) {
-                      final sys = Provider.of<SystemProvider>(context, listen: false);
+                      final sys = Provider.of<SystemProvider>(context,
+                          listen: false);
                       if (!sys.validatePin(passwordController.text.trim()) &&
                           passwordController.text.trim() != '123456') {
                         _play('error');
@@ -110,7 +146,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                     _play('click');
                     Navigator.pop(context, true);
                   },
-                  child: const Text('تأكيد التنفيذ', style: TextStyle(color: Colors.white)),
+                  child: const Text('تأكيد التنفيذ',
+                      style: TextStyle(color: Colors.white)),
                 ),
               ],
             ),
@@ -119,9 +156,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
         false;
   }
 
-  // ==========================================
-  // فحص الاتصال بالميكروتك
-  // ==========================================
   Future<void> _testConnection(Map<String, dynamic> net) async {
     _play('click');
     setState(() => _isProcessing = true);
@@ -130,7 +164,12 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
       final response = await http.post(
         Uri.parse("$_renderUrl/testConnection"),
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"host": net['ip'], "user": net['apiUser'], "pass": net['apiPassword'], "port": net['apiPort']}),
+        body: jsonEncode({
+          "host": net['ip'],
+          "user": net['apiUser'],
+          "pass": net['apiPassword'],
+          "port": net['apiPort']
+        }),
       );
       if (response.statusCode == 200) {
         _play('success');
@@ -145,9 +184,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     setState(() => _isProcessing = false);
   }
 
-  // ==========================================
-  // 🆕 عجلة ألوان شاملة
-  // ==========================================
   Future<Color?> _openColorPicker(Color currentColor) async {
     Color pickedColor = currentColor;
     return showDialog<Color>(
@@ -163,7 +199,9 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إلغاء')),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: pickedColor),
             onPressed: () => Navigator.pop(context, pickedColor),
@@ -175,22 +213,23 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   }
 
   // ==========================================
-  // 1. إضافة وتعديل سيرفر ميكروتك (مُطوَّرة)
+  // 1. إضافة وتعديل سيرفر ميكروتك (مطورة)
   // ==========================================
   void _showAddServerBottomSheet(SystemProvider sys,
       {Map<String, dynamic>? existingData, String? docId}) {
     _play('click');
-    String name = existingData?['name'] ?? '';
-    String location = existingData?['location'] ?? '';
-    String governorate = existingData?['governorate'] ?? '';
-    String district = existingData?['district'] ?? '';
-    List<String> coverageAreas =
-        List<String>.from(existingData?['coverageAreas'] ?? []);
-    String ip = existingData?['ip'] ?? '';
-    String user = existingData?['apiUser'] ?? '';
-    String pass = existingData?['apiPassword'] ?? '';
-    String port = existingData?['apiPort'] ?? '8728';
-    String loginUrl = existingData?['loginUrl'] ?? '';
+    String name = existingData?['name'] ?? _draftServerName;
+    String location = existingData?['location'] ?? _draftServerLocation;
+    String governorate = existingData?['governorate'] ?? _draftServerGovernorate;
+    String district = existingData?['district'] ?? _draftServerDistrict;
+    List<String> coverageAreas = existingData != null
+        ? List<String>.from(existingData['coverageAreas'] ?? [])
+        : List<String>.from(_draftServerCoverageAreas);
+    String ip = existingData?['ip'] ?? _draftServerIp;
+    String user = existingData?['apiUser'] ?? _draftServerUser;
+    String pass = existingData?['apiPassword'] ?? _draftServerPass;
+    String port = existingData?['apiPort'] ?? _draftServerPort;
+    String loginUrl = existingData?['loginUrl'] ?? _draftServerLoginUrl;
     bool isSubmitting = false;
 
     showModalBottomSheet(
@@ -223,7 +262,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         decoration: const InputDecoration(
                             labelText: 'إسم شبكتك',
                             border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.dns)),
+                            prefixIcon: Icon(Icons.dns, color: Colors.blue)),
                         controller: TextEditingController(text: name),
                         onChanged: (v) => name = v),
                     const SizedBox(height: 12),
@@ -231,18 +270,21 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         decoration: const InputDecoration(
                             labelText: 'موقع الشبكة',
                             border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.location_on)),
+                            prefixIcon: Icon(Icons.location_on,
+                                color: Colors.orange)),
                         controller: TextEditingController(text: location),
                         onChanged: (v) => location = v),
                     const SizedBox(height: 12),
-                    // 🆕 حقول الموقع الإضافية
                     ExpansionTile(
+                      iconColor: Colors.teal,
+                      collapsedIconColor: Colors.teal,
                       title: const Text('تفاصيل الموقع (اختياري)'),
                       children: [
                         TextField(
                             decoration: const InputDecoration(
                                 labelText: 'المحافظة',
-                                border: OutlineInputBorder()),
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.map, color: Colors.teal)),
                             controller:
                                 TextEditingController(text: governorate),
                             onChanged: (v) => governorate = v),
@@ -250,7 +292,9 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         TextField(
                             decoration: const InputDecoration(
                                 labelText: 'المديرية',
-                                border: OutlineInputBorder()),
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.map_outlined,
+                                    color: Colors.teal)),
                             controller: TextEditingController(text: district),
                             onChanged: (v) => district = v),
                         const SizedBox(height: 12),
@@ -264,7 +308,10 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                   child: TextField(
                                       decoration: InputDecoration(
                                           labelText: 'منطقة البث ${idx + 1}',
-                                          border: const OutlineInputBorder()),
+                                          border: const OutlineInputBorder(),
+                                          prefixIcon: const Icon(
+                                              Icons.wifi_find,
+                                              color: Colors.teal)),
                                       controller: TextEditingController(
                                           text: coverageAreas[idx]),
                                       onChanged: (v) =>
@@ -293,7 +340,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         decoration: const InputDecoration(
                             labelText: 'عنوان IP / الرابط (DDNS)',
                             border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.wifi)),
+                            prefixIcon: Icon(Icons.wifi, color: Colors.green)),
                         controller: TextEditingController(text: ip),
                         onChanged: (v) => ip = v),
                     const SizedBox(height: 12),
@@ -301,7 +348,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         decoration: const InputDecoration(
                             labelText: 'رابط صفحة تسجيل الدخول للزبائن',
                             border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.link)),
+                            prefixIcon:
+                                Icon(Icons.link, color: Colors.indigo)),
                         controller: TextEditingController(text: loginUrl),
                         onChanged: (v) => loginUrl = v),
                     const SizedBox(height: 12),
@@ -312,7 +360,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                 decoration: const InputDecoration(
                                     labelText: 'مستخدم API',
                                     border: OutlineInputBorder(),
-                                    prefixIcon: Icon(Icons.person)),
+                                    prefixIcon: Icon(Icons.person,
+                                        color: Colors.deepPurple)),
                                 controller:
                                     TextEditingController(text: user),
                                 onChanged: (v) => user = v)),
@@ -322,7 +371,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                 decoration: const InputDecoration(
                                     labelText: 'كلمة المرور',
                                     border: OutlineInputBorder(),
-                                    prefixIcon: Icon(Icons.lock)),
+                                    prefixIcon: Icon(Icons.lock,
+                                        color: Colors.red)),
                                 controller:
                                     TextEditingController(text: pass),
                                 obscureText: true,
@@ -334,7 +384,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         decoration: const InputDecoration(
                             labelText: 'API Port (الافتراضي: 8728)',
                             border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.settings_ethernet)),
+                            prefixIcon: Icon(Icons.settings_ethernet,
+                                color: Colors.blueGrey)),
                         controller: TextEditingController(text: port),
                         onChanged: (v) => port = v),
                     const SizedBox(height: 20),
@@ -375,40 +426,95 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                       'loginUrl': loginUrl,
                                       'agentPhone': sys.currentUserPhone,
                                       'agentName': sys.currentUserName,
-                                      'isActive': existingData?['isActive'] ?? true,
-                                      'updatedAt': FieldValue.serverTimestamp(),
+                                      'isActive':
+                                          existingData?['isActive'] ?? true,
+                                      'updatedAt':
+                                          FieldValue.serverTimestamp(),
                                     };
                                     if (docId == null) {
                                       networkData['status'] = 'متصل نشط 🟢';
                                       networkData['categories'] = [];
                                       networkData['createdAt'] =
                                           FieldValue.serverTimestamp();
-                                      await _db.collection('networks').add(networkData);
+                                      await _db
+                                          .collection('networks')
+                                          .add(networkData);
+                                      // مسح المسودة
+                                      _draftServerName = '';
+                                      _draftServerLocation = '';
+                                      _draftServerGovernorate = '';
+                                      _draftServerDistrict = '';
+                                      _draftServerCoverageAreas = [];
+                                      _draftServerIp = '';
+                                      _draftServerUser = '';
+                                      _draftServerPass = '';
+                                      _draftServerPort = '8728';
+                                      _draftServerLoginUrl = '';
                                     } else {
-                                      await _db.collection('networks').doc(docId).update(networkData);
+                                      await _db
+                                          .collection('networks')
+                                          .doc(docId)
+                                          .update(networkData);
                                     }
                                     _play('success');
                                     if (mounted) {
                                       Navigator.pop(context);
-                                      _showToast(docId == null ? 'تمت إضافة الشبكة بنجاح! 🟢' : 'تم التعديل بنجاح! ✏️');
+                                      _showToast(docId == null
+                                          ? 'تمت إضافة الشبكة بنجاح! 🟢'
+                                          : 'تم التعديل بنجاح! ✏️');
                                     }
                                   } catch (e) {
                                     setModalState(() => isSubmitting = false);
                                     _play('error');
-                                    _showToast('فشل حفظ البيانات', isError: true);
+                                    _showToast('فشل حفظ البيانات',
+                                        isError: true);
                                   }
                                 } else {
                                   _play('error');
-                                  _showToast('يرجى تعبئة الحقول الأساسية', isError: true);
+                                  _showToast('يرجى تعبئة الحقول الأساسية',
+                                      isError: true);
                                 }
                               },
                         child: isSubmitting
-                            ? const CircularProgressIndicator(color: Colors.white)
+                            ? const CircularProgressIndicator(
+                                color: Colors.white)
                             : const Text('حفظ واتصال',
                                 style: TextStyle(
                                     fontSize: 16,
                                     color: Colors.white,
                                     fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    // زر إغلاق مع حفظ المسودة
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.grey,
+                          side: const BorderSide(color: Colors.grey),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () {
+                          // حفظ البيانات الحالية في المسودة
+                          _draftServerName = name;
+                          _draftServerLocation = location;
+                          _draftServerGovernorate = governorate;
+                          _draftServerDistrict = district;
+                          _draftServerCoverageAreas = coverageAreas;
+                          _draftServerIp = ip;
+                          _draftServerUser = user;
+                          _draftServerPass = pass;
+                          _draftServerPort = port;
+                          _draftServerLoginUrl = loginUrl;
+                          _play('click');
+                          Navigator.pop(context);
+                          _showToast('تم حفظ البيانات كمسودة');
+                        },
+                        icon: const Icon(Icons.save_outlined),
+                        label: const Text('إغلاق وحفظ كمسودة'),
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -428,14 +534,17 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   void _showAddCategoryBottomSheet(List<QueryDocumentSnapshot> agentNetworks,
       {Map? existingCat, String? preSelectedNetId}) {
     _play('click');
-    String newName = existingCat?['name'] ?? '';
-    String newTime = existingCat?['time'] ?? '';
-    String newCapacity = existingCat?['capacity'] ?? '';
-    String newPrice = existingCat?['price']?.toString() ?? '';
-    String note = existingCat?['note'] ?? '';
+    String newName = existingCat?['name'] ?? _draftCategoryName;
+    String newTime = existingCat?['time'] ?? _draftCategoryTime;
+    String newCapacity = existingCat?['capacity'] ?? _draftCategoryCapacity;
+    String newPrice = existingCat?['price']?.toString() ?? _draftCategoryPrice;
+    String note = existingCat?['note'] ?? _draftCategoryNote;
     String? selectedNetworkId = preSelectedNetId;
-    Color selectedColor =
-        existingCat != null ? Color(existingCat['color']) : Colors.blue;
+    Color selectedColor = existingCat != null
+        ? Color(existingCat['color'])
+        : _draftCategoryColor;
+    String? templateBase64 =
+        existingCat?['templateBase64'] ?? _draftCategoryTemplateBase64;
     bool isSubmitting = false;
 
     if (agentNetworks.isEmpty) {
@@ -474,7 +583,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                       DropdownButtonFormField<String>(
                         decoration: const InputDecoration(
                             labelText: 'اختر الشبكة',
-                            border: OutlineInputBorder()),
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.dns, color: Colors.blue)),
                         value: selectedNetworkId,
                         items: agentNetworks
                             .map((net) => DropdownMenuItem(
@@ -490,7 +600,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         decoration: const InputDecoration(
                             labelText: 'اسم الفئة (Profile)',
                             border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.category)),
+                            prefixIcon:
+                                Icon(Icons.category, color: Colors.orange)),
                         controller: TextEditingController(text: newName),
                         onChanged: (val) => newName = val),
                     const SizedBox(height: 12),
@@ -501,7 +612,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                 decoration: const InputDecoration(
                                     labelText: 'الوقت (الساعات المتاح)',
                                     border: OutlineInputBorder(),
-                                    prefixIcon: Icon(Icons.timer)),
+                                    prefixIcon: Icon(Icons.timer,
+                                        color: Colors.blue)),
                                 controller:
                                     TextEditingController(text: newTime),
                                 onChanged: (val) => newTime = val)),
@@ -512,7 +624,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                     labelText:
                                         'سعة التحميل المتاح ميجابايت',
                                     border: OutlineInputBorder(),
-                                    prefixIcon: Icon(Icons.data_usage)),
+                                    prefixIcon: Icon(Icons.data_usage,
+                                        color: Colors.teal)),
                                 controller: TextEditingController(
                                     text: newCapacity),
                                 onChanged: (val) => newCapacity = val)),
@@ -523,7 +636,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         decoration: const InputDecoration(
                             labelText: 'سعر البيع للجمهور',
                             border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.attach_money)),
+                            prefixIcon: Icon(Icons.attach_money,
+                                color: Colors.green)),
                         controller: TextEditingController(text: newPrice),
                         keyboardType: TextInputType.number,
                         onChanged: (val) => newPrice = val),
@@ -532,18 +646,66 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         decoration: const InputDecoration(
                             labelText: 'ملاحظة (اختياري)',
                             border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.note)),
+                            prefixIcon:
+                                Icon(Icons.note, color: Colors.amber)),
                         controller: TextEditingController(text: note),
                         onChanged: (val) => note = val),
                     const SizedBox(height: 15),
-                    // 🆕 عجلة ألوان شاملة
+                    // 🆕 قالب الطباعة
+                    Row(
+                      children: [
+                        const Icon(Icons.image, color: Colors.deepPurple),
+                        const SizedBox(width: 8),
+                        const Text('قالب الطباعة (اختياري): ',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 10),
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            final pickedFile = await _imagePicker.pickImage(
+                                source: ImageSource.gallery,
+                                imageQuality: 50,
+                                maxWidth: 800);
+                            if (pickedFile != null) {
+                              final bytes = await pickedFile.readAsBytes();
+                              setModalState(() =>
+                                  templateBase64 = base64Encode(bytes));
+                              _play('success');
+                              _showToast('تم تحميل القالب بنجاح');
+                            }
+                          },
+                          icon: Icon(
+                            templateBase64 != null
+                                ? Icons.check_circle
+                                : Icons.upload_file,
+                            color: templateBase64 != null
+                                ? Colors.green
+                                : Colors.deepPurple,
+                          ),
+                          label: Text(
+                              templateBase64 != null
+                                  ? 'تم التحميل'
+                                  : 'اختيار صورة',
+                              style: TextStyle(
+                                  color: templateBase64 != null
+                                      ? Colors.green
+                                      : Colors.deepPurple)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.deepPurple.withOpacity(0.1),
+                            elevation: 0,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 15),
+                    // عجلة ألوان شاملة
                     Row(
                       children: [
                         const Text('لون الفئة: ',
                             style: TextStyle(fontWeight: FontWeight.bold)),
                         GestureDetector(
                           onTap: () async {
-                            final color = await _openColorPicker(selectedColor);
+                            final color =
+                                await _openColorPicker(selectedColor);
                             if (color != null)
                               setModalState(() => selectedColor = color);
                           },
@@ -558,9 +720,9 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                           ),
                         ),
                         const SizedBox(width: 10),
-                        Text('انقر لتغيير اللون',
+                        const Text('انقر لتغيير اللون',
                             style: TextStyle(
-                                fontSize: 12, color: Colors.grey.shade600)),
+                                fontSize: 12, color: Colors.grey)),
                       ],
                     ),
                     const SizedBox(height: 20),
@@ -604,33 +766,45 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                           int.tryParse(newPrice) ?? 0,
                                       'color': selectedColor.value,
                                       'note': note,
+                                      'templateBase64': templateBase64,
                                       'stock': existingCat?['stock'] ?? 0,
                                       'isActive':
                                           existingCat?['isActive'] ?? true,
                                       'botMinStock':
                                           existingCat?['botMinStock'] ?? 5,
                                       'botRefillAmount':
-                                          existingCat?['botRefillAmount'] ?? 50,
+                                          existingCat?['botRefillAmount'] ??
+                                              50,
                                       'isBotEnabled':
-                                          existingCat?['isBotEnabled'] ?? false,
+                                          existingCat?['isBotEnabled'] ??
+                                              false,
                                     };
                                     if (existingCat == null) {
                                       await _db
                                           .collection('networks')
                                           .doc(selectedNetworkId)
                                           .update({
-                                        'categories':
-                                            FieldValue.arrayUnion([newCategory])
+                                        'categories': FieldValue.arrayUnion(
+                                            [newCategory])
                                       });
+                                      // مسح المسودة
+                                      _draftCategoryName = '';
+                                      _draftCategoryTime = '';
+                                      _draftCategoryCapacity = '';
+                                      _draftCategoryPrice = '';
+                                      _draftCategoryNote = '';
+                                      _draftCategoryColor = Colors.blue;
+                                      _draftCategoryTemplateBase64 = null;
                                     } else {
                                       var netDoc = await _db
                                           .collection('networks')
                                           .doc(selectedNetworkId)
                                           .get();
                                       List cats = List.from(
-                                          (netDoc.data() as Map)['categories']);
-                                      int idx = cats.indexWhere(
-                                          (c) => c['id'] == existingCat['id']);
+                                          (netDoc.data() as Map)[
+                                              'categories']);
+                                      int idx = cats.indexWhere((c) =>
+                                          c['id'] == existingCat['id']);
                                       cats[idx] = newCategory;
                                       await _db
                                           .collection('networks')
@@ -643,12 +817,14 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                       _showToast('تم الحفظ بنجاح! 📋');
                                     }
                                   } catch (e) {
-                                    setModalState(() => isSubmitting = false);
+                                    setModalState(
+                                        () => isSubmitting = false);
                                     _play('error');
                                   }
                                 } else {
                                   _play('error');
-                                  _showToast('الرجاء تعبئة الحقول الأساسية!',
+                                  _showToast(
+                                      'الرجاء تعبئة الحقول الأساسية!',
                                       isError: true);
                                 }
                               },
@@ -662,6 +838,34 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                     fontWeight: FontWeight.bold)),
                       ),
                     ),
+                    const SizedBox(height: 10),
+                    // زر إغلاق مع حفظ المسودة
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.grey,
+                          side: const BorderSide(color: Colors.grey),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () {
+                          _draftCategoryName = newName;
+                          _draftCategoryTime = newTime;
+                          _draftCategoryCapacity = newCapacity;
+                          _draftCategoryPrice = newPrice;
+                          _draftCategoryNote = note;
+                          _draftCategoryColor = selectedColor;
+                          _draftCategoryTemplateBase64 = templateBase64;
+                          _play('click');
+                          Navigator.pop(context);
+                          _showToast('تم حفظ البيانات كمسودة');
+                        },
+                        icon: const Icon(Icons.save_outlined),
+                        label: const Text('إغلاق وحفظ كمسودة'),
+                      ),
+                    ),
                     const SizedBox(height: 20),
                   ],
                 ),
@@ -673,9 +877,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
-  // ==========================================
   // عرض وإدارة الكروت داخل الفئة
-  // ==========================================
   void _showCardsList(
       String netId, String catId, String catName, Color catColor) {
     _play('click');
@@ -697,8 +899,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                       color: catColor)),
-              const Text(
-                  'الأرقام المعروضة هي الأرقام النشطة والمتاحة للبيع',
+              const Text('الأرقام المعروضة هي الأرقام النشطة والمتاحة للبيع',
                   style: TextStyle(fontSize: 12, color: Colors.grey)),
               const Divider(),
               Expanded(
@@ -715,7 +916,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                     var cards = snapshot.data!.docs;
                     if (cards.isEmpty)
                       return const Center(
-                          child: Text('لا توجد كروت متاحة. قم بالتوليد أولاً.',
+                          child: Text(
+                              'لا توجد كروت متاحة. قم بالتوليد أولاً.',
                               style: TextStyle(color: Colors.grey)));
 
                     return ListView.builder(
@@ -745,8 +947,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                       _play('click');
                                       Clipboard.setData(
                                           ClipboardData(text: pin));
-                                      _showToast(
-                                          'تم نسخ رقم الكرت للحافظة');
+                                      _showToast('تم نسخ رقم الكرت للحافظة');
                                     }),
                                 IconButton(
                                     icon: const Icon(Icons.archive,
@@ -818,9 +1019,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
-  // ==========================================
   // إعدادات التوليد التلقائي (البوت)
-  // ==========================================
   void _showBotSettings(String netId, String catId, Map category) {
     _play('click');
     int minStock = category['botMinStock'] ?? 5;
@@ -860,19 +1059,19 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         border: OutlineInputBorder()),
                     keyboardType: TextInputType.number,
                     onChanged: (v) => minStock = int.tryParse(v) ?? 5,
-                    controller: TextEditingController(text: minStock.toString()),
+                    controller:
+                        TextEditingController(text: minStock.toString()),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     decoration: const InputDecoration(
-                        labelText:
-                            'كمية التوليد التلقائي (كم كرت ينتج؟)',
+                        labelText: 'كمية التوليد التلقائي (كم كرت ينتج؟)',
                         border: OutlineInputBorder()),
                     keyboardType: TextInputType.number,
                     onChanged: (v) =>
                         refillAmount = int.tryParse(v) ?? 50,
-                    controller:
-                        TextEditingController(text: refillAmount.toString()),
+                    controller: TextEditingController(
+                        text: refillAmount.toString()),
                   ),
                 ]
               ],
@@ -885,8 +1084,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                   },
                   child: const Text('إلغاء')),
               ElevatedButton(
-                style:
-                    ElevatedButton.styleFrom(backgroundColor: Colors.purple),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.purple),
                 onPressed: () async {
                   _play('click');
                   var netDoc =
@@ -916,22 +1115,30 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   }
 
   // ==========================================
-  // 3. إدارة شرائح الخصم (مطورة مع استهداف ونطاق تطبيق)
+  // 3. إدارة شرائح الخصم (مطورة مع استهداف)
   // ==========================================
   void _showDiscountTierBottomSheet(SystemProvider sys,
       {Map<String, dynamic>? existingTier, String? docId}) {
     _play('click');
-    String title = existingTier?['title'] ?? '';
-    String condition = existingTier?['condition']?.toString() ?? '';
-    String discountValue = existingTier?['discountValue']?.toString() ?? '';
-    String discountType = existingTier?['discountType'] ?? 'percentage';
+    String title = existingTier?['title'] ?? _draftTierTitle;
+    String condition =
+        existingTier?['condition']?.toString() ?? _draftTierCondition;
+    String discountValue = existingTier?['discountValue']?.toString() ??
+        _draftTierDiscountValue;
+    String discountType =
+        existingTier?['discountType'] ?? _draftTierDiscountType;
     String targetType =
-        existingTier?['targetType'] ?? 'all'; // all, pos, user, specific
-    String targetPhone = existingTier?['targetPhone'] ?? '';
+        existingTier?['targetType'] ?? _draftTierTargetType;
+    List<String> targetPhones = existingTier != null
+        ? List<String>.from(existingTier['targetPhones'] ?? [])
+        : List<String>.from(_draftTierTargetPhones);
     Color selectedColor = existingTier != null
         ? Color(existingTier['color'])
-        : Colors.amber.shade700;
+        : _draftTierColor;
     bool isSubmitting = false;
+
+    // متغيرات للبحث التلقائي
+    Map<String, Map<String, dynamic>?> searchResults = {};
 
     showModalBottomSheet(
       context: context,
@@ -963,7 +1170,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         decoration: const InputDecoration(
                             labelText: 'اسم الشريحة',
                             border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.stars)),
+                            prefixIcon:
+                                Icon(Icons.stars, color: Colors.amber)),
                         controller: TextEditingController(text: title),
                         onChanged: (v) => title = v),
                     const SizedBox(height: 12),
@@ -971,7 +1179,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         decoration: const InputDecoration(
                             labelText: 'شرط السحب الشهري بالريال',
                             border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.shopping_cart)),
+                            prefixIcon: Icon(Icons.shopping_cart,
+                                color: Colors.orange)),
                         controller: TextEditingController(text: condition),
                         keyboardType: TextInputType.number,
                         onChanged: (v) => condition = v),
@@ -983,7 +1192,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                 decoration: const InputDecoration(
                                     labelText: 'قيمة الخصم',
                                     border: OutlineInputBorder(),
-                                    prefixIcon: Icon(Icons.local_offer)),
+                                    prefixIcon: Icon(Icons.local_offer,
+                                        color: Colors.green)),
                                 controller: TextEditingController(
                                     text: discountValue),
                                 keyboardType: TextInputType.number,
@@ -1010,7 +1220,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                       ],
                     ),
                     const SizedBox(height: 12),
-                    // 🆕 نطاق تطبيق الخصم
                     DropdownButtonFormField<String>(
                       decoration: const InputDecoration(
                           labelText: 'نطاق تطبيق الخصم',
@@ -1018,11 +1227,15 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                       value: targetType,
                       items: const [
                         DropdownMenuItem(
-                            value: 'all', child: Text('الجميع (كل المستخدمين ونقاط البيع)')),
+                            value: 'all',
+                            child:
+                                Text('الجميع (كل المستخدمين ونقاط البيع)')),
                         DropdownMenuItem(
-                            value: 'pos', child: Text('جميع نقاط البيع فقط')),
+                            value: 'pos',
+                            child: Text('جميع نقاط البيع فقط')),
                         DropdownMenuItem(
-                            value: 'user', child: Text('جميع المستخدمين فقط')),
+                            value: 'user',
+                            child: Text('جميع المستخدمين فقط')),
                         DropdownMenuItem(
                             value: 'specific',
                             child: Text('نقطة بيع / مستخدم محدد')),
@@ -1032,25 +1245,75 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                     ),
                     if (targetType == 'specific') ...[
                       const SizedBox(height: 12),
-                      TextField(
-                          decoration: const InputDecoration(
-                              labelText: 'رقم هاتف المستخدم / نقطة البيع',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.phone)),
-                          controller:
-                              TextEditingController(text: targetPhone),
-                          keyboardType: TextInputType.phone,
-                          onChanged: (v) => targetPhone = v),
+                      ...targetPhones.asMap().entries.map((entry) {
+                        int idx = entry.key;
+                        String phone = entry.value;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  decoration: InputDecoration(
+                                    labelText: 'رقم الهاتف ${idx + 1}',
+                                    border: const OutlineInputBorder(),
+                                    prefixIcon: const Icon(Icons.phone,
+                                        color: Colors.blue),
+                                    suffixIcon: searchResults[phone] != null
+                                        ? IconButton(
+                                            icon: const Icon(
+                                                Icons.info_outline,
+                                                color: Colors.teal),
+                                            onPressed: () =>
+                                                _showTargetInfoDialog(
+                                                    phone,
+                                                    searchResults[phone]!),
+                                          )
+                                        : null,
+                                  ),
+                                  controller: TextEditingController(
+                                      text: phone),
+                                  keyboardType: TextInputType.phone,
+                                  onChanged: (v) {
+                                    targetPhones[idx] = v;
+                                    // البحث التلقائي بعد توقف الكتابة
+                                    _debounceSearch(
+                                        v, sys, setModalState,
+                                        searchResults, phone);
+                                  },
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.remove_circle,
+                                    color: Colors.red),
+                                onPressed: () {
+                                  setModalState(() {
+                                    targetPhones.removeAt(idx);
+                                    searchResults.remove(phone);
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      TextButton.icon(
+                        onPressed: () => setModalState(
+                            () => targetPhones.add('')),
+                        icon: const Icon(Icons.add, color: Colors.green),
+                        label: const Text('إضافة مستهدف آخر'),
+                      ),
                     ],
                     const SizedBox(height: 15),
-                    // 🆕 عجلة ألوان شاملة
+                    // عجلة ألوان شاملة
                     Row(
                       children: [
                         const Text('لون الشريحة المميز: ',
                             style: TextStyle(fontWeight: FontWeight.bold)),
                         GestureDetector(
                           onTap: () async {
-                            final color = await _openColorPicker(selectedColor);
+                            final color =
+                                await _openColorPicker(selectedColor);
                             if (color != null)
                               setModalState(() => selectedColor = color);
                           },
@@ -1065,9 +1328,9 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                           ),
                         ),
                         const SizedBox(width: 10),
-                        Text('انقر لتغيير اللون',
+                        const Text('انقر لتغيير اللون',
                             style: TextStyle(
-                                fontSize: 12, color: Colors.grey.shade600)),
+                                fontSize: 12, color: Colors.grey)),
                       ],
                     ),
                     const SizedBox(height: 20),
@@ -1106,12 +1369,12 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                       'isActive':
                                           existingTier?['isActive'] ?? true,
                                       'targetType': targetType,
-                                      'targetPhone': targetType == 'specific'
-                                          ? targetPhone
-                                          : '',
+                                      'targetPhones': targetPhones,
                                       'subscribersCount':
-                                          existingTier?['subscribersCount'] ?? 0,
-                                      'updatedAt': FieldValue.serverTimestamp(),
+                                          existingTier?['subscribersCount'] ??
+                                              0,
+                                      'updatedAt':
+                                          FieldValue.serverTimestamp(),
                                     };
                                     if (docId == null) {
                                       tierData['createdAt'] =
@@ -1119,6 +1382,14 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                       await _db
                                           .collection('discount_tiers')
                                           .add(tierData);
+                                      // مسح المسودة
+                                      _draftTierTitle = '';
+                                      _draftTierCondition = '';
+                                      _draftTierDiscountValue = '';
+                                      _draftTierDiscountType = 'percentage';
+                                      _draftTierTargetType = 'all';
+                                      _draftTierTargetPhones = [];
+                                      _draftTierColor = Colors.amber.shade700;
                                     } else {
                                       await _db
                                           .collection('discount_tiers')
@@ -1131,22 +1402,53 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                       _showToast('تم حفظ الشريحة بنجاح!');
                                     }
                                   } catch (e) {
-                                    setModalState(() => isSubmitting = false);
+                                    setModalState(
+                                        () => isSubmitting = false);
                                     _play('error');
                                   }
                                 } else {
                                   _play('error');
-                                  _showToast('يرجى تعبئة كافة بيانات الشريحة',
+                                  _showToast(
+                                      'يرجى تعبئة كافة بيانات الشريحة',
                                       isError: true);
                                 }
                               },
                         child: isSubmitting
-                            ? const CircularProgressIndicator(color: Colors.white)
+                            ? const CircularProgressIndicator(
+                                color: Colors.white)
                             : const Text('حفظ الشريحة',
                                 style: TextStyle(
                                     fontSize: 16,
                                     color: Colors.white,
                                     fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    // زر إغلاق مع حفظ المسودة
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.grey,
+                          side: const BorderSide(color: Colors.grey),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () {
+                          _draftTierTitle = title;
+                          _draftTierCondition = condition;
+                          _draftTierDiscountValue = discountValue;
+                          _draftTierDiscountType = discountType;
+                          _draftTierTargetType = targetType;
+                          _draftTierTargetPhones = targetPhones;
+                          _draftTierColor = selectedColor;
+                          _play('click');
+                          Navigator.pop(context);
+                          _showToast('تم حفظ البيانات كمسودة');
+                        },
+                        icon: const Icon(Icons.save_outlined),
+                        label: const Text('إغلاق وحفظ كمسودة'),
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -1157,6 +1459,73 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
           ),
         );
       },
+    );
+  }
+
+  // البحث التلقائي مع debounce
+  Timer? _searchTimer;
+  void _debounceSearch(String phone, SystemProvider sys,
+      StateSetter setModalState, Map<String, dynamic?> results,
+      String currentPhone) {
+    _searchTimer?.cancel();
+    _searchTimer = Timer(const Duration(milliseconds: 600), () async {
+      if (phone.length >= 9) {
+        final userData = await sys.searchUserForTransfer(phone);
+        setModalState(() => results[currentPhone] = userData);
+        if (userData != null) {
+          _play('success');
+        }
+      }
+    });
+  }
+
+  // نافذة معلومات المستهدف
+  void _showTargetInfoDialog(String phone, Map<String, dynamic> data) {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          title: Text('معلومات ${data['name']}',
+              style: const TextStyle(fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _infoRow('الاسم', data['name']),
+                _infoRow('الدور', data['role'] == 'pos' ? 'نقطة بيع' : 'مستخدم'),
+                _infoRow('رقم الهاتف', phone),
+                _infoRow('الرصيد الحالي', '${data['balance']} ريال'),
+                _infoRow('آخر عملية شحن', data['lastRecharge'] ?? 'لا يوجد'),
+              ],
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('حسناً'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('$label: ',
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, color: Colors.grey)),
+          Expanded(child: Text(value)),
+        ],
+      ),
     );
   }
 
@@ -1193,7 +1562,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                   width: double.infinity,
                   padding: const EdgeInsets.only(bottom: 5, top: 5),
                   decoration: BoxDecoration(
-                    // ✅ أزرق داكن في النهاري، ديناميكي في الليلي
                     color: isDark
                         ? primaryColor.withOpacity(0.4).withAlpha(100)
                         : Colors.blue.shade800,
@@ -1210,11 +1578,26 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                     indicatorWeight: 4,
                     labelStyle: const TextStyle(
                         fontWeight: FontWeight.bold, fontSize: 14),
-                    tabs: const [
-                      Tab(icon: Icon(Icons.dns), text: 'سيرفرات الربط'),
-                      Tab(icon: Icon(Icons.category), text: 'المخزون والفئات'),
-                      Tab(icon: Icon(Icons.local_offer), text: 'شرائح الخصم'),
-                      Tab(icon: Icon(Icons.autorenew), text: 'توليد الكروت'),
+                    tabs: [
+                      const Tab(
+                          icon: Icon(Icons.dns, color: Colors.greenAccent),
+                          text: 'سيرفرات الربط'),
+                      const Tab(
+                          icon: Icon(Icons.category,
+                              color: Colors.orangeAccent),
+                          text: 'المخزون والفئات'),
+                      const Tab(
+                          icon: Icon(Icons.local_offer,
+                              color: Colors.amber),
+                          text: 'شرائح الخصم'),
+                      const Tab(
+                          icon: Icon(Icons.autorenew,
+                              color: Colors.lightBlueAccent),
+                          text: 'توليد الكروت'),
+                      const Tab(
+                          icon: Icon(Icons.print,
+                              color: Colors.tealAccent),
+                          text: 'طباعة الكروت'),
                     ],
                   ),
                 ),
@@ -1229,6 +1612,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                       _buildCategoriesTab(agentNetworks),
                       _buildDiscountTiersTab(sys),
                       _buildGenerateCardsTab(sys, agentNetworks),
+                      _buildPrintCardsTab(agentNetworks),
                     ],
                   ),
                 ),
@@ -1317,13 +1701,17 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         ),
                         const SizedBox(height: 12),
                         _buildInfoRow(Icons.location_on, 'الموقع',
-                            net['location'] ?? '', textColor),
+                            net['location'] ?? '', textColor, Colors.orange),
+                        const SizedBox(height: 6),
+                        _buildInfoRow(Icons.wifi, 'IP', net['ip'] ?? '',
+                            textColor, Colors.green),
                         const SizedBox(height: 6),
                         _buildInfoRow(
-                            Icons.wifi, 'IP', net['ip'] ?? '', textColor),
-                        const SizedBox(height: 6),
-                        _buildInfoRow(Icons.info_outline, 'الحالة',
-                            isActive ? 'نشط' : 'مجمد', textColor),
+                            Icons.info_outline,
+                            'الحالة',
+                            isActive ? 'نشط' : 'مجمد',
+                            textColor,
+                            isActive ? Colors.green : Colors.red),
                         const SizedBox(height: 16),
                         _buildActionButtons(
                             sys, networks, index, net, isActive),
@@ -1344,11 +1732,11 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
-  Widget _buildInfoRow(
-      IconData icon, String label, String value, Color textColor) {
+  Widget _buildInfoRow(IconData icon, String label, String value,
+      Color textColor, Color iconColor) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: Colors.grey),
+        Icon(icon, size: 16, color: iconColor),
         const SizedBox(width: 8),
         Text('$label: ',
             style: const TextStyle(
@@ -1554,8 +1942,11 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                               List updated =
                                                   List.from(categories);
                                               int idx = updated.indexWhere(
-                                                  (c) => c['id'] == category['id']);
-                                              updated[idx]['isActive'] = !isCatActive;
+                                                  (c) =>
+                                                      c['id'] ==
+                                                      category['id']);
+                                              updated[idx]['isActive'] =
+                                                  !isCatActive;
                                               await _db
                                                   .collection('networks')
                                                   .doc(netId)
@@ -1603,9 +1994,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                                   .collection('networks')
                                                   .doc(netId)
                                                   .update({
-                                                'categories':
-                                                    FieldValue.arrayRemove(
-                                                        [category])
+                                                'categories': FieldValue
+                                                    .arrayRemove([category])
                                               });
                                               _showToast(
                                                   'تم حذف الفئة نهائياً');
@@ -1868,7 +2258,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   }
 
   // ==========================================
-  // تبويب توليد الكروت (متجاوب)
+  // تبويب توليد الكروت (مع خيار توليد للطباعة أو للمخزون)
   // ==========================================
   Widget _buildGenerateCardsTab(
       SystemProvider sys, List<QueryDocumentSnapshot> networks) {
@@ -1908,7 +2298,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: Colors.blue)),
             child: Text(
-                '🔌 توليد متعدد: اكتب الكمية بجانب كل فئة، ثم اضغط زر التوليد.',
+                '🔌 توليد متعدد: اكتب الكمية بجانب كل فئة، ثم اختر نوع التوليد واضغط توليد.',
                 style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
@@ -1982,102 +2372,473 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
           ),
           Container(
             padding: const EdgeInsets.all(16),
-            child: SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton.icon(
-                onPressed: _isProcessing
-                    ? null
-                    : () async {
-                        List<Map<String, dynamic>> orders = [];
-                        _multiGenControllers.forEach((key, controller) {
-                          if (controller.text.isNotEmpty) {
-                            int amt = int.tryParse(controller.text) ?? 0;
-                            if (amt > 0) {
-                              var parts = key.split('_');
-                              orders.add({
-                                "networkId": parts[0],
-                                "categoryId": parts[1],
-                                "amount": amt
-                              });
-                            }
-                          }
-                        });
-
-                        if (orders.isEmpty) {
-                          _play('error');
-                          _showToast('الرجاء كتابة كمية واحدة على الأقل',
-                              isError: true);
-                          return;
-                        }
-
-                        int totalAmount = orders.fold(
-                            0, (sum, item) => sum + (item['amount'] as int));
-                        if (totalAmount > 400) {
-                          _play('error');
-                          _showToast(
-                              'الحد الأقصى للتوليد هو 400 كرت إجمالاً',
-                              isError: true);
-                          return;
-                        }
-
-                        bool confirm = await _confirmAction(
-                            "تأكيد التوليد المتعدد",
-                            "سيتم الآن توليد إجمالي $totalAmount كرت. هل تريد الاستمرار؟",
-                            Colors.green);
-                        if (!confirm) return;
-
-                        _play('click');
-                        setState(() => _isProcessing = true);
-                        _showToast('جاري توليد الكروت... ⏳');
-
-                        bool hasError = false;
-                        for (var order in orders) {
-                          try {
-                            final response = await http.post(
-                              Uri.parse(
-                                  "$_renderUrl/generateMikrotikCards"),
-                              headers: {"Content-Type": "application/json"},
-                              body: jsonEncode({
-                                "networkId": order['networkId'],
-                                "categoryId": order['categoryId'],
-                                "amount": order['amount'],
-                                "agentPhone": sys.currentUserPhone
-                              }),
-                            );
-                            if (response.statusCode != 200) hasError = true;
-                          } catch (e) {
-                            hasError = true;
-                          }
-                        }
-
-                        setState(() => _isProcessing = false);
-                        if (hasError) {
-                          _play('error');
-                          _showToast(
-                              'تمت العملية ولكن حدثت بعض الأخطاء في التوليد',
-                              isError: true);
-                        } else {
-                          _play('success');
-                          _multiGenControllers.forEach((k, v) => v.clear());
-                          _showToast('تم توليد جميع الكروت بنجاح! ✅');
-                        }
-                      },
-                icon: const Icon(Icons.bolt, color: Colors.white),
-                label: const Text('بدء التوليد المتعدد الآن',
-                    style: TextStyle(
-                        fontSize: 18,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10))),
-              ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 55,
+                    child: ElevatedButton.icon(
+                      onPressed: _isProcessing
+                          ? null
+                          : () => _startGeneration(
+                              sys, orders: _collectOrders(), forPrint: false),
+                      icon:
+                          const Icon(Icons.inventory, color: Colors.white),
+                      label: const Text('توليد للمخزون',
+                          style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10))),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SizedBox(
+                    height: 55,
+                    child: ElevatedButton.icon(
+                      onPressed: _isProcessing
+                          ? null
+                          : () => _startGeneration(
+                              sys, orders: _collectOrders(), forPrint: true),
+                      icon: const Icon(Icons.print, color: Colors.white),
+                      label: const Text('توليد للطباعة',
+                          style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.teal,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10))),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  List<Map<String, dynamic>> _collectOrders() {
+    List<Map<String, dynamic>> orders = [];
+    _multiGenControllers.forEach((key, controller) {
+      if (controller.text.isNotEmpty) {
+        int amt = int.tryParse(controller.text) ?? 0;
+        if (amt > 0) {
+          var parts = key.split('_');
+          orders.add({
+            "networkId": parts[0],
+            "categoryId": parts[1],
+            "amount": amt
+          });
+        }
+      }
+    });
+    return orders;
+  }
+
+  Future<void> _startGeneration(SystemProvider sys,
+      {required List<Map<String, dynamic>> orders,
+      required bool forPrint}) async {
+    if (orders.isEmpty) {
+      _play('error');
+      _showToast('الرجاء كتابة كمية واحدة على الأقل', isError: true);
+      return;
+    }
+
+    int totalAmount =
+        orders.fold(0, (sum, item) => sum + (item['amount'] as int));
+    if (totalAmount > 400) {
+      _play('error');
+      _showToast('الحد الأقصى للتوليد هو 400 كرت إجمالاً', isError: true);
+      return;
+    }
+
+    String typeText = forPrint ? 'للطباعة' : 'للمخزون';
+    bool confirm = await _confirmAction("تأكيد التوليد المتعدد",
+        "سيتم الآن توليد إجمالي $totalAmount كرت $typeText. هل تريد الاستمرار؟",
+        Colors.green);
+    if (!confirm) return;
+
+    _play('click');
+    setState(() => _isProcessing = true);
+    _showToast('جاري توليد الكروت... ⏳');
+
+    bool hasError = false;
+    for (var order in orders) {
+      try {
+        final response = await http.post(
+          Uri.parse("$_renderUrl/generateMikrotikCards"),
+          headers: {"Content-Type": "application/json"},
+          body: jsonEncode({
+            "networkId": order['networkId'],
+            "categoryId": order['categoryId'],
+            "amount": order['amount'],
+            "agentPhone": sys.currentUserPhone,
+            "forPrint": forPrint,
+          }),
+        );
+        if (response.statusCode != 200) hasError = true;
+      } catch (e) {
+        hasError = true;
+      }
+    }
+
+    setState(() => _isProcessing = false);
+    if (hasError) {
+      _play('error');
+      _showToast('تمت العملية ولكن حدثت بعض الأخطاء في التوليد',
+          isError: true);
+    } else {
+      _play('success');
+      _multiGenControllers.forEach((k, v) => v.clear());
+      _showToast('تم توليد جميع الكروت بنجاح! ✅');
+    }
+  }
+
+  // ==========================================
+  // 🆕 تبويب طباعة الكروت
+  // ==========================================
+  Widget _buildPrintCardsTab(List<QueryDocumentSnapshot> networks) {
+    final textColor =
+        Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
+    String? selectedNetworkId;
+    String? selectedCategoryId;
+    Map? selectedCategory;
+    String? templateBase64;
+    int copiesPerCard = 1;
+    int cardsPerRow = 3;
+    int cardsPerColumn = 4;
+    double cardWidth = 85; // mm
+    double cardHeight = 55; // mm
+
+    List<Map<String, dynamic>> printReadyCards = [];
+
+    return StatefulBuilder(
+      builder: (context, setState) {
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          body: networks.isEmpty
+              ? const Center(
+                  child: Text('يجب إضافة شبكة وفئات أولاً.',
+                      style: TextStyle(color: Colors.grey)))
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('إعدادات طباعة الكروت',
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 15),
+                      DropdownButtonFormField<String>(
+                        decoration: const InputDecoration(
+                            labelText: 'اختر الشبكة',
+                            border: OutlineInputBorder(),
+                            prefixIcon:
+                                Icon(Icons.dns, color: Colors.blue)),
+                        value: selectedNetworkId,
+                        items: networks
+                            .map((net) => DropdownMenuItem(
+                                value: net.id,
+                                child:
+                                    Text((net.data() as Map)['name'])))
+                            .toList(),
+                        onChanged: (val) {
+                          setState(() {
+                            selectedNetworkId = val;
+                            selectedCategoryId = null;
+                            selectedCategory = null;
+                            templateBase64 = null;
+                            printReadyCards = [];
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      if (selectedNetworkId != null)
+                        DropdownButtonFormField<String>(
+                          decoration: const InputDecoration(
+                              labelText: 'اختر الفئة',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.category,
+                                  color: Colors.orange)),
+                          value: selectedCategoryId,
+                          items: (networks
+                                  .firstWhere(
+                                      (net) => net.id == selectedNetworkId)
+                                  .data() as Map)['categories']
+                              .map<DropdownMenuItem<String>>((cat) {
+                            return DropdownMenuItem(
+                                value: cat['id'],
+                                child: Text(cat['name']));
+                          }).toList(),
+                          onChanged: (val) {
+                            setState(() {
+                              selectedCategoryId = val;
+                              final netData = networks
+                                  .firstWhere((net) =>
+                                      net.id == selectedNetworkId)
+                                  .data() as Map;
+                              final categories =
+                                  netData['categories'] as List;
+                              selectedCategory =
+                                  categories.firstWhere(
+                                      (c) => c['id'] == val);
+                              templateBase64 =
+                                  selectedCategory?['templateBase64'];
+                              // جلب الكروت المعدة للطباعة
+                              _loadPrintReadyCards(selectedNetworkId!,
+                                  val, setState, printReadyCards);
+                            });
+                          },
+                        ),
+                      if (templateBase64 != null &&
+                          templateBase64!.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        const Text('معاينة القالب:',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey)),
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Image.memory(
+                            base64Decode(templateBase64!),
+                            height: 120,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+                      const Text('إعدادات التخطيط',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              decoration: const InputDecoration(
+                                  labelText: 'عدد النسخ لكل كرت',
+                                  border: OutlineInputBorder()),
+                              keyboardType: TextInputType.number,
+                              onChanged: (v) =>
+                                  copiesPerCard = int.tryParse(v) ?? 1,
+                              controller: TextEditingController(
+                                  text: copiesPerCard.toString()),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextField(
+                              decoration: const InputDecoration(
+                                  labelText: 'عدد الكروت في الصف',
+                                  border: OutlineInputBorder()),
+                              keyboardType: TextInputType.number,
+                              onChanged: (v) =>
+                                  cardsPerRow = int.tryParse(v) ?? 3,
+                              controller: TextEditingController(
+                                  text: cardsPerRow.toString()),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              decoration: const InputDecoration(
+                                  labelText: 'عدد الكروت في العمود',
+                                  border: OutlineInputBorder()),
+                              keyboardType: TextInputType.number,
+                              onChanged: (v) =>
+                                  cardsPerColumn = int.tryParse(v) ?? 4,
+                              controller: TextEditingController(
+                                  text: cardsPerColumn.toString()),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextField(
+                              decoration: const InputDecoration(
+                                  labelText: 'عرض الكرت (مم)',
+                                  border: OutlineInputBorder()),
+                              keyboardType: TextInputType.number,
+                              onChanged: (v) =>
+                                  cardWidth = double.tryParse(v) ?? 85,
+                              controller: TextEditingController(
+                                  text: cardWidth.toString()),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        decoration: const InputDecoration(
+                            labelText: 'ارتفاع الكرت (مم)',
+                            border: OutlineInputBorder()),
+                        keyboardType: TextInputType.number,
+                        onChanged: (v) =>
+                            cardHeight = double.tryParse(v) ?? 55,
+                        controller: TextEditingController(
+                            text: cardHeight.toString()),
+                      ),
+                      const SizedBox(height: 20),
+                      if (printReadyCards.isNotEmpty) ...[
+                        Text(
+                            'الكروت المعدة للطباعة: ${printReadyCards.length} كرت',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.teal)),
+                        const SizedBox(height: 10),
+                      ],
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton.icon(
+                          onPressed: (printReadyCards.isEmpty)
+                              ? null
+                              : () => _startPrinting(
+                                  templateBase64,
+                                  printReadyCards,
+                                  copiesPerCard,
+                                  cardsPerRow,
+                                  cardsPerColumn,
+                                  cardWidth,
+                                  cardHeight,
+                                ),
+                          icon:
+                              const Icon(Icons.print, color: Colors.white),
+                          label: const Text('بدء الطباعة',
+                              style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.teal,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius:
+                                      BorderRadius.circular(10))),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+        );
+      },
+    );
+  }
+
+  Future<void> _loadPrintReadyCards(String networkId, String categoryId,
+      StateSetter setState, List<Map<String, dynamic>> targetList) async {
+    final snapshot = await _db
+        .collection('cards')
+        .where('categoryId', isEqualTo: categoryId)
+        .where('status', isEqualTo: 'print_ready')
+        .get();
+    setState(() {
+      targetList.clear();
+      targetList.addAll(snapshot.docs.map((doc) => doc.data()).toList());
+    });
+  }
+
+  Future<void> _startPrinting(
+    String? templateBase64,
+    List<Map<String, dynamic>> cards,
+    int copies,
+    int cols,
+    int rows,
+    double w,
+    double h,
+  ) async {
+    _play('click');
+    _showToast('جاري تجهيز الطباعة... 🖨️');
+
+    final pdf = pw.Document();
+    final cardsPerPage = cols * rows;
+    final totalPages = (cards.length / cardsPerPage).ceil();
+
+    for (int page = 0; page < totalPages; page++) {
+      final pageCards = cards.skip(page * cardsPerPage).take(cardsPerPage).toList();
+
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          build: (context) {
+            List<pw.Widget> cardWidgets = [];
+            for (var card in pageCards) {
+              String pin = card['pin'] ?? '----';
+              // إذا كان هناك قالب ندمجه مع النص
+              if (templateBase64 != null && templateBase64.isNotEmpty) {
+                final templateImage = pw.MemoryImage(base64Decode(templateBase64));
+                cardWidgets.add(
+                  pw.Container(
+                    width: w * 2.83, // mm to points
+                    height: h * 2.83,
+                    child: pw.Stack(
+                      alignment: pw.Alignment.center,
+                      children: [
+                        pw.Image(templateImage, fit: pw.BoxFit.contain),
+                        pw.Container(
+                          width: 100,
+                          height: 30,
+                          decoration: pw.BoxDecoration(
+                            color: const PdfColor.fromInt(0xFFFFFFFF),
+                            border: pw.Border.all(
+                                color: PdfColors.grey400, width: 1),
+                          ),
+                          child: pw.Center(
+                            child: pw.Text(pin,
+                                style: pw.TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: pw.FontWeight.bold)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              } else {
+                cardWidgets.add(
+                  pw.Container(
+                    width: w * 2.83,
+                    height: h * 2.83,
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: PdfColors.grey400, width: 1),
+                    ),
+                    child: pw.Center(
+                      child: pw.Text(pin,
+                          style: const pw.TextStyle(
+                              fontSize: 18,
+                              fontWeight: pw.FontWeight.bold)),
+                    ),
+                  ),
+                );
+              }
+            }
+
+            return pw.GridView(
+              crossAxisCount: cols,
+              childAspectRatio: w / h,
+              children: cardWidgets,
+            );
+          },
+        ),
+      );
+    }
+
+    await Printing.layoutPdf(
+        onLayout: (format) async => pdf.save(),
+        name: 'cards_print_${DateTime.now().millisecondsSinceEpoch}.pdf');
+    _play('success');
+    _showToast('تم إرسال ملف الطباعة بنجاح');
   }
 }
