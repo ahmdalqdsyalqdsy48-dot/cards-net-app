@@ -22,7 +22,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   void _play(String type) =>
       Provider.of<UiProvider>(context, listen: false).playSound(type);
 
-  // ------------------- دوال مساعدة -------------------
   void _showToast(String msg, {bool error = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -35,88 +34,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     );
   }
 
-  // جلب الخصم التلقائي من شرائح الوكيل للمستخدم الحالي
-  // يعيد Map تحتوي على: 'discountValue', 'discountType', 'title', 'color', 'condition', 'monthlyTotal'
-  Future<Map<String, dynamic>?> _getAutoDiscount(
-      String agentPhone, bool isPos) async {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    final String currentPhone = sys.currentUserPhone;
-
-    // 1. جلب شرائح الوكيل النشطة
-    final tiersSnap = await _db
-        .collection('discount_tiers')
-        .where('agentPhone', isEqualTo: agentPhone)
-        .where('isActive', isEqualTo: true)
-        .get();
-
-    if (tiersSnap.docs.isEmpty) return null;
-
-    // 2. حساب إجمالي مشتريات المستخدم من هذا الوكيل في الشهر الحالي
-    DateTime now = DateTime.now();
-    DateTime startOfMonth = DateTime(now.year, now.month, 1);
-    double monthlyTotal = 0.0;
-    try {
-      final transSnap = await _db
-          .collection('transactions')
-          .where('userPhone', isEqualTo: currentPhone)
-          .where('agentPhone', isEqualTo: agentPhone)
-          .where('type', isEqualTo: 'purchase')
-          .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
-          .get();
-      for (var doc in transSnap.docs) {
-        monthlyTotal += (doc.data() as Map)['amount'] ?? 0.0;
-      }
-    } catch (_) {}
-
-    // 3. البحث عن أفضل شريحة تنطبق على المستخدم
-    Map<String, dynamic>? bestTier;
-    double bestCondition = -1;
-
-    for (var doc in tiersSnap.docs) {
-      final tier = doc.data() as Map<String, dynamic>;
-      final targetType = tier['targetType'] ?? 'all';
-      final targetPhones = List<String>.from(tier['targetPhones'] ?? []);
-      final condition = (tier['condition'] ?? 0).toDouble();
-
-      bool matches = false;
-      if (targetType == 'all') matches = true;
-      else if (targetType == 'user' && !isPos) matches = true;
-      else if (targetType == 'pos' && isPos) matches = true;
-      else if (targetType == 'specific' && targetPhones.contains(currentPhone))
-        matches = true;
-
-      if (matches && monthlyTotal >= condition) {
-        if (condition > bestCondition) {
-          bestCondition = condition;
-          bestTier = tier;
-        }
-      }
-    }
-
-    if (bestTier == null) return null;
-
-    return {
-      'discountValue': (bestTier['discountValue'] ?? 0).toDouble(),
-      'discountType': bestTier['discountType'] ?? 'percentage',
-      'title': bestTier['title'] ?? '',
-      'color': bestTier['color'] ?? Colors.amber.value,
-      'condition': bestCondition,
-      'monthlyTotal': monthlyTotal,
-    };
-  }
-
-  // حساب السعر بعد الخصم التلقائي
-  double _applyAutoDiscount(double originalPrice, Map<String, dynamic> tier) {
-    double val = tier['discountValue'] as double;
-    String type = tier['discountType'] as String;
-    if (type == 'percentage') {
-      return originalPrice * (1 - val / 100);
-    } else {
-      return (originalPrice - val).clamp(0, originalPrice);
-    }
-  }
-
-  // ------------------- نافذة طلب الشحن -------------------
+  // ------------------- طلب شحن المحفظة -------------------
   void _showRechargeDialog(String agentPhone, String agentName) {
     _play('click');
     final amountController = TextEditingController();
@@ -207,7 +125,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     );
   }
 
-  // ------------------- هل الوقت داخل الساعة السعيدة؟ -------------------
+  // ------------------- فحص الساعة السعيدة -------------------
   bool _isWithinHappyHour(String startStr, String endStr) {
     try {
       var now = TimeOfDay.now();
@@ -231,7 +149,82 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     }
   }
 
-  // ------------------- نافذة الشراء المحسنة -------------------
+  // ------------------- جلب الخصم التلقائي (بدون await خارجي) -------------------
+  Future<Map<String, dynamic>?> _fetchAutoDiscount(
+      String agentPhone, bool isPos) async {
+    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final String currentPhone = sys.currentUserPhone;
+
+    final tiersSnap = await _db
+        .collection('discount_tiers')
+        .where('agentPhone', isEqualTo: agentPhone)
+        .where('isActive', isEqualTo: true)
+        .get();
+
+    if (tiersSnap.docs.isEmpty) return null;
+
+    DateTime now = DateTime.now();
+    DateTime startOfMonth = DateTime(now.year, now.month, 1);
+    double monthlyTotal = 0.0;
+    try {
+      final transSnap = await _db
+          .collection('transactions')
+          .where('userPhone', isEqualTo: currentPhone)
+          .where('agentPhone', isEqualTo: agentPhone)
+          .where('type', isEqualTo: 'purchase')
+          .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
+          .get();
+      for (var doc in transSnap.docs) {
+        monthlyTotal += (doc.data() as Map)['amount'] ?? 0.0;
+      }
+    } catch (_) {}
+
+    Map<String, dynamic>? bestTier;
+    double bestCondition = -1;
+
+    for (var doc in tiersSnap.docs) {
+      final tier = doc.data() as Map<String, dynamic>;
+      final targetType = tier['targetType'] ?? 'all';
+      final targetPhones = List<String>.from(tier['targetPhones'] ?? []);
+      final condition = (tier['condition'] ?? 0).toDouble();
+
+      bool matches = false;
+      if (targetType == 'all') matches = true;
+      else if (targetType == 'user' && !isPos) matches = true;
+      else if (targetType == 'pos' && isPos) matches = true;
+      else if (targetType == 'specific' && targetPhones.contains(currentPhone))
+        matches = true;
+
+      if (matches && monthlyTotal >= condition) {
+        if (condition > bestCondition) {
+          bestCondition = condition;
+          bestTier = tier;
+        }
+      }
+    }
+
+    if (bestTier == null) return null;
+    return {
+      'discountValue': (bestTier['discountValue'] ?? 0).toDouble(),
+      'discountType': bestTier['discountType'] ?? 'percentage',
+      'title': bestTier['title'] ?? '',
+      'color': bestTier['color'] ?? Colors.amber.value,
+      'condition': bestCondition,
+      'monthlyTotal': monthlyTotal,
+    };
+  }
+
+  double _applyAutoDiscount(double originalPrice, Map<String, dynamic> tier) {
+    double val = tier['discountValue'] as double;
+    String type = tier['discountType'] as String;
+    if (type == 'percentage') {
+      return originalPrice * (1 - val / 100);
+    } else {
+      return (originalPrice - val).clamp(0, originalPrice);
+    }
+  }
+
+  // ------------------- نافذة الشراء (مُحسّنة بدون تجميد) -------------------
   void _showPurchaseBottomSheet(
     BuildContext context,
     String title,
@@ -240,19 +233,17 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     String agentName,
     bool isPos,
     String networkName,
-  ) async {
+  ) {
     _play('click');
+    final systemProvider = Provider.of<SystemProvider>(context, listen: false);
 
-    final systemProvider =
-        Provider.of<SystemProvider>(context, listen: false);
-
-    // جلب الخصم التلقائي
-    Map<String, dynamic>? autoDiscount =
-        await _getAutoDiscount(agentPhone, isPos);
-
+    // سيتم تحميل الخصم داخل النافذة
     bool isPurchased = false;
     bool isSubmittingPurchase = false;
     String actualPinFetched = '';
+
+    // يتم جلبها لاحقاً
+    Map<String, dynamic>? autoDiscount;
 
     double walletBalance = systemProvider.getWalletBalance(agentPhone);
     double creditLimit = 0.0;
@@ -267,16 +258,11 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     }
     double totalPurchasingPower = walletBalance + creditLimit;
 
-    // حساب السعر النهائي بعد الخصم التلقائي
-    double finalPrice = originalPrice;
-    double autoDiscountAmount = 0.0;
-    if (autoDiscount != null) {
-      autoDiscountAmount =
-          originalPrice - _applyAutoDiscount(originalPrice, autoDiscount);
-      finalPrice = _applyAutoDiscount(originalPrice, autoDiscount);
-    }
+    // حالة التحميل للخصم التلقائي
+    bool isLoadingAutoDiscount = true;
 
     // متغيرات الكوبون
+    double autoDiscountAmount = 0.0;
     double couponDiscountAmount = 0.0;
     String? appliedCouponDocId;
     String couponMessage = '';
@@ -291,8 +277,34 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
+        // بدء تحميل الخصم فوراً بعد فتح النافذة
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _fetchAutoDiscount(agentPhone, isPos).then((disc) {
+            if (ctx.mounted) {
+              (ctx as StatefulBuilder).setState(() {
+                autoDiscount = disc;
+                isLoadingAutoDiscount = false;
+                if (disc != null) {
+                  autoDiscountAmount =
+                      originalPrice - _applyAutoDiscount(originalPrice, disc);
+                }
+              });
+            }
+          }).catchError((_) {
+            if (ctx.mounted) {
+              (ctx as StatefulBuilder).setState(() {
+                isLoadingAutoDiscount = false;
+              });
+            }
+          });
+        });
+
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
+            double finalPrice = originalPrice - autoDiscountAmount - couponDiscountAmount;
+            if (finalPrice < 0) finalPrice = 0;
+            bool canAfford = totalPurchasingPower >= finalPrice;
+
             Future<void> applyCoupon() async {
               String code = couponController.text.trim().toUpperCase();
               if (code.isEmpty) return;
@@ -400,8 +412,9 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                 String dType = data['discountType'] ?? 'fixed';
 
                 double calculated = 0.0;
+                double baseForCoupon = originalPrice - autoDiscountAmount;
                 if (dType == 'percent') {
-                  calculated = finalPrice * (dValue / 100);
+                  calculated = baseForCoupon * (dValue / 100);
                 } else if (dType == 'fixed') {
                   calculated = dValue;
                 } else {
@@ -414,12 +427,11 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                   return;
                 }
 
-                if (calculated >= finalPrice) calculated = finalPrice;
+                if (calculated >= baseForCoupon) calculated = baseForCoupon;
 
                 _play('success');
                 setModalState(() {
                   couponDiscountAmount = calculated;
-                  finalPrice = finalPrice - calculated;
                   appliedCouponDocId = doc.id;
                   couponMessage = 'تم تطبيق الكوبون بنجاح! 🎉';
                   couponMessageColor = Colors.green;
@@ -434,12 +446,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                 _play('error');
               }
             }
-
-            double finalFinalPrice = originalPrice;
-            double totalDiscount = autoDiscountAmount + couponDiscountAmount;
-            finalFinalPrice = (originalPrice - totalDiscount).clamp(0, originalPrice);
-
-            bool canAfford = totalPurchasingPower >= finalFinalPrice;
 
             return Directionality(
               textDirection: TextDirection.rtl,
@@ -474,8 +480,26 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                           style: const TextStyle(fontSize: 16)),
                       const SizedBox(height: 20),
 
-                      // عرض الخصم التلقائي إن وجد
-                      if (autoDiscount != null)
+                      // تحميل الخصم التلقائي
+                      if (isLoadingAutoDiscount)
+                        const Padding(
+                          padding: EdgeInsets.all(10),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2)),
+                              SizedBox(width: 10),
+                              Text('جاري تحميل الخصم التلقائي...',
+                                  style: TextStyle(fontSize: 13))
+                            ],
+                          ),
+                        ),
+
+                      if (!isLoadingAutoDiscount && autoDiscount != null)
                         Container(
                           padding: const EdgeInsets.all(10),
                           margin: const EdgeInsets.only(bottom: 10),
@@ -620,7 +644,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                       ),
                       const SizedBox(height: 10),
 
-                      // السعر النهائي (شامل كل الخصومات)
+                      // السعر النهائي
                       Container(
                         padding: const EdgeInsets.all(15),
                         decoration: BoxDecoration(
@@ -636,14 +660,14 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
-                                if (totalDiscount > 0)
+                                if (autoDiscountAmount + couponDiscountAmount > 0)
                                   Text('$originalPrice ريال',
                                       style: const TextStyle(
                                           decoration:
                                               TextDecoration.lineThrough,
                                           color: Colors.grey,
                                           fontSize: 13)),
-                                Text('$finalFinalPrice ريال',
+                                Text('$finalPrice ريال',
                                     style: const TextStyle(
                                         fontWeight: FontWeight.bold,
                                         color: Colors.red,
@@ -674,7 +698,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                                     try {
                                       String realPin =
                                           await systemProvider.executeRealPurchase(
-                                              finalFinalPrice,
+                                              finalPrice,
                                               title,
                                               agentPhone);
 
@@ -735,6 +759,20 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                                     fontWeight: FontWeight.bold)),
                           ),
                         ),
+                      const SizedBox(height: 8),
+                      // 🆕 زر شحن المحفظة مستقل (يظهر دائماً)
+                      TextButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context); // إغلاق نافذة الشراء
+                          _showRechargeDialog(agentPhone, agentName);
+                        },
+                        icon: const Icon(Icons.add_circle_outline,
+                            color: Colors.deepPurple),
+                        label: const Text('⚡ شحن المحفظة',
+                            style: TextStyle(
+                                color: Colors.deepPurple,
+                                fontWeight: FontWeight.bold)),
+                      ),
                     ] else ...[
                       const Icon(Icons.check_circle,
                           size: 60, color: Colors.green),
@@ -803,6 +841,91 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     );
   }
 
+  // ------------------- بطاقة ملخص المستخدم -------------------
+  Widget _buildUserSummaryTile(
+      SystemProvider sys, Map<String, dynamic> agentRelations) {
+    if (agentRelations.isEmpty) return const SizedBox();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: Colors.blue.shade50,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text('💰 رصيدك لدى الوكيل',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          Row(
+            children: [
+              Text('${sys.currentUserBalance} ريال',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: Colors.blue)),
+              const SizedBox(width: 12),
+              // 🆕 زر شحن المحفظة في الشريط العلوي
+              GestureDetector(
+                onTap: () {
+                  // نأخذ أول وكيل من العلاقات كمثال، يمكن تحسينه لاختيار وكيل معين
+                  if (agentRelations.isNotEmpty) {
+                    final firstAgent =
+                        agentRelations.keys.first as String;
+                    // يفترض وجود اسم الوكيل في مكان ما، هنا نمرر رقمه فقط
+                    _showRechargeDialog(firstAgent, 'الوكيل');
+                  }
+                },
+                child: const Icon(Icons.account_balance_wallet,
+                    color: Colors.deepPurple, size: 22),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ------------------- بطاقة ملخص نقطة البيع -------------------
+  Widget _buildPosSummaryTile(
+      SystemProvider sys, Map<String, dynamic> agentRelations) {
+    if (agentRelations.isEmpty) return const SizedBox();
+    final firstRel = agentRelations.values.first;
+    final double balance = sys.currentUserBalance;
+    final double credit = (firstRel['creditLimit'] ?? 0.0).toDouble();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: Colors.purple.shade50,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text('🏪 رصيدك + الدين المسموح',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          Row(
+            children: [
+              Text('${balance + credit} ريال',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: Colors.purple)),
+              const SizedBox(width: 12),
+              // 🆕 زر شحن المحفظة
+              GestureDetector(
+                onTap: () {
+                  if (agentRelations.isNotEmpty) {
+                    final firstAgent =
+                        agentRelations.keys.first as String;
+                    _showRechargeDialog(firstAgent, 'الوكيل');
+                  }
+                },
+                child: const Icon(Icons.account_balance_wallet,
+                    color: Colors.deepPurple, size: 22),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   // ------------------- بناء الواجهة الرئيسية -------------------
   @override
   Widget build(BuildContext context) {
@@ -833,7 +956,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
           textDirection: TextDirection.rtl,
           child: Column(
             children: [
-              // بطاقة ملخص الرصيد والسحب الشهري (إن وجد)
+              // بطاقة ملخص المستخدم (مع زر الشحن)
               if (!isPos) _buildUserSummaryTile(sys, agentRelations),
               if (isPos) _buildPosSummaryTile(sys, agentRelations),
 
@@ -943,10 +1066,9 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
 
                     // ---------- تبويب نقاط البيع ----------
                     StreamBuilder<QuerySnapshot>(
-                      stream: _db
-                          .collection('points_of_sale')
-                          .where('isActive', isEqualTo: true)
-                          .snapshots(),
+                      // 🔧 إزالة where isActive لمعالجة مشكلة عدم الظهور
+                      stream:
+                          _db.collection('points_of_sale').snapshots(),
                       builder: (context, snapshot) {
                         if (snapshot.connectionState ==
                             ConnectionState.waiting)
@@ -960,6 +1082,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
 
                         var posList = snapshot.data!.docs.where((doc) {
                           var pos = doc.data() as Map<String, dynamic>;
+                          // يمكنك إضافة فحص isActive هنا لاحقاً إن وجد
                           return (pos['name']
                                       ?.toString()
                                       .toLowerCase()
@@ -980,8 +1103,8 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                           padding: const EdgeInsets.all(16),
                           itemCount: posList.length,
                           itemBuilder: (context, index) {
-                            var pos =
-                                posList[index].data() as Map<String, dynamic>;
+                            var pos = posList[index].data()
+                                as Map<String, dynamic>;
                             return _buildPoSCard(pos, isPos);
                           },
                         );
@@ -997,59 +1120,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     );
   }
 
-  // ---------- بطاقة ملخص المستخدم العادي ----------
-  Widget _buildUserSummaryTile(
-      SystemProvider sys, Map<String, dynamic> agentRelations) {
-    // نعرض رصيده مع أول وكيل يظهر في العلاقات أو لا شيء
-    if (agentRelations.isEmpty) return const SizedBox();
-    // هنا يمكن عرض إجمالي الرصيد عبر الوكلاء، نحن نبسط بعرض رصيد أول وكيل نشط
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: Colors.blue.shade50,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text('💰 رصيدك لدى الوكيل',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-          Text('${sys.currentUserBalance} ريال',
-              style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                  color: Colors.blue)),
-        ],
-      ),
-    );
-  }
-
-  // ---------- بطاقة ملخص نقطة البيع ----------
-  Widget _buildPosSummaryTile(
-      SystemProvider sys, Map<String, dynamic> agentRelations) {
-    if (agentRelations.isEmpty) return const SizedBox();
-    // عرض إجمالي الرصيد والدين المسموح من أول وكيل
-    final firstRel = agentRelations.values.first;
-    final double balance = sys.currentUserBalance;
-    final double credit = (firstRel['creditLimit'] ?? 0.0).toDouble();
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: Colors.purple.shade50,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text('🏪 رصيدك + الدين المسموح',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-          Text('${balance + credit} ريال',
-              style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                  color: Colors.purple)),
-        ],
-      ),
-    );
-  }
-
-  // ---------- بطاقة الشبكة ----------
+  // ------------------- بطاقة الشبكة -------------------
   Widget _buildNetworkCard(Map<String, dynamic> network, bool isPos,
       Map<String, dynamic> agentRelations) {
     List categories = network['categories'] ?? [];
@@ -1057,7 +1128,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     String agentName = network['agentName'] ?? 'مجهول';
     String networkName = network['name'] ?? '';
 
-    // تصفية الفئات لنقاط البيع حسب السماح
     if (isPos) {
       Map<String, dynamic> myRelationWithThisAgent =
           agentRelations[agentPhone] ?? {};
@@ -1091,84 +1161,112 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                 ? Colors.black12
                 : Colors.grey.shade50,
             child: Column(
-              children: categories.map((cat) {
-                double price = (cat['price'] ?? 0).toDouble();
-                int stock = cat['stock'] ?? cat['available'] ?? 0;
-                bool isAvailable = stock > 0;
-
-                // سنضيف وسام "خصم متاح" عند العرض، لكن التفاصيل الكاملة ستظهر داخل الشراء
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                      color: Theme.of(context).cardColor,
-                      borderRadius: BorderRadius.circular(10),
-                      border:
-                          Border.all(color: Colors.grey.withOpacity(0.3))),
+              children: [
+                // 🆕 زر شحن المحفظة أعلى الفئات
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Text(cat['name'] ?? '',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: isPos
-                                            ? Colors.purple
-                                            : Colors.orange)),
-                                const SizedBox(width: 6),
-                                // وسام الخصم التلقائي (سنعرضه لاحقاً بالشراء، هنا نضع إشارة فقط)
-                                if (_hasAnyAutoDiscountForUser(agentPhone, isPos))
-                                  const Icon(Icons.auto_awesome,
-                                      size: 16, color: Colors.amber),
-                              ],
-                            ),
-                            Text(
-                                'السعة: ${cat['capacity']} | الوقت: ${cat['time']}',
-                                style: const TextStyle(
-                                    fontSize: 11, color: Colors.grey)),
-                            Text('المخزون: $stock كرت',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: isAvailable
-                                        ? Colors.green
-                                        : Colors.red)),
-                          ],
+                      const Text('الوكيل: $agentName',
+                          style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      const Spacer(),
+                      InkWell(
+                        onTap: () =>
+                            _showRechargeDialog(agentPhone, agentName),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.deepPurple.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text('⚡ شحن المحفظة',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.deepPurple,
+                                  fontWeight: FontWeight.bold)),
                         ),
                       ),
-                      ElevatedButton(
-                        onPressed: isAvailable
-                            ? () => _showPurchaseBottomSheet(
-                                context,
-                                '${network['name']} - ${cat['name']}',
-                                price,
-                                agentPhone,
-                                agentName,
-                                isPos,
-                                networkName)
-                            : null,
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: isAvailable
-                                ? (isPos ? Colors.purple : Colors.blue.shade800)
-                                : Colors.grey,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8))),
-                        child: Text(
-                            isAvailable ? 'شراء ($price)' : 'نفدت الكمية',
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12)),
-                      )
                     ],
                   ),
-                );
-              }).toList(),
+                ),
+                ...categories.map((cat) {
+                  double price = (cat['price'] ?? 0).toDouble();
+                  int stock = cat['stock'] ?? cat['available'] ?? 0;
+                  bool isAvailable = stock > 0;
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                        color: Theme.of(context).cardColor,
+                        borderRadius: BorderRadius.circular(10),
+                        border:
+                            Border.all(color: Colors.grey.withOpacity(0.3))),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(cat['name'] ?? '',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: isPos
+                                              ? Colors.purple
+                                              : Colors.orange)),
+                                  const SizedBox(width: 6),
+                                  if (_hasAnyAutoDiscountForUser(agentPhone, isPos))
+                                    const Icon(Icons.auto_awesome,
+                                        size: 16, color: Colors.amber),
+                                ],
+                              ),
+                              Text(
+                                  'السعة: ${cat['capacity']} | الوقت: ${cat['time']}',
+                                  style: const TextStyle(
+                                      fontSize: 11, color: Colors.grey)),
+                              Text('المخزون: $stock كرت',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: isAvailable
+                                          ? Colors.green
+                                          : Colors.red)),
+                            ],
+                          ),
+                        ),
+                        ElevatedButton(
+                          onPressed: isAvailable
+                              ? () => _showPurchaseBottomSheet(
+                                  context,
+                                  '${network['name']} - ${cat['name']}',
+                                  price,
+                                  agentPhone,
+                                  agentName,
+                                  isPos,
+                                  networkName)
+                              : null,
+                          style: ElevatedButton.styleFrom(
+                              backgroundColor: isAvailable
+                                  ? (isPos ? Colors.purple : Colors.blue.shade800)
+                                  : Colors.grey,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8))),
+                          child: Text(
+                              isAvailable ? 'شراء ($price)' : 'نفدت الكمية',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12)),
+                        )
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ],
             ),
           )
         ],
@@ -1176,7 +1274,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     );
   }
 
-  // ---------- بطاقة نقطة البيع ----------
+  // ------------------- بطاقة نقطة البيع -------------------
   Widget _buildPoSCard(Map<String, dynamic> pos, bool isCurrentPos) {
     List stock = pos['stock'] ?? [];
     String ownerName = pos['ownerName'] ?? 'مجهول';
@@ -1281,10 +1379,9 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     );
   }
 
-  // ---------- دالة مساعدة: هل يوجد أي خصم تلقائي محتمل؟ (لإظهار الوسام) ----------
+  // ------------------- مساعد: هل يوجد خصم تلقائي محتمل؟ -------------------
   bool _hasAnyAutoDiscountForUser(String agentPhone, bool isPos) {
-    // نكتفي بالتحقق من وجود شرائح نشطة، لأن الجلب الكامل يتم داخل النافذة.
-    // يمكن تحسينها، لكن للتبسيط: نعيد true دائماً (ستعرض النافذة التفاصيل).
+    // للتبسيط نعيد true لإظهار الأيقونة، والتحقق الفعلي يتم داخل النافذة
     return true;
   }
 }
