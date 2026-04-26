@@ -16,6 +16,7 @@ import '../screens/advanced_statement_screen.dart';
 import '../screens/analytics_reports_screen.dart';
 import '../screens/agent_support_screen.dart';
 import '../screens/agent_settings_screen.dart';
+import '../screens/agent_bank_accounts_screen.dart'; // 🆕 شاشة الحسابات البنكية للوكيل
 import '../../auth/screens/sso_login_screen.dart';
 
 import '../../../core/providers/system_provider.dart';
@@ -410,6 +411,13 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                       Colors.teal,
                       const AgentWalletScreen(),
                       textColor),
+                  _buildDrawerItem(
+                      context,
+                      'حساباتي البنكية 🏦',
+                      Icons.account_balance,
+                      Colors.deepPurple,
+                      const AgentBankAccountsScreen(),
+                      textColor), // 🆕
                   _buildDrawerItem(
                       context,
                       'كشف الحساب المتقدم',
