@@ -637,7 +637,7 @@ class SystemProvider extends ChangeNotifier {
     } catch (e) {}
   }
 
-  // ------------------- دوال أرقام الحسابات الجديدة -------------------
+  // ------------------- دوال أرقام الحسابات -------------------
   bool _isSpecialAccountNumber(String numberStr) {
     final num = int.tryParse(numberStr);
     if (num == null || num < 10000) return true;
@@ -908,7 +908,71 @@ class SystemProvider extends ChangeNotifier {
     return user['accountNumber']?.toString();
   }
 
-  // ------------------- باقي الدوال القديمة كاملة -------------------
+  // ------------------- الحسابات البنكية للوكيل (مُعدّلة) -------------------
+  Future<void> addAgentBankAccount(String networkName, String agentName,
+      String bankName, String accNumber, String note) async {
+    if (_activeUserPhone == null) return;
+    try {
+      int newOrder = _myAgentBankAccounts.length;
+      await _db.collection('agent_bank_accounts').add({
+        'agentPhone': _activeUserPhone,
+        'networkName': networkName,
+        'agentName': agentName,
+        'bankName': bankName,
+        'accountNumber': accNumber,
+        'note': note.isNotEmpty ? note : 'لا توجد ملاحظات',
+        'status': 'نشط',
+        'order': newOrder,
+        'createdAt': FieldValue.serverTimestamp()
+      });
+      notifyListeners(); // 🆕
+    } catch (e) {
+      throw 'خطأ في إضافة الحساب: $e';
+    }
+  }
+
+  Future<void> updateAgentBankAccount(String docId, String networkName,
+      String agentName, String bankName, String accNumber, String note) async {
+    await _db.collection('agent_bank_accounts').doc(docId).update({
+      'networkName': networkName,
+      'agentName': agentName,
+      'bankName': bankName,
+      'accountNumber': accNumber,
+      'note': note
+    });
+    notifyListeners(); // 🆕
+  }
+
+  Future<void> toggleAgentBankAccountStatus(
+      String docId, String currentStatus) async {
+    String newStatus = currentStatus == 'نشط' ? 'موقوف' : 'نشط';
+    await _db
+        .collection('agent_bank_accounts')
+        .doc(docId)
+        .update({'status': newStatus});
+    notifyListeners(); // 🆕
+  }
+
+  Future<void> deleteAgentBankAccount(String docId) async {
+    await _db.collection('agent_bank_accounts').doc(docId).delete();
+    notifyListeners(); // 🆕
+  }
+
+  Future<void> reorderAgentBankAccounts(int oldIndex, int newIndex) async {
+    if (oldIndex < newIndex) newIndex -= 1;
+    final item = _myAgentBankAccounts.removeAt(oldIndex);
+    _myAgentBankAccounts.insert(newIndex, item);
+    notifyListeners();
+    WriteBatch batch = _db.batch();
+    for (int i = 0; i < _myAgentBankAccounts.length; i++) {
+      batch.update(
+          _db.collection('agent_bank_accounts').doc(_myAgentBankAccounts[i]['docId']),
+          {'order': i});
+    }
+    await batch.commit();
+  }
+
+  // ------------------- دوال النظام -------------------
   Future<void> updateGlobalAppName(String newName) async {
     await _db
         .collection('system')
@@ -2025,65 +2089,6 @@ class SystemProvider extends ChangeNotifier {
         note: '',
         paymentMethod: 'نقد',
         password: password);
-  }
-
-  Future<void> addAgentBankAccount(String networkName, String agentName,
-      String bankName, String accNumber, String note) async {
-    if (_activeUserPhone == null) return;
-    try {
-      int newOrder = _myAgentBankAccounts.length;
-      await _db.collection('agent_bank_accounts').add({
-        'agentPhone': _activeUserPhone,
-        'networkName': networkName,
-        'agentName': agentName,
-        'bankName': bankName,
-        'accountNumber': accNumber,
-        'note': note.isNotEmpty ? note : 'لا توجد ملاحظات',
-        'status': 'نشط',
-        'order': newOrder,
-        'createdAt': FieldValue.serverTimestamp()
-      });
-    } catch (e) {
-      throw 'خطأ في إضافة الحساب: $e';
-    }
-  }
-
-  Future<void> updateAgentBankAccount(String docId, String networkName,
-      String agentName, String bankName, String accNumber, String note) async {
-    await _db.collection('agent_bank_accounts').doc(docId).update({
-      'networkName': networkName,
-      'agentName': agentName,
-      'bankName': bankName,
-      'accountNumber': accNumber,
-      'note': note
-    });
-  }
-
-  Future<void> toggleAgentBankAccountStatus(
-      String docId, String currentStatus) async {
-    String newStatus = currentStatus == 'نشط' ? 'موقوف' : 'نشط';
-    await _db
-        .collection('agent_bank_accounts')
-        .doc(docId)
-        .update({'status': newStatus});
-  }
-
-  Future<void> deleteAgentBankAccount(String docId) async {
-    await _db.collection('agent_bank_accounts').doc(docId).delete();
-  }
-
-  Future<void> reorderAgentBankAccounts(int oldIndex, int newIndex) async {
-    if (oldIndex < newIndex) newIndex -= 1;
-    final item = _myAgentBankAccounts.removeAt(oldIndex);
-    _myAgentBankAccounts.insert(newIndex, item);
-    notifyListeners();
-    WriteBatch batch = _db.batch();
-    for (int i = 0; i < _myAgentBankAccounts.length; i++) {
-      batch.update(
-          _db.collection('agent_bank_accounts').doc(_myAgentBankAccounts[i]['docId']),
-          {'order': i});
-    }
-    await batch.commit();
   }
 
   Future<void> updateDangerLimit(String phone, double newLimit) async {
