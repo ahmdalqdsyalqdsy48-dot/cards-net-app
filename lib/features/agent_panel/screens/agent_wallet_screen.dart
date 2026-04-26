@@ -16,6 +16,7 @@ import '../../../core/providers/ui_provider.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart';
+import 'agent_bank_accounts_screen.dart'; // 🆕
 
 class AgentWalletScreen extends StatefulWidget {
   const AgentWalletScreen({super.key});
@@ -52,7 +53,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
   void _play(String type) =>
       Provider.of<UiProvider>(context, listen: false).playSound(type);
 
-  // ------------------- دالة تحويل الأرقام إلى كلمات عربية (مُحسَّنة) -------------------
+  // ------------------- دالة تحويل الأرقام إلى كلمات عربية -------------------
   String _convertNumberToArabicWords(double number) {
     if (number == 0) return 'صفر';
     int num = number.toInt();
@@ -164,7 +165,8 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
         return '';
     }
   }
-  // -----------------------------------------------------------------------------
+
+  // -------------------------------------------------------------------------
 
   void _showRequestBalanceDialog({Map<String, dynamic>? existingRequest}) {
     _play('click');
@@ -172,7 +174,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
     final activeBanks =
         sys.bankAccounts.where((bank) => bank['status'] == 'نشط').toList();
 
-    // قراءة النسبة الحقيقية للوكيل
     final currentUserData = sys.usersList.firstWhere(
         (u) => u['phone'] == sys.currentUserPhone,
         orElse: () => {});
@@ -549,7 +550,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
 
                         try {
                           if (existingRequest != null) {
-                            // استخدام SystemProvider بدلاً من Firestore مباشرة
                             await sys.cancelQuotaRequest(existingRequest['docId']);
                           }
                           await sys.submitSaaSRechargeRequest(
@@ -604,7 +604,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
       context: context,
       barrierDismissible: false,
       builder: (context) {
-        // إلغاء المؤقت عند إغلاق الحوار
         return WillPopScope(
           onWillPop: () async {
             _searchDebounce?.cancel();
@@ -1124,10 +1123,18 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
                   _play('click');
                   Navigator.pushNamed(context, '/advanced_statement_screen');
                 }),
+                // 🆕 زر الحسابات البنكية
+                _buildQuickBtn(Icons.account_balance, 'حساباتي', Colors.deepPurple,
+                    () {
+                  _play('click');
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const AgentBankAccountsScreen()));
+                }),
               ],
             ),
           ),
-          // استخدام الدوال من SystemProvider بدلاً من Firestore المباشر
           StreamBuilder<List<Map<String, dynamic>>>(
             stream: sys.getMyPendingQuotaRequests(),
             builder: (context, snapshot) {
@@ -1204,7 +1211,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
                                 Expanded(
                                     child: ElevatedButton.icon(
                                   onPressed: () {
-                                    req['docId'] = req['docId'];
                                     _showRequestBalanceDialog(
                                         existingRequest: req);
                                   },
