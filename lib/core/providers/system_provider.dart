@@ -925,7 +925,7 @@ class SystemProvider extends ChangeNotifier {
         'order': newOrder,
         'createdAt': FieldValue.serverTimestamp()
       });
-      notifyListeners(); // 🆕
+      notifyListeners();
     } catch (e) {
       throw 'خطأ في إضافة الحساب: $e';
     }
@@ -940,7 +940,7 @@ class SystemProvider extends ChangeNotifier {
       'accountNumber': accNumber,
       'note': note
     });
-    notifyListeners(); // 🆕
+    notifyListeners();
   }
 
   Future<void> toggleAgentBankAccountStatus(
@@ -950,12 +950,12 @@ class SystemProvider extends ChangeNotifier {
         .collection('agent_bank_accounts')
         .doc(docId)
         .update({'status': newStatus});
-    notifyListeners(); // 🆕
+    notifyListeners();
   }
 
   Future<void> deleteAgentBankAccount(String docId) async {
     await _db.collection('agent_bank_accounts').doc(docId).delete();
-    notifyListeners(); // 🆕
+    notifyListeners();
   }
 
   Future<void> reorderAgentBankAccounts(int oldIndex, int newIndex) async {
@@ -970,6 +970,122 @@ class SystemProvider extends ChangeNotifier {
           {'order': i});
     }
     await batch.commit();
+  }
+
+  // ------------------- دوال المستخدم والمحفظة (جديدة) -------------------
+  Future<List<Map<String, dynamic>>> getAgentBankAccountsForUser(String agentPhone) async {
+    final snap = await _db
+        .collection('agent_bank_accounts')
+        .where('agentPhone', isEqualTo: agentPhone)
+        .where('status', isEqualTo: 'نشط')
+        .orderBy('order')
+        .get();
+    return snap.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
+  }
+
+  Future<void> requestRechargeFromAgent({
+    required String agentPhone,
+    required double amount,
+    required String paymentMethod,
+    required String reference,
+    String? base64Image,
+  }) async {
+    if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول.';
+    await _db.collection('user_recharges').add({
+      'userPhone': _activeUserPhone,
+      'userName': currentUserName,
+      'targetPhone': agentPhone,
+      'amount': amount,
+      'paymentMethod': paymentMethod,
+      'reference': reference,
+      'receiptBase64': base64Image ?? '',
+      'status': 'قيد الانتظار',
+      'type': 'user_to_agent',
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+    _sendNotification(
+        targetPhones: [agentPhone],
+        title: 'طلب شحن جديد 💰',
+        body: '${currentUserName} يطلب شحن مبلغ $amount ريال.');
+  }
+
+  Future<void> transferToUser({
+    required String targetPhone,
+    required double amount,
+  }) async {
+    if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول.';
+    if (targetPhone == _activeUserPhone) throw 'لا يمكنك التحويل لنفسك!';
+
+    final myRef = _db.collection('users').doc(_activeUserPhone);
+    final myDoc = await myRef.get();
+    final myData = myDoc.data() as Map<String, dynamic>? ?? {};
+    Map<String, dynamic> myWallets = myData['wallets'] ?? {};
+
+    final targetRef = _db.collection('users').doc(targetPhone);
+    final targetDoc = await targetRef.get();
+    if (!targetDoc.exists) throw 'المستخدم غير موجود.';
+    final targetData = targetDoc.data() as Map<String, dynamic>? ?? {};
+
+    String? chosenAgent;
+    for (var agentPhone in myWallets.keys) {
+      double balance = (myWallets[agentPhone] ?? 0.0).toDouble();
+      if (balance >= amount) {
+        chosenAgent = agentPhone;
+        break;
+      }
+    }
+    if (chosenAgent == null) throw 'لا تملك رصيداً كافياً لدى أي وكيل.';
+
+    await _db.runTransaction((transaction) async {
+      transaction.update(myRef, {
+        'wallets.$chosenAgent': FieldValue.increment(-amount),
+      });
+
+      transaction.update(targetRef, {
+        'wallets.$chosenAgent': FieldValue.increment(amount),
+      });
+
+      DocumentReference txnRef = _db.collection('transactions').doc();
+      transaction.set(txnRef, {
+        'fromPhone': _activeUserPhone,
+        'toPhone': targetPhone,
+        'agentPhone': chosenAgent,
+        'agentName': 'تحويل بين مستخدمين',
+        'targetName': targetData['name'] ?? 'مستخدم',
+        'networkName': targetData['networkName'] ?? 'غير محدد',
+        'amount': amount,
+        'fee': 0.0,
+        'type': 'transfer',
+        'paymentMethod': 'رصيد محفظة',
+        'title': 'تحويل من ${myData['name'] ?? 'مستخدم'} إلى ${targetData['name'] ?? 'مستخدم'}',
+        'reference': 'USR-${DateTime.now().millisecondsSinceEpoch}',
+        'timestamp': FieldValue.serverTimestamp()
+      });
+
+      DocumentReference notifRef = _db.collection('notifications').doc();
+      transaction.set(notifRef, {
+        'targetPhones': [targetPhone],
+        'title': 'حوالة واردة 💸',
+        'body': 'تم تحويل $amount ريال إليك من ${myData['name'] ?? 'مستخدم'}.',
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'readBy': [],
+      });
+    });
+  }
+
+  Stream<List<Map<String, dynamic>>> getMyPendingUserRecharges() {
+    if (_activeUserPhone == null) return Stream.value([]);
+    return _db
+        .collection('user_recharges')
+        .where('userPhone', isEqualTo: _activeUserPhone)
+        .where('status', isEqualTo: 'قيد الانتظار')
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) {
+              final data = doc.data();
+              data['docId'] = doc.id;
+              return data;
+            }).toList());
   }
 
   // ------------------- دوال النظام -------------------
