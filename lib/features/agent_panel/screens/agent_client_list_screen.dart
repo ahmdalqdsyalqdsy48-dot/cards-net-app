@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart' as intl;
 
 import '../../../core/providers/system_provider.dart';
-import '../../../core/providers/ui_provider.dart'; // 🆕 استيراد UiProvider
+import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart';
 
@@ -32,6 +32,8 @@ class _AgentClientListScreenState extends State<AgentClientListScreen> {
   void _showClientDetails(Map<String, dynamic> client) {
     _playSound();
     final sys = Provider.of<SystemProvider>(context, listen: false);
+
+    // استخراج البيانات قبل فتح النافذة لضمان عدم فقدانها
     final String clientPhone = client['phone'] ?? '';
     final String clientName = client['name'] ?? 'غير معروف';
     final String accountNumber =
@@ -40,6 +42,9 @@ class _AgentClientListScreenState extends State<AgentClientListScreen> {
             ? (client['wallets'] as Map)[sys.currentUserPhone] ?? 0.0
             : 0.0)
         .toDouble();
+    final String? storeName = client['role'] == 'pos'
+        ? (client['storeName'] ?? 'غير محدد')
+        : null;
 
     showModalBottomSheet(
       context: context,
@@ -47,108 +52,113 @@ class _AgentClientListScreenState extends State<AgentClientListScreen> {
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: Container(
-            height: MediaQuery.of(context).size.height * 0.75,
-            padding: const EdgeInsets.only(top: 20, left: 16, right: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 5,
-                    decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-                const SizedBox(height: 15),
-                Text(
-                  'تفاصيل العميل: $clientName',
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                _detailRow('رقم الحساب', accountNumber),
-                _detailRow(
-                    'الرصيد لديّ', '${balance.toStringAsFixed(0)} ريال'),
-                if (client['role'] == 'pos')
-                  _detailRow('المتجر', client['storeName'] ?? 'غير محدد'),
-                const Divider(height: 24),
-                const Text('📜 آخر العمليات (مشتريات / تحويلات)',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 14)),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('transactions')
-                        .where('fromPhone', isEqualTo: clientPhone)
-                        .where('agentPhone',
-                            isEqualTo: sys.currentUserPhone)
-                        .orderBy('timestamp', descending: true)
-                        .limit(20)
-                        .snapshots(),
-                    builder: (context, txnSnapshot) {
-                      if (txnSnapshot.connectionState ==
-                          ConnectionState.waiting) {
-                        return const Center(
-                            child: CircularProgressIndicator());
-                      }
-                      final txns = txnSnapshot.data?.docs ?? [];
-                      if (txns.isEmpty) {
-                        return const Center(
-                            child: Text('لا توجد عمليات سابقة',
-                                style: TextStyle(color: Colors.grey)));
-                      }
-                      return ListView.builder(
-                        itemCount: txns.length,
-                        itemBuilder: (context, i) {
-                          final txn =
-                              txns[i].data() as Map<String, dynamic>;
-                          final DateTime? ts =
-                              (txn['timestamp'] as Timestamp?)?.toDate();
-                          final String timeStr = ts != null
-                              ? intl.DateFormat('yyyy/MM/dd - hh:mm a')
-                                  .format(ts)
-                              : '';
-                          final double amount =
-                              (txn['amount'] ?? 0.0).toDouble();
-                          final String title =
-                              txn['title'] ?? 'عملية غير معروفة';
-                          return ListTile(
-                            dense: true,
-                            leading: Icon(
-                              txn['type'] == 'sale'
-                                  ? Icons.shopping_cart
-                                  : Icons.swap_horiz,
-                              color: txn['type'] == 'sale'
-                                  ? Colors.blue
-                                  : Colors.orange,
-                            ),
-                            title: Text(title,
-                                style: const TextStyle(fontSize: 13)),
-                            subtitle: Text(timeStr,
-                                style: const TextStyle(fontSize: 11)),
-                            trailing: Text(
-                              '${amount.toStringAsFixed(0)} ر.ي',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: amount > 0
-                                      ? Colors.green
-                                      : Colors.red),
-                            ),
+        // استخدام StatefulBuilder منفصل لتجنب تداخل الحالة
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Directionality(
+              textDirection: TextDirection.rtl,
+              child: Container(
+                height: MediaQuery.of(context).size.height * 0.75,
+                padding: const EdgeInsets.only(top: 20, left: 16, right: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 5,
+                        decoration: BoxDecoration(
+                            color: Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    Text(
+                      'تفاصيل العميل: $clientName',
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    _detailRow('رقم الحساب', accountNumber),
+                    _detailRow(
+                        'الرصيد لديّ', '${balance.toStringAsFixed(0)} ريال'),
+                    if (storeName != null) _detailRow('المتجر', storeName),
+                    const Divider(height: 24),
+                    const Text('📜 آخر العمليات (مشتريات / تحويلات)',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 14)),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: StreamBuilder<QuerySnapshot>(
+                        // استخدام بيانات ثابتة لضمان استقرار الـ Stream
+                        stream: FirebaseFirestore.instance
+                            .collection('transactions')
+                            .where('fromPhone', isEqualTo: clientPhone)
+                            .where('agentPhone',
+                                isEqualTo: sys.currentUserPhone)
+                            .orderBy('timestamp', descending: true)
+                            .limit(20)
+                            .snapshots(),
+                        builder: (context, txnSnapshot) {
+                          if (txnSnapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Center(
+                                child: CircularProgressIndicator());
+                          }
+                          final txns = txnSnapshot.data?.docs ?? [];
+                          if (txns.isEmpty) {
+                            return const Center(
+                                child: Text('لا توجد عمليات سابقة',
+                                    style: TextStyle(color: Colors.grey)));
+                          }
+                          return ListView.builder(
+                            itemCount: txns.length,
+                            itemBuilder: (context, i) {
+                              final txn = txns[i].data()
+                                  as Map<String, dynamic>;
+                              final DateTime? ts =
+                                  (txn['timestamp'] as Timestamp?)?.toDate();
+                              final String timeStr = ts != null
+                                  ? intl.DateFormat('yyyy/MM/dd - hh:mm a')
+                                      .format(ts)
+                                  : '';
+                              final double amount =
+                                  (txn['amount'] ?? 0.0).toDouble();
+                              final String title =
+                                  txn['title'] ?? 'عملية غير معروفة';
+                              return ListTile(
+                                dense: true,
+                                leading: Icon(
+                                  txn['type'] == 'sale'
+                                      ? Icons.shopping_cart
+                                      : Icons.swap_horiz,
+                                  color: txn['type'] == 'sale'
+                                      ? Colors.blue
+                                      : Colors.orange,
+                                ),
+                                title: Text(title,
+                                    style: const TextStyle(fontSize: 13)),
+                                subtitle: Text(timeStr,
+                                    style: const TextStyle(fontSize: 11)),
+                                trailing: Text(
+                                  '${amount.toStringAsFixed(0)} ر.ي',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: amount > 0
+                                          ? Colors.green
+                                          : Colors.red),
+                                ),
+                              );
+                            },
                           );
                         },
-                      );
-                    },
-                  ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
