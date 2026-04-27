@@ -7,6 +7,7 @@ import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_user_drawer.dart';
+import 'user_wallet_screen.dart'; // 🆕 شاشة المحفظة الجديدة
 
 class NetworkStoreScreen extends StatefulWidget {
   const NetworkStoreScreen({super.key});
@@ -30,97 +31,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
         backgroundColor: error ? Colors.red.shade800 : Colors.green.shade800,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
-  // ------------------- طلب شحن المحفظة -------------------
-  void _showRechargeDialog(String agentPhone, String agentName) {
-    _play('click');
-    final amountController = TextEditingController();
-    bool isSubmitting = false;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) => Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20)),
-            title: Text('طلب شحن من $agentName',
-                style: const TextStyle(
-                    fontWeight: FontWeight.bold, color: Colors.green)),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                    'يرجى تحويل المبلغ المطلوب إلى الوكيل أولاً، ثم اطلب الشحن هنا ليتم إضافته لمحفظتك فور موافقته.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey)),
-                const SizedBox(height: 15),
-                TextField(
-                  controller: amountController,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    labelText: 'المبلغ المطلوب شحنه',
-                    suffixText: 'ريال',
-                    prefixIcon: const Icon(Icons.monetization_on,
-                        color: Colors.green),
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              if (!isSubmitting)
-                TextButton(
-                    onPressed: () {
-                      _play('click');
-                      Navigator.pop(context);
-                    },
-                    child: const Text('إلغاء')),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                onPressed: isSubmitting
-                    ? null
-                    : () async {
-                        String amountText = amountController.text.trim();
-                        if (amountText.isNotEmpty &&
-                            double.tryParse(amountText) != null) {
-                          setStateDialog(() => isSubmitting = true);
-                          double amount = double.parse(amountText);
-                          try {
-                            _play('click');
-                            await Provider.of<SystemProvider>(context,
-                                    listen: false)
-                                .requestWalletRecharge(agentPhone, amount);
-                            _play('success');
-                            if (mounted) {
-                              Navigator.pop(context);
-                              _showToast('تم إرسال طلب الشحن بنجاح ⏳');
-                            }
-                          } catch (e) {
-                            setStateDialog(() => isSubmitting = false);
-                            _play('error');
-                          }
-                        } else {
-                          _play('error');
-                          _showToast('يرجى إدخال مبلغ صحيح!', error: true);
-                        }
-                      },
-                child: isSubmitting
-                    ? const SizedBox(
-                        width: 15,
-                        height: 15,
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2))
-                    : const Text('إرسال الطلب',
-                        style: TextStyle(color: Colors.white)),
-              )
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -255,15 +165,13 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     bool isApplyingCoupon = false;
     TextEditingController couponController = TextEditingController();
 
-    // مؤشر setState الخاص بـ StatefulBuilder الداخلي، سيتم تخزينه هنا لاستخدامه لاحقاً
+    // مؤشر setState الخاص بـ StatefulBuilder الداخلي
     StateSetter? _modalSetState;
 
-    // دالة داخلية لتحديث حالة النافذة (تستخدم _modalSetState)
     void updateState(VoidCallback fn) {
       _modalSetState?.call(fn);
     }
 
-    // بدء تحميل الخصم التلقائي عند ظهور النافذة
     Future<void> loadDiscount() async {
       final discount = await _fetchAutoDiscount(agentPhone, isPos);
       if (!mounted) return;
@@ -296,11 +204,9 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
-        // تخزين _modalSetState
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
             _modalSetState = setModalState;
-            // استدعاء loadDiscount مرة واحدة فقط
             if (isLoadingAutoDiscount && autoDiscount == null) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 loadDiscount();
@@ -311,7 +217,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
             if (finalPrice < 0) finalPrice = 0;
             bool canAfford = totalPurchasingPower >= finalPrice;
 
-            // دالة تطبيق الكوبون
             Future<void> applyCoupon() async {
               String code = couponController.text.trim().toUpperCase();
               if (code.isEmpty) return;
@@ -745,12 +650,16 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                                 shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(10))),
                             onPressed: () {
-                              Navigator.pop(context);
-                              _showRechargeDialog(agentPhone, agentName);
+                              Navigator.pop(context); // إغلاق نافذة الشراء
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) => const UserWalletScreen()),
+                              );
                             },
                             icon: const Icon(Icons.account_balance_wallet,
                                 color: Colors.white),
-                            label: const Text('رصيدك لا يكفي - اطلب شحن الآن',
+                            label: const Text('رصيدك لا يكفي - اذهب للمحفظة',
                                 style: TextStyle(
                                     fontSize: 14,
                                     color: Colors.white,
@@ -758,13 +667,17 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                           ),
                         ),
                       const SizedBox(height: 8),
-                      // زر شحن المحفظة مستقل
+                      // زر شحن المحفظة مستقل (يذهب للمحفظة)
                       TextButton.icon(
                         onPressed: () {
-                          Navigator.pop(context);
-                          _showRechargeDialog(agentPhone, agentName);
+                          Navigator.pop(context); // إغلاق نافذة الشراء
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const UserWalletScreen()),
+                          );
                         },
-                        icon: const Icon(Icons.add_circle_outline,
+                        icon: const Icon(Icons.account_balance_wallet,
                             color: Colors.deepPurple),
                         label: const Text('⚡ شحن المحفظة',
                             style: TextStyle(
@@ -1021,12 +934,14 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                       fontSize: 14,
                       color: Colors.blue)),
               const SizedBox(width: 12),
+              // 🆕 زر الذهاب إلى المحفظة
               GestureDetector(
                 onTap: () {
-                  if (agentRelations.isNotEmpty) {
-                    final firstAgent = agentRelations.keys.first as String;
-                    _showRechargeDialog(firstAgent, 'الوكيل');
-                  }
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const UserWalletScreen()),
+                  );
                 },
                 child: const Icon(Icons.account_balance_wallet,
                     color: Colors.deepPurple, size: 22),
@@ -1061,12 +976,14 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                       fontSize: 14,
                       color: Colors.purple)),
               const SizedBox(width: 12),
+              // 🆕 زر الذهاب إلى المحفظة
               GestureDetector(
                 onTap: () {
-                  if (agentRelations.isNotEmpty) {
-                    final firstAgent = agentRelations.keys.first as String;
-                    _showRechargeDialog(firstAgent, 'الوكيل');
-                  }
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const UserWalletScreen()),
+                  );
                 },
                 child: const Icon(Icons.account_balance_wallet,
                     color: Colors.deepPurple, size: 22),
@@ -1119,17 +1036,22 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                 : Colors.grey.shade50,
             child: Column(
               children: [
-                // زر شحن المحفظة
+                // زر شحن المحفظة (يذهب إلى المحفظة الجديدة)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: Row(
                     children: [
-                      Text('الوكيل: $agentName',  // أزلنا const
+                      Text('الوكيل: $agentName',
                           style: const TextStyle(fontSize: 12, color: Colors.grey)),
                       const Spacer(),
                       InkWell(
-                        onTap: () =>
-                            _showRechargeDialog(agentPhone, agentName),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const UserWalletScreen()),
+                          );
+                        },
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 6),
