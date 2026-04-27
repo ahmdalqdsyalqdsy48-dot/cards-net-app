@@ -16,7 +16,9 @@ import '../screens/advanced_statement_screen.dart';
 import '../screens/analytics_reports_screen.dart';
 import '../screens/agent_support_screen.dart';
 import '../screens/agent_settings_screen.dart';
-import '../screens/agent_bank_accounts_screen.dart'; // 🆕 شاشة الحسابات البنكية للوكيل
+import '../screens/agent_bank_accounts_screen.dart';
+import '../screens/agent_client_list_screen.dart'; // 🆕
+
 import '../../auth/screens/sso_login_screen.dart';
 
 import '../../../core/providers/system_provider.dart';
@@ -58,7 +60,6 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     );
   }
 
-  /// توليد تدرج لوني ديناميكي من اللون الأساسي
   List<Color> _generateGradientColors(Color baseColor) {
     final hsv = HSVColor.fromColor(baseColor);
     final darker = hsv.withValue((hsv.value - 0.2).clamp(0.0, 1.0)).toColor();
@@ -66,9 +67,6 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     return [darker, lighter];
   }
 
-  // ==========================================
-  // رفع وتغيير الصورة الشخصية (Base64) 📸
-  // ==========================================
   Future<void> _updateProfileImage(SystemProvider sys) async {
     _play('click');
     final picker = ImagePicker();
@@ -213,10 +211,8 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final isDark = themeProvider.isDarkMode;
     final primaryColor = themeProvider.primaryColor;
-    // ✅ لون النص الأساسي الواضح دائماً
     final textColor = isDark ? Colors.white : Colors.black87;
 
-    // قراءة البيانات الحية للوكيل بدلاً من البيانات الثابتة
     final myData = sys.agentsList.firstWhere(
         (a) => a['phone'] == sys.currentUserPhone,
         orElse: () => {});
@@ -226,7 +222,6 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     final String? base64Image = myData['profileImageBase64'];
     bool hasImage = base64Image != null && base64Image.isNotEmpty;
 
-    // ✅ ألوان البطاقات حسب الوضع (نهاري = زاهية، ليلي = ديناميكية)
     final nameColors = isDark
         ? _generateGradientColors(primaryColor)
         : [Colors.blue.shade800, Colors.blue.shade500];
@@ -238,7 +233,6 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
         : [Colors.purple.shade800, Colors.purple.shade500];
 
     return Drawer(
-      // ✅ خلفية معتمة تمامًا في النهاري (بيضاء) وداكنة في الليلي
       backgroundColor: Theme.of(context).cardColor,
       child: Directionality(
         textDirection: TextDirection.rtl,
@@ -249,7 +243,6 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                 padding: EdgeInsets.zero,
                 physics: const BouncingScrollPhysics(),
                 children: [
-                  // 1. الترويسة العلوية الفخمة
                   SafeArea(
                     bottom: false,
                     child: Container(
@@ -290,22 +283,16 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                             ),
                           ),
                           const SizedBox(height: 15),
-
-                          // البطاقة 1: اسم الوكيل
                           _buildGradientCard(
                             text: liveName,
                             icon: Icons.store,
                             colors: nameColors,
                           ),
-
-                          // البطاقة 2: رقم الهاتف
                           _buildGradientCard(
                             text: widget.phoneNumber,
                             icon: Icons.phone,
                             colors: phoneColors,
                           ),
-
-                          // البطاقة 3: المحفظة (الرصيد الحي)
                           GestureDetector(
                             onTap: () {
                               _play('click');
@@ -322,7 +309,6 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                                   : Icons.visibility,
                             ),
                           ),
-
                           const SizedBox(height: 10),
                           Divider(
                               height: 1,
@@ -334,7 +320,6 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                     ),
                   ),
 
-                  // 2. أزرار الانتقال بين الشاشات
                   Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 6),
@@ -384,6 +369,14 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                       Colors.purple,
                       const SubAgentsScreen(),
                       textColor),
+                  // 🆕 شاشة عملائي
+                  _buildDrawerItem(
+                      context,
+                      'عملائي (المستخدمين والبقالات)',
+                      Icons.people,
+                      Colors.indigo,
+                      const AgentClientListScreen(),
+                      textColor),
                   _buildDrawerItem(
                       context,
                       'التسويق والعروض',
@@ -417,7 +410,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                       Icons.account_balance,
                       Colors.deepPurple,
                       const AgentBankAccountsScreen(),
-                      textColor), // 🆕
+                      textColor),
                   _buildDrawerItem(
                       context,
                       'كشف الحساب المتقدم',
@@ -463,7 +456,6 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
               ),
             ),
 
-            // 3. الفوتر (تسجيل الخروج)
             Divider(
                 height: 1,
                 color: isDark ? Colors.grey.shade800 : Colors.grey.shade300),
@@ -488,7 +480,6 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     );
   }
 
-  // بناء البطاقات المتدرجة الأنيقة
   Widget _buildGradientCard(
       {required String text,
       required IconData icon,
@@ -527,7 +518,6 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     );
   }
 
-  // بناء زر التنقل العادي
   Widget _buildDrawerItem(BuildContext context, String title, IconData icon,
       Color iconColor, Widget targetScreen, Color textColor) {
     return ListTile(
@@ -537,8 +527,8 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
       title: Text(title,
           style: TextStyle(
               fontWeight: FontWeight.bold, fontSize: 13, color: textColor)),
-      trailing:
-          Icon(Icons.arrow_forward_ios, size: 11, color: textColor.withOpacity(0.5)),
+      trailing: Icon(Icons.arrow_forward_ios,
+          size: 11, color: textColor.withOpacity(0.5)),
       onTap: () => _navigateTo(context, targetScreen),
     );
   }
