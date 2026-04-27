@@ -19,7 +19,7 @@ dependencies:
   firebase_auth: ^5.3.1  
   pdf: ^3.11.0          
   printing: ^5.12.0     
-  intl: ^0.20.2          # تم التحديث ليتوافق مع flutter_localizations
+  intl: ^0.20.2
   marquee: ^2.2.3        
   image_picker: ^1.1.2
   path_provider: ^2.1.2
@@ -29,7 +29,8 @@ dependencies:
   url_launcher: ^6.2.5
   http: ^1.2.0 
   share_plus: ^13.1.0
-  flutter_localizations: # لدعم الترجمة
+  qr_flutter: ^4.1.0              # 🆕 مكتبة QR المطلوبة
+  flutter_localizations:
     sdk: flutter
 
 dev_dependencies:
