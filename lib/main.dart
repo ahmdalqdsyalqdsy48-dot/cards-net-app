@@ -25,6 +25,7 @@ import 'features/super_admin/screens/sms_gateway_screen.dart';
 import 'features/super_admin/screens/audit_log_screen.dart';
 import 'features/super_admin/screens/settings_screen.dart';
 import 'features/super_admin/screens/backup_screen.dart';
+import 'features/super_admin/screens/admin_user_accounts_screen.dart'; // 🆕
 
 import 'features/agent_panel/screens/agent_dashboard_screen.dart';
 import 'features/agent_panel/screens/quick_pos_screen.dart';
@@ -136,6 +137,7 @@ class MyApp extends StatelessWidget {
         '/audit_log': (context) => const AuditLogScreen(),
         '/settings': (context) => const GlobalSettingsScreen(),
         '/backup': (context) => const BackupScreen(),
+        '/admin_user_accounts': (context) => const AdminUserAccountsScreen(), // 🆕
 
         '/agent_dashboard': (context) => const AgentDashboardScreen(),
         '/quick_pos': (context) => const QuickPosScreen(),
