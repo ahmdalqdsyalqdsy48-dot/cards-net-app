@@ -277,7 +277,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   // ==========================================
-  // بناء قسم العروض الإعلانية الترويجية (الديناميكي الحي 🎟️)
+  // بناء قسم العروض الإعلانية الترويجية (يدعم الهاتف أو رقم الحساب)
   // ==========================================
   Widget _buildPromoSection(SystemProvider sys, ThemeProvider theme) {
     return StreamBuilder<QuerySnapshot>(
@@ -287,24 +287,46 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
           return const SizedBox(height: 180, child: Center(child: CircularProgressIndicator()));
         }
         
+        if (snapshot.hasError) {
+          return SizedBox(
+            height: 180,
+            child: Center(
+                child: Text('تعذر تحميل العروض',
+                    style: TextStyle(color: Colors.grey))),
+          );
+        }
+
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return const SizedBox(height: 180, child: Center(child: Text('لا توجد عروض حالياً، ترقبوا جديدنا!', style: TextStyle(color: Colors.grey))));
         }
 
         var activeCoupons = snapshot.data!.docs.map((doc) => doc.data() as Map<String, dynamic>).where((offer) {
-          if (offer['isActive'] != true) return false; 
-          
-          DateTime expiry = (offer['expiryDate'] as Timestamp).toDate();
-          if (expiry.isBefore(DateTime.now())) return false; 
+          try {
+            if (offer['isActive'] != true) return false;
+            
+            if (offer['expiryDate'] == null) return false;
+            final Timestamp expiryTs = offer['expiryDate'] as Timestamp;
+            final DateTime expiry = expiryTs.toDate();
+            if (expiry.isBefore(DateTime.now())) return false;
 
-          int current = offer['currentUsage'] ?? 0;
-          int max = offer['maxUsage'] ?? 1;
-          if (current >= max) return false; 
+            final int current = offer['currentUsage'] ?? 0;
+            final int max = offer['maxUsage'] ?? 1;
+            if (current >= max) return false;
 
-          String targetPhone = offer['targetPhone'] ?? '';
-          if (targetPhone.isNotEmpty && targetPhone != sys.currentUserPhone) return false;
+            // 🆕 التحقق من رقم الهاتف أو رقم الحساب
+            final String targetId = (offer['targetPhone'] ?? '').toString().trim();
+            if (targetId.isNotEmpty) {
+              // يقارن برقم الهاتف وبرقم الحساب
+              if (targetId != sys.currentUserPhone &&
+                  targetId != (sys.currentUserAccountNumber ?? '')) {
+                return false;
+              }
+            }
 
-          return true;
+            return true;
+          } catch (e) {
+            return false;
+          }
         }).toList();
 
         activeCoupons.sort((a, b) {
