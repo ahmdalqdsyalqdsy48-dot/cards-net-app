@@ -22,6 +22,7 @@ import '../../features/super_admin/screens/banners_screen.dart';
 import '../../features/super_admin/screens/sms_gateway_screen.dart';
 import '../../features/super_admin/screens/backup_screen.dart';
 import '../../features/super_admin/screens/portals_management_screen.dart';
+import '../../features/super_admin/screens/admin_user_accounts_screen.dart'; // 🆕
 
 class CustomDrawer extends StatefulWidget {
   final String userName;
@@ -195,7 +196,6 @@ class _CustomDrawerState extends State<CustomDrawer> {
     final balanceColors = isDark ? _generateGradientColors(primaryColor) : [Colors.purple.shade800, Colors.purple.shade500];
 
     return Drawer(
-      // ✅ خلفية معتمة تمامًا في النهاري (بيضاء) وداكنة في الليلي
       backgroundColor: Theme.of(context).cardColor,
       child: Directionality(
         textDirection: TextDirection.rtl,
@@ -282,6 +282,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
                   Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('المالية والمحاسبة', style: TextStyle(color: textColor, fontSize: 12, fontWeight: FontWeight.bold))),
                   _buildDrawerItem(context, 'المركز المالي والمحافظ', Icons.account_balance_wallet, Colors.green, const FinancialCenterScreen()),
                   _buildDrawerItem(context, 'الحسابات البنكية', Icons.account_balance, Colors.indigo, const BankAccountsScreen()),
+                  _buildDrawerItem(context, 'إدارة أرقام الحسابات والحظر', Icons.credit_card, Colors.blueGrey, const AdminUserAccountsScreen()), // 🆕
                   _buildDrawerItem(context, 'التقارير الشاملة', Icons.analytics, Colors.orange, const ReportsScreen()),
                   Divider(color: textColor.withOpacity(0.2)),
                   Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), child: Text('الإدارة والتسويق', style: TextStyle(color: textColor, fontSize: 12, fontWeight: FontWeight.bold))),
