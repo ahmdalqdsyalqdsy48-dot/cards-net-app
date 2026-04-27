@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart' as intl;
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -43,6 +44,16 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _amountController.dispose();
+    _refController.dispose();
+    _searchController.dispose();
+    _transferAmountController.dispose();
+    super.dispose();
   }
 
   void _play(String type) =>
@@ -108,14 +119,67 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       );
       _play('success');
       _showSnack('تم إرسال طلب الشحن للوكيل');
-      _amountController.clear();
-      _refController.clear();
-      setState(() => _receiptBase64 = null);
+      _clearRechargeForm();
     } catch (e) {
       _showSnack('فشل: $e', error: true);
     }
   }
 
+  void _clearRechargeForm() {
+    _amountController.clear();
+    _refController.clear();
+    setState(() {
+      _receiptBase64 = null;
+      _selectedAgentPhone = null;
+      _agentBankAccounts = [];
+      _selectedBankAccount = null;
+    });
+  }
+
+  // تعديل طلب شحن: يملأ النموذج بالبيانات القديمة
+  void _editRechargeRequest(Map<String, dynamic> request) {
+    setState(() {
+      _selectedAgentPhone = request['targetPhone'];
+      _amountController.text = request['amount']?.toString() ?? '';
+      _refController.text = request['reference'] ?? '';
+      _receiptBase64 = request['receiptBase64'];
+    });
+    _loadAgentBanks(request['targetPhone']);
+  }
+
+  // إلغاء طلب شحن
+  Future<void> _cancelRechargeRequest(String docId) async {
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('إلغاء الطلب'),
+          content: const Text('هل تريد إلغاء طلب الشحن نهائياً؟'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('تراجع')),
+            ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text('إلغاء الطلب',
+                    style: TextStyle(color: Colors.white))),
+          ],
+        ),
+      ),
+    );
+    if (confirm == true) {
+      await FirebaseFirestore.instance
+          .collection('user_recharges')
+          .doc(docId)
+          .delete();
+      _play('success');
+      _showSnack('تم إلغاء الطلب بنجاح');
+    }
+  }
+
+  // البحث عن مستخدم للتحويل
   Future<void> _searchForTransfer() async {
     final sys = Provider.of<SystemProvider>(context, listen: false);
     final query = _searchController.text.trim();
@@ -135,6 +199,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     }
   }
 
+  // تنفيذ التحويل
   Future<void> _executeTransfer() async {
     final sys = Provider.of<SystemProvider>(context, listen: false);
     if (_transferTarget == null) return;
@@ -168,7 +233,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     final accountNumber = sys.currentUserAccountNumber ?? 'غير متوفر';
     final userName = sys.currentUserName;
 
-    // الوكلاء الذين يملك المستخدم رصيداً لديهم
     final myWallets = sys.usersList
             .firstWhere((u) => u['phone'] == sys.currentUserPhone,
                 orElse: () => {'wallets': {}})['wallets']
@@ -430,6 +494,64 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10))),
             ),
+          ),
+          const SizedBox(height: 25),
+          // 🆕 سجل طلباتي المعلقة
+          const Text('📋 طلباتي المعلقة',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('user_recharges')
+                .where('userPhone', isEqualTo: Provider.of<SystemProvider>(context, listen: false).currentUserPhone)
+                .where('status', isEqualTo: 'قيد الانتظار')
+                .orderBy('timestamp', descending: true)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final requests = snapshot.data?.docs ?? [];
+              if (requests.isEmpty) {
+                return const Text('لا توجد طلبات معلقة حالياً.',
+                    style: TextStyle(color: Colors.grey));
+              }
+              return Column(
+                children: requests.map((doc) {
+                  final req = doc.data() as Map<String, dynamic>;
+                  final DateTime? ts = (req['timestamp'] as Timestamp?)?.toDate();
+                  final String timeStr = ts != null
+                      ? intl.DateFormat('yyyy/MM/dd - hh:mm a').format(ts)
+                      : '';
+                  final double amount = (req['amount'] ?? 0.0).toDouble();
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      title: Text('مبلغ: ${amount.toStringAsFixed(0)} ريال'),
+                      subtitle: Text('الوكيل: ${req['targetPhone']} - $timeStr'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.blue),
+                            onPressed: () => _editRechargeRequest({
+                              'targetPhone': req['targetPhone'],
+                              'amount': amount,
+                              'reference': req['reference'] ?? '',
+                              'receiptBase64': req['receiptBase64'] ?? '',
+                            }),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () => _cancelRechargeRequest(doc.id),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              );
+            },
           ),
         ],
       ),
