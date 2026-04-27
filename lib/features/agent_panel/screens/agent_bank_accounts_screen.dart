@@ -310,7 +310,6 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
               ),
             ),
             Expanded(
-              // 🆕 استخدام StreamBuilder مباشرة لضمان التحديث الفوري
               child: StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('agent_bank_accounts')
@@ -321,10 +320,17 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  final accounts = snapshot.data?.docs.map((doc) {
-                        return {'docId': doc.id, ...doc.data()};
-                      }).toList() ??
-                      [];
+
+                  // 🆕 تحويل آمن للبيانات لتجنب أخطاء الأنواع
+                  final List<Map<String, dynamic>> accounts =
+                      snapshot.data?.docs.map((doc) {
+                            final Map<String, dynamic> data =
+                                Map<String, dynamic>.from(
+                                    doc.data() as Map? ?? {});
+                            data['docId'] = doc.id;
+                            return data;
+                          }).toList() ??
+                          [];
 
                   if (accounts.isEmpty) {
                     return const Center(
@@ -341,8 +347,9 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                       sys.reorderAgentBankAccounts(oldIndex, newIndex);
                     },
                     itemBuilder: (context, index) {
-                      final account = accounts[index];
-                      final isActive = account['status'] == 'نشط';
+                      final Map<String, dynamic> account = accounts[index];
+                      final bool isActive =
+                          (account['status'] ?? '') == 'نشط';
 
                       return Card(
                         key: ValueKey(account['docId']),
@@ -375,9 +382,8 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                                             crossAxisAlignment:
                                                 CrossAxisAlignment.start,
                                             children: [
-                                              if (account['networkName'] !=
-                                                      null &&
-                                                  account['networkName']
+                                              if ((account['networkName'] ??
+                                                          '')
                                                       .toString()
                                                       .isNotEmpty)
                                                 Text(
@@ -385,14 +391,17 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                                                     style: const TextStyle(
                                                         fontSize: 11,
                                                         color: Colors.teal)),
-                                              Text(account['bankName'] ?? '',
+                                              Text(
+                                                  account['bankName'] ?? '',
                                                   style: const TextStyle(
                                                       fontWeight:
                                                           FontWeight.bold,
                                                       fontSize: 16,
                                                       color:
                                                           Color(0xFF5E35B1))),
-                                              Text(account['accountNumber'] ?? '',
+                                              Text(
+                                                  account['accountNumber'] ??
+                                                      '',
                                                   style: const TextStyle(
                                                       fontWeight:
                                                           FontWeight.bold,
@@ -406,7 +415,8 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                                     ),
                                   ),
                                   Chip(
-                                    label: Text(account['status'] ?? '',
+                                    label: Text(
+                                        account['status'] ?? '',
                                         style: const TextStyle(
                                             color: Colors.white,
                                             fontSize: 11)),
