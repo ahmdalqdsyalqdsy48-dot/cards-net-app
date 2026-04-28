@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import '../screens/agent_dashboard_screen.dart';
 import '../screens/quick_pos_screen.dart';
 import '../screens/mikrotik_categories_screen.dart';
+import '../screens/print_section_screen.dart'; // 🆕 قسم الطباعة
 import '../screens/sub_agents_screen.dart';
 import '../screens/marketing_offers_screen.dart';
 import '../screens/agent_wallet_screen.dart';
@@ -17,7 +18,7 @@ import '../screens/analytics_reports_screen.dart';
 import '../screens/agent_support_screen.dart';
 import '../screens/agent_settings_screen.dart';
 import '../screens/agent_bank_accounts_screen.dart';
-import '../screens/agent_client_list_screen.dart'; // 🆕
+import '../screens/agent_client_list_screen.dart';
 
 import '../../auth/screens/sso_login_screen.dart';
 
@@ -348,6 +349,14 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                       Icons.router,
                       Colors.orange,
                       const MikrotikCategoriesScreen(),
+                      textColor),
+                  // 🆕 قسم الطباعة
+                  _buildDrawerItem(
+                      context,
+                      'الطباعة والأرشيف',
+                      Icons.print,
+                      Colors.brown,
+                      const PrintSectionScreen(),
                       textColor),
 
                   Divider(
