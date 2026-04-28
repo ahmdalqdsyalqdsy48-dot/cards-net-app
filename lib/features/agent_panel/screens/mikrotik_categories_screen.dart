@@ -90,6 +90,14 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   int? _printCount;
   TextEditingController _printCountController = TextEditingController();
 
+  // وحدات تحكم خاصة بحقول إعدادات النص (مع FocusNode)
+  late TextEditingController _pinXController;
+  late TextEditingController _pinYController;
+  late TextEditingController _pinFontController;
+  late FocusNode _pinXFocus;
+  late FocusNode _pinYFocus;
+  late FocusNode _pinFontFocus;
+
   Timer? _searchTimer;
 
   @override
@@ -104,6 +112,52 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
         _printCount = null;
       }
     });
+
+    // تهيئة متحكمات النص
+    _pinXController = TextEditingController(text: _pinXPercent.toStringAsFixed(1));
+    _pinYController = TextEditingController(text: _pinYPercent.toStringAsFixed(1));
+    _pinFontController = TextEditingController(text: _pinFontSize.toStringAsFixed(1));
+    _pinXFocus = FocusNode();
+    _pinYFocus = FocusNode();
+    _pinFontFocus = FocusNode();
+
+    _pinXController.addListener(() {
+      final v = double.tryParse(_pinXController.text);
+      if (v != null) {
+        _pinXPercent = v;
+        if (mounted) setState(() {});
+        _pinXFocus.requestFocus(); // يحافظ على التركيز
+      }
+    });
+    _pinYController.addListener(() {
+      final v = double.tryParse(_pinYController.text);
+      if (v != null) {
+        _pinYPercent = v;
+        if (mounted) setState(() {});
+        _pinYFocus.requestFocus();
+      }
+    });
+    _pinFontController.addListener(() {
+      final v = double.tryParse(_pinFontController.text);
+      if (v != null) {
+        _pinFontSize = v;
+        if (mounted) setState(() {});
+        _pinFontFocus.requestFocus();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _printCountController.dispose();
+    _pinXController.dispose();
+    _pinYController.dispose();
+    _pinFontController.dispose();
+    _pinXFocus.dispose();
+    _pinYFocus.dispose();
+    _pinFontFocus.dispose();
+    super.dispose();
   }
 
   void _play(String type) =>
@@ -1834,24 +1888,24 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         indicatorWeight: 4,
                         labelStyle: const TextStyle(
                             fontWeight: FontWeight.bold, fontSize: 14),
-                        tabs: [
-                          const Tab(
+                        tabs: const [
+                          Tab(
                               icon: Icon(Icons.dns,
                                   color: Colors.greenAccent),
                               text: 'سيرفرات الربط'),
-                          const Tab(
+                          Tab(
                               icon: Icon(Icons.category,
                                   color: Colors.orangeAccent),
                               text: 'المخزون والفئات'),
-                          const Tab(
+                          Tab(
                               icon: Icon(Icons.local_offer,
                                   color: Colors.amber),
                               text: 'شرائح الخصم'),
-                          const Tab(
+                          Tab(
                               icon: Icon(Icons.autorenew,
                                   color: Colors.lightBlueAccent),
                               text: 'توليد الكروت'),
-                          const Tab(
+                          Tab(
                               icon: Icon(Icons.print,
                                   color: Colors.tealAccent),
                               text: 'طباعة الكروت'),
@@ -1864,7 +1918,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text(
+                            const Text(
                               'محاكاة: ',
                               style: TextStyle(
                                   color: Colors.white70, fontSize: 12),
@@ -2827,9 +2881,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
 
   String _generateFakePin() {
     final r = Random();
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    return List.generate(
-        10, (index) => chars[r.nextInt(chars.length)]).join();
+    return (r.nextInt(9000000) + 1000000).toString();
   }
 
   Future<void> _simulateGenerate(
@@ -3038,6 +3090,12 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                 _selectedPrintCategory?[
                                         'textColor'] ??
                                     Colors.black.value);
+                            _pinXController.text =
+                                _pinXPercent.toStringAsFixed(1);
+                            _pinYController.text =
+                                _pinYPercent.toStringAsFixed(1);
+                            _pinFontController.text =
+                                _pinFontSize.toStringAsFixed(1);
                             _loadPrintReadyCards(
                                 _selectedPrintNetworkId!,
                                 val);
@@ -3075,41 +3133,32 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                             fontSize: 16,
                             fontWeight: FontWeight.bold)),
                     const SizedBox(height: 10),
+                    // --- معاينة مباشرة (أعلى الحقول) ---
+                    if (_templateBase64 != null &&
+                        _templateBase64!.isNotEmpty)
+                      _buildLivePreview(),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
                           child: TextField(
+                            focusNode: _pinXFocus,
+                            controller: _pinXController,
                             decoration: const InputDecoration(
                                 labelText: 'الموقع الأفقي (%)',
                                 border: OutlineInputBorder()),
                             keyboardType: TextInputType.number,
-                            controller: TextEditingController(
-                                text: _pinXPercent
-                                    .toStringAsFixed(1)),
-                            onChanged: (v) {
-                              setState(() {
-                                _pinXPercent =
-                                    double.tryParse(v) ?? 50;
-                              });
-                            },
                           ),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: TextField(
+                            focusNode: _pinYFocus,
+                            controller: _pinYController,
                             decoration: const InputDecoration(
                                 labelText: 'الموقع الرأسي (%)',
                                 border: OutlineInputBorder()),
                             keyboardType: TextInputType.number,
-                            controller: TextEditingController(
-                                text: _pinYPercent
-                                    .toStringAsFixed(1)),
-                            onChanged: (v) {
-                              setState(() {
-                                _pinYPercent =
-                                    double.tryParse(v) ?? 50;
-                              });
-                            },
                           ),
                         ),
                       ],
@@ -3119,19 +3168,12 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                       children: [
                         Expanded(
                           child: TextField(
+                            focusNode: _pinFontFocus,
+                            controller: _pinFontController,
                             decoration: const InputDecoration(
                                 labelText: 'حجم الخط',
                                 border: OutlineInputBorder()),
                             keyboardType: TextInputType.number,
-                            controller: TextEditingController(
-                                text: _pinFontSize
-                                    .toStringAsFixed(1)),
-                            onChanged: (v) {
-                              setState(() {
-                                _pinFontSize =
-                                    double.tryParse(v) ?? 14;
-                              });
-                            },
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -3152,11 +3194,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    // --- معاينة مباشرة ---
-                    if (_templateBase64 != null &&
-                        _templateBase64!.isNotEmpty)
-                      _buildLivePreview(),
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
@@ -3258,7 +3295,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                     TextField(
                       controller: _printCountController,
                       keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                         labelText: 'عدد الكروت المطلوب',
                         hintText: 'الكل',
                         border: OutlineInputBorder(),
@@ -3548,7 +3585,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     final WriteBatch batch = _db.batch();
 
     for (var card in cards) {
-      // Get the document reference by querying cards collection
       final querySnap = await _db
           .collection('cards')
           .where('pin', isEqualTo: card['pin'])
