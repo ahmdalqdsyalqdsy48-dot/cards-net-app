@@ -77,6 +77,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   List<Map<String, dynamic>> _printReadyCards = [];
   final TextEditingController _printCountController = TextEditingController();
   int _printCount = 0;
+  bool _printSettingsLoaded = false; // لتجنب تحديث الحقول أثناء التحميل
 
   // إعدادات النص على القالب
   double _textPositionX = 50.0; // نسبة مئوية 0-100
@@ -91,12 +92,24 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   double _cardWidth = 85;
   double _cardHeight = 55;
 
-  Timer? _searchTimer; // يحتاج dart:async
+  Timer? _debounceTimer;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 5, vsync: this);
+    _printCountController.addListener(() {
+      // لمنع الحلقة اللانهائية
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _printCountController.dispose();
+    _debounceTimer?.cancel();
+    _multiGenControllers.forEach((key, value) => value.dispose());
+    super.dispose();
   }
 
   void _play(String type) =>
@@ -119,86 +132,88 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
       {bool requirePassword = false}) async {
     _play('warning');
     final passwordController = TextEditingController();
-    bool obscurePassword = true; // متغير محلي داخل StatefulBuilder
     return await showDialog(
           context: context,
-          builder: (context) => StatefulBuilder(
-            builder: (context, setDialogState) => Directionality(
-              textDirection: TextDirection.rtl,
-              child: AlertDialog(
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15)),
-                title: Text(title,
-                    style:
-                        TextStyle(color: color, fontWeight: FontWeight.bold)),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(message),
-                    if (requirePassword) ...[
-                      const SizedBox(height: 15),
-                      TextField(
-                        controller: passwordController,
-                        obscureText: obscurePassword,
-                        decoration: InputDecoration(
-                          labelText: 'أدخل كلمة المرور للتأكيد',
-                          border: const OutlineInputBorder(),
-                          prefixIcon:
-                              const Icon(Icons.lock, color: Colors.red),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              obscurePassword
-                                  ? Icons.visibility_off
-                                  : Icons.visibility,
-                              color: Colors.grey,
+          builder: (context) {
+            bool obscurePassword = true;
+            return StatefulBuilder(
+              builder: (context, setDialogState) => Directionality(
+                textDirection: TextDirection.rtl,
+                child: AlertDialog(
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15)),
+                  title: Text(title,
+                      style:
+                          TextStyle(color: color, fontWeight: FontWeight.bold)),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(message),
+                      if (requirePassword) ...[
+                        const SizedBox(height: 15),
+                        TextField(
+                          controller: passwordController,
+                          obscureText: obscurePassword,
+                          decoration: InputDecoration(
+                            labelText: 'أدخل كلمة المرور للتأكيد',
+                            border: const OutlineInputBorder(),
+                            prefixIcon:
+                                const Icon(Icons.lock, color: Colors.red),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                obscurePassword
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
+                                color: Colors.grey,
+                              ),
+                              onPressed: () {
+                                setDialogState(() {
+                                  obscurePassword = !obscurePassword;
+                                });
+                              },
                             ),
-                            onPressed: () {
-                              setDialogState(() {
-                                obscurePassword = !obscurePassword;
-                              });
-                            },
                           ),
                         ),
-                      ),
+                      ],
                     ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        _play('click');
+                        Navigator.pop(context, false);
+                      },
+                      child: const Text('إلغاء',
+                          style: TextStyle(color: Colors.grey)),
+                    ),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: color,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: () {
+                        if (requirePassword) {
+                          final sys = Provider.of<SystemProvider>(context,
+                              listen: false);
+                          if (!sys.validatePin(passwordController.text.trim()) &&
+                              passwordController.text.trim() != '123456') {
+                            _play('error');
+                            _showToast('كلمة المرور غير صحيحة', isError: true);
+                            return;
+                          }
+                        }
+                        _play('click');
+                        Navigator.pop(context, true);
+                      },
+                      child: const Text('تأكيد التنفيذ',
+                          style: TextStyle(color: Colors.white)),
+                    ),
                   ],
                 ),
-                actions: [
-                  TextButton(
-                    onPressed: () {
-                      _play('click');
-                      Navigator.pop(context, false);
-                    },
-                    child: const Text('إلغاء',
-                        style: TextStyle(color: Colors.grey)),
-                  ),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: color,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8)),
-                    ),
-                    onPressed: () {
-                      if (requirePassword) {
-                        final sys = Provider.of<SystemProvider>(context,
-                            listen: false);
-                        if (!sys.validatePin(passwordController.text.trim()) &&
-                            passwordController.text.trim() != '123456') {
-                          _play('error');
-                          _showToast('كلمة المرور غير صحيحة', isError: true);
-                          return;
-                        }
-                      }
-                      _play('click');
-                      Navigator.pop(context, true);
-                    },
-                    child: const Text('تأكيد التنفيذ',
-                        style: TextStyle(color: Colors.white)),
-                  ),
-                ],
               ),
-            ),
-          ),
+            );
+          },
         ) ??
         false;
   }
@@ -260,7 +275,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   }
 
   // ==========================================
-  // 1. إضافة وتعديل سيرفر ميكروتك (مطورة)
+  // 1. إضافة وتعديل سيرفر ميكروتك
   // ==========================================
   void _showAddServerBottomSheet(SystemProvider sys,
       {Map<String, dynamic>? existingData, String? docId}) {
@@ -574,7 +589,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   }
 
   // ==========================================
-  // 2. إضافة وتعديل فئة كروت للشبكة (مطورة)
+  // 2. إضافة وتعديل فئة كروت للشبكة
   // ==========================================
   void _showAddCategoryBottomSheet(List<QueryDocumentSnapshot> agentNetworks,
       {Map? existingCat, String? preSelectedNetId}) {
@@ -822,7 +837,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                       'isBotEnabled':
                                           existingCat?['isBotEnabled'] ??
                                               false,
-                                      // إعدادات الطباعة (إن وجدت)
                                       'printSettings':
                                           existingCat?['printSettings'] ??
                                               {},
@@ -923,6 +937,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
+  // عرض قائمة الكروت
   void _showCardsList(
       String netId, String catId, String catName, Color catColor) {
     _play('click');
@@ -1066,6 +1081,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
+  // إعدادات البوت الذكي
   void _showBotSettings(String netId, String catId, Map category) {
     _play('click');
     int minStock = category['botMinStock'] ?? 5;
@@ -1185,8 +1201,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
 
     // تخزين نتائج البحث المؤقتة لكل هاتف
     Map<String, Map<String, dynamic>?> searchResults = {};
-    // تخزين تفاصيل العملاء
-    Map<String, Map<String, dynamic>> customerDetails = {};
+    // تخزين تفاصيل العملاء (nullable)
+    Map<String, Map<String, dynamic>?> customerDetails = {};
 
     showModalBottomSheet(
       context: context,
@@ -1324,14 +1340,11 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                                       : Colors.teal,
                                                 ),
                                                 onPressed: () {
-                                                  if (customerDetails[
-                                                          phone] !=
-                                                      null) {
+                                                  final data =
+                                                      customerDetails[phone];
+                                                  if (data != null) {
                                                     _showTargetInfoDialog(
-                                                        phone,
-                                                        customerDetails[
-                                                            phone]!,
-                                                        sys);
+                                                        phone, data, sys);
                                                   }
                                                 },
                                               )
@@ -1534,13 +1547,12 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   }
 
   // ===== دوال البحث عن العميل لشرائح الخصم =====
-  Timer? _debounceTimer;
   void _debounceSearchForDiscount(
       String phone,
       SystemProvider sys,
       StateSetter setModalState,
-      Map<String, dynamic?> searchResults,
-      Map<String, Map<String, dynamic>> customerDetails,
+      Map<String, Map<String, dynamic>?> searchResults,
+      Map<String, Map<String, dynamic>?> customerDetails,
       String currentPhone) {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 600), () async {
@@ -1565,7 +1577,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   Future<Map<String, dynamic>?> _fetchCustomerDetailsForDiscount(
       String phone, SystemProvider sys) async {
     try {
-      // البحث عن المستخدم في مجموعة users
       var userQuery = await _db
           .collection('users')
           .where('phone', isEqualTo: phone)
@@ -1573,8 +1584,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
           .get();
       if (userQuery.docs.isEmpty) return null;
       var userData = userQuery.docs.first.data() as Map<String, dynamic>;
-      // الرصيد من تعاملات الوكيل فقط: نفترض وجود حقل agentBalance أو نحسبه لاحقاً
-      // سنحسبه عبر مجموع المعاملات الخاصة بالوكيل وهذا المستخدم
       double agentBalance = 0.0;
       try {
         var rechargeQuery = await _db
@@ -1661,7 +1670,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   }
 
   void _showRecentAgentOperations(String phone, SystemProvider sys) {
-    // نعرض العمليات الأخيرة (شحنات/توليد كروت) بين الوكيل وهذا المستخدم على شبكات الوكيل
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -1721,7 +1729,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
 
   void _showTargetInfoDialog(
       String phone, Map<String, dynamic> data, SystemProvider sys) {
-    // نستخدم الحوار لعرض معلومات العميل وأزرار إضافية
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -1784,8 +1791,9 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
-  // ===== نهاية دوال شرائح الخصم =====
-
+  // ==========================================
+  // بناء الشاشة الرئيسية
+  // ==========================================
   @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
@@ -1881,10 +1889,640 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
-  // ... (باقي الدوال بدون تغيير، والتعديلات في التوليد والطباعة)
+  // ==========================================
+  // تبويب السيرفرات
+  // ==========================================
+  Widget _buildServersTab(
+      SystemProvider sys, List<QueryDocumentSnapshot> networks) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: networks.isEmpty
+          ? const Center(
+              child: Text('لم تقم بربط أي شبكة ميكروتك حتى الآن.',
+                  style: TextStyle(color: Colors.grey)))
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: networks.length,
+              itemBuilder: (context, index) {
+                var net = networks[index].data() as Map<String, dynamic>;
+                bool isActive = net['isActive'] ?? true;
+                final textColor =
+                    Theme.of(context).textTheme.bodyMedium?.color ??
+                        Colors.black87;
+
+                return Card(
+                  color: isActive
+                      ? Theme.of(context).cardColor
+                      : Colors.grey.shade300,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15)),
+                  elevation: 3,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            CircleAvatar(
+                                backgroundColor:
+                                    isActive ? Colors.green : Colors.grey,
+                                radius: 20,
+                                child: const Icon(Icons.router,
+                                    color: Colors.white, size: 22)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                net['name'] ?? '',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    decoration: isActive
+                                        ? null
+                                        : TextDecoration.lineThrough,
+                                    color: textColor),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                  color: isActive
+                                      ? Colors.green.withOpacity(0.15)
+                                      : Colors.red.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(12)),
+                              child: Text(
+                                isActive ? 'نشط' : 'مجمد',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: isActive
+                                        ? Colors.green.shade700
+                                        : Colors.red.shade700),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _buildInfoRow(Icons.location_on, 'الموقع',
+                            net['location'] ?? '', textColor, Colors.orange),
+                        const SizedBox(height: 6),
+                        _buildInfoRow(Icons.wifi, 'IP', net['ip'] ?? '',
+                            textColor, Colors.green),
+                        const SizedBox(height: 6),
+                        _buildInfoRow(
+                            Icons.info_outline,
+                            'الحالة',
+                            isActive ? 'نشط' : 'مجمد',
+                            textColor,
+                            isActive ? Colors.green : Colors.red),
+                        const SizedBox(height: 16),
+                        _buildActionButtons(
+                            sys, networks, index, net, isActive),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showAddServerBottomSheet(sys),
+        backgroundColor: Colors.blue.shade800,
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text('إضافة سيرفر',
+            style:
+                TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value,
+      Color textColor, Color iconColor) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: iconColor),
+        const SizedBox(width: 8),
+        Text('$label: ',
+            style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+                color: Colors.grey)),
+        Expanded(
+            child:
+                Text(value, style: TextStyle(fontSize: 13, color: textColor))),
+      ],
+    );
+  }
+
+  Widget _buildActionButtons(
+      SystemProvider sys,
+      List<QueryDocumentSnapshot> networks,
+      int index,
+      Map<String, dynamic> net,
+      bool isActive) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _actionButton(Icons.bolt, 'اختبار', Colors.blue,
+            () => _testConnection(net)),
+        _actionButton(
+          isActive ? Icons.pause_circle_filled : Icons.play_circle_fill,
+          isActive ? 'تجميد' : 'تنشيط',
+          Colors.orange,
+          () async {
+            bool confirm = await _confirmAction(
+                isActive ? "تجميد الشبكة" : "تنشيط الشبكة",
+                "هل تريد تغيير حالة الشبكة؟",
+                Colors.orange);
+            if (confirm) {
+              _db
+                  .collection('networks')
+                  .doc(networks[index].id)
+                  .update({'isActive': !isActive});
+              _showToast(isActive ? 'تم تجميد الشبكة' : 'تم تنشيط الشبكة');
+            }
+          },
+        ),
+        _actionButton(Icons.edit, 'تعديل', Colors.grey, () =>
+            _showAddServerBottomSheet(sys,
+                existingData: net, docId: networks[index].id)),
+        _actionButton(Icons.delete, 'حذف', Colors.red, () async {
+          bool confirm = await _confirmAction("حذف الشبكة نهائياً",
+              "سيتم مسح بيانات الشبكة، هل أنت متأكد؟", Colors.red,
+              requirePassword: true);
+          if (confirm) {
+            _play('click');
+            await _db.collection('networks').doc(networks[index].id).delete();
+            _showToast('تم حذف الشبكة نهائياً');
+          }
+        }),
+      ],
+    );
+  }
+
+  Widget _actionButton(
+      IconData icon, String label, Color color, VoidCallback onTap) {
+    return TextButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 18, color: color),
+      label: Text(label,
+          style: TextStyle(
+              fontSize: 12, color: color, fontWeight: FontWeight.bold)),
+      style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4)),
+    );
+  }
 
   // ==========================================
-  // تبويب التوليد (معدّل لدعم وضع المحاكاة)
+  // تبويب الفئات والمخزون
+  // ==========================================
+  Widget _buildCategoriesTab(List<QueryDocumentSnapshot> networks) {
+    final textColor =
+        Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: networks.isEmpty
+          ? const Center(
+              child: Text('أضف سيرفر شبكة أولاً لعرض فئاته.',
+                  style: TextStyle(color: Colors.grey)))
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: networks.length,
+              itemBuilder: (context, netIndex) {
+                var netId = networks[netIndex].id;
+                var netData =
+                    networks[netIndex].data() as Map<String, dynamic>;
+                List categories = netData['categories'] ?? [];
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Text('فئات شبكة: ${netData['name']}',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: textColor))),
+                    if (categories.isEmpty)
+                      const Padding(
+                          padding: EdgeInsets.all(8.0),
+                          child: Text('لا توجد فئات لهذه الشبكة.',
+                              style: TextStyle(color: Colors.grey))),
+                    ...categories.map((category) {
+                      int stock = category['stock'] ?? 0;
+                      bool isLowStock = stock < 10;
+                      Color catColor =
+                          Color(category['color'] ?? Colors.blue.value);
+                      bool isCatActive = category['isActive'] ?? true;
+                      bool isBotEnabled = category['isBotEnabled'] ?? false;
+
+                      return Card(
+                        color: isCatActive
+                            ? Theme.of(context).cardColor
+                            : Colors.grey.shade200,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                            side: BorderSide(
+                                color: isCatActive
+                                    ? catColor.withOpacity(0.5)
+                                    : Colors.grey)),
+                        margin: const EdgeInsets.only(bottom: 10),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                      child: Text(
+                                    category['name'],
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 18,
+                                        color: isCatActive
+                                            ? catColor
+                                            : Colors.grey,
+                                        decoration: isCatActive
+                                            ? null
+                                            : TextDecoration.lineThrough),
+                                  )),
+                                  Wrap(
+                                    spacing: 4,
+                                    children: [
+                                      IconButton(
+                                          icon: const Icon(
+                                              Icons.remove_red_eye,
+                                              color: Colors.teal,
+                                              size: 20),
+                                          onPressed: () => _showCardsList(
+                                              netId,
+                                              category['id'],
+                                              category['name'],
+                                              catColor),
+                                          constraints:
+                                              const BoxConstraints(),
+                                          padding:
+                                              const EdgeInsets.symmetric(
+                                                  horizontal: 5),
+                                          tooltip: 'عرض الكروت'),
+                                      IconButton(
+                                          icon: Icon(Icons.smart_toy,
+                                              color: isBotEnabled
+                                                  ? Colors.purple
+                                                  : Colors.grey,
+                                              size: 20),
+                                          onPressed: () => _showBotSettings(
+                                              netId,
+                                              category['id'],
+                                              category),
+                                          constraints:
+                                              const BoxConstraints(),
+                                          padding:
+                                              const EdgeInsets.symmetric(
+                                                  horizontal: 5),
+                                          tooltip: 'البوت الذكي'),
+                                      IconButton(
+                                          icon: Icon(
+                                              isCatActive
+                                                  ? Icons.pause_circle_filled
+                                                  : Icons.play_circle_fill,
+                                              color: Colors.orange,
+                                              size: 20),
+                                          onPressed: () async {
+                                            bool confirm =
+                                                await _confirmAction(
+                                                    isCatActive
+                                                        ? "تجميد الفئة"
+                                                        : "تنشيط الفئة",
+                                                    "تغيير حالة الفئة؟",
+                                                    Colors.orange);
+                                            if (confirm) {
+                                              List updated =
+                                                  List.from(categories);
+                                              int idx = updated.indexWhere(
+                                                  (c) =>
+                                                      c['id'] ==
+                                                      category['id']);
+                                              updated[idx]['isActive'] =
+                                                  !isCatActive;
+                                              await _db
+                                                  .collection('networks')
+                                                  .doc(netId)
+                                                  .update({
+                                                'categories': updated
+                                              });
+                                              _showToast(isCatActive
+                                                  ? 'تم تجميد الفئة'
+                                                  : 'تم تنشيط الفئة');
+                                            }
+                                          },
+                                          constraints:
+                                              const BoxConstraints(),
+                                          padding:
+                                              const EdgeInsets.symmetric(
+                                                  horizontal: 5)),
+                                      IconButton(
+                                          icon: const Icon(Icons.edit,
+                                              color: Colors.blue,
+                                              size: 20),
+                                          onPressed: () =>
+                                              _showAddCategoryBottomSheet(
+                                                  networks,
+                                                  existingCat: category,
+                                                  preSelectedNetId: netId),
+                                          constraints:
+                                              const BoxConstraints(),
+                                          padding:
+                                              const EdgeInsets.symmetric(
+                                                  horizontal: 5)),
+                                      IconButton(
+                                          icon: const Icon(Icons.delete,
+                                              color: Colors.red, size: 20),
+                                          onPressed: () async {
+                                            bool confirm =
+                                                await _confirmAction(
+                                                    "حذف الفئة",
+                                                    "سيتم حذف الفئة نهائياً، متأكد؟",
+                                                    Colors.red,
+                                                    requirePassword:
+                                                        true);
+                                            if (confirm) {
+                                              _play('click');
+                                              await _db
+                                                  .collection('networks')
+                                                  .doc(netId)
+                                                  .update({
+                                                'categories': FieldValue
+                                                    .arrayRemove([category])
+                                              });
+                                              _showToast(
+                                                  'تم حذف الفئة نهائياً');
+                                            }
+                                          },
+                                          constraints:
+                                              const BoxConstraints(),
+                                          padding:
+                                              const EdgeInsets.symmetric(
+                                                  horizontal: 5)),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                  'الوقت: ${category['time']} | السعة: ${category['capacity']}',
+                                  style: TextStyle(color: textColor)),
+                              if (category['note'] != null &&
+                                  category['note'].toString().isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text('📝 ${category['note']}',
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey,
+                                          fontStyle: FontStyle.italic)),
+                                ),
+                              const Divider(),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                      'سعر الجمهور: ${category['price']} ريال',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                          color: Colors.grey)),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(
+                                        color: isLowStock
+                                            ? Colors.red.shade100
+                                            : Colors.green.shade100,
+                                        borderRadius:
+                                            BorderRadius.circular(10)),
+                                    child: Text('المخزون: $stock كرت',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                            color: isLowStock
+                                                ? Colors.red
+                                                : Colors.green.shade800)),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                    const SizedBox(height: 20),
+                  ],
+                );
+              },
+            ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showAddCategoryBottomSheet(networks),
+        backgroundColor: Colors.orange.shade700,
+        icon: const Icon(Icons.add_circle, color: Colors.white),
+        label: const Text('إضافة فئة',
+            style:
+                TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      ),
+    );
+  }
+
+  // ==========================================
+  // تبويب شرائح الخصم
+  // ==========================================
+  Widget _buildDiscountTiersTab(SystemProvider sys) {
+    final textColor =
+        Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
+    return StreamBuilder<QuerySnapshot>(
+      stream: _db
+          .collection('discount_tiers')
+          .where('agentPhone', isEqualTo: sys.currentUserPhone)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting)
+          return const Center(child: CircularProgressIndicator());
+        List<QueryDocumentSnapshot> tiers =
+            snapshot.hasData ? snapshot.data!.docs : [];
+        tiers.sort((a, b) =>
+            ((b.data() as Map)['condition'] as int)
+                .compareTo((a.data() as Map)['condition'] as int));
+
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                    color: Colors.amber.shade100,
+                    borderRadius: BorderRadius.circular(10)),
+                child: const Text(
+                    '💡 الخصم يُطبق تلقائياً على المشتريات عند تحقيق شرط السحب.',
+                    style: TextStyle(
+                        color: Colors.brown,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12)),
+              ),
+              Expanded(
+                child: tiers.isEmpty
+                    ? const Center(
+                        child: Text('لم تقم بإضافة أي شرائح خصم حتى الآن.',
+                            style: TextStyle(color: Colors.grey)))
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: tiers.length,
+                        itemBuilder: (context, index) {
+                          var tier =
+                              tiers[index].data() as Map<String, dynamic>;
+                          bool isActive = tier['isActive'] ?? true;
+                          Color tColor = Color(
+                              tier['color'] ?? Colors.amber.shade700.value);
+                          String dType = tier['discountType'] == 'percentage'
+                              ? '%'
+                              : 'ريال';
+
+                          return Card(
+                            color: isActive
+                                ? Theme.of(context).cardColor
+                                : Colors.grey.shade200,
+                            elevation: 2,
+                            margin: const EdgeInsets.only(bottom: 12),
+                            child: ListTile(
+                              leading: Icon(
+                                  isActive ? Icons.stars : Icons.block,
+                                  color: isActive ? tColor : Colors.grey,
+                                  size: 35),
+                              title: Text(tier['title'],
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: isActive ? tColor : Colors.grey,
+                                      decoration: isActive
+                                          ? null
+                                          : TextDecoration.lineThrough)),
+                              subtitle: Text(
+                                  'شرط السحب: ${tier['condition']} ريال\nالخصم: ${tier['discountValue']}$dType',
+                                  style:
+                                      TextStyle(fontSize: 12, color: textColor)),
+                              trailing: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                        color: isActive
+                                            ? tColor.withOpacity(0.1)
+                                            : Colors.grey.withOpacity(0.1),
+                                        borderRadius:
+                                            BorderRadius.circular(20)),
+                                    child: Text(
+                                        tier['targetType'] == 'all'
+                                            ? 'للجميع'
+                                            : tier['targetType'] == 'pos'
+                                                ? 'نقاط البيع'
+                                                : tier['targetType'] == 'user'
+                                                    ? 'المستخدمين'
+                                                    : 'محدد',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color:
+                                                isActive ? tColor : Colors.grey,
+                                            fontSize: 10)),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      GestureDetector(
+                                          onTap: () async {
+                                            bool confirm = await _confirmAction(
+                                                isActive
+                                                    ? "تجميد الشريحة"
+                                                    : "تنشيط الشريحة",
+                                                "تغيير حالة العرض؟",
+                                                Colors.orange);
+                                            if (confirm)
+                                              _db
+                                                  .collection(
+                                                      'discount_tiers')
+                                                  .doc(tiers[index].id)
+                                                  .update({
+                                                'isActive': !isActive
+                                              });
+                                          },
+                                          child: Icon(
+                                              isActive
+                                                  ? Icons.pause_circle_filled
+                                                  : Icons.play_circle_fill,
+                                              color: Colors.orange,
+                                              size: 20)),
+                                      const SizedBox(width: 10),
+                                      GestureDetector(
+                                          onTap: () =>
+                                              _showDiscountTierBottomSheet(sys,
+                                                  existingTier: tier,
+                                                  docId: tiers[index].id),
+                                          child: const Icon(Icons.edit,
+                                              color: Colors.blue, size: 20)),
+                                      const SizedBox(width: 10),
+                                      GestureDetector(
+                                          onTap: () async {
+                                            bool confirm = await _confirmAction(
+                                                "حذف الشريحة",
+                                                "سيتم إلغاء الخصم عن البقالات المنضمة، متأكد؟",
+                                                Colors.red,
+                                                requirePassword: true);
+                                            if (confirm) {
+                                              _play('click');
+                                              await _db
+                                                  .collection(
+                                                      'discount_tiers')
+                                                  .doc(tiers[index].id)
+                                                  .delete();
+                                              _showToast('تم حذف الشريحة');
+                                            }
+                                          },
+                                          child: const Icon(Icons.delete,
+                                              color: Colors.red, size: 20)),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => _showDiscountTierBottomSheet(sys),
+            backgroundColor: Colors.amber.shade700,
+            icon: const Icon(Icons.add_moderator, color: Colors.white),
+            label: const Text('إضافة شريحة',
+                style: TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        );
+      },
+    );
+  }
+
+  // ==========================================
+  // تبويب توليد الكروت (مع وضع المحاكاة)
   // ==========================================
   Widget _buildGenerateCardsTab(
       SystemProvider sys, List<QueryDocumentSnapshot> networks) {
@@ -2122,7 +2760,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     }
 
     if (_simulationMode) {
-      // توليد محلي
       bool confirm = await _confirmAction(
           "تأكيد التوليد الوهمي",
           "سيتم توليد $totalAmount كرت وهمي (محاكاة). استمرار؟",
@@ -2194,7 +2831,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
       final netId = order['networkId'] as String;
       final catId = order['categoryId'] as String;
       final amount = order['amount'] as int;
-      // جلب بيانات الفئة
       final netDoc = await _db.collection('networks').doc(netId).get();
       final netData = netDoc.data() as Map<String, dynamic>;
       List categories = List.from(netData['categories']);
@@ -2205,7 +2841,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
       String name = cat['name'];
 
       for (int i = 0; i < amount; i++) {
-        String pin = (1000000 + random.nextInt(9000000)).toString(); // 7 أرقام
+        String pin = (1000000 + random.nextInt(9000000)).toString();
         var cardRef = _db.collection('cards').doc();
         batch.set(cardRef, {
           'pin': pin,
@@ -2219,14 +2855,13 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
           'createdAt': FieldValue.serverTimestamp(),
         });
       }
-      // تحديث المخزون
       if (amount > 0) {
         categories[catIdx]['stock'] += amount;
       }
     }
 
     await batch.commit();
-    // تحديث المخزون في كل الشبكات المعنية
+
     Set<String> updatedNetworks = {};
     for (var order in orders) {
       String netId = order['networkId'];
@@ -2252,7 +2887,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   }
 
   // ==========================================
-  // تبويب طباعة الكروت (مطور مع إعدادات النص وحفظ)
+  // تبويب طباعة الكروت (مطور)
   // ==========================================
   Widget _buildPrintCardsTab(List<QueryDocumentSnapshot> networks) {
     final textColor =
@@ -2260,8 +2895,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
 
     if (networks.isEmpty)
       return const Center(
-          child:
-              Text('يجب إضافة شبكة وفئات أولاً.', style: TextStyle(color: Colors.grey)));
+          child: Text('يجب إضافة شبكة وفئات أولاً.',
+              style: TextStyle(color: Colors.grey)));
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -2570,13 +3205,11 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
               controller: _printCountController,
               onChanged: (v) {
                 int val = int.tryParse(v) ?? 0;
-                if (val > _printReadyCards.length) val = _printReadyCards.length;
+                if (val > _printReadyCards.length) {
+                  val = _printReadyCards.length;
+                }
                 setState(() => _printCount = val);
-                _printCountController.value = TextEditingValue(
-                  text: val.toString(),
-                  selection:
-                      TextSelection.collapsed(offset: val.toString().length),
-                );
+                // ضبط المؤشر يتم بالفعل
               },
             ),
             const SizedBox(height: 20),
@@ -2630,6 +3263,11 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     _textColor = Colors.black;
     _printCountController.clear();
     _printCount = 0;
+    _copiesPerCard = 1;
+    _cardsPerRow = 3;
+    _cardsPerColumn = 4;
+    _cardWidth = 85;
+    _cardHeight = 55;
   }
 
   void _loadPrintSettings(Map? category) {
@@ -2648,6 +3286,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     _cardWidth = (settings['cardWidth'] ?? 85.0).toDouble();
     _cardHeight = (settings['cardHeight'] ?? 55.0).toDouble();
     _copiesPerCard = settings['copiesPerCard'] ?? 1;
+    _printSettingsLoaded = true;
   }
 
   Future<void> _savePrintSettings() async {
@@ -2748,7 +3387,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
 
     final cardsToPrint = _printReadyCards.take(_printCount).toList();
 
-    // إنشاء PDF
     final pdf = pw.Document();
     final cardsPerPage = _cardsPerRow * _cardsPerColumn;
     final totalPages = (cardsToPrint.length / cardsPerPage).ceil();
@@ -2855,12 +3493,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
               'cards_print_${DateTime.now().millisecondsSinceEpoch}.pdf');
       // أرشفة الكروت المطبوعة
       WriteBatch batch = _db.batch();
-      for (var card in cardsToPrint) {
-        // نحتاج معرف الوثيقة، card فيه ربما id، لكن card كـ Map غير متضمن docId
-        // سنقوم بجلبها عبر استعلام سريع، لكن الأفضل أن نحتفظ بالـ doc IDs
-        // سنقوم بتخزينها أثناء التحميل
-      }
-      // بدلاً من التعقيد، نستعلم عن الكروت المختارة بالـ pin ونحدثها
       for (var card in cardsToPrint) {
         var query = await _db
             .collection('cards')
