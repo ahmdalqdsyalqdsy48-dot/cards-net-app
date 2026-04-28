@@ -81,10 +81,14 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   double _cardHeight = 55;
 
   // ===== إعدادات النص على القالب =====
-  double _pinXPercent = 50; // 0 يسار، 100 يمين
-  double _pinYPercent = 50; // 0 أعلى، 100 أسفل
+  double _pinXPercent = 50;
+  double _pinYPercent = 50;
   double _pinFontSize = 14;
   Color _pinColor = Colors.black;
+
+  // ===== عدد الكروت المطلوب طباعتها =====
+  int? _printCount;
+  TextEditingController _printCountController = TextEditingController();
 
   Timer? _searchTimer;
 
@@ -92,6 +96,14 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 5, vsync: this);
+    _printCountController.addListener(() {
+      int? val = int.tryParse(_printCountController.text);
+      if (val != null && val >= 0) {
+        _printCount = val;
+      } else {
+        _printCount = null;
+      }
+    });
   }
 
   void _play(String type) =>
@@ -1208,7 +1220,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   }
 
   // ==========================================
-  // 3. إدارة شرائح الخصم (مطورة مع استهداف متعدد)
+  // 3. إدارة شرائح الخصم
   // ==========================================
   void _showDiscountTierBottomSheet(SystemProvider sys,
       {Map<String, dynamic>? existingTier, String? docId}) {
@@ -2925,7 +2937,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   }
 
   // ==========================================
-  // تبويب طباعة الكروت (مُطوَّر)
+  // تبويب طباعة الكروت (مُطوَّر بالكامل)
   // ==========================================
   Widget _buildPrintCardsTab(List<QueryDocumentSnapshot> networks) {
     final textColor =
@@ -2967,6 +2979,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         _selectedPrintCategory = null;
                         _templateBase64 = null;
                         _printReadyCards = [];
+                        _printCount = null;
+                        _printCountController.clear();
                       });
                     },
                   ),
@@ -3031,6 +3045,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                             _selectedPrintCategory = null;
                             _templateBase64 = null;
                             _printReadyCards = [];
+                            _printCount = null;
+                            _printCountController.clear();
                           }
                         });
                       },
@@ -3070,8 +3086,12 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                             controller: TextEditingController(
                                 text: _pinXPercent
                                     .toStringAsFixed(1)),
-                            onChanged: (v) => _pinXPercent =
-                                double.tryParse(v) ?? 50,
+                            onChanged: (v) {
+                              setState(() {
+                                _pinXPercent =
+                                    double.tryParse(v) ?? 50;
+                              });
+                            },
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -3084,8 +3104,12 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                             controller: TextEditingController(
                                 text: _pinYPercent
                                     .toStringAsFixed(1)),
-                            onChanged: (v) => _pinYPercent =
-                                double.tryParse(v) ?? 50,
+                            onChanged: (v) {
+                              setState(() {
+                                _pinYPercent =
+                                    double.tryParse(v) ?? 50;
+                              });
+                            },
                           ),
                         ),
                       ],
@@ -3102,19 +3126,21 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                             controller: TextEditingController(
                                 text: _pinFontSize
                                     .toStringAsFixed(1)),
-                            onChanged: (v) => _pinFontSize =
-                                double.tryParse(v) ?? 14,
+                            onChanged: (v) {
+                              setState(() {
+                                _pinFontSize =
+                                    double.tryParse(v) ?? 14;
+                              });
+                            },
                           ),
                         ),
                         const SizedBox(width: 10),
                         ElevatedButton.icon(
                           onPressed: () async {
                             final color =
-                                await _openColorPicker(
-                                    _pinColor);
+                                await _openColorPicker(_pinColor);
                             if (color != null)
-                              setState(
-                                  () => _pinColor = color);
+                              setState(() => _pinColor = color);
                           },
                           icon: Icon(Icons.colorize,
                               color: _pinColor),
@@ -3126,6 +3152,11 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         ),
                       ],
                     ),
+                    const SizedBox(height: 12),
+                    // --- معاينة مباشرة ---
+                    if (_templateBase64 != null &&
+                        _templateBase64!.isNotEmpty)
+                      _buildLivePreview(),
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
@@ -3224,6 +3255,16 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                             fontWeight: FontWeight.bold,
                             color: Colors.teal)),
                     const SizedBox(height: 10),
+                    TextField(
+                      controller: _printCountController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: 'عدد الكروت المطلوب',
+                        hintText: 'الكل',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
                   ],
                   SizedBox(
                     width: double.infinity,
@@ -3231,7 +3272,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                     child: ElevatedButton.icon(
                       onPressed: (_printReadyCards.isEmpty)
                           ? null
-                          : () => _startPrinting(),
+                          : () => _showPrintConfirmationDialog(),
                       icon: const Icon(Icons.print,
                           color: Colors.white),
                       label: const Text('بدء الطباعة',
@@ -3252,6 +3293,53 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
+  Widget _buildLivePreview() {
+    if (_templateBase64 == null || _templateBase64!.isEmpty)
+      return const SizedBox.shrink();
+    final bytes = base64Decode(_templateBase64!);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('معاينة مباشرة:',
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
+        const SizedBox(height: 8),
+        Container(
+          width: 200,
+          height: 150,
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Image.memory(
+                    bytes,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+                Positioned(
+                  left: (200 * _pinXPercent / 100) - 20,
+                  top: (150 * _pinYPercent / 100) - 10,
+                  child: Text(
+                    '####',
+                    style: TextStyle(
+                      fontSize: _pinFontSize * 0.7,
+                      fontWeight: FontWeight.bold,
+                      color: _pinColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _loadPrintReadyCards(
       String networkId, String categoryId) async {
     final snapshot = await _db
@@ -3262,7 +3350,9 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     if (mounted) {
       setState(() {
         _printReadyCards =
-            snapshot.docs.map((doc) => doc.data()).toList();
+            snapshot.docs.map((doc) => doc.data() as Map<String, dynamic>).toList();
+        _printCount = _printReadyCards.length;
+        _printCountController.text = _printCount.toString();
       });
     }
   }
@@ -3292,17 +3382,77 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     }
   }
 
-  Future<void> _startPrinting() async {
-    _play('click');
-    _showToast('جاري تجهيز الطباعة... 🖨️');
+  Future<void> _showPrintConfirmationDialog() async {
+    final int available = _printReadyCards.length;
+    final int requested = _printCount ?? available;
+    final int printCount = requested > available ? available : requested;
+    if (printCount <= 0) {
+      _showToast('لا توجد كروت للطباعة', isError: true);
+      return;
+    }
 
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('تأكيد الطباعة'),
+          content: Text(
+              'عدد الكروت المعدة للطباعة: $available\nسيتم طباعة: $printCount كرت.\nاختر الإجراء المناسب.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'cancel'),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.pop(ctx, 'view'),
+              icon: const Icon(Icons.preview),
+              label: const Text('معاينة فقط'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.grey.shade600,
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.pop(ctx, 'print_only'),
+              icon: const Icon(Icons.print),
+              label: const Text('طباعة فقط'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.pop(ctx, 'print_archive'),
+              icon: const Icon(Icons.archive),
+              label: const Text('طباعة وأرشفة'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result == null || result == 'cancel') return;
+
+    final List<Map<String, dynamic>> cardsToPrint =
+        _printReadyCards.take(printCount).toList();
+
+    await _generateAndPrintPdf(cardsToPrint);
+
+    if (result == 'print_archive') {
+      await _archivePrintedCards(cardsToPrint);
+      _loadPrintReadyCards(_selectedPrintNetworkId!, _selectedPrintCategoryId!);
+    }
+  }
+
+  Future<void> _generateAndPrintPdf(List<Map<String, dynamic>> cards) async {
     final pdf = pw.Document();
     final cardsPerPage = _cardsPerRow * _cardsPerColumn;
-    final totalPages =
-        (_printReadyCards.length / cardsPerPage).ceil();
+    final totalPages = (cards.length / cardsPerPage).ceil();
 
     for (int page = 0; page < totalPages; page++) {
-      final pageCards = _printReadyCards
+      final pageCards = cards
           .skip(page * cardsPerPage)
           .take(cardsPerPage)
           .toList();
@@ -3391,5 +3541,38 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
             'cards_print_${DateTime.now().millisecondsSinceEpoch}.pdf');
     _play('success');
     _showToast('تم إرسال ملف الطباعة بنجاح');
+  }
+
+  Future<void> _archivePrintedCards(List<Map<String, dynamic>> cards) async {
+    if (_selectedPrintNetworkId == null || _selectedPrintCategoryId == null) return;
+    final WriteBatch batch = _db.batch();
+
+    for (var card in cards) {
+      // Get the document reference by querying cards collection
+      final querySnap = await _db
+          .collection('cards')
+          .where('pin', isEqualTo: card['pin'])
+          .where('categoryId', isEqualTo: _selectedPrintCategoryId)
+          .where('status', isEqualTo: 'print_ready')
+          .limit(1)
+          .get();
+      if (querySnap.docs.isNotEmpty) {
+        batch.update(querySnap.docs.first.reference, {'status': 'archived'});
+      }
+    }
+
+    final netDoc = await _db
+        .collection('networks')
+        .doc(_selectedPrintNetworkId)
+        .get();
+    List cats = List.from((netDoc.data() as Map)['categories']);
+    int idx = cats.indexWhere((c) => c['id'] == _selectedPrintCategoryId);
+    if (idx != -1) {
+      cats[idx]['stock'] = (cats[idx]['stock'] ?? 0) - cards.length;
+      batch.update(_db.collection('networks').doc(_selectedPrintNetworkId), {'categories': cats});
+    }
+
+    await batch.commit();
+    _showToast('تمت أرشفة ${cards.length} كرت بنجاح');
   }
 }
