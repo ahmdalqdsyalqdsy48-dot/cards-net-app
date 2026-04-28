@@ -88,15 +88,22 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
 
   // ===== عدد الكروت المطلوب طباعتها =====
   int? _printCount;
-  TextEditingController _printCountController = TextEditingController();
+  final TextEditingController _printCountController = TextEditingController();
 
   // وحدات تحكم خاصة بحقول إعدادات النص (مع FocusNode)
-  late TextEditingController _pinXController;
-  late TextEditingController _pinYController;
-  late TextEditingController _pinFontController;
-  late FocusNode _pinXFocus;
-  late FocusNode _pinYFocus;
-  late FocusNode _pinFontFocus;
+  late final TextEditingController _pinXController;
+  late final TextEditingController _pinYController;
+  late final TextEditingController _pinFontController;
+  late final FocusNode _pinXFocus;
+  late final FocusNode _pinYFocus;
+  late final FocusNode _pinFontFocus;
+
+  // وحدات تحكم إعدادات التخطيط
+  late final TextEditingController _copiesController;
+  late final TextEditingController _cardsPerRowController;
+  late final TextEditingController _cardsPerColumnController;
+  late final TextEditingController _cardWidthController;
+  late final TextEditingController _cardHeightController;
 
   Timer? _searchTimer;
 
@@ -121,30 +128,46 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     _pinYFocus = FocusNode();
     _pinFontFocus = FocusNode();
 
+    _copiesController = TextEditingController(text: _copiesPerCard.toString());
+    _cardsPerRowController = TextEditingController(text: _cardsPerRow.toString());
+    _cardsPerColumnController = TextEditingController(text: _cardsPerColumn.toString());
+    _cardWidthController = TextEditingController(text: _cardWidth.toStringAsFixed(1));
+    _cardHeightController = TextEditingController(text: _cardHeight.toStringAsFixed(1));
+
     _pinXController.addListener(() {
       final v = double.tryParse(_pinXController.text);
       if (v != null) {
         _pinXPercent = v;
-        if (mounted) setState(() {});
-        _pinXFocus.requestFocus(); // يحافظ على التركيز
+        _refreshPreview();
       }
     });
     _pinYController.addListener(() {
       final v = double.tryParse(_pinYController.text);
       if (v != null) {
         _pinYPercent = v;
-        if (mounted) setState(() {});
-        _pinYFocus.requestFocus();
+        _refreshPreview();
       }
     });
     _pinFontController.addListener(() {
       final v = double.tryParse(_pinFontController.text);
       if (v != null) {
         _pinFontSize = v;
-        if (mounted) setState(() {});
-        _pinFontFocus.requestFocus();
+        _refreshPreview();
       }
     });
+  }
+
+  void _refreshPreview() {
+    if (mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {});
+          if (_pinXFocus.hasFocus) _pinXFocus.requestFocus();
+          else if (_pinYFocus.hasFocus) _pinYFocus.requestFocus();
+          else if (_pinFontFocus.hasFocus) _pinFontFocus.requestFocus();
+        }
+      });
+    }
   }
 
   @override
@@ -157,6 +180,11 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     _pinXFocus.dispose();
     _pinYFocus.dispose();
     _pinFontFocus.dispose();
+    _copiesController.dispose();
+    _cardsPerRowController.dispose();
+    _cardsPerColumnController.dispose();
+    _cardWidthController.dispose();
+    _cardHeightController.dispose();
     super.dispose();
   }
 
@@ -175,70 +203,78 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
+  // تم تعديل _confirmAction لإضافة أيقونة إظهار/إخفاء كلمة المرور
   Future<bool> _confirmAction(String title, String message, Color color,
       {bool requirePassword = false}) async {
     _play('warning');
     final passwordController = TextEditingController();
+    bool obscure = true;
     return await showDialog(
           context: context,
-          builder: (context) => Directionality(
-            textDirection: TextDirection.rtl,
-            child: AlertDialog(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15)),
-              title: Text(title,
-                  style: TextStyle(color: color, fontWeight: FontWeight.bold)),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(message),
-                  if (requirePassword) ...[
-                    const SizedBox(height: 15),
-                    TextField(
-                      controller: passwordController,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: 'أدخل كلمة المرور للتأكيد',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.lock, color: Colors.red),
+          builder: (context) => StatefulBuilder(
+            builder: (context, setDialogState) => Directionality(
+              textDirection: TextDirection.rtl,
+              child: AlertDialog(
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15)),
+                title: Text(title,
+                    style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(message),
+                    if (requirePassword) ...[
+                      const SizedBox(height: 15),
+                      TextField(
+                        controller: passwordController,
+                        obscureText: obscure,
+                        decoration: InputDecoration(
+                          labelText: 'أدخل كلمة المرور للتأكيد',
+                          border: const OutlineInputBorder(),
+                          prefixIcon: const Icon(Icons.lock, color: Colors.red),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                                obscure ? Icons.visibility_off : Icons.visibility),
+                            onPressed: () => setDialogState(() => obscure = !obscure),
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      _play('click');
+                      Navigator.pop(context, false);
+                    },
+                    child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: color,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: () {
+                      if (requirePassword) {
+                        final sys = Provider.of<SystemProvider>(context,
+                            listen: false);
+                        if (!sys.validatePin(passwordController.text.trim()) &&
+                            passwordController.text.trim() != '123456') {
+                          _play('error');
+                          _showToast('كلمة المرور غير صحيحة', isError: true);
+                          return;
+                        }
+                      }
+                      _play('click');
+                      Navigator.pop(context, true);
+                    },
+                    child: const Text('تأكيد التنفيذ',
+                        style: TextStyle(color: Colors.white)),
+                  ),
                 ],
               ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    _play('click');
-                    Navigator.pop(context, false);
-                  },
-                  child:
-                      const Text('إلغاء', style: TextStyle(color: Colors.grey)),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: color,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8)),
-                  ),
-                  onPressed: () {
-                    if (requirePassword) {
-                      final sys = Provider.of<SystemProvider>(context,
-                          listen: false);
-                      if (!sys.validatePin(passwordController.text.trim()) &&
-                          passwordController.text.trim() != '123456') {
-                        _play('error');
-                        _showToast('كلمة المرور غير صحيحة', isError: true);
-                        return;
-                      }
-                    }
-                    _play('click');
-                    Navigator.pop(context, true);
-                  },
-                  child: const Text('تأكيد التنفيذ',
-                      style: TextStyle(color: Colors.white)),
-                ),
-              ],
             ),
           ),
         ) ??
@@ -1879,16 +1915,16 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                   ),
                   child: Column(
                     children: [
-                      TabBar(
+                      const TabBar(
                         controller: _tabController,
                         isScrollable: true,
                         labelColor: Colors.white,
                         unselectedLabelColor: Colors.white54,
                         indicatorColor: Colors.orange,
                         indicatorWeight: 4,
-                        labelStyle: const TextStyle(
+                        labelStyle: TextStyle(
                             fontWeight: FontWeight.bold, fontSize: 14),
-                        tabs: const [
+                        tabs: [
                           Tab(
                               icon: Icon(Icons.dns,
                                   color: Colors.greenAccent),
@@ -2989,7 +3025,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   }
 
   // ==========================================
-  // تبويب طباعة الكروت (مُطوَّر بالكامل)
+  // تبويب طباعة الكروت (مُحسَّن)
   // ==========================================
   Widget _buildPrintCardsTab(List<QueryDocumentSnapshot> networks) {
     final textColor =
@@ -3133,7 +3169,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                             fontSize: 16,
                             fontWeight: FontWeight.bold)),
                     const SizedBox(height: 10),
-                    // --- معاينة مباشرة (أعلى الحقول) ---
+                    // معاينة مباشرة أعلى الحقول
                     if (_templateBase64 != null &&
                         _templateBase64!.isNotEmpty)
                       _buildLivePreview(),
@@ -3195,18 +3231,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                       ],
                     ),
                     const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: _saveTextSettings,
-                        icon: const Icon(Icons.save),
-                        label: const Text(
-                            'حفظ إعدادات النص للفئة'),
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.teal),
-                      ),
-                    ),
-                    const Divider(height: 30),
                   ],
                   const Text('إعدادات التخطيط',
                       style: TextStyle(
@@ -3217,27 +3241,25 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                     children: [
                       Expanded(
                         child: TextField(
+                          controller: _copiesController,
                           decoration: const InputDecoration(
                               labelText: 'عدد النسخ لكل كرت',
                               border: OutlineInputBorder()),
                           keyboardType: TextInputType.number,
                           onChanged: (v) => _copiesPerCard =
                               int.tryParse(v) ?? 1,
-                          controller: TextEditingController(
-                              text: _copiesPerCard.toString()),
                         ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: TextField(
+                          controller: _cardsPerRowController,
                           decoration: const InputDecoration(
                               labelText: 'عدد الكروت في الصف',
                               border: OutlineInputBorder()),
                           keyboardType: TextInputType.number,
                           onChanged: (v) => _cardsPerRow =
                               int.tryParse(v) ?? 3,
-                          controller: TextEditingController(
-                              text: _cardsPerRow.toString()),
                         ),
                       ),
                     ],
@@ -3247,43 +3269,53 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                     children: [
                       Expanded(
                         child: TextField(
+                          controller: _cardsPerColumnController,
                           decoration: const InputDecoration(
                               labelText: 'عدد الكروت في العمود',
                               border: OutlineInputBorder()),
                           keyboardType: TextInputType.number,
                           onChanged: (v) => _cardsPerColumn =
                               int.tryParse(v) ?? 4,
-                          controller: TextEditingController(
-                              text:
-                                  _cardsPerColumn.toString()),
                         ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: TextField(
+                          controller: _cardWidthController,
                           decoration: const InputDecoration(
                               labelText: 'عرض الكرت (مم)',
                               border: OutlineInputBorder()),
                           keyboardType: TextInputType.number,
                           onChanged: (v) => _cardWidth =
                               double.tryParse(v) ?? 85,
-                          controller: TextEditingController(
-                              text: _cardWidth.toString()),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
                   TextField(
+                    controller: _cardHeightController,
                     decoration: const InputDecoration(
                         labelText: 'ارتفاع الكرت (مم)',
                         border: OutlineInputBorder()),
                     keyboardType: TextInputType.number,
                     onChanged: (v) =>
                         _cardHeight = double.tryParse(v) ?? 55,
-                    controller: TextEditingController(
-                        text: _cardHeight.toString()),
                   ),
+                  const SizedBox(height: 20),
+                  // زر حفظ كل الإعدادات (نصوص + تخطيط)
+                  if (_selectedPrintCategory != null)
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _saveAllSettings,
+                        icon: const Icon(Icons.save),
+                        label: const Text(
+                            'حفظ جميع الإعدادات للفئة'),
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.teal),
+                      ),
+                    ),
                   const SizedBox(height: 20),
                   if (_printReadyCards.isNotEmpty) ...[
                     Text(
@@ -3338,7 +3370,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text('معاينة مباشرة:',
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
+            style: TextStyle(
+                fontWeight: FontWeight.bold, color: Colors.teal)),
         const SizedBox(height: 8),
         Container(
           width: 200,
@@ -3386,15 +3419,16 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
         .get();
     if (mounted) {
       setState(() {
-        _printReadyCards =
-            snapshot.docs.map((doc) => doc.data() as Map<String, dynamic>).toList();
+        _printReadyCards = snapshot.docs
+            .map((doc) => doc.data() as Map<String, dynamic>)
+            .toList();
         _printCount = _printReadyCards.length;
         _printCountController.text = _printCount.toString();
       });
     }
   }
 
-  Future<void> _saveTextSettings() async {
+  Future<void> _saveAllSettings() async {
     if (_selectedPrintNetworkId == null ||
         _selectedPrintCategoryId == null) return;
     final netDoc = await _db
@@ -3410,12 +3444,17 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
       cats[idx]['textYPercent'] = _pinYPercent;
       cats[idx]['textFontSize'] = _pinFontSize;
       cats[idx]['textColor'] = _pinColor.value;
+      cats[idx]['copiesPerCard'] = _copiesPerCard;
+      cats[idx]['cardsPerRow'] = _cardsPerRow;
+      cats[idx]['cardsPerColumn'] = _cardsPerColumn;
+      cats[idx]['cardWidth'] = _cardWidth;
+      cats[idx]['cardHeight'] = _cardHeight;
       await _db
           .collection('networks')
           .doc(_selectedPrintNetworkId)
           .update({'categories': cats});
       _play('success');
-      _showToast('تم حفظ إعدادات النص للقالب');
+      _showToast('تم حفظ جميع الإعدادات للفئة');
     }
   }
 
@@ -3458,7 +3497,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
               ),
             ),
             ElevatedButton.icon(
-              onPressed: () => Navigator.pop(ctx, 'print_archive'),
+              onPressed: () =>
+                  Navigator.pop(ctx, 'print_archive'),
               icon: const Icon(Icons.archive),
               label: const Text('طباعة وأرشفة'),
               style: ElevatedButton.styleFrom(
@@ -3479,11 +3519,13 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
 
     if (result == 'print_archive') {
       await _archivePrintedCards(cardsToPrint);
-      _loadPrintReadyCards(_selectedPrintNetworkId!, _selectedPrintCategoryId!);
+      _loadPrintReadyCards(
+          _selectedPrintNetworkId!, _selectedPrintCategoryId!);
     }
   }
 
-  Future<void> _generateAndPrintPdf(List<Map<String, dynamic>> cards) async {
+  Future<void> _generateAndPrintPdf(
+      List<Map<String, dynamic>> cards) async {
     final pdf = pw.Document();
     final cardsPerPage = _cardsPerRow * _cardsPerColumn;
     final totalPages = (cards.length / cardsPerPage).ceil();
@@ -3580,20 +3622,24 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     _showToast('تم إرسال ملف الطباعة بنجاح');
   }
 
-  Future<void> _archivePrintedCards(List<Map<String, dynamic>> cards) async {
-    if (_selectedPrintNetworkId == null || _selectedPrintCategoryId == null) return;
+  Future<void> _archivePrintedCards(
+      List<Map<String, dynamic>> cards) async {
+    if (_selectedPrintNetworkId == null ||
+        _selectedPrintCategoryId == null) return;
     final WriteBatch batch = _db.batch();
 
     for (var card in cards) {
       final querySnap = await _db
           .collection('cards')
           .where('pin', isEqualTo: card['pin'])
-          .where('categoryId', isEqualTo: _selectedPrintCategoryId)
+          .where('categoryId',
+              isEqualTo: _selectedPrintCategoryId)
           .where('status', isEqualTo: 'print_ready')
           .limit(1)
           .get();
       if (querySnap.docs.isNotEmpty) {
-        batch.update(querySnap.docs.first.reference, {'status': 'archived'});
+        batch.update(querySnap.docs.first.reference,
+            {'status': 'archived'});
       }
     }
 
@@ -3601,11 +3647,16 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
         .collection('networks')
         .doc(_selectedPrintNetworkId)
         .get();
-    List cats = List.from((netDoc.data() as Map)['categories']);
-    int idx = cats.indexWhere((c) => c['id'] == _selectedPrintCategoryId);
+    List cats =
+        List.from((netDoc.data() as Map)['categories']);
+    int idx = cats.indexWhere(
+        (c) => c['id'] == _selectedPrintCategoryId);
     if (idx != -1) {
-      cats[idx]['stock'] = (cats[idx]['stock'] ?? 0) - cards.length;
-      batch.update(_db.collection('networks').doc(_selectedPrintNetworkId), {'categories': cats});
+      cats[idx]['stock'] =
+          (cats[idx]['stock'] ?? 0) - cards.length;
+      batch.update(
+          _db.collection('networks').doc(_selectedPrintNetworkId),
+          {'categories': cats});
     }
 
     await batch.commit();
