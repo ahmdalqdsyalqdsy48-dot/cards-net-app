@@ -1915,7 +1915,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                   ),
                   child: Column(
                     children: [
-                      const TabBar(
+                       TabBar(
                         controller: _tabController,
                         isScrollable: true,
                         labelColor: Colors.white,
