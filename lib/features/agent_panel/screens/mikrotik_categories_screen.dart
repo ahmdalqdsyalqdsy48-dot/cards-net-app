@@ -14,7 +14,7 @@ import '../../../core/providers/ui_provider.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart';
-import '../print_section/print_section_screen.dart'; // سيتم إنشاؤه لاحقاً
+import 'print_section_screen.dart';
 
 class MikrotikCategoriesScreen extends StatefulWidget {
   const MikrotikCategoriesScreen({super.key});
@@ -195,7 +195,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
 
   String _generateFakePin() {
     final r = Random();
-    return (r.nextInt(9000000) + 1000000).toString(); // 7 أرقام
+    return (r.nextInt(9000000) + 1000000).toString();
   }
 
   Future<void> _simulateGenerate(
