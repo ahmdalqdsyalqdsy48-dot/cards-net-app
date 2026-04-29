@@ -52,11 +52,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
     super.initState();
     _printCountController.addListener(() {
       int? val = int.tryParse(_printCountController.text);
-      if (val != null && val >= 0) {
-        setState(() => _printCount = val);
-      } else {
-        setState(() => _printCount = null);
-      }
+      setState(() => _printCount = (val != null && val >= 0) ? val : null);
     });
 
     _copiesController = TextEditingController(text: _copiesPerCard.toString());
@@ -159,9 +155,14 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
     );
   }
 
+  // المعاينة المباشرة تستخدم نفس منطق Alignment الذي سيُستخدم في PDF
   Widget _buildLivePreview() {
     if (_templateBase64 == null || _templateBase64!.isEmpty) return const SizedBox.shrink();
     final bytes = base64Decode(_templateBase64!);
+    // تحويل النسبة المئوية إلى Alignment (بين -1 و 1)
+    final double alignX = (_pinXPercent / 100) * 2 - 1;
+    final double alignY = (_pinYPercent / 100) * 2 - 1;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -180,9 +181,8 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
             child: Stack(
               children: [
                 Positioned.fill(child: Image.memory(bytes, fit: BoxFit.contain)),
-                Positioned(
-                  left: (200 * _pinXPercent / 100) - 20,
-                  top: (150 * _pinYPercent / 100) - 10,
+                Align(
+                  alignment: Alignment(alignX, alignY),
                   child: Text(
                     '####',
                     style: TextStyle(
@@ -256,6 +256,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
   }
 
   Future<void> _generateAndPrintPdf(List<Map<String, dynamic>> cards) async {
+    // استخدام الإعدادات المخزنة أولاً
     final double xPercent = (_selectedCategory?['textXPercent'] ?? _pinXPercent).toDouble();
     final double yPercent = (_selectedCategory?['textYPercent'] ?? _pinYPercent).toDouble();
     final double fontSize = (_selectedCategory?['textFontSize'] ?? _pinFontSize).toDouble();
@@ -277,31 +278,27 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
               pw.Widget cardContent;
               if (_templateBase64 != null && _templateBase64!.isNotEmpty) {
                 final templateImage = pw.MemoryImage(base64Decode(_templateBase64!));
+                // استخدام نفس منطق Alignment المطابق للمعاينة
+                final double alignX = (xPercent / 100) * 2 - 1;
+                final double alignY = (yPercent / 100) * 2 - 1;
                 cardContent = pw.Container(
                   width: _cardWidth * 2.83,
                   height: _cardHeight * 2.83,
                   child: pw.Stack(
                     children: [
                       pw.Positioned.fill(child: pw.Image(templateImage, fit: pw.BoxFit.contain)),
-                      // وضع النص باستخدام محاذاة دقيقة
                       pw.Align(
-                        alignment: pw.Alignment(
-                          (xPercent / 100) * 2 - 1,   // تحويل النسبة المئوية إلى Alignment بين -1 و 1
-                          (yPercent / 100) * 2 - 1,
-                        ),
-                        child: pw.Padding(
-                          padding: const pw.EdgeInsets.all(4),
-                          child: pw.Text(pin,
-                              style: pw.TextStyle(
-                                fontSize: fontSize,
-                                fontWeight: pw.FontWeight.bold,
-                                color: PdfColor(
-                                  color.red / 255,
-                                  color.green / 255,
-                                  color.blue / 255,
-                                ),
-                              )),
-                        ),
+                        alignment: pw.Alignment(alignX, alignY),
+                        child: pw.Text(pin,
+                            style: pw.TextStyle(
+                              fontSize: fontSize,
+                              fontWeight: pw.FontWeight.bold,
+                              color: PdfColor(
+                                color.red / 255,
+                                color.green / 255,
+                                color.blue / 255,
+                              ),
+                            )),
                       ),
                     ],
                   ),
@@ -505,6 +502,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
                     if (_templateBase64 != null && _templateBase64!.isNotEmpty)
                       _buildLivePreview(),
                     const SizedBox(height: 12),
+                    // منزلقات بدون setState متكررة، والمعاينة تتحدث فقط في onChangeEnd
                     Text('الموقع الأفقي: ${_pinXPercent.toStringAsFixed(1)}%'),
                     Slider(
                       value: _pinXPercent,
@@ -513,13 +511,9 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
                       divisions: 100,
                       label: _pinXPercent.toStringAsFixed(1),
                       onChanged: (v) {
-                        // تحديث النص فورًا دون إعادة بناء المعاينة
                         _pinXPercent = v;
-                      },
-                      onChangeEnd: (v) {
-                        setState(() {
-                          _pinXPercent = v;
-                        });
+                        // نُحدّث النص الظاهر فقط بدون إعادة بناء كاملة
+                        setState(() {});
                       },
                     ),
                     Text('الموقع الرأسي: ${_pinYPercent.toStringAsFixed(1)}%'),
@@ -531,11 +525,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
                       label: _pinYPercent.toStringAsFixed(1),
                       onChanged: (v) {
                         _pinYPercent = v;
-                      },
-                      onChangeEnd: (v) {
-                        setState(() {
-                          _pinYPercent = v;
-                        });
+                        setState(() {});
                       },
                     ),
                     Text('حجم الخط: ${_pinFontSize.toStringAsFixed(1)} pt'),
@@ -547,11 +537,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
                       label: _pinFontSize.toStringAsFixed(1),
                       onChanged: (v) {
                         _pinFontSize = v;
-                      },
-                      onChangeEnd: (v) {
-                        setState(() {
-                          _pinFontSize = v;
-                        });
+                        setState(() {});
                       },
                     ),
                     const SizedBox(height: 12),
