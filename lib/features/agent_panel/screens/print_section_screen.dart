@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -28,24 +27,20 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
   String? _templateBase64;
   List<Map<String, dynamic>> _printReadyCards = [];
 
-  // إعدادات التخطيط
   int _copiesPerCard = 1;
   int _cardsPerRow = 3;
   int _cardsPerColumn = 4;
   double _cardWidth = 85;
   double _cardHeight = 55;
 
-  // إعدادات النص على القالب
   double _pinXPercent = 50;
   double _pinYPercent = 50;
   double _pinFontSize = 14;
   Color _pinColor = Colors.black;
 
-  // عدد الكروت المطلوب
   int? _printCount;
   final TextEditingController _printCountController = TextEditingController();
 
-  // متحكمات إعدادات التخطيط
   late final TextEditingController _copiesController;
   late final TextEditingController _cardsPerRowController;
   late final TextEditingController _cardsPerColumnController;
@@ -86,6 +81,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
       Provider.of<UiProvider>(context, listen: false).playSound(type);
 
   void _showToast(String message, {bool isError = false}) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message, textDirection: TextDirection.rtl),
@@ -281,32 +277,30 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
               pw.Widget cardContent;
               if (_templateBase64 != null && _templateBase64!.isNotEmpty) {
                 final templateImage = pw.MemoryImage(base64Decode(_templateBase64!));
-                final double dx = xPercent / 100;
-                final double dy = yPercent / 100;
                 cardContent = pw.Container(
                   width: _cardWidth * 2.83,
                   height: _cardHeight * 2.83,
                   child: pw.Stack(
                     children: [
                       pw.Positioned.fill(child: pw.Image(templateImage, fit: pw.BoxFit.contain)),
-                      pw.Positioned(
-                        left: (_cardWidth * 2.83 * dx) - 50,
-                        top: (_cardHeight * 2.83 * dy) - 15,
-                        child: pw.Container(
-                          width: 100,
-                          height: 30,
-                          child: pw.Center(
-                            child: pw.Text(pin,
-                                style: pw.TextStyle(
-                                  fontSize: fontSize,
-                                  fontWeight: pw.FontWeight.bold,
-                                  color: PdfColor(
-                                    color.red / 255,
-                                    color.green / 255,
-                                    color.blue / 255,
-                                  ),
-                                )),
-                          ),
+                      // وضع النص باستخدام محاذاة دقيقة
+                      pw.Align(
+                        alignment: pw.Alignment(
+                          (xPercent / 100) * 2 - 1,   // تحويل النسبة المئوية إلى Alignment بين -1 و 1
+                          (yPercent / 100) * 2 - 1,
+                        ),
+                        child: pw.Padding(
+                          padding: const pw.EdgeInsets.all(4),
+                          child: pw.Text(pin,
+                              style: pw.TextStyle(
+                                fontSize: fontSize,
+                                fontWeight: pw.FontWeight.bold,
+                                color: PdfColor(
+                                  color.red / 255,
+                                  color.green / 255,
+                                  color.blue / 255,
+                                ),
+                              )),
                         ),
                       ),
                     ],
@@ -384,7 +378,6 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
   @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
@@ -519,7 +512,15 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
                       max: 100,
                       divisions: 100,
                       label: _pinXPercent.toStringAsFixed(1),
-                      onChanged: (v) => setState(() => _pinXPercent = v),
+                      onChanged: (v) {
+                        // تحديث النص فورًا دون إعادة بناء المعاينة
+                        _pinXPercent = v;
+                      },
+                      onChangeEnd: (v) {
+                        setState(() {
+                          _pinXPercent = v;
+                        });
+                      },
                     ),
                     Text('الموقع الرأسي: ${_pinYPercent.toStringAsFixed(1)}%'),
                     Slider(
@@ -528,7 +529,14 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
                       max: 100,
                       divisions: 100,
                       label: _pinYPercent.toStringAsFixed(1),
-                      onChanged: (v) => setState(() => _pinYPercent = v),
+                      onChanged: (v) {
+                        _pinYPercent = v;
+                      },
+                      onChangeEnd: (v) {
+                        setState(() {
+                          _pinYPercent = v;
+                        });
+                      },
                     ),
                     Text('حجم الخط: ${_pinFontSize.toStringAsFixed(1)} pt'),
                     Slider(
@@ -537,7 +545,14 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
                       max: 40,
                       divisions: 34,
                       label: _pinFontSize.toStringAsFixed(1),
-                      onChanged: (v) => setState(() => _pinFontSize = v),
+                      onChanged: (v) {
+                        _pinFontSize = v;
+                      },
+                      onChangeEnd: (v) {
+                        setState(() {
+                          _pinFontSize = v;
+                        });
+                      },
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -568,8 +583,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
                               labelText: 'عدد النسخ لكل كرت',
                               border: OutlineInputBorder()),
                           keyboardType: TextInputType.number,
-                          onChanged: (v) =>
-                              _copiesPerCard = int.tryParse(v) ?? 1,
+                          onChanged: (v) => _copiesPerCard = int.tryParse(v) ?? 1,
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -580,8 +594,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
                               labelText: 'عدد الكروت في الصف',
                               border: OutlineInputBorder()),
                           keyboardType: TextInputType.number,
-                          onChanged: (v) =>
-                              _cardsPerRow = int.tryParse(v) ?? 3,
+                          onChanged: (v) => _cardsPerRow = int.tryParse(v) ?? 3,
                         ),
                       ),
                     ],
@@ -596,8 +609,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
                               labelText: 'عدد الكروت في العمود',
                               border: OutlineInputBorder()),
                           keyboardType: TextInputType.number,
-                          onChanged: (v) =>
-                              _cardsPerColumn = int.tryParse(v) ?? 4,
+                          onChanged: (v) => _cardsPerColumn = int.tryParse(v) ?? 4,
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -608,8 +620,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
                               labelText: 'عرض الكرت (مم)',
                               border: OutlineInputBorder()),
                           keyboardType: TextInputType.number,
-                          onChanged: (v) =>
-                              _cardWidth = double.tryParse(v) ?? 85,
+                          onChanged: (v) => _cardWidth = double.tryParse(v) ?? 85,
                         ),
                       ),
                     ],
@@ -621,8 +632,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
                         labelText: 'ارتفاع الكرت (مم)',
                         border: OutlineInputBorder()),
                     keyboardType: TextInputType.number,
-                    onChanged: (v) =>
-                        _cardHeight = double.tryParse(v) ?? 55,
+                    onChanged: (v) => _cardHeight = double.tryParse(v) ?? 55,
                   ),
                   const SizedBox(height: 20),
                   if (_selectedCategory != null)
