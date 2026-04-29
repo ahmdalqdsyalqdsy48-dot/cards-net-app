@@ -8,7 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 
-import '../../../core/providers/system_provider.dart'; // لاستخدامه في CustomAgentDrawer
+import '../../../core/providers/system_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart';
 
@@ -34,10 +34,10 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
   final textColor = ValueNotifier<Color>(Colors.black);
   final copiesPerCard = TextEditingController(text: "1");
   final perRow = TextEditingController(text: "3");
-  final perColumn = TextEditingController(text: "5");
-  final widthMM = TextEditingController(text: "50");
-  final heightMM = TextEditingController(text: "30");
-  final printCountController = TextEditingController(text: "10");
+  final perColumn = TextEditingController(text: "4");
+  final widthMM = TextEditingController(text: "85");
+  final heightMM = TextEditingController(text: "55");
+  final printCountController = TextEditingController();
   Uint8List? templateImage;
 
   @override
@@ -71,6 +71,12 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
         .get();
     setState(() {
       cards = snapshot.docs;
+      // نجعل العدد الافتراضي هو عدد الكروت الجاهزة
+      if (cards.isNotEmpty) {
+        printCountController.text = cards.length.toString();
+      } else {
+        printCountController.text = '0';
+      }
     });
   }
 
@@ -81,46 +87,51 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
     fontSize.value = (cat['textFontSize'] ?? 14).toDouble();
     textColor.value = Color(cat['textColor'] ?? Colors.black.value);
     copiesPerCard.text = (cat['copiesPerCard'] ?? 1).toString();
-    perRow.text = (cat['perRow'] ?? 3).toString();
-    perColumn.text = (cat['perColumn'] ?? 5).toString();
-    widthMM.text = (cat['widthMM'] ?? 50).toString();
-    heightMM.text = (cat['heightMM'] ?? 30).toString();
+    perRow.text = (cat['cardsPerRow'] ?? 3).toString();
+    perColumn.text = (cat['cardsPerColumn'] ?? 4).toString();
+    widthMM.text = (cat['cardWidth'] ?? 85).toString();
+    heightMM.text = (cat['cardHeight'] ?? 55).toString();
     if (cat['templateBase64'] != null) {
       templateImage = base64Decode(cat['templateBase64']);
+    } else {
+      templateImage = null;
     }
   }
 
   Future<void> saveSettings() async {
+    if (selectedNetworkId == null || selectedCategory == null) return;
     final networkRef = _firestore.collection('networks').doc(selectedNetworkId);
     final doc = await networkRef.get();
     final data = doc.data();
-    List cats = data?['categories'] ?? [];
+    if (data == null) return;
+    List cats = List<Map<String, dynamic>>.from(data['categories'] ?? []);
     final index = cats.indexWhere((e) => e['id'] == selectedCategory!['id']);
+    if (index == -1) return;
     cats[index] = {
       ...cats[index],
       'textXPercent': textX.value,
       'textYPercent': textY.value,
       'textFontSize': fontSize.value,
       'textColor': textColor.value.value,
-      'copiesPerCard': int.parse(copiesPerCard.text),
-      'perRow': int.parse(perRow.text),
-      'perColumn': int.parse(perColumn.text),
-      'widthMM': double.parse(widthMM.text),
-      'heightMM': double.parse(heightMM.text),
+      'copiesPerCard': int.tryParse(copiesPerCard.text) ?? 1,
+      'cardsPerRow': int.tryParse(perRow.text) ?? 3,
+      'cardsPerColumn': int.tryParse(perColumn.text) ?? 4,
+      'cardWidth': double.tryParse(widthMM.text) ?? 85,
+      'cardHeight': double.tryParse(heightMM.text) ?? 55,
     };
     await networkRef.update({'categories': cats});
     if (mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("تم حفظ الإعدادات")));
+          .showSnackBar(const SnackBar(content: Text("تم حفظ جميع الإعدادات للفئة")));
     }
   }
 
   Future<Uint8List> generatePdf(int count) async {
     final pdf = pw.Document();
-    final perRowVal = int.parse(perRow.text);
-    final perColVal = int.parse(perColumn.text);
-    final width = double.parse(widthMM.text);
-    final height = double.parse(heightMM.text);
+    final perRowVal = int.tryParse(perRow.text) ?? 3;
+    final perColVal = int.tryParse(perColumn.text) ?? 4;
+    final width = double.tryParse(widthMM.text) ?? 85;
+    final height = double.tryParse(heightMM.text) ?? 55;
     final selectedCards = cards.take(count).toList();
 
     pdf.addPage(
@@ -130,6 +141,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
           return pw.GridView(
             crossAxisCount: perRowVal,
             children: selectedCards.map((card) {
+              final pin = card['pin'] ?? '------';
               return pw.Container(
                 width: width * PdfPageFormat.mm,
                 height: height * PdfPageFormat.mm,
@@ -141,10 +153,10 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
                         fit: pw.BoxFit.fill,
                       ),
                     pw.Positioned(
-                      left: (textX.value / 100) * width,
-                      top: (textY.value / 100) * height,
+                      left: (textX.value / 100) * width * PdfPageFormat.mm,
+                      top: (textY.value / 100) * height * PdfPageFormat.mm,
                       child: pw.Text(
-                        card['code'],
+                        pin,
                         style: pw.TextStyle(
                           fontSize: fontSize.value,
                           color: PdfColor.fromInt(textColor.value.value),
@@ -163,42 +175,77 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
   }
 
   void showPrintDialog() {
+    final int available = cards.length;
+    int requested = int.tryParse(printCountController.text) ?? available;
+    if (requested > available) requested = available;
+    if (requested <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("لا توجد كروت للطباعة")),
+      );
+      return;
+    }
+
     showDialog(
       context: context,
       builder: (_) {
         return AlertDialog(
           title: const Text("تأكيد الطباعة"),
-          content: Text("سيتم طباعة ${printCountController.text} كرت"),
+          content: Text("الكروت الجاهزة: $available\nسيتم طباعة: $requested كرت\nاختر الإجراء:"),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text("إلغاء"),
             ),
             TextButton(
-              child: const Text("معاينة"),
+              child: const Text("معاينة فقط"),
               onPressed: () async {
-                final pdf = await generatePdf(int.parse(printCountController.text));
+                Navigator.pop(context);
+                final pdf = await generatePdf(requested);
                 await Printing.layoutPdf(onLayout: (_) => pdf);
               },
             ),
             TextButton(
               child: const Text("طباعة فقط"),
               onPressed: () async {
-                final pdf = await generatePdf(int.parse(printCountController.text));
+                Navigator.pop(context);
+                final pdf = await generatePdf(requested);
                 await Printing.layoutPdf(onLayout: (_) => pdf);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("تم فتح الملف للطباعة")),
+                );
               },
             ),
             TextButton(
               child: const Text("طباعة وأرشفة"),
               onPressed: () async {
-                final count = int.parse(printCountController.text);
+                Navigator.pop(context);
+                final count = requested;
                 final pdf = await generatePdf(count);
                 await Printing.layoutPdf(onLayout: (_) => pdf);
+                // الأرشفة وتحديث المخزون
                 final batch = _firestore.batch();
                 for (var i = 0; i < count; i++) {
                   batch.update(cards[i].reference, {'status': 'archived'});
                 }
+                // تحديث المخزون في الفئة
+                final networkRef = _firestore.collection('networks').doc(selectedNetworkId);
+                final docSnapshot = await networkRef.get();
+                final data = docSnapshot.data();
+                if (data != null) {
+                  List cats = List<Map<String, dynamic>>.from(data['categories'] ?? []);
+                  final index = cats.indexWhere((e) => e['id'] == selectedCategory!['id']);
+                  if (index != -1) {
+                    final currentStock = cats[index]['stock'] ?? 0;
+                    cats[index]['stock'] = (currentStock as int) - count;
+                    batch.update(networkRef, {'categories': cats});
+                  }
+                }
                 await batch.commit();
+                // إعادة تحميل الكروت والمخزون
+                loadCards();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text("تمت أرشفة $count كرت وتحديث المخزون")),
+                );
               },
             ),
           ],
@@ -253,6 +300,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
                       ),
                       child: Stack(
                         children: [
+                          // محاكاة بسيطة للموضع (تقريب)
                           Positioned(
                             left: textX.value * 2,
                             top: textY.value,
@@ -291,70 +339,163 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            DropdownButton(
-              hint: const Text("اختر الشبكة"),
+            const Text('إعدادات الطباعة',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              decoration: const InputDecoration(
+                labelText: 'اختر الشبكة',
+                border: OutlineInputBorder(),
+              ),
               value: selectedNetworkId,
               items: networks.map((e) {
-                return DropdownMenuItem(
+                return DropdownMenuItem<String>(
                   value: e.id,
-                  child: Text(e['name']),
+                  child: Text(e['name'] ?? ''),
                 );
               }).toList(),
               onChanged: (val) async {
                 selectedNetworkId = val;
-                await loadCategories(val!);
+                selectedCategory = null;
+                templateImage = null;
+                cards = [];
+                if (val != null) {
+                  await loadCategories(val);
+                }
                 setState(() {});
               },
             ),
-            DropdownButton(
-              hint: const Text("اختر الفئة"),
-              value: selectedCategory,
-              items: categories.map((e) {
-                return DropdownMenuItem(
-                  value: e,
-                  child: Text(e['name']),
-                );
-              }).toList(),
-              onChanged: (val) async {
-                selectedCategory = val;
-                loadSavedSettings();
-                await loadCards();
-                setState(() {});
-              },
-            ),
+            const SizedBox(height: 12),
+            if (categories.isNotEmpty)
+              DropdownButtonFormField<Map<String, dynamic>>(
+                decoration: const InputDecoration(
+                  labelText: 'اختر الفئة',
+                  border: OutlineInputBorder(),
+                ),
+                value: selectedCategory,
+                items: categories.map((e) {
+                  return DropdownMenuItem<Map<String, dynamic>>(
+                    value: e,
+                    child: Text(e['name'] ?? ''),
+                  );
+                }).toList(),
+                onChanged: (val) async {
+                  selectedCategory = val;
+                  if (val != null) {
+                    loadSavedSettings();
+                    await loadCards();
+                  }
+                  setState(() {});
+                },
+              ),
             const SizedBox(height: 20),
+            if (cards.isNotEmpty)
+              Text('الكروت الجاهزة: ${cards.length}',
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
+            const SizedBox(height: 10),
             preview(),
-            slider("الموقع الأفقي", textX, 100),
-            slider("الموقع الرأسي", textY, 100),
+            slider("الموقع الأفقي %", textX, 100),
+            slider("الموقع الرأسي %", textY, 100),
             slider("حجم الخط", fontSize, 40),
-            ElevatedButton(
-              child: const Text("اختيار لون"),
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (_) {
-                    return AlertDialog(
-                      content: ColorPicker(
-                        pickerColor: textColor.value,
-                        onColorChanged: (c) => textColor.value = c,
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        content: ColorPicker(
+                          pickerColor: textColor.value,
+                          onColorChanged: (c) => textColor.value = c,
+                        ),
                       ),
                     );
                   },
-                );
-              },
+                  icon: Icon(Icons.colorize, color: textColor.value),
+                  label: const Text("اختيار لون"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: textColor.value.withOpacity(0.2),
+                  ),
+                ),
+              ],
             ),
+            const SizedBox(height: 20),
+            const Text('إعدادات التخطيط',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: copiesPerCard,
+                    decoration: const InputDecoration(labelText: "عدد النسخ لكل كرت", border: OutlineInputBorder()),
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: perRow,
+                    decoration: const InputDecoration(labelText: "كروت في الصف", border: OutlineInputBorder()),
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: perColumn,
+                    decoration: const InputDecoration(labelText: "كروت في العمود", border: OutlineInputBorder()),
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: widthMM,
+                    decoration: const InputDecoration(labelText: "عرض الكرت (مم)", border: OutlineInputBorder()),
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: heightMM,
+              decoration: const InputDecoration(labelText: "ارتفاع الكرت (مم)", border: OutlineInputBorder()),
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: saveSettings,
+                icon: const Icon(Icons.save),
+                label: const Text("حفظ جميع الإعدادات للفئة"),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+              ),
+            ),
+            const SizedBox(height: 10),
             TextField(
               controller: printCountController,
-              decoration: const InputDecoration(labelText: "عدد الكروت"),
+              decoration: const InputDecoration(labelText: "عدد الكروت المطلوب", border: OutlineInputBorder()),
+              keyboardType: TextInputType.number,
             ),
-            ElevatedButton(
-              onPressed: saveSettings,
-              child: const Text("حفظ جميع الإعدادات للفئة"),
-            ),
-            ElevatedButton(
-              onPressed: showPrintDialog,
-              child: const Text("بدء الطباعة"),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: showPrintDialog,
+                icon: const Icon(Icons.print),
+                label: const Text("بدء الطباعة"),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+              ),
             ),
           ],
         ),
