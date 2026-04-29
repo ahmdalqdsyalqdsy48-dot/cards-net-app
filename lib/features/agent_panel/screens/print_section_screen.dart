@@ -7,30 +7,10 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
-import 'dart:ui' as ui;
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart';
-
-// ========== نموذج سجل الطباعة ==========
-class PrintLog {
-  final String id;
-  final String networkId;
-  final String categoryId;
-  final int count;
-  final String type; // 'print_only', 'print_archive', 'view'
-  final DateTime timestamp;
-
-  PrintLog({
-    required this.id,
-    required this.networkId,
-    required this.categoryId,
-    required this.count,
-    required this.type,
-    required this.timestamp,
-  });
-}
 
 class PrintSectionScreen extends StatefulWidget {
   const PrintSectionScreen({super.key});
@@ -44,7 +24,6 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
   late TabController _tabController;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final sys = Provider.of<SystemProvider>(context, listen: false);
 
   // ========== قوائم عامة ==========
   List<QueryDocumentSnapshot> networks = [];
@@ -55,8 +34,8 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
   String? selectedNetworkId;
   Map<String, dynamic>? selectedCategory;
   List<String> selectedCategoryIds = []; // للطباعة المجمعة
-  List<QueryDocumentSnapshot> cards = [];
-  List<QueryDocumentSnapshot> allPrintReadyCards = []; // جميع الكروت الجاهزة بغض النظر عن الفئة
+  List<QueryDocumentSnapshot> allPrintReadyCards = []; // جميع الكروت الجاهزة
+  List<QueryDocumentSnapshot> cardsToPrint = []; // الكروت المجمعة للطباعة
 
   final textX = ValueNotifier<double>(50);
   final textY = ValueNotifier<double>(50);
@@ -78,7 +57,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
   String archiveSearchQuery = '';
 
   // ========== سجل الطباعة ==========
-  List<PrintLog> printLogs = [];
+  List<Map<String, dynamic>> printLogs = [];
 
   @override
   void initState() {
@@ -94,16 +73,27 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
       for (var net in networks) {
         final data = net.data() as Map<String, dynamic>;
         networkNames[net.id] = data['name'] ?? '';
-        networkCategories[net.id] = List<Map<String, dynamic>>.from(
-            data['categories'] ?? []);
+        networkCategories[net.id] =
+            List<Map<String, dynamic>>.from(data['categories'] ?? []);
       }
     });
+    await _loadAllPrintReadyCards();
     _loadTemplates();
     _loadArchive();
     _loadPrintLogs();
   }
 
+  Future<void> _loadAllPrintReadyCards() async {
+    final snapshot =
+        await _firestore.collection('cards').where('status', isEqualTo: 'print_ready').get();
+    setState(() {
+      allPrintReadyCards = snapshot.docs;
+    });
+  }
+
   Future<void> _loadTemplates() async {
+    // جلب القوالب الخاصة بالوكيل الحالي
+    final sys = Provider.of<SystemProvider>(context, listen: false);
     final snap = await _firestore
         .collection('print_templates')
         .where('agentPhone', isEqualTo: sys.currentUserPhone)
@@ -114,6 +104,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
   }
 
   Future<void> _saveCurrentAsTemplate(String name) async {
+    final sys = Provider.of<SystemProvider>(context, listen: false);
     final template = {
       'agentPhone': sys.currentUserPhone,
       'name': name,
@@ -143,72 +134,51 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     heightMM.text = (tmpl['heightMM'] ?? "55").toString();
   }
 
-  Future<void> _loadCards() async {
-    if (selectedCategory == null && selectedCategoryIds.isEmpty) return;
-    final Query query = _firestore
-        .collection('cards')
-        .where('status', isEqualTo: 'print_ready');
-    if (selectedCategoryIds.isNotEmpty) {
-      // طباعة مجمعة: نستخدم whereIn (يحتاج فهرس في Firestore)
-      // لكن حيث أن Firestore لا يدعم whereIn مع استعلامات متعددة بسهولة بدون فهرس،
-      // سنستخدم طريقة بديلة أو نطلب إنشاء فهرس. للتبسيط، سنفترض أن المستخدم يختار فئة واحدة للطباعة.
-      // يمكن تطويرها لاحقًا.
+  // تجميع الكروت للطباعة (مفردة أو مجمعة)
+  void _prepareCardsToPrint() {
+    if (selectedCategoryIds.isEmpty) {
+      cardsToPrint = [];
+      printCountController.text = '0';
+      return;
     }
-    if (selectedCategory != null) {
-      // old single category
-      final snapshot = await _firestore
-          .collection('cards')
-          .where('categoryId', isEqualTo: selectedCategory!['id'])
-          .where('status', isEqualTo: 'print_ready')
-          .get();
-      setState(() {
-        cards = snapshot.docs;
-        if (cards.isNotEmpty) {
-          printCountController.text = cards.length.toString();
-        } else {
-          printCountController.text = '0';
-        }
-      });
-    }
+    final cards = allPrintReadyCards
+        .where((c) => selectedCategoryIds.contains(c['categoryId'] as String))
+        .toList();
+    setState(() {
+      cardsToPrint = cards;
+      printCountController.text = cards.length.toString();
+    });
   }
 
   Future<void> _loadArchive() async {
-    final snapshot = await _firestore
-        .collection('cards')
-        .where('status', isEqualTo: 'archived')
-        .get();
+    // جلب الأرشيف لشبكات الوكيل فقط (للتبسيط نجلب الكل مؤقتاً)
+    final snapshot =
+        await _firestore.collection('cards').where('status', isEqualTo: 'archived').get();
     setState(() {
       archivedCards = snapshot.docs;
     });
   }
 
   Future<void> _loadPrintLogs() async {
+    final sys = Provider.of<SystemProvider>(context, listen: false);
     final snap = await _firestore
         .collection('print_logs')
         .where('agentPhone', isEqualTo: sys.currentUserPhone)
         .orderBy('timestamp', descending: true)
-        .limit(50)
+        .limit(20)
         .get();
     setState(() {
-      printLogs = snap.docs.map((d) {
-        final data = d.data() as Map<String, dynamic>;
-        return PrintLog(
-          id: d.id,
-          networkId: data['networkId'] ?? '',
-          categoryId: data['categoryId'] ?? '',
-          count: data['count'] ?? 0,
-          type: data['type'] ?? '',
-          timestamp: (data['timestamp'] as Timestamp).toDate(),
-        );
-      }).toList();
+      printLogs = snap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
     });
   }
 
-  Future<void> _logPrintAction(String type, int count) async {
+  Future<void> _logPrintAction(String type, int count, String? networkId,
+      List<String> categoryIds) async {
+    final sys = Provider.of<SystemProvider>(context, listen: false);
     await _firestore.collection('print_logs').add({
       'agentPhone': sys.currentUserPhone,
-      'networkId': selectedNetworkId ?? '',
-      'categoryId': selectedCategory?['id'] ?? '',
+      'networkId': networkId ?? '',
+      'categoryIds': categoryIds,
       'count': count,
       'type': type,
       'timestamp': FieldValue.serverTimestamp(),
@@ -258,8 +228,8 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     };
     await networkRef.update({'categories': cats});
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("تم حفظ الإعدادات")));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text("تم حفظ الإعدادات")));
     }
   }
 
@@ -269,7 +239,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     final perRowVal = int.tryParse(perRow.text) ?? 3;
     final width = double.tryParse(widthMM.text) ?? 85;
     final height = double.tryParse(heightMM.text) ?? 55;
-    final selectedCards = cards.take(count).toList();
+    final selectedCards = cardsToPrint.take(count).toList();
 
     pdf.addPage(
       pw.Page(
@@ -309,7 +279,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
   }
 
   void showPrintDialog() {
-    final int available = cards.length;
+    final int available = cardsToPrint.length;
     int requested = int.tryParse(printCountController.text) ?? available;
     if (requested > available) requested = available;
     if (requested <= 0) {
@@ -324,17 +294,17 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
       builder: (_) {
         return AlertDialog(
           title: const Text("تأكيد الطباعة"),
-          content: Text(
-              "الكروت الجاهزة: $available\nسيتم طباعة: $requested كرت"),
+          content: Text("الكروت الجاهزة: $available\nسيتم طباعة: $requested كرت"),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("إلغاء")),
+            TextButton(
+                onPressed: () => Navigator.pop(context), child: const Text("إلغاء")),
             TextButton(
               child: const Text("معاينة فقط"),
               onPressed: () async {
                 Navigator.pop(context);
                 final pdf = await generatePdf(requested);
                 await Printing.layoutPdf(onLayout: (_) => pdf);
-                _logPrintAction('view', requested);
+                _logPrintAction('view', requested, selectedNetworkId, selectedCategoryIds);
               },
             ),
             TextButton(
@@ -343,7 +313,8 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
                 Navigator.pop(context);
                 final pdf = await generatePdf(requested);
                 await Printing.layoutPdf(onLayout: (_) => pdf);
-                _logPrintAction('print_only', requested);
+                _logPrintAction('print_only', requested, selectedNetworkId,
+                    selectedCategoryIds);
               },
             ),
             TextButton(
@@ -354,28 +325,39 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
                 await Printing.layoutPdf(onLayout: (_) => pdf);
                 // الأرشيف
                 final batch = _firestore.batch();
-                for (var i = 0; i < requested; i++) {
-                  batch.update(cards[i].reference, {'status': 'archived'});
+                final selectedCards = cardsToPrint.take(requested).toList();
+                for (var card in selectedCards) {
+                  batch.update(card.reference, {'status': 'archived'});
                 }
-                final networkRef =
-                    _firestore.collection('networks').doc(selectedNetworkId);
-                final docSnapshot = await networkRef.get();
-                final data = docSnapshot.data();
-                if (data != null) {
-                  List cats =
-                      List<Map<String, dynamic>>.from(data['categories'] ?? []);
-                  final index = cats.indexWhere(
-                      (e) => e['id'] == selectedCategory!['id']);
-                  if (index != -1) {
-                    final currentStock = cats[index]['stock'] ?? 0;
-                    cats[index]['stock'] = (currentStock as int) - requested;
+                // تحديث المخزون لكل فئة
+                if (selectedNetworkId != null) {
+                  final networkRef =
+                      _firestore.collection('networks').doc(selectedNetworkId);
+                  final docSnapshot = await networkRef.get();
+                  final data = docSnapshot.data();
+                  if (data != null) {
+                    List cats =
+                        List<Map<String, dynamic>>.from(data['categories'] ?? []);
+                    for (var catId in selectedCategoryIds) {
+                      final index = cats.indexWhere((e) => e['id'] == catId);
+                      if (index != -1) {
+                        final catCardsCount = selectedCards
+                            .where((c) => c['categoryId'] == catId)
+                            .length;
+                        final currentStock = cats[index]['stock'] ?? 0;
+                        cats[index]['stock'] =
+                            (currentStock as int) - catCardsCount;
+                      }
+                    }
                     batch.update(networkRef, {'categories': cats});
                   }
                 }
                 await batch.commit();
-                _loadCards();
+                _loadAllPrintReadyCards();
                 _loadArchive();
-                _logPrintAction('print_archive', requested);
+                _prepareCardsToPrint();
+                _logPrintAction('print_archive', requested, selectedNetworkId,
+                    selectedCategoryIds);
               },
             ),
           ],
@@ -408,15 +390,18 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
   }
 
   Widget _shortcutBtn(String label, double x, double y) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: () => _setPosition(x, y),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey),
+          border: Border.all(color: isDark ? Colors.white54 : Colors.black54),
           borderRadius: BorderRadius.circular(4),
         ),
-        child: Text(label),
+        child: Text(label,
+            style: TextStyle(
+                color: isDark ? Colors.white : Colors.black, fontSize: 16)),
       ),
     );
   }
@@ -474,6 +459,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
 
   // ========== الأرشيف ==========
   Widget _buildArchiveTab() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final filtered = archiveSearchQuery.isEmpty
         ? archivedCards
         : archivedCards
@@ -487,23 +473,29 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
         Padding(
           padding: const EdgeInsets.all(8.0),
           child: TextField(
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'بحث عن كرت',
-              prefixIcon: Icon(Icons.search),
-              border: OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.search),
+              border: const OutlineInputBorder(),
+              labelStyle: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
             ),
             onChanged: (v) => setState(() => archiveSearchQuery = v),
           ),
         ),
-        Text('${filtered.length} كرت في الأرشيف'),
+        Text('${filtered.length} كرت في الأرشيف',
+            style: TextStyle(color: isDark ? Colors.white70 : Colors.black54)),
         Expanded(
           child: ListView.builder(
             itemCount: filtered.length,
             itemBuilder: (context, index) {
               final card = filtered[index];
               return ListTile(
-                title: Text(card['pin'] ?? '---'),
-                subtitle: Text(card['categoryId'] ?? ''),
+                title: Text(card['pin'] ?? '---',
+                    style: TextStyle(
+                        color: isDark ? Colors.white : Colors.black87)),
+                subtitle: Text(card['categoryId'] ?? '',
+                    style: TextStyle(
+                        color: isDark ? Colors.white70 : Colors.black54)),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -512,7 +504,8 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
                       onPressed: () async {
                         await card.reference.update({'status': 'print_ready'});
                         _loadArchive();
-                        _loadCards();
+                        _loadAllPrintReadyCards();
+                        _prepareCardsToPrint();
                       },
                     ),
                     IconButton(
@@ -534,6 +527,10 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
 
   @override
   Widget build(BuildContext context) {
+    final sys = Provider.of<SystemProvider>(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).primaryColor;
+
     return Scaffold(
       appBar: const CustomHeader(title: 'الطباعة والأرشيف'),
       drawer: CustomAgentDrawer(
@@ -544,21 +541,24 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
       ),
       body: Column(
         children: [
-          TabBar(
-            controller: _tabController,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
-            indicatorColor: Colors.orange,
-            tabs: const [
-              Tab(icon: Icon(Icons.print), text: "الطباعة"),
-              Tab(icon: Icon(Icons.archive), text: "الأرشيف"),
-            ],
+          Container(
+            color: isDark ? Colors.grey.shade900 : Colors.teal.shade700,
+            child: TabBar(
+              controller: _tabController,
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white70,
+              indicatorColor: Colors.orange,
+              tabs: const [
+                Tab(icon: Icon(Icons.print), text: "الطباعة"),
+                Tab(icon: Icon(Icons.archive), text: "الأرشيف"),
+              ],
+            ),
           ),
           Expanded(
             child: TabBarView(
               controller: _tabController,
               children: [
-                _buildPrintTab(),
+                _buildPrintTab(isDark, primaryColor),
                 _buildArchiveTab(),
               ],
             ),
@@ -568,65 +568,95 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     );
   }
 
-  Widget _buildPrintTab() {
+  Widget _buildPrintTab(bool isDark, Color primaryColor) {
+    // تجهيز قائمة الفئات للشبكة المختارة
+    final categories = selectedNetworkId != null
+        ? networkCategories[selectedNetworkId] ?? []
+        : [];
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('إعدادات الطباعة',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text('إعدادات الطباعة',
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87)),
           const SizedBox(height: 10),
           // اختيار الشبكة
           DropdownButtonFormField<String>(
-            decoration: const InputDecoration(labelText: 'اختر الشبكة', border: OutlineInputBorder()),
+            dropdownColor: isDark ? Colors.grey.shade800 : Colors.white,
+            style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+            decoration: InputDecoration(
+              labelText: 'اختر الشبكة',
+              border: const OutlineInputBorder(),
+              labelStyle: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
+            ),
             value: selectedNetworkId,
             items: networks.map((e) {
               return DropdownMenuItem<String>(
                 value: e.id,
-                child: Text(e['name'] ?? ''),
+                child: Text(e['name'] ?? '',
+                    style: TextStyle(
+                        color: isDark ? Colors.white : Colors.black87)),
               );
             }).toList(),
             onChanged: (val) {
               setState(() {
                 selectedNetworkId = val;
                 selectedCategory = null;
+                selectedCategoryIds = [];
                 templateImage = null;
-                cards = [];
+                cardsToPrint = [];
               });
-              if (val != null) {
-                // load categories for display
-              }
             },
           ),
           const SizedBox(height: 12),
-          // اختيار الفئة مع مؤشر المخزون
-          if (selectedNetworkId != null &&
-              networkCategories[selectedNetworkId] != null)
-            DropdownButtonFormField<Map<String, dynamic>>(
-              decoration: const InputDecoration(
-                  labelText: 'اختر الفئة',
-                  border: OutlineInputBorder()),
-              value: selectedCategory,
-              items: networkCategories[selectedNetworkId]!
-                  .map((cat) {
-                    final readyCount = cards
-                        .where((c) => c['categoryId'] == cat['id'])
-                        .length;
-                    return DropdownMenuItem<Map<String, dynamic>>(
-                      value: cat,
-                      child: Text(
-                          "${cat['name']} (${cat['stock'] ?? 0} مخزون، جاهز: $readyCount)"),
-                    );
-                  })
-                  .toList(),
-              onChanged: (val) {
-                setState(() => selectedCategory = val);
-                if (val != null) {
-                  loadSavedSettings();
-                  _loadCards();
-                }
-              },
+          // اختيار الفئات (متعددة)
+          if (selectedNetworkId != null && categories.isNotEmpty)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('اختر الفئات المراد طباعتها:',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : Colors.black87)),
+                ...categories.map((cat) {
+                  final readyCount = allPrintReadyCards
+                      .where((c) => c['categoryId'] == cat['id'])
+                      .length;
+                  final isSelected = selectedCategoryIds.contains(cat['id']);
+                  return CheckboxListTile(
+                    title: Text(
+                        "${cat['name']} (مخزون: ${cat['stock'] ?? 0}، جاهز: $readyCount)",
+                        style: TextStyle(
+                            color: isDark ? Colors.white : Colors.black87)),
+                    value: isSelected,
+                    activeColor: Colors.teal,
+                    checkColor: Colors.white,
+                    onChanged: (val) {
+                      setState(() {
+                        if (val == true) {
+                          selectedCategoryIds.add(cat['id']);
+                        } else {
+                          selectedCategoryIds.remove(cat['id']);
+                        }
+                        if (selectedCategoryIds.length == 1 &&
+                            selectedCategory == null) {
+                          selectedCategory = cat;
+                          loadSavedSettings();
+                        } else if (selectedCategoryIds.isEmpty) {
+                          selectedCategory = null;
+                          templateImage = null;
+                        }
+                        _prepareCardsToPrint();
+                      });
+                    },
+                  );
+                }),
+              ],
             ),
           const SizedBox(height: 10),
           // اختصارات المواضع
@@ -634,9 +664,9 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
           // معاينة بحجم حقيقي
           _fullSizePreview(),
           // إعدادات النص
-          slider("الموقع الأفقي %", textX, 100),
-          slider("الموقع الرأسي %", textY, 100),
-          slider("حجم الخط", fontSize, 40),
+          slider("الموقع الأفقي %", textX, 100, isDark),
+          slider("الموقع الرأسي %", textY, 100, isDark),
+          slider("حجم الخط", fontSize, 40, isDark),
           Row(
             children: [
               ElevatedButton.icon(
@@ -660,19 +690,23 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
           ),
           // قوالب الطباعة
           const SizedBox(height: 12),
-          const Text("قوالب الطباعة المحفوظة",
-              style: TextStyle(fontWeight: FontWeight.bold)),
+          Text("قوالب الطباعة المحفوظة",
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87)),
           Wrap(
             children: savedTemplates.map((t) {
               return TextButton(
                 onPressed: () => _applyTemplate(t),
-                child: Text(t['name'] ?? ''),
+                child: Text(t['name'] ?? '',
+                    style:
+                        TextStyle(color: isDark ? Colors.cyanAccent : Colors.teal)),
               );
             }).toList(),
           ),
           Row(
             children: [
-              ElevatedButton(
+              TextButton.icon(
                 onPressed: () {
                   showDialog(
                     context: context,
@@ -682,10 +716,13 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
                         title: const Text("حفظ كقالب"),
                         content: TextField(
                           controller: nameCtrl,
-                          decoration: const InputDecoration(labelText: "اسم القالب"),
+                          decoration:
+                              const InputDecoration(labelText: "اسم القالب"),
                         ),
                         actions: [
-                          TextButton(onPressed: () => Navigator.pop(context), child: const Text("إلغاء")),
+                          TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text("إلغاء")),
                           ElevatedButton(
                             onPressed: () {
                               if (nameCtrl.text.isNotEmpty) {
@@ -700,31 +737,41 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
                     },
                   );
                 },
-                child: const Text("حفظ الإعدادات الحالية كقالب"),
+                icon: const Icon(Icons.save),
+                label: const Text("حفظ الإعدادات الحالية كقالب"),
               ),
             ],
           ),
           // إعدادات التخطيط
           const SizedBox(height: 20),
-          const Text('إعدادات التخطيط',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Text('إعدادات التخطيط',
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87)),
           const SizedBox(height: 10),
           Row(
             children: [
               Expanded(
                   child: TextField(
                       controller: copiesPerCard,
-                      decoration: const InputDecoration(
+                      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                      decoration: InputDecoration(
                           labelText: "نسخ لكل كرت",
-                          border: OutlineInputBorder()),
+                          border: const OutlineInputBorder(),
+                          labelStyle: TextStyle(
+                              color: isDark ? Colors.white70 : Colors.black54)),
                       keyboardType: TextInputType.number)),
               const SizedBox(width: 10),
               Expanded(
                   child: TextField(
                       controller: perRow,
-                      decoration: const InputDecoration(
+                      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                      decoration: InputDecoration(
                           labelText: "كروت/صف",
-                          border: OutlineInputBorder()),
+                          border: const OutlineInputBorder(),
+                          labelStyle: TextStyle(
+                              color: isDark ? Colors.white70 : Colors.black54)),
                       keyboardType: TextInputType.number)),
             ],
           ),
@@ -734,96 +781,119 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
               Expanded(
                   child: TextField(
                       controller: perColumn,
-                      decoration: const InputDecoration(
+                      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                      decoration: InputDecoration(
                           labelText: "كروت/عمود",
-                          border: OutlineInputBorder()),
+                          border: const OutlineInputBorder(),
+                          labelStyle: TextStyle(
+                              color: isDark ? Colors.white70 : Colors.black54)),
                       keyboardType: TextInputType.number)),
               const SizedBox(width: 10),
               Expanded(
                   child: TextField(
                       controller: widthMM,
-                      decoration: const InputDecoration(
+                      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                      decoration: InputDecoration(
                           labelText: "عرض (مم)",
-                          border: OutlineInputBorder()),
+                          border: const OutlineInputBorder(),
+                          labelStyle: TextStyle(
+                              color: isDark ? Colors.white70 : Colors.black54)),
                       keyboardType: TextInputType.number)),
             ],
           ),
           const SizedBox(height: 10),
           TextField(
               controller: heightMM,
-              decoration: const InputDecoration(
-                  labelText: "ارتفاع (مم)", border: OutlineInputBorder()),
+              style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              decoration: InputDecoration(
+                  labelText: "ارتفاع (مم)",
+                  border: const OutlineInputBorder(),
+                  labelStyle:
+                      TextStyle(color: isDark ? Colors.white70 : Colors.black54)),
               keyboardType: TextInputType.number),
           const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: saveSettings,
-              icon: const Icon(Icons.save),
-              label: const Text("حفظ جميع الإعدادات للفئة"),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+          if (selectedCategory != null)
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: saveSettings,
+                icon: const Icon(Icons.save),
+                label: const Text("حفظ جميع الإعدادات للفئة"),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+              ),
             ),
-          ),
           const SizedBox(height: 10),
           TextField(
               controller: printCountController,
-              decoration: const InputDecoration(
+              style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              decoration: InputDecoration(
                   labelText: "عدد الكروت المطلوب",
-                  border: OutlineInputBorder()),
+                  border: const OutlineInputBorder(),
+                  labelStyle:
+                      TextStyle(color: isDark ? Colors.white70 : Colors.black54)),
               keyboardType: TextInputType.number),
           const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: showPrintDialog,
-              icon: const Icon(Icons.print),
-              label: const Text("بدء الطباعة"),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+              onPressed: cardsToPrint.isEmpty ? null : showPrintDialog,
+              icon: const Icon(Icons.print, color: Colors.white),
+              label: const Text("بدء الطباعة",
+                  style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.teal.shade700),
             ),
           ),
           // سجل الطباعة
           const SizedBox(height: 20),
-          const Text("سجل آخر عمليات الطباعة",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ...printLogs.take(5).map((log) => ListTile(
-                title: Text(
-                    "${log.count} كرت - ${log.type == 'print_archive' ? 'طباعة وأرشفة' : log.type == 'print_only' ? 'طباعة فقط' : 'معاينة'}"),
-                subtitle: Text("${log.timestamp}".substring(0, 19)),
-              )),
+          Text("سجل آخر عمليات الطباعة",
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87)),
+          ...printLogs.take(5).map((log) {
+            final count = log['count'] ?? 0;
+            final type = log['type'] == 'print_archive'
+                ? 'طباعة وأرشفة'
+                : log['type'] == 'print_only'
+                    ? 'طباعة فقط'
+                    : 'معاينة';
+            final ts = log['timestamp'] as Timestamp?;
+            return ListTile(
+              title: Text("$count كرت - $type",
+                  style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87)),
+              subtitle: Text(
+                  ts != null ? ts.toDate().toString().substring(0, 19) : '',
+                  style: TextStyle(
+                      color: isDark ? Colors.white70 : Colors.black54)),
+            );
+          }),
         ],
       ),
     );
   }
 
-  Widget slider(String label, ValueNotifier<double> notifier, double max) {
+  Widget slider(
+      String label, ValueNotifier<double> notifier, double max, bool isDark) {
     return ValueListenableBuilder(
       valueListenable: notifier,
       builder: (_, value, __) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("$label: ${value.toStringAsFixed(1)}"),
+            Text("$label: ${value.toStringAsFixed(1)}",
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
             Slider(
               value: value,
               max: max,
+              activeColor: Colors.teal,
+              inactiveColor: Colors.teal.shade100,
               onChanged: (v) => notifier.value = v,
             ),
           ],
         );
       },
     );
-  }
-
-  void _logPrintAction(String type, int count) async {
-    await _firestore.collection('print_logs').add({
-      'agentPhone': sys.currentUserPhone,
-      'networkId': selectedNetworkId ?? '',
-      'categoryId': selectedCategory?['id'] ?? '',
-      'count': count,
-      'type': type,
-      'timestamp': FieldValue.serverTimestamp(),
-    });
-    // تحديث السجل مباشرة
-    _loadPrintLogs();
   }
 }
