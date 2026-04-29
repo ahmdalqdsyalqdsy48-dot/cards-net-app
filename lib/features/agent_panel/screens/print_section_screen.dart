@@ -11,6 +11,116 @@ import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../widgets/custom_agent_drawer.dart';
 
+// ========== ودجة مستقلة للمنزلقات والمعاينة لمنع الوميض ==========
+class _SlidersPreviewSection extends StatefulWidget {
+  final double pinXPercent;
+  final double pinYPercent;
+  final double pinFontSize;
+  final Color pinColor;
+  final String? templateBase64;
+  final ValueChanged<double> onXChanged;
+  final ValueChanged<double> onYChanged;
+  final ValueChanged<double> onFontSizeChanged;
+
+  const _SlidersPreviewSection({
+    required this.pinXPercent,
+    required this.pinYPercent,
+    required this.pinFontSize,
+    required this.pinColor,
+    required this.templateBase64,
+    required this.onXChanged,
+    required this.onYChanged,
+    required this.onFontSizeChanged,
+  });
+
+  @override
+  State<_SlidersPreviewSection> createState() => _SlidersPreviewSectionState();
+}
+
+class _SlidersPreviewSectionState extends State<_SlidersPreviewSection> {
+  @override
+  Widget build(BuildContext context) {
+    // المعاينة المباشرة
+    Widget livePreview = const SizedBox.shrink();
+    if (widget.templateBase64 != null && widget.templateBase64!.isNotEmpty) {
+      final bytes = base64Decode(widget.templateBase64!);
+      final double alignX = (widget.pinXPercent / 100) * 2 - 1;
+      final double alignY = (widget.pinYPercent / 100) * 2 - 1;
+      livePreview = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('معاينة مباشرة:',
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
+          const SizedBox(height: 8),
+          Container(
+            width: 200,
+            height: 150,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Stack(
+                children: [
+                  Positioned.fill(child: Image.memory(bytes, fit: BoxFit.contain)),
+                  Align(
+                    alignment: Alignment(alignX, alignY),
+                    child: Text(
+                      '####',
+                      style: TextStyle(
+                        fontSize: widget.pinFontSize * 0.7,
+                        fontWeight: FontWeight.bold,
+                        color: widget.pinColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        livePreview,
+        const SizedBox(height: 12),
+        Text('الموقع الأفقي: ${widget.pinXPercent.toStringAsFixed(1)}%'),
+        Slider(
+          value: widget.pinXPercent,
+          min: 0,
+          max: 100,
+          divisions: 100,
+          label: widget.pinXPercent.toStringAsFixed(1),
+          onChanged: widget.onXChanged,
+        ),
+        Text('الموقع الرأسي: ${widget.pinYPercent.toStringAsFixed(1)}%'),
+        Slider(
+          value: widget.pinYPercent,
+          min: 0,
+          max: 100,
+          divisions: 100,
+          label: widget.pinYPercent.toStringAsFixed(1),
+          onChanged: widget.onYChanged,
+        ),
+        Text('حجم الخط: ${widget.pinFontSize.toStringAsFixed(1)} pt'),
+        Slider(
+          value: widget.pinFontSize,
+          min: 6,
+          max: 40,
+          divisions: 34,
+          label: widget.pinFontSize.toStringAsFixed(1),
+          onChanged: widget.onFontSizeChanged,
+        ),
+      ],
+    );
+  }
+}
+// ========== نهاية الودجة المستقلة ==========
+
 class PrintSectionScreen extends StatefulWidget {
   const PrintSectionScreen({super.key});
 
@@ -52,7 +162,11 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
     super.initState();
     _printCountController.addListener(() {
       int? val = int.tryParse(_printCountController.text);
-      setState(() => _printCount = (val != null && val >= 0) ? val : null);
+      if (val != null && val >= 0) {
+        _printCount = val;
+      } else {
+        _printCount = null;
+      }
     });
 
     _copiesController = TextEditingController(text: _copiesPerCard.toString());
@@ -155,51 +269,6 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
     );
   }
 
-  // المعاينة المباشرة تستخدم نفس منطق Alignment الذي سيُستخدم في PDF
-  Widget _buildLivePreview() {
-    if (_templateBase64 == null || _templateBase64!.isEmpty) return const SizedBox.shrink();
-    final bytes = base64Decode(_templateBase64!);
-    // تحويل النسبة المئوية إلى Alignment (بين -1 و 1)
-    final double alignX = (_pinXPercent / 100) * 2 - 1;
-    final double alignY = (_pinYPercent / 100) * 2 - 1;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('معاينة مباشرة:',
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
-        const SizedBox(height: 8),
-        Container(
-          width: 200,
-          height: 150,
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Stack(
-              children: [
-                Positioned.fill(child: Image.memory(bytes, fit: BoxFit.contain)),
-                Align(
-                  alignment: Alignment(alignX, alignY),
-                  child: Text(
-                    '####',
-                    style: TextStyle(
-                      fontSize: _pinFontSize * 0.7,
-                      fontWeight: FontWeight.bold,
-                      color: _pinColor,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   Future<void> _showPrintConfirmationDialog() async {
     final int available = _printReadyCards.length;
     final int requested = _printCount ?? available;
@@ -256,7 +325,6 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
   }
 
   Future<void> _generateAndPrintPdf(List<Map<String, dynamic>> cards) async {
-    // استخدام الإعدادات المخزنة أولاً
     final double xPercent = (_selectedCategory?['textXPercent'] ?? _pinXPercent).toDouble();
     final double yPercent = (_selectedCategory?['textYPercent'] ?? _pinYPercent).toDouble();
     final double fontSize = (_selectedCategory?['textFontSize'] ?? _pinFontSize).toDouble();
@@ -278,7 +346,6 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
               pw.Widget cardContent;
               if (_templateBase64 != null && _templateBase64!.isNotEmpty) {
                 final templateImage = pw.MemoryImage(base64Decode(_templateBase64!));
-                // استخدام نفس منطق Alignment المطابق للمعاينة
                 final double alignX = (xPercent / 100) * 2 - 1;
                 final double alignY = (yPercent / 100) * 2 - 1;
                 cardContent = pw.Container(
@@ -499,46 +566,16 @@ class _PrintSectionScreenState extends State<PrintSectionScreen> {
                     const Text('إعدادات النص على القالب ✍️',
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 10),
-                    if (_templateBase64 != null && _templateBase64!.isNotEmpty)
-                      _buildLivePreview(),
-                    const SizedBox(height: 12),
-                    // منزلقات بدون setState متكررة، والمعاينة تتحدث فقط في onChangeEnd
-                    Text('الموقع الأفقي: ${_pinXPercent.toStringAsFixed(1)}%'),
-                    Slider(
-                      value: _pinXPercent,
-                      min: 0,
-                      max: 100,
-                      divisions: 100,
-                      label: _pinXPercent.toStringAsFixed(1),
-                      onChanged: (v) {
-                        _pinXPercent = v;
-                        // نُحدّث النص الظاهر فقط بدون إعادة بناء كاملة
-                        setState(() {});
-                      },
-                    ),
-                    Text('الموقع الرأسي: ${_pinYPercent.toStringAsFixed(1)}%'),
-                    Slider(
-                      value: _pinYPercent,
-                      min: 0,
-                      max: 100,
-                      divisions: 100,
-                      label: _pinYPercent.toStringAsFixed(1),
-                      onChanged: (v) {
-                        _pinYPercent = v;
-                        setState(() {});
-                      },
-                    ),
-                    Text('حجم الخط: ${_pinFontSize.toStringAsFixed(1)} pt'),
-                    Slider(
-                      value: _pinFontSize,
-                      min: 6,
-                      max: 40,
-                      divisions: 34,
-                      label: _pinFontSize.toStringAsFixed(1),
-                      onChanged: (v) {
-                        _pinFontSize = v;
-                        setState(() {});
-                      },
+                    // الودجة المستقلة التي لا تومض
+                    _SlidersPreviewSection(
+                      pinXPercent: _pinXPercent,
+                      pinYPercent: _pinYPercent,
+                      pinFontSize: _pinFontSize,
+                      pinColor: _pinColor,
+                      templateBase64: _templateBase64,
+                      onXChanged: (v) => setState(() => _pinXPercent = v),
+                      onYChanged: (v) => setState(() => _pinYPercent = v),
+                      onFontSizeChanged: (v) => setState(() => _pinFontSize = v),
                     ),
                     const SizedBox(height: 12),
                     Row(
