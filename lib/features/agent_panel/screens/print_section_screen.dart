@@ -12,6 +12,23 @@ import '../../../core/providers/system_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart';
 
+// ========== طبقة الحسابات الموحدة (Single Source of Truth) ==========
+class LayoutEngine {
+  static const double mmToPx = 2.83465; // 1 mm = 2.83465 logical pixels
+
+  static Offset calculateTextPosition({
+    required double xPercent,
+    required double yPercent,
+    required double widthMM,
+    required double heightMM,
+  }) {
+    return Offset(
+      (xPercent / 100) * widthMM * mmToPx,
+      (yPercent / 100) * heightMM * mmToPx,
+    );
+  }
+}
+
 class PrintSectionScreen extends StatefulWidget {
   const PrintSectionScreen({super.key});
 
@@ -34,8 +51,12 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
   final Map<String, Map<String, dynamic>> selectedCategories = {};
   List<QueryDocumentSnapshot> allPrintReadyCards = [];
 
-  // ========== قوالب الفئات (مخزنة) ==========
-  final Map<String, Uint8List?> categoryTemplates = {};
+  // ========== قوالب الفئات (مخزنة بشكل خاص) ==========
+  final Map<String, Uint8List?> _categoryTemplates = {};
+
+  Uint8List? getTemplate(String categoryId) {
+    return _categoryTemplates[categoryId];
+  }
 
   // ========== إعدادات النص (مشتركة) ==========
   final ValueNotifier<double> textX = ValueNotifier(50);
@@ -66,8 +87,6 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
   // ========== سجل الطباعة ==========
   List<Map<String, dynamic>> printLogs = [];
 
-  static const double mmToPx = 2.83465; // 1 mm = 2.83465 logical pixels
-
   @override
   void initState() {
     super.initState();
@@ -95,6 +114,28 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
       c.dispose();
     }
     super.dispose();
+  }
+
+  // ========== مزامنة المعاينة (Force UI Sync) ==========
+  void _syncPreview() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  // ========== لقطة الإعدادات (Snapshot Pattern) ==========
+  Map<String, dynamic> _captureSnapshot() {
+    return {
+      "x": textX.value,
+      "y": textY.value,
+      "font": fontSize.value,
+      "color": textColor.value,
+      "row": int.tryParse(perRow.text) ?? 3,
+      "col": int.tryParse(perColumn.text) ?? 17,
+      "w": double.tryParse(widthMM.text) ?? 70.0,
+      "h": double.tryParse(heightMM.text) ?? 17.4,
+      "copies": int.tryParse(copiesPerCard.text) ?? 1,
+    };
   }
 
   Future<void> _loadInitialData() async {
@@ -188,6 +229,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     perColumn.text = (tmpl['perColumn'] ?? "17").toString();
     widthMM.text = (tmpl['widthMM'] ?? "70.0").toString();
     heightMM.text = (tmpl['heightMM'] ?? "17.4").toString();
+    _syncPreview();
   }
 
   void _loadCategoryTemplate(String categoryId) {
@@ -195,11 +237,11 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     if (cat == null) return;
     final b64 = cat['templateBase64'] as String?;
     if (b64 != null && b64.isNotEmpty) {
-      categoryTemplates[categoryId] = base64Decode(b64);
+      _categoryTemplates[categoryId] = base64Decode(b64);
     } else {
-      categoryTemplates.remove(categoryId);
+      _categoryTemplates.remove(categoryId);
     }
-    setState(() {});
+    _syncPreview();
   }
 
   // --- الأرشيف ---
@@ -327,13 +369,13 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     _loadPrintLogs();
   }
 
-  // --- طباعة PDF (مع pagination دقيقة) ---
-  Future<Uint8List> generatePdf(int totalCount) async {
-    final perRowVal = int.tryParse(perRow.text) ?? 3;
-    final perColVal = int.tryParse(perColumn.text) ?? 17;
-    final w = double.tryParse(widthMM.text) ?? 70.0;
-    final h = double.tryParse(heightMM.text) ?? 17.4;
-    final copies = int.tryParse(copiesPerCard.text) ?? 1;
+  // --- طباعة PDF (تستخدم الـ Snapshot و LayoutEngine) ---
+  Future<Uint8List> generatePdf(Map<String, dynamic> snap) async {
+    final int perRowVal = snap["row"];
+    final int perColVal = snap["col"];
+    final double w = snap["w"];
+    final double h = snap["h"];
+    final int copies = snap["copies"];
     final cardsPerPage = perRowVal * perColVal;
 
     if (cardsPerPage <= 0) {
@@ -371,7 +413,14 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
               children: pageCards.map((card) {
                 final catId = card['categoryId'] as String;
                 final pin = card['pin'] ?? '---';
-                final templateBytes = categoryTemplates[catId];
+                final templateBytes = getTemplate(catId);
+                // استخدام LayoutEngine لحساب الموضع في PDF
+                final pos = LayoutEngine.calculateTextPosition(
+                  xPercent: snap["x"],
+                  yPercent: snap["y"],
+                  widthMM: w,
+                  heightMM: h,
+                );
                 return pw.Container(
                   padding: const pw.EdgeInsets.all(2),
                   width: w * PdfPageFormat.mm,
@@ -381,13 +430,13 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
                       if (templateBytes != null)
                         pw.Image(pw.MemoryImage(templateBytes), fit: pw.BoxFit.fill),
                       pw.Positioned(
-                        left: (textX.value / 100) * w * PdfPageFormat.mm,
-                        top: (textY.value / 100) * h * PdfPageFormat.mm,
+                        left: pos.dx * PdfPageFormat.mm, // تحويل pixels -> mm للـ PDF
+                        top: pos.dy * PdfPageFormat.mm,
                         child: pw.Text(
                           pin,
                           style: pw.TextStyle(
-                            fontSize: fontSize.value,
-                            color: PdfColor.fromInt(textColor.value.value),
+                            fontSize: snap["font"],
+                            color: PdfColor.fromInt((snap["color"] as Color).value),
                           ),
                         ),
                       )
@@ -412,6 +461,9 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
       return;
     }
 
+    // التقاط لقطة لحظة الضغط على الزر
+    final snapshot = _captureSnapshot();
+
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -423,7 +475,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
             child: const Text("معاينة فقط"),
             onPressed: () async {
               Navigator.pop(context);
-              final pdf = await generatePdf(total);
+              final pdf = await generatePdf(snapshot);
               await Printing.layoutPdf(onLayout: (_) => pdf);
               _logPrintAction('view', total);
             },
@@ -432,7 +484,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
             child: const Text("طباعة فقط"),
             onPressed: () async {
               Navigator.pop(context);
-              final pdf = await generatePdf(total);
+              final pdf = await generatePdf(snapshot);
               await Printing.layoutPdf(onLayout: (_) => pdf);
               _logPrintAction('print_only', total);
             },
@@ -441,7 +493,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
             child: const Text("طباعة وأرشفة"),
             onPressed: () async {
               Navigator.pop(context);
-              final pdf = await generatePdf(total);
+              final pdf = await generatePdf(snapshot);
               await Printing.layoutPdf(onLayout: (_) => pdf);
 
               final batch = _firestore.batch();
@@ -502,6 +554,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
       onTap: () {
         textX.value = x;
         textY.value = y;
+        _syncPreview();
       },
       child: Container(
         padding: const EdgeInsets.all(6),
@@ -514,7 +567,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     );
   }
 
-  // --- معاينة مطابقة 100% للطباعة ---
+  // --- معاينة مطابقة 100% للطباعة (تستخدم LayoutEngine) ---
   Widget _buildEnhancedPreview() {
     if (selectedCategoryIds.isEmpty) return const SizedBox.shrink();
 
@@ -546,8 +599,8 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
                 minScale: 0.5,
                 maxScale: 4.0,
                 child: Container(
-                  width: w * pRow * mmToPx,
-                  height: h * pCol * mmToPx,
+                  width: w * pRow * LayoutEngine.mmToPx,
+                  height: h * pCol * LayoutEngine.mmToPx,
                   decoration: BoxDecoration(
                     border: Border.all(color: Colors.grey.shade400),
                     color: Colors.white,
@@ -566,14 +619,14 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     final children = <Widget>[];
     for (int r = 0; r < perColVal; r++) {
       for (int c = 0; c < perRowVal; c++) {
-        final left = c * wMM * mmToPx;
-        final top = r * hMM * mmToPx;
+        final left = c * wMM * LayoutEngine.mmToPx;
+        final top = r * hMM * LayoutEngine.mmToPx;
         children.add(
           Positioned(
             left: left,
             top: top,
-            width: wMM * mmToPx,
-            height: hMM * mmToPx,
+            width: wMM * LayoutEngine.mmToPx,
+            height: hMM * LayoutEngine.mmToPx,
             child: _buildSingleFakeCard(wMM, hMM, "####"),
           ),
         );
@@ -583,31 +636,41 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
   }
 
   Widget _buildSingleFakeCard(double wMM, double hMM, String pin) {
-    final templateBytes = categoryTemplates.isNotEmpty ? categoryTemplates.values.first : null;
+    // استخدام القالب عبر الدالة الموحدة
+    final templateBytes = getTemplate(selectedCategoryIds.isNotEmpty ? selectedCategoryIds.first : '');
+    // استخدام LayoutEngine لحساب الموضع في المعاينة
+    final pos = LayoutEngine.calculateTextPosition(
+      xPercent: textX.value,
+      yPercent: textY.value,
+      widthMM: wMM,
+      heightMM: hMM,
+    );
+
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: Colors.grey.shade300),
         image: templateBytes != null
-            ? DecorationImage(image: MemoryImage(templateBytes!), fit: BoxFit.fill)
+            ? DecorationImage(image: MemoryImage(templateBytes), fit: BoxFit.fill)
             : null,
       ),
       child: Stack(
         children: [
           CustomPaint(
-            size: Size(wMM * mmToPx, hMM * mmToPx),
+            size: Size(wMM * LayoutEngine.mmToPx, hMM * LayoutEngine.mmToPx),
             painter: _GuidePainter(),
           ),
           Positioned(
-            left: (textX.value / 100) * wMM * mmToPx,
-            top: (textY.value / 100) * hMM * mmToPx,
+            left: pos.dx,
+            top: pos.dy,
             child: GestureDetector(
               onPanUpdate: (details) {
                 setState(() {
-                  textX.value += details.delta.dx / (wMM * mmToPx) * 100;
-                  textY.value += details.delta.dy / (hMM * mmToPx) * 100;
+                  textX.value += details.delta.dx / (wMM * LayoutEngine.mmToPx) * 100;
+                  textY.value += details.delta.dy / (hMM * LayoutEngine.mmToPx) * 100;
                   textX.value = textX.value.clamp(0, 100);
                   textY.value = textY.value.clamp(0, 100);
                 });
+                _syncPreview();
               },
               child: Container(
                 color: Colors.white.withOpacity(0.7),
@@ -637,8 +700,8 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
             minScale: 0.2,
             maxScale: 5.0,
             child: Container(
-              width: w * pRow * mmToPx,
-              height: h * pCol * mmToPx,
+              width: w * pRow * LayoutEngine.mmToPx,
+              height: h * pCol * LayoutEngine.mmToPx,
               color: Colors.white,
               child: _buildFakeGrid(pRow, pCol, w, h),
             ),
@@ -753,7 +816,6 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
   // --- تبويب الطباعة ---
   Widget _buildPrintTab() {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -770,7 +832,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
                   selectedNetworkId = val;
                   selectedCategoryIds.clear();
                   selectedCategories.clear();
-                  categoryTemplates.clear();
+                  _categoryTemplates.clear();
                   categoryCountControllers.forEach((_, ctrl) => ctrl.dispose());
                   categoryCountControllers.clear();
                   totalCountController.text = "0";
@@ -795,7 +857,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
                           } else {
                             selectedCategoryIds.remove(cat['id']);
                             selectedCategories.remove(cat['id']);
-                            categoryTemplates.remove(cat['id']);
+                            _categoryTemplates.remove(cat['id']);
                           }
                           _rebuildCategoryCounts();
                         });
@@ -936,6 +998,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
                     ElevatedButton(
                       onPressed: () {
                         textColor.value = tempColor;
+                        _syncPreview();
                         Navigator.pop(context);
                       },
                       child: const Text("تعيين"),
@@ -952,6 +1015,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
         ElevatedButton(
           onPressed: () {
             textColor.value = Colors.black;
+            _syncPreview();
           },
           child: const Text("إلغاء التعيين"),
         ),
@@ -1004,7 +1068,14 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text("$label: ${value.toStringAsFixed(1)}"),
-            Slider(value: value, max: max, onChanged: (v) => notifier.value = v),
+            Slider(
+              value: value,
+              max: max,
+              onChanged: (v) {
+                notifier.value = v;
+                _syncPreview(); // Force sync عند تحريك المنزلق
+              },
+            ),
           ],
         );
       },
