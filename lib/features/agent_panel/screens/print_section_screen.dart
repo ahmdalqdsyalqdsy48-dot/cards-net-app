@@ -243,6 +243,29 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     }
   }
 
+  Future<void> _restoreAll() async {
+    final ok = await _showConfirm("استرجاع الكل", "سيتم إعادة جميع الكروت في الأرشيف إلى حالة الطباعة. متأكد؟");
+    if (!ok) return;
+    final batch = _firestore.batch();
+    for (final card in archivedCards) {
+      batch.update(card.reference, {'status': 'print_ready'});
+    }
+    await batch.commit();
+    _loadArchive();
+    _loadAllPrintReadyCards();
+  }
+
+  Future<void> _deleteAllArchived() async {
+    final ok = await _showConfirm("حذف الكل", "سيتم حذف جميع الكروت في الأرشيف نهائياً. متأكد؟");
+    if (!ok) return;
+    final batch = _firestore.batch();
+    for (final card in archivedCards) {
+      batch.delete(card.reference);
+    }
+    await batch.commit();
+    _loadArchive();
+  }
+
   Future<void> _loadAutoDeleteSettings() async {
     final doc = await _firestore.collection('settings').doc('archive_auto_delete').get();
     if (doc.exists) {
@@ -302,7 +325,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     _loadPrintLogs();
   }
 
-  // --- طباعة PDF (مع pagination) ---
+  // --- طباعة PDF (مع pagination دقيقة) ---
   Future<Uint8List> generatePdf(int totalCount) async {
     final pdf = pw.Document();
     final perRowVal = int.tryParse(perRow.text) ?? 3;
@@ -311,7 +334,6 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     final h = double.tryParse(heightMM.text) ?? 17.4;
     final cardsPerPage = perRowVal * perColVal;
 
-    // جمع الكروت المطلوبة
     List<QueryDocumentSnapshot> cardsToPrint = [];
     for (final catId in selectedCategoryIds) {
       final requested = int.tryParse(categoryCountControllers[catId]?.text ?? '0') ?? 0;
@@ -322,7 +344,6 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
       cardsToPrint.addAll(catCards);
     }
 
-    // تقسيم إلى صفحات
     final totalPages = (cardsToPrint.length / cardsPerPage).ceil();
     for (int page = 0; page < totalPages; page++) {
       final pageCards = cardsToPrint.skip(page * cardsPerPage).take(cardsPerPage).toList();
@@ -477,128 +498,145 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     );
   }
 
-  // --- معاينة حقيقية محسّنة مع السحب ---
+  // --- معاينة مطابقة 100% للطباعة ---
+  static const double mmToPx = 2.83465; // 1 mm = 2.83465 logical pixels
+
   Widget _buildEnhancedPreview() {
     if (selectedCategoryIds.isEmpty) return const SizedBox.shrink();
 
-    return Column(
-      children: [
-        Row(
+    final w = double.tryParse(widthMM.text) ?? 70.0;
+    final h = double.tryParse(heightMM.text) ?? 17.4;
+    final pRow = int.tryParse(perRow.text) ?? 3;
+    final pCol = int.tryParse(perColumn.text) ?? 17;
+    final cardCount = pRow * pCol; // العدد في الصفحة الواحدة
+
+    // بناء شبكة محاكاة لصفحة واحدة (مصغرة) لتناسب العرض
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth - 16; // padding
+        // نريد عرض الشبكة بالكامل داخل المتاح
+        final scale = availableWidth / (w * pRow * mmToPx / 72); // معامل تحجيم تقريبي لجعل الشبكة مرئية
+        // سنعرض الشبكة داخل InteractiveViewer بحجمها الفعلي لكن مع إمكانية التكبير
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("المعاينة", style: Theme.of(context).textTheme.titleMedium),
-            const Spacer(),
-            IconButton(
-              icon: const Icon(Icons.fullscreen),
-              onPressed: () => _showFullScreenPreview(),
-              tooltip: "معاينة كاملة",
+            Row(
+              children: [
+                Text("محاكاة صفحة (${pRow}x$pCol)", style: Theme.of(context).textTheme.titleMedium),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.fullscreen),
+                  onPressed: () => _showFullScreenPreview(),
+                  tooltip: "معاينة كاملة",
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 300,
+              child: InteractiveViewer(
+                minScale: 0.5,
+                maxScale: 4.0,
+                child: Container(
+                  width: w * pRow * mmToPx,
+                  height: h * pCol * mmToPx,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade400),
+                    color: Colors.white,
+                  ),
+                  child: _buildFakeGrid(pRow, pCol, w, h),
+                ),
+              ),
             ),
           ],
-        ),
-        SizedBox(
-          height: 280,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            children: selectedCategoryIds.map((catId) {
-              final template = categoryTemplates[catId];
-              return GestureDetector(
-                onPanUpdate: (details) {
-                  // السحب المباشر للنص
-                  final RenderBox renderBox = context.findRenderObject() as RenderBox;
-                  final localPos = renderBox.globalToLocal(details.globalPosition);
-                  // تحويل إلى نسبة مئوية داخل مساحة المعاينة (سنأخذ child size لكن هنا تقريبي)
-                  // سنستخدم الحجم التقريبي 150x120 كنسبة
-                  setState(() {
-                    textX.value = ((localPos.dx / 150) * 100).clamp(0, 100);
-                    textY.value = ((localPos.dy / 120) * 100).clamp(0, 100);
-                  });
-                },
-                child: Column(
-                  children: [
-                    Text(selectedCategories[catId]?['name'] ?? ''),
-                    Stack(
-                      children: [
-                        Container(
-                          width: 150,
-                          height: 120,
-                          decoration: template != null
-                              ? BoxDecoration(
-                                  image: DecorationImage(image: MemoryImage(template), fit: BoxFit.fill),
-                                )
-                              : BoxDecoration(
-                                  border: Border.all(color: Colors.grey),
-                                  color: Colors.grey.shade200,
-                                ),
-                        ),
-                        // خطوط إرشادية (وسط)
-                        CustomPaint(
-                          size: const Size(150, 120),
-                          painter: _GuidePainter(),
-                        ),
-                        Positioned(
-                          left: (textX.value / 100) * 150 - 20,
-                          top: (textY.value / 100) * 120 - 15,
-                          child: GestureDetector(
-                            onPanUpdate: (details) {
-                              setState(() {
-                                textX.value = (textX.value + details.delta.dx / 150 * 100).clamp(0, 100);
-                                textY.value = (textY.value + details.delta.dy / 120 * 100).clamp(0, 100);
-                              });
-                            },
-                            child: Container(
-                              color: Colors.white.withOpacity(0.7),
-                              padding: const EdgeInsets.all(2),
-                              child: Text(
-                                "####",
-                                style: TextStyle(
-                                  fontSize: fontSize.value * 0.8,
-                                  color: textColor.value,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
+        );
+      },
+    );
+  }
+
+  Widget _buildFakeGrid(int perRowVal, int perColVal, double wMM, double hMM) {
+    // استخدام Stack لرسم الشبكة وخلاياها
+    final children = <Widget>[];
+    for (int r = 0; r < perColVal; r++) {
+      for (int c = 0; c < perRowVal; c++) {
+        final left = c * wMM * mmToPx;
+        final top = r * hMM * mmToPx;
+        children.add(
+          Positioned(
+            left: left,
+            top: top,
+            width: wMM * mmToPx,
+            height: hMM * mmToPx,
+            child: _buildSingleFakeCard(wMM, hMM),
           ),
-        ),
-      ],
+        );
+      }
+    }
+    return Stack(children: children);
+  }
+
+  Widget _buildSingleFakeCard(double wMM, double hMM) {
+    // بطاقة وهمية بنفس شكل الطباعة (بدون قالب حقيقي هنا)
+    // نستخدم قالب أول فئة مختارة للعرض (للتبسيط)
+    final templateBytes = categoryTemplates.isNotEmpty ? categoryTemplates.values.first : null;
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
+        color: templateBytes == null ? Colors.grey.shade100 : null,
+        image: templateBytes != null
+            ? DecorationImage(image: MemoryImage(templateBytes!), fit: BoxFit.fill)
+            : null,
+      ),
+      child: Stack(
+        children: [
+          CustomPaint(
+            size: Size(wMM * mmToPx, hMM * mmToPx),
+            painter: _GuidePainter(),
+          ),
+          Positioned(
+            left: (textX.value / 100) * wMM * mmToPx,
+            top: (textY.value / 100) * hMM * mmToPx,
+            child: GestureDetector(
+              onPanUpdate: (details) {
+                setState(() {
+                  textX.value += details.delta.dx / (wMM * mmToPx) * 100;
+                  textY.value += details.delta.dy / (hMM * mmToPx) * 100;
+                  textX.value = textX.value.clamp(0, 100);
+                  textY.value = textY.value.clamp(0, 100);
+                });
+              },
+              child: Container(
+                color: Colors.white.withOpacity(0.7),
+                child: Text(
+                  "####",
+                  style: TextStyle(fontSize: fontSize.value * 0.8, color: textColor.value),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   void _showFullScreenPreview() {
+    final w = double.tryParse(widthMM.text) ?? 70.0;
+    final h = double.tryParse(heightMM.text) ?? 17.4;
+    final pRow = int.tryParse(perRow.text) ?? 3;
+    final pCol = int.tryParse(perColumn.text) ?? 17;
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => Scaffold(
           appBar: AppBar(title: const Text("معاينة كاملة")),
           body: InteractiveViewer(
-            minScale: 0.5,
-            maxScale: 4.0,
+            minScale: 0.2,
+            maxScale: 5.0,
             child: Container(
-              width: double.parse(widthMM.text) * 3,
-              height: double.parse(heightMM.text) * 3,
-              decoration: BoxDecoration(
-                image: categoryTemplates.isNotEmpty
-                    ? DecorationImage(
-                        image: MemoryImage(categoryTemplates.values.first!),
-                        fit: BoxFit.fill,
-                      )
-                    : null,
-                color: Colors.grey.shade200,
-              ),
-              child: Stack(
-                children: [
-                  CustomPaint(size: Size(double.parse(widthMM.text) * 3, double.parse(heightMM.text) * 3), painter: _GuidePainter()),
-                  Positioned(
-                    left: (textX.value / 100) * double.parse(widthMM.text) * 3,
-                    top: (textY.value / 100) * double.parse(heightMM.text) * 3,
-                    child: Text("####", style: TextStyle(fontSize: fontSize.value * 2, color: textColor.value)),
-                  ),
-                ],
-              ),
+              width: w * pRow * mmToPx,
+              height: h * pCol * mmToPx,
+              color: Colors.white,
+              child: _buildFakeGrid(pRow, pCol, w, h),
             ),
           ),
         ),
@@ -606,7 +644,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     );
   }
 
-  // --- الأرشيف (مع تحسينات) ---
+  // --- الأرشيف ---
   Widget _buildArchiveTab() {
     final filtered = archiveSearchQuery.isEmpty
         ? archivedCards
@@ -634,6 +672,23 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
               onPressed: _showAutoDeleteSettings,
               icon: const Icon(Icons.timer),
               label: const Text("الحذف التلقائي"),
+            ),
+          ],
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            ElevatedButton.icon(
+              onPressed: _restoreAll,
+              icon: const Icon(Icons.restore),
+              label: const Text("استرجاع الكل"),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            ),
+            ElevatedButton.icon(
+              onPressed: _deleteAllArchived,
+              icon: const Icon(Icons.delete_sweep),
+              label: const Text("حذف الكل"),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             ),
           ],
         ),
@@ -691,7 +746,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     );
   }
 
-  // --- تبويب الطباعة (منظم) ---
+  // --- تبويب الطباعة ---
   Widget _buildPrintTab() {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -702,6 +757,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildSectionTitle("اختيار الكروت"),
+          const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             value: selectedNetworkId,
             items: networks.map((n) => DropdownMenuItem(value: n.id, child: Text(n['name']))).toList(),
@@ -718,7 +774,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
               });
             },
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           if (selectedNetworkId != null)
             ...(networkCategories[selectedNetworkId] ?? []).map((cat) {
               final ready = allPrintReadyCards.where((c) => c['categoryId'] == cat['id']).length;
@@ -759,18 +815,21 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
                 ],
               );
             }),
+          const SizedBox(height: 12),
           TextField(
             controller: totalCountController,
             readOnly: true,
             decoration: const InputDecoration(labelText: "إجمالي الكروت المطلوبة", border: OutlineInputBorder()),
           ),
-          const Divider(height: 30),
+          const Divider(height: 40),
           _buildSectionTitle("المعاينة"),
-          _buildEnhancedPreview(),
-          const Divider(height: 30),
-          _buildSectionTitle("التعديل"),
-          _positionShortcuts(),
           const SizedBox(height: 12),
+          _buildEnhancedPreview(),
+          const Divider(height: 40),
+          _buildSectionTitle("التعديل"),
+          const SizedBox(height: 12),
+          _positionShortcuts(),
+          const SizedBox(height: 16),
           Row(
             children: [
               Expanded(child: slider("الأفقي %", textX, 100)),
@@ -778,21 +837,13 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
               Expanded(child: slider("الرأسي %", textY, 100)),
             ],
           ),
-          slider("حجم الخط", fontSize, 40),
-          ElevatedButton.icon(
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (_) => AlertDialog(
-                  content: ColorPicker(pickerColor: textColor.value, onColorChanged: (c) => textColor.value = c),
-                ),
-              );
-            },
-            icon: Icon(Icons.colorize, color: textColor.value),
-            label: const Text("لون النص"),
-          ),
           const SizedBox(height: 12),
+          slider("حجم الخط", fontSize, 40),
+          const SizedBox(height: 12),
+          _buildColorPickerButton(),
+          const SizedBox(height: 16),
           Text("قوالب الطباعة", style: theme.textTheme.titleMedium),
+          const SizedBox(height: 8),
           Wrap(
             children: savedTemplates.map((t) => TextButton(
               onPressed: () => _applyTemplate(t),
@@ -804,8 +855,9 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
             icon: const Icon(Icons.save),
             label: const Text("حفظ الإعدادات الحالية كقالب"),
           ),
-          const Divider(height: 30),
+          const Divider(height: 40),
           _buildSectionTitle("إعدادات الطباعة"),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(child: _textField(copiesPerCard, "نسخ لكل كرت")),
@@ -823,7 +875,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
           ),
           const SizedBox(height: 10),
           _textField(heightMM, "ارتفاع (مم)"),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           Center(
             child: ElevatedButton.icon(
               onPressed: showPrintDialog,
@@ -836,10 +888,13 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
               ),
             ),
           ),
-          const Divider(height: 30),
+          const Divider(height: 40),
           _buildSectionTitle("سجل آخر عمليات الطباعة"),
           if (printLogs.isEmpty)
-            const Text("لا توجد عمليات بعد")
+            const Padding(
+              padding: EdgeInsets.all(8.0),
+              child: Text("لا توجد عمليات بعد"),
+            )
           else
             ...printLogs.take(5).map((log) => ListTile(
               title: Text("${log['count']} كرت - ${_logType(log['type'])}"),
@@ -847,6 +902,36 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
             )),
         ],
       ),
+    );
+  }
+
+  Widget _buildColorPickerButton() {
+    return ElevatedButton.icon(
+      onPressed: () async {
+        Color? selected = textColor.value;
+        await showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text("اختيار لون النص"),
+            content: ColorPicker(
+              pickerColor: textColor.value,
+              onColorChanged: (c) => selected = c,
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text("إلغاء")),
+              ElevatedButton(
+                onPressed: () {
+                  if (selected != null) textColor.value = selected!;
+                  Navigator.pop(context);
+                },
+                child: const Text("تأكيد"),
+              ),
+            ],
+          ),
+        );
+      },
+      icon: Icon(Icons.colorize, color: textColor.value),
+      label: const Text("لون النص"),
     );
   }
 
@@ -950,8 +1035,6 @@ class _GuidePainter extends CustomPainter {
     final paint = Paint()
       ..color = Colors.grey.withOpacity(0.5)
       ..strokeWidth = 0.5;
-
-    // خطوط أفقية وعمودية عند 25%, 50%, 75%
     for (double p = 0.25; p <= 0.75; p += 0.25) {
       final x = size.width * p;
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
