@@ -12,20 +12,18 @@ import '../../../core/providers/system_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart';
 
-// ========== طبقة الحسابات الموحدة (Single Source of Truth) ==========
-class LayoutEngine {
+// ========== محرك التموضع الدقيق (Precise Layout Engine) ==========
+class PreciseLayoutEngine {
   static const double mmToPx = 2.83465; // 1 mm = 2.83465 logical pixels
 
-  static Offset calculateTextPosition({
-    required double xPercent,
-    required double yPercent,
-    required double widthMM,
-    required double heightMM,
-  }) {
-    return Offset(
-      (xPercent / 100) * widthMM * mmToPx,
-      (yPercent / 100) * heightMM * mmToPx,
-    );
+  /// إرجاع الإحداثي المطلق (بالبكسل المنطقي) بالنسبة لأصل الصفحة (0,0)
+  static double getAbsolutePos(
+    double indexInDim,      // رقم البطاقة في البعد (صف أو عمود)
+    double cardSizeMM,      // حجم البطاقة بالميليمتر
+    double gapMM,           // الفجوة بين البطاقات بالميليمتر
+    double marginMM,        // الهامش من الحافة بالميليمتر
+  ) {
+    return (marginMM + (indexInDim * (cardSizeMM + gapMM))) * mmToPx;
   }
 }
 
@@ -71,6 +69,12 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
   final widthMM = TextEditingController(text: "70.0");
   final heightMM = TextEditingController(text: "17.4");
 
+  // ========== الفجوات والهوامش (Gaps & Margins) ==========
+  final horizontalGap = TextEditingController(text: "0.0");
+  final verticalGap = TextEditingController(text: "0.0");
+  final pageLeftMargin = TextEditingController(text: "5.0");
+  final pageTopMargin = TextEditingController(text: "5.0");
+
   // ========== الكميات لكل فئة ==========
   final Map<String, TextEditingController> categoryCountControllers = {};
   final totalCountController = TextEditingController();
@@ -104,6 +108,10 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     perColumn.dispose();
     widthMM.dispose();
     heightMM.dispose();
+    horizontalGap.dispose();
+    verticalGap.dispose();
+    pageLeftMargin.dispose();
+    pageTopMargin.dispose();
     totalCountController.dispose();
     archiveDaysController.dispose();
     textX.dispose();
@@ -135,6 +143,10 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
       "w": double.tryParse(widthMM.text) ?? 70.0,
       "h": double.tryParse(heightMM.text) ?? 17.4,
       "copies": int.tryParse(copiesPerCard.text) ?? 1,
+      "hGap": double.tryParse(horizontalGap.text) ?? 0.0,
+      "vGap": double.tryParse(verticalGap.text) ?? 0.0,
+      "marginL": double.tryParse(pageLeftMargin.text) ?? 5.0,
+      "marginT": double.tryParse(pageTopMargin.text) ?? 5.0,
     };
   }
 
@@ -215,6 +227,10 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
       'perColumn': perColumn.text,
       'widthMM': widthMM.text,
       'heightMM': heightMM.text,
+      'horizontalGap': horizontalGap.text,
+      'verticalGap': verticalGap.text,
+      'pageLeftMargin': pageLeftMargin.text,
+      'pageTopMargin': pageTopMargin.text,
     });
     _loadTemplates();
   }
@@ -229,6 +245,10 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     perColumn.text = (tmpl['perColumn'] ?? "17").toString();
     widthMM.text = (tmpl['widthMM'] ?? "70.0").toString();
     heightMM.text = (tmpl['heightMM'] ?? "17.4").toString();
+    horizontalGap.text = (tmpl['horizontalGap'] ?? "0.0").toString();
+    verticalGap.text = (tmpl['verticalGap'] ?? "0.0").toString();
+    pageLeftMargin.text = (tmpl['pageLeftMargin'] ?? "5.0").toString();
+    pageTopMargin.text = (tmpl['pageTopMargin'] ?? "5.0").toString();
     _syncPreview();
   }
 
@@ -369,14 +389,18 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     _loadPrintLogs();
   }
 
-  // --- طباعة PDF (تستخدم الـ Snapshot و LayoutEngine) ---
+  // --- طباعة PDF (تستخدم PreciseLayoutEngine و pw.Stack) ---
   Future<Uint8List> generatePdf(Map<String, dynamic> snap) async {
     final int perRowVal = snap["row"];
     final int perColVal = snap["col"];
     final double w = snap["w"];
     final double h = snap["h"];
     final int copies = snap["copies"];
-    final cardsPerPage = perRowVal * perColVal;
+    final double hGap = snap["hGap"];
+    final double vGap = snap["vGap"];
+    final double marginL = snap["marginL"];
+    final double marginT = snap["marginT"];
+    final int cardsPerPage = perRowVal * perColVal;
 
     if (cardsPerPage <= 0) {
       throw Exception("إعدادات الطباعة غير صحيحة");
@@ -403,47 +427,52 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
       final pageCards = cardsToPrint.skip(page * cardsPerPage).take(cardsPerPage).toList();
       pdf.addPage(
         pw.Page(
-          margin: const pw.EdgeInsets.all(10),
           pageFormat: PdfPageFormat.a4,
+          margin: pw.EdgeInsets.zero, // هامش الصفحة صفر للتحكم اليدوي
           build: (context) {
-            return pw.GridView(
-              crossAxisCount: perRowVal,
-              mainAxisSpacing: 2,
-              crossAxisSpacing: 2,
-              children: pageCards.map((card) {
+            return pw.Stack(
+              children: List.generate(pageCards.length, (index) {
+                final card = pageCards[index];
                 final catId = card['categoryId'] as String;
                 final pin = card['pin'] ?? '---';
                 final templateBytes = getTemplate(catId);
-                // استخدام LayoutEngine لحساب الموضع في PDF
-                final pos = LayoutEngine.calculateTextPosition(
-                  xPercent: snap["x"],
-                  yPercent: snap["y"],
-                  widthMM: w,
-                  heightMM: h,
+
+                final col = index % perRowVal;
+                final row = index ~/ perRowVal;
+
+                final left = PreciseLayoutEngine.getAbsolutePos(
+                  col.toDouble(), w, hGap, marginL,
                 );
-                return pw.Container(
-                  padding: const pw.EdgeInsets.all(2),
-                  width: w * PdfPageFormat.mm,
-                  height: h * PdfPageFormat.mm,
-                  child: pw.Stack(
-                    children: [
-                      if (templateBytes != null)
-                        pw.Image(pw.MemoryImage(templateBytes), fit: pw.BoxFit.fill),
-                      pw.Positioned(
-                        left: pos.dx * PdfPageFormat.mm, // تحويل pixels -> mm للـ PDF
-                        top: pos.dy * PdfPageFormat.mm,
-                        child: pw.Text(
-                          pin,
-                          style: pw.TextStyle(
-                            fontSize: snap["font"],
-                            color: PdfColor.fromInt((snap["color"] as Color).value),
+                final top = PreciseLayoutEngine.getAbsolutePos(
+                  row.toDouble(), h, vGap, marginT,
+                );
+
+                return pw.Positioned(
+                  left: left / PreciseLayoutEngine.mmToPx * PdfPageFormat.mm,
+                  top: top / PreciseLayoutEngine.mmToPx * PdfPageFormat.mm,
+                  child: pw.Container(
+                    width: w * PdfPageFormat.mm,
+                    height: h * PdfPageFormat.mm,
+                    child: pw.Stack(
+                      children: [
+                        if (templateBytes != null)
+                          pw.Image(pw.MemoryImage(templateBytes), fit: pw.BoxFit.fill),
+                        pw.Positioned(
+                          left: (snap["x"] / 100) * w * PdfPageFormat.mm,
+                          top: (snap["y"] / 100) * h * PdfPageFormat.mm,
+                          child: pw.Text(
+                            pin,
+                            style: pw.TextStyle(
+                              fontSize: snap["font"],
+                              color: PdfColor.fromInt((snap["color"] as Color).value),
+                            ),
                           ),
-                        ),
-                      )
-                    ],
+                        )
+                      ],
+                    ),
                   ),
                 );
-              }).toList(),
+              }),
             );
           },
         ),
@@ -461,7 +490,6 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
       return;
     }
 
-    // التقاط لقطة لحظة الضغط على الزر
     final snapshot = _captureSnapshot();
 
     showDialog(
@@ -567,7 +595,8 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     );
   }
 
-  // --- معاينة مطابقة 100% للطباعة (تستخدم LayoutEngine) ---
+  // --- معاينة مطابقة 100% للطباعة (تستخدم LayoutEngine القديم مؤقتاً) ---
+  // (نفس المعاينة السابقة، لأنها لا تعتمد على الفجوات المطلقة، سنبقيها كما هي)
   Widget _buildEnhancedPreview() {
     if (selectedCategoryIds.isEmpty) return const SizedBox.shrink();
 
@@ -599,8 +628,8 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
                 minScale: 0.5,
                 maxScale: 4.0,
                 child: Container(
-                  width: w * pRow * LayoutEngine.mmToPx,
-                  height: h * pCol * LayoutEngine.mmToPx,
+                  width: w * pRow * PreciseLayoutEngine.mmToPx,
+                  height: h * pCol * PreciseLayoutEngine.mmToPx,
                   decoration: BoxDecoration(
                     border: Border.all(color: Colors.grey.shade400),
                     color: Colors.white,
@@ -619,14 +648,14 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     final children = <Widget>[];
     for (int r = 0; r < perColVal; r++) {
       for (int c = 0; c < perRowVal; c++) {
-        final left = c * wMM * LayoutEngine.mmToPx;
-        final top = r * hMM * LayoutEngine.mmToPx;
+        final left = c * wMM * PreciseLayoutEngine.mmToPx;
+        final top = r * hMM * PreciseLayoutEngine.mmToPx;
         children.add(
           Positioned(
             left: left,
             top: top,
-            width: wMM * LayoutEngine.mmToPx,
-            height: hMM * LayoutEngine.mmToPx,
+            width: wMM * PreciseLayoutEngine.mmToPx,
+            height: hMM * PreciseLayoutEngine.mmToPx,
             child: _buildSingleFakeCard(wMM, hMM, "####"),
           ),
         );
@@ -636,14 +665,11 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
   }
 
   Widget _buildSingleFakeCard(double wMM, double hMM, String pin) {
-    // استخدام القالب عبر الدالة الموحدة
     final templateBytes = getTemplate(selectedCategoryIds.isNotEmpty ? selectedCategoryIds.first : '');
-    // استخدام LayoutEngine لحساب الموضع في المعاينة
-    final pos = LayoutEngine.calculateTextPosition(
-      xPercent: textX.value,
-      yPercent: textY.value,
-      widthMM: wMM,
-      heightMM: hMM,
+    // استخدام LayoutEngine القديم للمعاينة العادية (دون فجوات)
+    final pos = Offset(
+      (textX.value / 100) * wMM * PreciseLayoutEngine.mmToPx,
+      (textY.value / 100) * hMM * PreciseLayoutEngine.mmToPx,
     );
 
     return Container(
@@ -656,7 +682,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
       child: Stack(
         children: [
           CustomPaint(
-            size: Size(wMM * LayoutEngine.mmToPx, hMM * LayoutEngine.mmToPx),
+            size: Size(wMM * PreciseLayoutEngine.mmToPx, hMM * PreciseLayoutEngine.mmToPx),
             painter: _GuidePainter(),
           ),
           Positioned(
@@ -665,8 +691,8 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
             child: GestureDetector(
               onPanUpdate: (details) {
                 setState(() {
-                  textX.value += details.delta.dx / (wMM * LayoutEngine.mmToPx) * 100;
-                  textY.value += details.delta.dy / (hMM * LayoutEngine.mmToPx) * 100;
+                  textX.value += details.delta.dx / (wMM * PreciseLayoutEngine.mmToPx) * 100;
+                  textY.value += details.delta.dy / (hMM * PreciseLayoutEngine.mmToPx) * 100;
                   textX.value = textX.value.clamp(0, 100);
                   textY.value = textY.value.clamp(0, 100);
                 });
@@ -700,8 +726,8 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
             minScale: 0.2,
             maxScale: 5.0,
             child: Container(
-              width: w * pRow * LayoutEngine.mmToPx,
-              height: h * pCol * LayoutEngine.mmToPx,
+              width: w * pRow * PreciseLayoutEngine.mmToPx,
+              height: h * pCol * PreciseLayoutEngine.mmToPx,
               color: Colors.white,
               child: _buildFakeGrid(pRow, pCol, w, h),
             ),
@@ -934,6 +960,23 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
             const SizedBox(height: 10),
             _textField(heightMM, "ارتفاع (مم)"),
           ])),
+          _section("الهوامش والفجوات", Column(children: [
+            Row(
+              children: [
+                Expanded(child: _textField(horizontalGap, "فجوة أفقية (مم)")),
+                const SizedBox(width: 10),
+                Expanded(child: _textField(verticalGap, "فجوة عمودية (مم)")),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(child: _textField(pageLeftMargin, "هامش يسار (مم)")),
+                const SizedBox(width: 10),
+                Expanded(child: _textField(pageTopMargin, "هامش أعلى (مم)")),
+              ],
+            ),
+          ])),
           const SizedBox(height: 24),
           Center(
             child: ElevatedButton.icon(
@@ -1073,7 +1116,7 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
               max: max,
               onChanged: (v) {
                 notifier.value = v;
-                _syncPreview(); // Force sync عند تحريك المنزلق
+                _syncPreview();
               },
             ),
           ],
