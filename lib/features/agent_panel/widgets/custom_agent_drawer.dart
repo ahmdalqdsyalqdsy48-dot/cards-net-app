@@ -8,8 +8,8 @@ import 'package:image_picker/image_picker.dart';
 // استدعاء جميع الشاشات الخاصة بالوكيل
 import '../screens/agent_dashboard_screen.dart';
 import '../screens/quick_pos_screen.dart';
-import '../screens/mikrotik_categories_screen.dart'; // ⬅️ الآن يحتوي على تبويب الطباعة
-import '../screens/archive_screen.dart';
+import '../screens/mikrotik_categories_screen.dart';
+import '../screens/archive_screen.dart';  // 🆕 تم تغيير المسار والاسم
 import '../screens/sub_agents_screen.dart';
 import '../screens/marketing_offers_screen.dart';
 import '../screens/agent_wallet_screen.dart';
@@ -345,18 +345,18 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                       textColor),
                   _buildDrawerItem(
                       context,
-                      'إدارة الميكروتك والطباعة', // تم تغيير الاسم ليعكس احتواءه على التبويب
+                      'إدارة الميكروتك والطباعة',
                       Icons.router,
                       Colors.orange,
                       const MikrotikCategoriesScreen(),
                       textColor),
-                  // 🆕 قسم الأرشيف المتقدم (كان سابقاً الطباعة والأرشيف)
+                  // 🆕 قسم الأرشيف المتقدم
                   _buildDrawerItem(
                       context,
                       'الأرشيف المتقدم',
                       Icons.archive,
                       Colors.teal,
-                      const PrintSectionScreen(), // نفس الصفحة لكن أصبحت أرشيفاً
+                      const ArchiveScreen(),
                       textColor),
 
                   Divider(
