@@ -8,8 +8,8 @@ import 'package:image_picker/image_picker.dart';
 // استدعاء جميع الشاشات الخاصة بالوكيل
 import '../screens/agent_dashboard_screen.dart';
 import '../screens/quick_pos_screen.dart';
-import '../screens/mikrotik_categories_screen.dart';
-import '../screens/print_section_screen.dart'; // 🆕 قسم الطباعة
+import '../screens/mikrotik_categories_screen.dart'; // ⬅️ الآن يحتوي على تبويب الطباعة
+import '../screens/print_section_screen.dart';          // ⬅️ تم تحويله إلى قسم الأرشيف المتقدم
 import '../screens/sub_agents_screen.dart';
 import '../screens/marketing_offers_screen.dart';
 import '../screens/agent_wallet_screen.dart';
@@ -345,18 +345,18 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                       textColor),
                   _buildDrawerItem(
                       context,
-                      'إدارة الفئات والميكروتك',
+                      'إدارة الميكروتك والطباعة', // تم تغيير الاسم ليعكس احتواءه على التبويب
                       Icons.router,
                       Colors.orange,
                       const MikrotikCategoriesScreen(),
                       textColor),
-                  // 🆕 قسم الطباعة
+                  // 🆕 قسم الأرشيف المتقدم (كان سابقاً الطباعة والأرشيف)
                   _buildDrawerItem(
                       context,
-                      'الطباعة والأرشيف',
-                      Icons.print,
-                      Colors.brown,
-                      const PrintSectionScreen(),
+                      'الأرشيف المتقدم',
+                      Icons.archive,
+                      Colors.teal,
+                      const PrintSectionScreen(), // نفس الصفحة لكن أصبحت أرشيفاً
                       textColor),
 
                   Divider(
@@ -378,7 +378,6 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                       Colors.purple,
                       const SubAgentsScreen(),
                       textColor),
-                  // 🆕 شاشة عملائي
                   _buildDrawerItem(
                       context,
                       'عملائي (المستخدمين والبقالات)',
