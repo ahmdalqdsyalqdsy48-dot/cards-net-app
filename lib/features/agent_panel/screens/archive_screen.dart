@@ -95,10 +95,8 @@ class _ArchiveScreenState extends State<ArchiveScreen>
   // ========== سجل النشاطات ==========
   List<ActivityLogEntry> _activityLogs = [];
 
-  // دالة الصوت
   void _play(String type) => _ui.playSound(type);
 
-  // دالة تنسيق التاريخ
   String _formatDate(DateTime dt) {
     return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} '
         '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
@@ -457,7 +455,7 @@ class _ArchiveScreenState extends State<ArchiveScreen>
     _loadArchive(reset: true);
   }
 
-  // ========== تصدير CSV (يدوي) ==========
+  // ========== تصدير CSV ==========
   Future<void> _exportToCsv() async {
     final buffer = StringBuffer();
     buffer.writeln('رقم الكرت,الشبكة,الفئة,السعر,تاريخ الأرشفة');
@@ -600,6 +598,34 @@ class _ArchiveScreenState extends State<ArchiveScreen>
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  // ========== أيقونة المهملات الديناميكية ==========
+  Widget _buildRecycleBinTabIcon() {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        const Icon(Icons.delete),
+        if (_recycleBinCards.isNotEmpty)
+          Positioned(
+            right: -6,
+            top: -6,
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: const BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+              ),
+              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+              child: Text(
+                '${_recycleBinCards.length}',
+                style: const TextStyle(color: Colors.white, fontSize: 10),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   // ========== بناء الواجهة ==========
   @override
   Widget build(BuildContext context) {
@@ -622,26 +648,12 @@ class _ArchiveScreenState extends State<ArchiveScreen>
                     labelColor: Colors.white,
                     unselectedLabelColor: Colors.white70,
                     indicatorColor: Colors.white,
-                    tabs: const [
-                      Tab(icon: Icon(Icons.archive), text: "الأرشيف"),
-                      Tab(icon: Icon(Icons.analytics), text: "التحليلات"),
-                      Tab(icon: Icon(Icons.history), text: "سجل النشاطات"),
+                    tabs: [
+                      const Tab(icon: Icon(Icons.archive), text: "الأرشيف"),
+                      const Tab(icon: Icon(Icons.analytics), text: "التحليلات"),
+                      const Tab(icon: Icon(Icons.history), text: "سجل النشاطات"),
                       Tab(
-                        icon: Stack(
-                          children: [
-                            const Icon(Icons.delete),
-                            if (_recycleBinCards.isNotEmpty)
-                              Positioned(
-                                right: 0,
-                                child: Container(
-                                  padding: const EdgeInsets.all(2),
-                                  decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(6)),
-                                  constraints: const BoxConstraints(minWidth: 12, minHeight: 12),
-                                  child: Text('${_recycleBinCards.length}', style: const TextStyle(fontSize: 8, color: Colors.white), textAlign: TextAlign.center),
-                                ),
-                              ),
-                          ],
-                        ),
+                        icon: _buildRecycleBinTabIcon(),
                         text: "المهملات",
                       ),
                     ],
@@ -1064,8 +1076,7 @@ class _ArchiveScreenState extends State<ArchiveScreen>
     );
     if (range != null) {
       setState(() {
-        // تخزين النطاق المختار
-        _priceFrom = null; // نحتاج متغير جديد لتخزين التاريخ، لكن للأختصار نكتفي بالاختيار
+        // يمكنك تخزين التاريخ إذا أردت
       });
       _applyFiltersAndSort();
     }
