@@ -145,18 +145,32 @@ class _ArchiveScreenState extends State<ArchiveScreen>
     super.dispose();
   }
 
+  // ========== هنا التعديل الأساسي ==========
   Future<void> _loadInitialData() async {
     setState(() => _isLoading = true);
-    await Future.wait([
-      _loadArchive(reset: true),
-      _loadAvailableNetworks(),
-      _loadAutoDeleteSettings(),
-      _loadActivityLogs(),
-      _loadRecycleBin(),
-    ]);
-    await _calculateStats();
-    setState(() => _isLoading = false);
+    try {
+      await Future.wait([
+        _loadArchive(reset: true),
+        _loadAvailableNetworks(),
+        _loadAutoDeleteSettings(),
+        _loadActivityLogs(),
+        _loadRecycleBin(),
+      ]);
+      await _calculateStats();
+    } catch (e) {
+      debugPrint('خطأ تحميل الأرشيف: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('فشل تحميل البيانات: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
+  // ========================================
 
   Future<void> _loadAvailableNetworks() async {
     final snap = await _firestore.collection('networks')
