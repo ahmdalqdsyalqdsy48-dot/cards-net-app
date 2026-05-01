@@ -29,8 +29,10 @@ class PreciseLayoutEngine {
 
 class MikrotikCategoriesScreen extends StatefulWidget {
   const MikrotikCategoriesScreen({super.key});
+
   @override
-  State<MikrotikCategoriesScreen> createState() => _MikrotikCategoriesScreenState();
+  State<MikrotikCategoriesScreen> createState() =>
+      _MikrotikCategoriesScreenState();
 }
 
 class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
@@ -38,11 +40,13 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   late TabController _tabController;
   final ImagePicker _imagePicker = ImagePicker();
+
   final String _renderUrl = "https://mikrotik-server-qu6a.onrender.com";
   bool _isProcessing = false;
 
   // ===== وضع المحاكاة =====
   bool _simulationMode = false;
+
   final Map<String, TextEditingController> _multiGenControllers = {};
 
   // مسودات النوافذ
@@ -56,6 +60,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   String _draftServerPass = '';
   String _draftServerPort = '8728';
   String _draftServerLoginUrl = '';
+
   String _draftCategoryName = '';
   String _draftCategoryTime = '';
   String _draftCategoryCapacity = '';
@@ -63,6 +68,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   String _draftCategoryNote = '';
   Color _draftCategoryColor = Colors.blue;
   String? _draftCategoryTemplateBase64;
+
   String _draftTierTitle = '';
   String _draftTierCondition = '';
   String _draftTierDiscountValue = '';
@@ -105,9 +111,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 5, vsync: this); // 5 تبويبات
     printTotalCountCtrl.text = "0";
-    _loadInitialData();
     _loadPrintInitialData();
   }
 
@@ -132,8 +137,10 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     super.dispose();
   }
 
-  // ========== دوال الميكروتك المشتركة ==========
-  void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
+  // ========== دوال مشتركة ==========
+  void _play(String type) =>
+      Provider.of<UiProvider>(context, listen: false).playSound(type);
+
   void _showToast(String message, {bool isError = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -146,68 +153,98 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
-  Future<bool> _confirmAction(String title, String message, Color color, {bool requirePassword = false}) async {
+  Future<bool> _confirmAction(String title, String message, Color color,
+      {bool requirePassword = false}) async {
     _play('warning');
     final passwordController = TextEditingController();
     bool obscure = true;
     return await showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-            title: Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
-            content: Column(mainAxisSize: MainAxisSize.min, children: [
-              Text(message),
-              if (requirePassword) ...[
-                const SizedBox(height: 15),
-                TextField(
-                  controller: passwordController,
-                  obscureText: obscure,
-                  decoration: InputDecoration(
-                    labelText: 'أدخل كلمة المرور للتأكيد',
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.lock, color: Colors.red),
-                    suffixIcon: IconButton(
-                      icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
-                      onPressed: () => setDialogState(() => obscure = !obscure),
-                    ),
-                  ),
+          context: context,
+          builder: (context) => StatefulBuilder(
+            builder: (context, setDialogState) => Directionality(
+              textDirection: TextDirection.rtl,
+              child: AlertDialog(
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15)),
+                title: Text(title,
+                    style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(message),
+                    if (requirePassword) ...[
+                      const SizedBox(height: 15),
+                      TextField(
+                        controller: passwordController,
+                        obscureText: obscure,
+                        decoration: InputDecoration(
+                          labelText: 'أدخل كلمة المرور للتأكيد',
+                          border: const OutlineInputBorder(),
+                          prefixIcon: const Icon(Icons.lock, color: Colors.red),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                                obscure ? Icons.visibility_off : Icons.visibility),
+                            onPressed: () => setDialogState(() => obscure = !obscure),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-              ],
-            ]),
-            actions: [
-              TextButton(onPressed: () { _play('click'); Navigator.pop(context, false); }, child: const Text('إلغاء', style: TextStyle(color: Colors.grey))),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: color, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-                onPressed: () {
-                  if (requirePassword) {
-                    final sys = Provider.of<SystemProvider>(context, listen: false);
-                    if (!sys.validatePin(passwordController.text.trim()) && passwordController.text.trim() != '123456') {
-                      _play('error');
-                      _showToast('كلمة المرور غير صحيحة', isError: true);
-                      return;
-                    }
-                  }
-                  _play('click');
-                  Navigator.pop(context, true);
-                },
-                child: const Text('تأكيد التنفيذ', style: TextStyle(color: Colors.white)),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      _play('click');
+                      Navigator.pop(context, false);
+                    },
+                    child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: color,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: () {
+                      if (requirePassword) {
+                        final sys = Provider.of<SystemProvider>(context,
+                            listen: false);
+                        if (!sys.validatePin(passwordController.text.trim()) &&
+                            passwordController.text.trim() != '123456') {
+                          _play('error');
+                          _showToast('كلمة المرور غير صحيحة', isError: true);
+                          return;
+                        }
+                      }
+                      _play('click');
+                      Navigator.pop(context, true);
+                    },
+                    child: const Text('تأكيد التنفيذ',
+                        style: TextStyle(color: Colors.white)),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
-    ) ?? false;
+        ) ??
+        false;
   }
 
   // ========== المحاكاة ==========
   Future<void> _toggleSimulation() async {
     if (!_simulationMode) {
-      bool firstConfirm = await _confirmAction("تفعيل وضع المحاكاة", "تحذير: هذا الوضع سيولّد كروتًا وهمية غير حقيقية. هل تريد الاستمرار؟", Colors.red);
+      bool firstConfirm = await _confirmAction(
+        "تفعيل وضع المحاكاة",
+        "تحذير: هذا الوضع سيولّد كروتًا وهمية غير حقيقية. هل تريد الاستمرار؟",
+        Colors.red,
+      );
       if (!firstConfirm) return;
-      bool passConfirm = await _confirmAction("تأكيد بكلمة المرور", "أدخل كلمة المرور لتفعيل المحاكاة", Colors.red, requirePassword: true);
+      bool passConfirm = await _confirmAction(
+        "تأكيد بكلمة المرور",
+        "أدخل كلمة المرور لتفعيل المحاكاة",
+        Colors.red,
+        requirePassword: true,
+      );
       if (!passConfirm) return;
       setState(() => _simulationMode = true);
       _play('success');
@@ -224,15 +261,19 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     return (r.nextInt(9000000) + 1000000).toString();
   }
 
-  Future<void> _simulateGenerate(String networkId, String categoryId, int amount, bool forPrint) async {
+  Future<void> _simulateGenerate(
+      String networkId, String categoryId, int amount, bool forPrint) async {
     final WriteBatch batch = _db.batch();
     final status = forPrint ? 'print_ready' : 'متاح';
     for (int i = 0; i < amount; i++) {
       final pin = _generateFakePin();
       final docRef = _db.collection('cards').doc();
       batch.set(docRef, {
-        'categoryId': categoryId, 'networkId': networkId,
-        'pin': pin, 'status': status, 'createdAt': FieldValue.serverTimestamp(),
+        'categoryId': categoryId,
+        'networkId': networkId,
+        'pin': pin,
+        'status': status,
+        'createdAt': FieldValue.serverTimestamp(),
       });
     }
     final netDoc = await _db.collection('networks').doc(networkId).get();
@@ -250,7 +291,16 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     setState(() => _isProcessing = true);
     _showToast('جاري فحص الاتصال... ⏳');
     try {
-      final response = await http.post(Uri.parse("$_renderUrl/testConnection"), headers: {"Content-Type": "application/json"}, body: jsonEncode({"host": net['ip'], "user": net['apiUser'], "pass": net['apiPassword'], "port": net['apiPort']}));
+      final response = await http.post(
+        Uri.parse("$_renderUrl/testConnection"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "host": net['ip'],
+          "user": net['apiUser'],
+          "pass": net['apiPassword'],
+          "port": net['apiPort']
+        }),
+      );
       if (response.statusCode == 200) {
         _play('success');
         _showToast('تم الاتصال بالميكروتك بنجاح! ✅');
@@ -270,20 +320,41 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('اختر لونًا', textAlign: TextAlign.center),
-        content: SingleChildScrollView(child: ColorPicker(pickerColor: pickedColor, onColorChanged: (color) => pickedColor = color, enableAlpha: false, displayThumbColor: true)),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: pickedColor), onPressed: () => Navigator.pop(context, pickedColor), child: const Text('تأكيد', style: TextStyle(color: Colors.white)))],
+        content: SingleChildScrollView(
+          child: ColorPicker(
+            pickerColor: pickedColor,
+            onColorChanged: (color) => pickedColor = color,
+            enableAlpha: false,
+            displayThumbColor: true,
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إلغاء')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: pickedColor),
+            onPressed: () => Navigator.pop(context, pickedColor),
+            child: const Text('تأكيد', style: TextStyle(color: Colors.white)),
+          ),
+        ],
       ),
     );
   }
 
-  // ========== 1. سيرفرات ==========
-  void _showAddServerBottomSheet(SystemProvider sys, {Map<String, dynamic>? existingData, String? docId}) {
+  // ==========================================
+  // 1. إضافة وتعديل سيرفر ميكروتك
+  // ==========================================
+  void _showAddServerBottomSheet(SystemProvider sys,
+      {Map<String, dynamic>? existingData, String? docId}) {
     _play('click');
     String name = existingData?['name'] ?? _draftServerName;
     String location = existingData?['location'] ?? _draftServerLocation;
     String governorate = existingData?['governorate'] ?? _draftServerGovernorate;
     String district = existingData?['district'] ?? _draftServerDistrict;
-    List<String> coverageAreas = existingData != null ? List<String>.from(existingData['coverageAreas'] ?? []) : List<String>.from(_draftServerCoverageAreas);
+    List<String> coverageAreas = existingData != null
+        ? List<String>.from(existingData['coverageAreas'] ?? [])
+        : List<String>.from(_draftServerCoverageAreas);
     String ip = existingData?['ip'] ?? _draftServerIp;
     String user = existingData?['apiUser'] ?? _draftServerUser;
     String pass = existingData?['apiPassword'] ?? _draftServerPass;
@@ -294,72 +365,262 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, top: 20, left: 16, right: 16),
-          child: Directionality(
-            textDirection: TextDirection.rtl,
-            child: SingleChildScrollView(
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text(docId == null ? 'إضافة شبكة/سيرفر ميكروتك جديد 📡' : 'تعديل بيانات الشبكة ✏️', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 10),
-                TextField(decoration: const InputDecoration(labelText: 'إسم شبكتك', border: OutlineInputBorder(), prefixIcon: Icon(Icons.dns, color: Colors.blue)), controller: TextEditingController(text: name), onChanged: (v) => name = v),
-                const SizedBox(height: 12),
-                TextField(decoration: const InputDecoration(labelText: 'موقع الشبكة', border: OutlineInputBorder(), prefixIcon: Icon(Icons.location_on, color: Colors.orange)), controller: TextEditingController(text: location), onChanged: (v) => location = v),
-                const SizedBox(height: 12),
-                ExpansionTile(iconColor: Colors.teal, collapsedIconColor: Colors.teal, title: const Text('تفاصيل الموقع (اختياري)'), children: [
-                  TextField(decoration: const InputDecoration(labelText: 'المحافظة', border: OutlineInputBorder(), prefixIcon: Icon(Icons.map, color: Colors.teal)), controller: TextEditingController(text: governorate), onChanged: (v) => governorate = v),
-                  const SizedBox(height: 12),
-                  TextField(decoration: const InputDecoration(labelText: 'المديرية', border: OutlineInputBorder(), prefixIcon: Icon(Icons.map_outlined, color: Colors.teal)), controller: TextEditingController(text: district), onChanged: (v) => district = v),
-                  ...coverageAreas.asMap().entries.map((entry) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [Expanded(child: TextField(decoration: InputDecoration(labelText: 'منطقة البث ${entry.key + 1}', border: const OutlineInputBorder(), prefixIcon: const Icon(Icons.wifi_find, color: Colors.teal)), controller: TextEditingController(text: coverageAreas[entry.key]), onChanged: (v) => coverageAreas[entry.key] = v)), IconButton(icon: const Icon(Icons.remove_circle, color: Colors.red), onPressed: () => setModalState(() => coverageAreas.removeAt(entry.key)))])).toList(),
-                  TextButton.icon(onPressed: () => setModalState(() => coverageAreas.add('')), icon: const Icon(Icons.add, color: Colors.green), label: const Text('إضافة منطقة بث جديدة')),
-                ]),
-                const SizedBox(height: 12),
-                TextField(decoration: const InputDecoration(labelText: 'عنوان IP / الرابط (DDNS)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.wifi, color: Colors.green)), controller: TextEditingController(text: ip), onChanged: (v) => ip = v),
-                TextField(decoration: const InputDecoration(labelText: 'رابط صفحة تسجيل الدخول للزبائن', border: OutlineInputBorder(), prefixIcon: Icon(Icons.link, color: Colors.indigo)), controller: TextEditingController(text: loginUrl), onChanged: (v) => loginUrl = v),
-                Row(children: [Expanded(child: TextField(decoration: const InputDecoration(labelText: 'مستخدم API', border: OutlineInputBorder(), prefixIcon: Icon(Icons.person, color: Colors.deepPurple)), controller: TextEditingController(text: user), onChanged: (v) => user = v)), const SizedBox(width: 10), Expanded(child: TextField(decoration: const InputDecoration(labelText: 'كلمة المرور', border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock, color: Colors.red)), controller: TextEditingController(text: pass), obscureText: true, onChanged: (v) => pass = v))]),
-                TextField(decoration: const InputDecoration(labelText: 'API Port (الافتراضي: 8728)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.settings_ethernet, color: Colors.blueGrey)), controller: TextEditingController(text: port), onChanged: (v) => port = v),
-                const SizedBox(height: 20),
-                SizedBox(width: double.infinity, height: 50, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade800, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), onPressed: isSubmitting ? null : () async {
-                  if (name.isNotEmpty && location.isNotEmpty && ip.isNotEmpty) {
-                    if (docId != null) { bool confirm = await _confirmAction("حفظ التعديلات", "هل أنت متأكد من حفظ التعديلات؟", Colors.blue); if (!confirm) return; }
-                    _play('click');
-                    setModalState(() => isSubmitting = true);
-                    try {
-                      Map<String, dynamic> networkData = {
-                        'name': name, 'location': location, 'governorate': governorate, 'district': district,
-                        'coverageAreas': coverageAreas, 'ip': ip, 'apiUser': user, 'apiPassword': pass, 'apiPort': port,
-                        'loginUrl': loginUrl, 'agentPhone': sys.currentUserPhone, 'agentName': sys.currentUserName,
-                        'isActive': existingData?['isActive'] ?? true, 'updatedAt': FieldValue.serverTimestamp(),
-                      };
-                      if (docId == null) {
-                        networkData['status'] = 'متصل نشط 🟢';
-                        networkData['categories'] = [];
-                        networkData['createdAt'] = FieldValue.serverTimestamp();
-                        await _db.collection('networks').add(networkData);
-                        _draftServerName = ''; _draftServerLocation = ''; _draftServerGovernorate = ''; _draftServerDistrict = '';
-                        _draftServerCoverageAreas = []; _draftServerIp = ''; _draftServerUser = ''; _draftServerPass = '';
-                        _draftServerPort = '8728'; _draftServerLoginUrl = '';
-                      } else {
-                        await _db.collection('networks').doc(docId).update(networkData);
-                      }
-                      _play('success');
-                      if (mounted) { Navigator.pop(context); _showToast(docId == null ? 'تمت إضافة الشبكة بنجاح! 🟢' : 'تم التعديل بنجاح! ✏️'); }
-                    } catch (e) { setModalState(() => isSubmitting = false); _play('error'); _showToast('فشل حفظ البيانات', isError: true); }
-                  } else { _play('error'); _showToast('يرجى تعبئة الحقول الأساسية', isError: true); }
-                }, child: isSubmitting ? const CircularProgressIndicator(color: Colors.white) : const Text('حفظ واتصال', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)))),
-                SizedBox(width: double.infinity, height: 50, child: OutlinedButton.icon(style: OutlinedButton.styleFrom(foregroundColor: Colors.grey, side: const BorderSide(color: Colors.grey), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), onPressed: () { _draftServerName = name; _draftServerLocation = location; _draftServerGovernorate = governorate; _draftServerDistrict = district; _draftServerCoverageAreas = coverageAreas; _draftServerIp = ip; _draftServerUser = user; _draftServerPass = pass; _draftServerPort = port; _draftServerLoginUrl = loginUrl; _play('click'); Navigator.pop(context); _showToast('تم حفظ البيانات كمسودة'); }, icon: const Icon(Icons.save_outlined), label: const Text('إغلاق وحفظ كمسودة'))),
-              ]),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) => Padding(
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+                top: 20,
+                left: 16,
+                right: 16),
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                        docId == null
+                            ? 'إضافة شبكة/سيرفر ميكروتك جديد 📡'
+                            : 'تعديل بيانات الشبكة ✏️',
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 10),
+                    TextField(
+                        decoration: const InputDecoration(
+                            labelText: 'إسم شبكتك',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.dns, color: Colors.blue)),
+                        controller: TextEditingController(text: name),
+                        onChanged: (v) => name = v),
+                    const SizedBox(height: 12),
+                    TextField(
+                        decoration: const InputDecoration(
+                            labelText: 'موقع الشبكة',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.location_on, color: Colors.orange)),
+                        controller: TextEditingController(text: location),
+                        onChanged: (v) => location = v),
+                    const SizedBox(height: 12),
+                    ExpansionTile(
+                      iconColor: Colors.teal,
+                      collapsedIconColor: Colors.teal,
+                      title: const Text('تفاصيل الموقع (اختياري)'),
+                      children: [
+                        TextField(
+                            decoration: const InputDecoration(
+                                labelText: 'المحافظة',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.map, color: Colors.teal)),
+                            controller: TextEditingController(text: governorate),
+                            onChanged: (v) => governorate = v),
+                        const SizedBox(height: 12),
+                        TextField(
+                            decoration: const InputDecoration(
+                                labelText: 'المديرية',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.map_outlined, color: Colors.teal)),
+                            controller: TextEditingController(text: district),
+                            onChanged: (v) => district = v),
+                        const SizedBox(height: 12),
+                        ...coverageAreas.asMap().entries.map((entry) {
+                          int idx = entry.key;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                      decoration: InputDecoration(
+                                          labelText: 'منطقة البث ${idx + 1}',
+                                          border: const OutlineInputBorder(),
+                                          prefixIcon: const Icon(Icons.wifi_find, color: Colors.teal)),
+                                      controller: TextEditingController(text: coverageAreas[idx]),
+                                      onChanged: (v) => coverageAreas[idx] = v),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.remove_circle, color: Colors.red),
+                                  onPressed: () => setModalState(() => coverageAreas.removeAt(idx)),
+                                )
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                        TextButton.icon(
+                          onPressed: () => setModalState(() => coverageAreas.add('')),
+                          icon: const Icon(Icons.add, color: Colors.green),
+                          label: const Text('إضافة منطقة بث جديدة'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                        decoration: const InputDecoration(
+                            labelText: 'عنوان IP / الرابط (DDNS)',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.wifi, color: Colors.green)),
+                        controller: TextEditingController(text: ip),
+                        onChanged: (v) => ip = v),
+                    const SizedBox(height: 12),
+                    TextField(
+                        decoration: const InputDecoration(
+                            labelText: 'رابط صفحة تسجيل الدخول للزبائن',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.link, color: Colors.indigo)),
+                        controller: TextEditingController(text: loginUrl),
+                        onChanged: (v) => loginUrl = v),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                            child: TextField(
+                                decoration: const InputDecoration(
+                                    labelText: 'مستخدم API',
+                                    border: OutlineInputBorder(),
+                                    prefixIcon: Icon(Icons.person, color: Colors.deepPurple)),
+                                controller: TextEditingController(text: user),
+                                onChanged: (v) => user = v)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                            child: TextField(
+                                decoration: const InputDecoration(
+                                    labelText: 'كلمة المرور',
+                                    border: OutlineInputBorder(),
+                                    prefixIcon: Icon(Icons.lock, color: Colors.red)),
+                                controller: TextEditingController(text: pass),
+                                obscureText: true,
+                                onChanged: (v) => pass = v)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                        decoration: const InputDecoration(
+                            labelText: 'API Port (الافتراضي: 8728)',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.settings_ethernet, color: Colors.blueGrey)),
+                        controller: TextEditingController(text: port),
+                        onChanged: (v) => port = v),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue.shade800,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                        onPressed: isSubmitting
+                            ? null
+                            : () async {
+                                if (name.isNotEmpty && location.isNotEmpty && ip.isNotEmpty) {
+                                  if (docId != null) {
+                                    bool confirm = await _confirmAction(
+                                        "حفظ التعديلات", "هل أنت متأكد من حفظ التعديلات؟", Colors.blue);
+                                    if (!confirm) return;
+                                  }
+                                  _play('click');
+                                  setModalState(() => isSubmitting = true);
+                                  try {
+                                    Map<String, dynamic> networkData = {
+                                      'name': name,
+                                      'location': location,
+                                      'governorate': governorate,
+                                      'district': district,
+                                      'coverageAreas': coverageAreas,
+                                      'ip': ip,
+                                      'apiUser': user,
+                                      'apiPassword': pass,
+                                      'apiPort': port,
+                                      'loginUrl': loginUrl,
+                                      'agentPhone': sys.currentUserPhone,
+                                      'agentName': sys.currentUserName,
+                                      'isActive': existingData?['isActive'] ?? true,
+                                      'updatedAt': FieldValue.serverTimestamp(),
+                                    };
+                                    if (docId == null) {
+                                      networkData['status'] = 'متصل نشط 🟢';
+                                      networkData['categories'] = [];
+                                      networkData['createdAt'] = FieldValue.serverTimestamp();
+                                      await _db.collection('networks').add(networkData);
+                                      _draftServerName = '';
+                                      _draftServerLocation = '';
+                                      _draftServerGovernorate = '';
+                                      _draftServerDistrict = '';
+                                      _draftServerCoverageAreas = [];
+                                      _draftServerIp = '';
+                                      _draftServerUser = '';
+                                      _draftServerPass = '';
+                                      _draftServerPort = '8728';
+                                      _draftServerLoginUrl = '';
+                                    } else {
+                                      await _db.collection('networks').doc(docId).update(networkData);
+                                    }
+                                    _play('success');
+                                    if (mounted) {
+                                      Navigator.pop(context);
+                                      _showToast(docId == null ? 'تمت إضافة الشبكة بنجاح! 🟢' : 'تم التعديل بنجاح! ✏️');
+                                    }
+                                  } catch (e) {
+                                    setModalState(() => isSubmitting = false);
+                                    _play('error');
+                                    _showToast('فشل حفظ البيانات', isError: true);
+                                  }
+                                } else {
+                                  _play('error');
+                                  _showToast('يرجى تعبئة الحقول الأساسية', isError: true);
+                                }
+                              },
+                        child: isSubmitting
+                            ? const CircularProgressIndicator(color: Colors.white)
+                            : const Text('حفظ واتصال',
+                                style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.grey,
+                          side: const BorderSide(color: Colors.grey),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () {
+                          _draftServerName = name;
+                          _draftServerLocation = location;
+                          _draftServerGovernorate = governorate;
+                          _draftServerDistrict = district;
+                          _draftServerCoverageAreas = coverageAreas;
+                          _draftServerIp = ip;
+                          _draftServerUser = user;
+                          _draftServerPass = pass;
+                          _draftServerPort = port;
+                          _draftServerLoginUrl = loginUrl;
+                          _play('click');
+                          Navigator.pop(context);
+                          _showToast('تم حفظ البيانات كمسودة');
+                        },
+                        icon: const Icon(Icons.save_outlined),
+                        label: const Text('إغلاق وحفظ كمسودة'),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  // ========== 2. فئات ==========
-  void _showAddCategoryBottomSheet(List<QueryDocumentSnapshot> agentNetworks, {Map? existingCat, String? preSelectedNetId}) {
+  // ==========================================
+  // 2. إضافة وتعديل فئة كروت للشبكة
+  // ==========================================
+  void _showAddCategoryBottomSheet(List<QueryDocumentSnapshot> agentNetworks,
+      {Map? existingCat, String? preSelectedNetId}) {
     _play('click');
     String newName = existingCat?['name'] ?? _draftCategoryName;
     String newTime = existingCat?['time'] ?? _draftCategoryTime;
@@ -371,141 +632,362 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     String? templateBase64 = existingCat?['templateBase64'] ?? _draftCategoryTemplateBase64;
     bool isSubmitting = false;
 
-    if (agentNetworks.isEmpty) { _play('error'); _showToast('يجب إضافة سيرفر شبكة أولاً!', isError: true); return; }
+    if (agentNetworks.isEmpty) {
+      _play('error');
+      _showToast('يجب إضافة سيرفر شبكة أولاً!', isError: true);
+      return;
+    }
 
     showModalBottomSheet(
-      context: context, isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, top: 20, left: 16, right: 16),
-          child: Directionality(
-            textDirection: TextDirection.rtl,
-            child: SingleChildScrollView(
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text(existingCat == null ? 'إضافة فئة كروت جديدة 🎟️' : 'تعديل بيانات الفئة ✏️', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                if (existingCat == null) DropdownButtonFormField<String>(
-                  decoration: const InputDecoration(labelText: 'اختر الشبكة', border: OutlineInputBorder(), prefixIcon: Icon(Icons.dns, color: Colors.blue)),
-                  value: selectedNetworkId,
-                  items: agentNetworks.map((net) => DropdownMenuItem(value: net.id, child: Text((net.data() as Map)['name']))).toList(),
-                  onChanged: (val) => setModalState(() => selectedNetworkId = val),
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) => Padding(
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+                top: 20,
+                left: 16,
+                right: 16),
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                        existingCat == null ? 'إضافة فئة كروت جديدة 🎟️' : 'تعديل بيانات الفئة ✏️',
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 20),
+                    if (existingCat == null)
+                      DropdownButtonFormField<String>(
+                        decoration: const InputDecoration(
+                            labelText: 'اختر الشبكة',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.dns, color: Colors.blue)),
+                        value: selectedNetworkId,
+                        items: agentNetworks
+                            .map((net) => DropdownMenuItem(
+                                value: net.id, child: Text((net.data() as Map)['name'])))
+                            .toList(),
+                        onChanged: (val) => setModalState(() => selectedNetworkId = val),
+                      ),
+                    if (existingCat == null) const SizedBox(height: 12),
+                    TextField(
+                        decoration: const InputDecoration(
+                            labelText: 'اسم الفئة (Profile)',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.category, color: Colors.orange)),
+                        controller: TextEditingController(text: newName),
+                        onChanged: (val) => newName = val),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                            child: TextField(
+                                decoration: const InputDecoration(
+                                    labelText: 'الوقت (الساعات المتاح)',
+                                    border: OutlineInputBorder(),
+                                    prefixIcon: Icon(Icons.timer, color: Colors.blue)),
+                                controller: TextEditingController(text: newTime),
+                                onChanged: (val) => newTime = val)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                            child: TextField(
+                                decoration: const InputDecoration(
+                                    labelText: 'سعة التحميل المتاح ميجابايت',
+                                    border: OutlineInputBorder(),
+                                    prefixIcon: Icon(Icons.data_usage, color: Colors.teal)),
+                                controller: TextEditingController(text: newCapacity),
+                                onChanged: (val) => newCapacity = val)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                        decoration: const InputDecoration(
+                            labelText: 'سعر البيع للجمهور',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.attach_money, color: Colors.green)),
+                        controller: TextEditingController(text: newPrice),
+                        keyboardType: TextInputType.number,
+                        onChanged: (val) => newPrice = val),
+                    const SizedBox(height: 12),
+                    TextField(
+                        decoration: const InputDecoration(
+                            labelText: 'ملاحظة (اختياري)',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.note, color: Colors.amber)),
+                        controller: TextEditingController(text: note),
+                        onChanged: (val) => note = val),
+                    const SizedBox(height: 15),
+                    Row(
+                      children: [
+                        const Icon(Icons.image, color: Colors.deepPurple),
+                        const SizedBox(width: 8),
+                        const Text('قالب الطباعة (اختياري): ',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 10),
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            final pickedFile = await _imagePicker.pickImage(
+                                source: ImageSource.gallery, imageQuality: 50, maxWidth: 800);
+                            if (pickedFile != null) {
+                              final bytes = await pickedFile.readAsBytes();
+                              setModalState(() => templateBase64 = base64Encode(bytes));
+                              _play('success');
+                              _showToast('تم تحميل القالب بنجاح');
+                            }
+                          },
+                          icon: Icon(
+                            templateBase64 != null ? Icons.check_circle : Icons.upload_file,
+                            color: templateBase64 != null ? Colors.green : Colors.deepPurple,
+                          ),
+                          label: Text(templateBase64 != null ? 'تم التحميل' : 'اختيار صورة',
+                              style: TextStyle(
+                                  color: templateBase64 != null ? Colors.green : Colors.deepPurple)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.deepPurple.withOpacity(0.1),
+                            elevation: 0,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 15),
+                    Row(
+                      children: [
+                        const Text('لون الفئة: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                        GestureDetector(
+                          onTap: () async {
+                            final color = await _openColorPicker(selectedColor);
+                            if (color != null) setModalState(() => selectedColor = color);
+                          },
+                          child: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: selectedColor,
+                              border: Border.all(color: Colors.grey),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        const Text('انقر لتغيير اللون', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: selectedColor,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                        onPressed: isSubmitting
+                            ? null
+                            : () async {
+                                if (selectedNetworkId != null && newName.isNotEmpty && newPrice.isNotEmpty) {
+                                  if (existingCat != null) {
+                                    bool confirm = await _confirmAction(
+                                        "حفظ التعديلات", "متأكد من تعديل الفئة؟", Colors.blue);
+                                    if (!confirm) return;
+                                  }
+                                  _play('click');
+                                  setModalState(() => isSubmitting = true);
+                                  try {
+                                    var newCategory = {
+                                      'id': existingCat?['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+                                      'name': newName,
+                                      'time': newTime.isNotEmpty ? newTime : 'غير محدد',
+                                      'capacity': newCapacity.isNotEmpty ? newCapacity : 'مفتوح',
+                                      'price': int.tryParse(newPrice) ?? 0,
+                                      'color': selectedColor.value,
+                                      'note': note,
+                                      'templateBase64': templateBase64,
+                                      'stock': existingCat?['stock'] ?? 0,
+                                      'isActive': existingCat?['isActive'] ?? true,
+                                      'botMinStock': existingCat?['botMinStock'] ?? 5,
+                                      'botRefillAmount': existingCat?['botRefillAmount'] ?? 50,
+                                      'isBotEnabled': existingCat?['isBotEnabled'] ?? false,
+                                    };
+                                    if (existingCat == null) {
+                                      await _db.collection('networks').doc(selectedNetworkId).update({
+                                        'categories': FieldValue.arrayUnion([newCategory])
+                                      });
+                                      _draftCategoryName = '';
+                                      _draftCategoryTime = '';
+                                      _draftCategoryCapacity = '';
+                                      _draftCategoryPrice = '';
+                                      _draftCategoryNote = '';
+                                      _draftCategoryColor = Colors.blue;
+                                      _draftCategoryTemplateBase64 = null;
+                                    } else {
+                                      var netDoc = await _db.collection('networks').doc(selectedNetworkId).get();
+                                      List cats = List.from((netDoc.data() as Map)['categories']);
+                                      int idx = cats.indexWhere((c) => c['id'] == existingCat['id']);
+                                      cats[idx] = newCategory;
+                                      await _db.collection('networks').doc(selectedNetworkId).update({'categories': cats});
+                                    }
+                                    _play('success');
+                                    if (mounted) {
+                                      Navigator.pop(context);
+                                      _showToast('تم الحفظ بنجاح! 📋');
+                                    }
+                                  } catch (e) {
+                                    setModalState(() => isSubmitting = false);
+                                    _play('error');
+                                  }
+                                } else {
+                                  _play('error');
+                                  _showToast('الرجاء تعبئة الحقول الأساسية!', isError: true);
+                                }
+                              },
+                        child: isSubmitting
+                            ? const CircularProgressIndicator(color: Colors.white)
+                            : const Text('حفظ الفئة',
+                                style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.grey,
+                          side: const BorderSide(color: Colors.grey),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () {
+                          _draftCategoryName = newName;
+                          _draftCategoryTime = newTime;
+                          _draftCategoryCapacity = newCapacity;
+                          _draftCategoryPrice = newPrice;
+                          _draftCategoryNote = note;
+                          _draftCategoryColor = selectedColor;
+                          _draftCategoryTemplateBase64 = templateBase64;
+                          _play('click');
+                          Navigator.pop(context);
+                          _showToast('تم حفظ البيانات كمسودة');
+                        },
+                        icon: const Icon(Icons.save_outlined),
+                        label: const Text('إغلاق وحفظ كمسودة'),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                TextField(decoration: const InputDecoration(labelText: 'اسم الفئة (Profile)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.category, color: Colors.orange)), controller: TextEditingController(text: newName), onChanged: (val) => newName = val),
-                Row(children: [Expanded(child: TextField(decoration: const InputDecoration(labelText: 'الوقت (الساعات المتاح)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.timer, color: Colors.blue)), controller: TextEditingController(text: newTime), onChanged: (val) => newTime = val)), const SizedBox(width: 10), Expanded(child: TextField(decoration: const InputDecoration(labelText: 'سعة التحميل المتاح ميجابايت', border: OutlineInputBorder(), prefixIcon: Icon(Icons.data_usage, color: Colors.teal)), controller: TextEditingController(text: newCapacity), onChanged: (val) => newCapacity = val))]),
-                TextField(decoration: const InputDecoration(labelText: 'سعر البيع للجمهور', border: OutlineInputBorder(), prefixIcon: Icon(Icons.attach_money, color: Colors.green)), controller: TextEditingController(text: newPrice), keyboardType: TextInputType.number, onChanged: (val) => newPrice = val),
-                TextField(decoration: const InputDecoration(labelText: 'ملاحظة (اختياري)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.note, color: Colors.amber)), controller: TextEditingController(text: note), onChanged: (val) => note = val),
-                Row(children: [const Icon(Icons.image, color: Colors.deepPurple), const Text('قالب الطباعة (اختياري): ', style: TextStyle(fontWeight: FontWeight.bold)), ElevatedButton.icon(onPressed: () async { final pickedFile = await _imagePicker.pickImage(source: ImageSource.gallery, imageQuality: 50, maxWidth: 800); if (pickedFile != null) { final bytes = await pickedFile.readAsBytes(); setModalState(() => templateBase64 = base64Encode(bytes)); _play('success'); _showToast('تم تحميل القالب بنجاح'); } }, icon: Icon(templateBase64 != null ? Icons.check_circle : Icons.upload_file, color: templateBase64 != null ? Colors.green : Colors.deepPurple), label: Text(templateBase64 != null ? 'تم التحميل' : 'اختيار صورة', style: TextStyle(color: templateBase64 != null ? Colors.green : Colors.deepPurple)), style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple.withOpacity(0.1), elevation: 0))]),
-                Row(children: [const Text('لون الفئة: ', style: TextStyle(fontWeight: FontWeight.bold)), GestureDetector(onTap: () async { final color = await _openColorPicker(selectedColor); if (color != null) setModalState(() => selectedColor = color); }, child: Container(width: 40, height: 40, decoration: BoxDecoration(shape: BoxShape.circle, color: selectedColor, border: Border.all(color: Colors.grey)))), const Text('انقر لتغيير اللون', style: TextStyle(fontSize: 12, color: Colors.grey))]),
-                SizedBox(width: double.infinity, height: 50, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: selectedColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), onPressed: isSubmitting ? null : () async {
-                  if (selectedNetworkId != null && newName.isNotEmpty && newPrice.isNotEmpty) {
-                    if (existingCat != null) { bool confirm = await _confirmAction("حفظ التعديلات", "متأكد من تعديل الفئة؟", Colors.blue); if (!confirm) return; }
-                    _play('click'); setModalState(() => isSubmitting = true);
-                    try {
-                      var newCategory = {
-                        'id': existingCat?['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
-                        'name': newName, 'time': newTime.isNotEmpty ? newTime : 'غير محدد',
-                        'capacity': newCapacity.isNotEmpty ? newCapacity : 'مفتوح',
-                        'price': int.tryParse(newPrice) ?? 0, 'color': selectedColor.value, 'note': note,
-                        'templateBase64': templateBase64, 'stock': existingCat?['stock'] ?? 0,
-                        'isActive': existingCat?['isActive'] ?? true,
-                        'botMinStock': existingCat?['botMinStock'] ?? 5,
-                        'botRefillAmount': existingCat?['botRefillAmount'] ?? 50,
-                        'isBotEnabled': existingCat?['isBotEnabled'] ?? false,
-                      };
-                      if (existingCat == null) {
-                        await _db.collection('networks').doc(selectedNetworkId).update({'categories': FieldValue.arrayUnion([newCategory])});
-                        _draftCategoryName = ''; _draftCategoryTime = ''; _draftCategoryCapacity = ''; _draftCategoryPrice = ''; _draftCategoryNote = ''; _draftCategoryColor = Colors.blue; _draftCategoryTemplateBase64 = null;
-                      } else {
-                        var netDoc = await _db.collection('networks').doc(selectedNetworkId).get();
-                        List cats = List.from((netDoc.data() as Map)['categories']);
-                        int idx = cats.indexWhere((c) => c['id'] == existingCat['id']);
-                        cats[idx] = newCategory;
-                        await _db.collection('networks').doc(selectedNetworkId).update({'categories': cats});
-                      }
-                      _play('success');
-                      if (mounted) { Navigator.pop(context); _showToast('تم الحفظ بنجاح! 📋'); }
-                    } catch (e) { setModalState(() => isSubmitting = false); _play('error'); }
-                  } else { _play('error'); _showToast('الرجاء تعبئة الحقول الأساسية!', isError: true); }
-                }, child: isSubmitting ? const CircularProgressIndicator(color: Colors.white) : const Text('حفظ الفئة', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)))),
-                SizedBox(width: double.infinity, height: 50, child: OutlinedButton.icon(style: OutlinedButton.styleFrom(foregroundColor: Colors.grey, side: const BorderSide(color: Colors.grey), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), onPressed: () {
-                  _draftCategoryName = newName; _draftCategoryTime = newTime; _draftCategoryCapacity = newCapacity;
-                  _draftCategoryPrice = newPrice; _draftCategoryNote = note; _draftCategoryColor = selectedColor;
-                  _draftCategoryTemplateBase64 = templateBase64;
-                  _play('click'); Navigator.pop(context); _showToast('تم حفظ البيانات كمسودة');
-                }, icon: const Icon(Icons.save_outlined), label: const Text('إغلاق وحفظ كمسودة'))),
-              ]),
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
   void _showCardsList(String netId, String catId, String catName, Color catColor) {
     _play('click');
     showModalBottomSheet(
-      context: context, isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) => Container(
         height: MediaQuery.of(context).size.height * 0.85,
         padding: const EdgeInsets.only(top: 20, left: 16, right: 16),
         child: Directionality(
           textDirection: TextDirection.rtl,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('إدارة كروت فئة: $catName', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: catColor)),
-            const Text('الأرقام المعروضة هي الأرقام النشطة والمتاحة للبيع', style: TextStyle(fontSize: 12, color: Colors.grey)),
-            const Divider(),
-            Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: _db.collection('cards').where('categoryId', isEqualTo: catId).where('status', isEqualTo: 'متاح').snapshots(),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                  var cards = snapshot.data!.docs;
-                  if (cards.isEmpty) return const Center(child: Text('لا توجد كروت متاحة. قم بالتوليد أولاً.', style: TextStyle(color: Colors.grey)));
-                  return ListView.builder(
-                    itemCount: cards.length,
-                    itemBuilder: (context, index) {
-                      var card = cards[index];
-                      String pin = card['pin'];
-                      return Card(
-                        elevation: 1, margin: const EdgeInsets.symmetric(vertical: 4),
-                        child: ListTile(
-                          leading: const Icon(Icons.confirmation_number, color: Colors.teal),
-                          title: Text(pin, style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2, fontSize: 18)),
-                          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                            IconButton(icon: const Icon(Icons.copy, color: Colors.blue), tooltip: 'نسخ الكرت', onPressed: () { _play('click'); Clipboard.setData(ClipboardData(text: pin)); _showToast('تم نسخ رقم الكرت للحافظة'); }),
-                            IconButton(icon: const Icon(Icons.archive, color: Colors.orange), tooltip: 'نقل للأرشيف', onPressed: () async {
-                              if (await _confirmAction("أرشفة الكرت", "سيتم سحب هذا الكرت من السوق ونقله للأرشيف. هل أنت متأكد؟", Colors.orange)) {
-                                await card.reference.update({'status': 'archived'});
-                                var netDoc = await _db.collection('networks').doc(netId).get();
-                                List cats = List.from(netDoc['categories']);
-                                int idx = cats.indexWhere((c) => c['id'] == catId);
-                                cats[idx]['stock'] -= 1;
-                                await _db.collection('networks').doc(netId).update({'categories': cats});
-                                _showToast('تمت أرشفة الكرت بنجاح');
-                              }
-                            }),
-                            IconButton(icon: const Icon(Icons.delete_forever, color: Colors.red), tooltip: 'حذف نهائي', onPressed: () async {
-                              if (await _confirmAction("حذف الكرت", "سيتم حذف الكرت نهائياً من قاعدة البيانات. هل توافق؟", Colors.red, requirePassword: true)) {
-                                await card.reference.delete();
-                                var netDoc = await _db.collection('networks').doc(netId).get();
-                                List cats = List.from(netDoc['categories']);
-                                int idx = cats.indexWhere((c) => c['id'] == catId);
-                                cats[idx]['stock'] -= 1;
-                                await _db.collection('networks').doc(netId).update({'categories': cats});
-                                _showToast('تم حذف الكرت نهائياً');
-                              }
-                            }),
-                          ]),
-                        ),
-                      );
-                    },
-                  );
-                },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('إدارة كروت فئة: $catName',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: catColor)),
+              const Text('الأرقام المعروضة هي الأرقام النشطة والمتاحة للبيع',
+                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const Divider(),
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: _db
+                      .collection('cards')
+                      .where('categoryId', isEqualTo: catId)
+                      .where('status', isEqualTo: 'متاح')
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                    var cards = snapshot.data!.docs;
+                    if (cards.isEmpty)
+                      return const Center(
+                          child: Text('لا توجد كروت متاحة. قم بالتوليد أولاً.',
+                              style: TextStyle(color: Colors.grey)));
+                    return ListView.builder(
+                      itemCount: cards.length,
+                      itemBuilder: (context, index) {
+                        var card = cards[index];
+                        String pin = card['pin'];
+                        return Card(
+                          elevation: 1,
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          child: ListTile(
+                            leading: const Icon(Icons.confirmation_number, color: Colors.teal),
+                            title: Text(pin,
+                                style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2, fontSize: 18)),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                    icon: const Icon(Icons.copy, color: Colors.blue),
+                                    tooltip: 'نسخ الكرت',
+                                    onPressed: () {
+                                      _play('click');
+                                      Clipboard.setData(ClipboardData(text: pin));
+                                      _showToast('تم نسخ رقم الكرت للحافظة');
+                                    }),
+                                IconButton(
+                                    icon: const Icon(Icons.archive, color: Colors.orange),
+                                    tooltip: 'نقل للأرشيف',
+                                    onPressed: () async {
+                                      if (await _confirmAction("أرشفة الكرت",
+                                          "سيتم سحب هذا الكرت من السوق ونقله للأرشيف. هل أنت متأكد؟",
+                                          Colors.orange)) {
+                                        await card.reference.update({'status': 'archived'});
+                                        var netDoc = await _db.collection('networks').doc(netId).get();
+                                        List cats = List.from(netDoc['categories']);
+                                        int idx = cats.indexWhere((c) => c['id'] == catId);
+                                        cats[idx]['stock'] -= 1;
+                                        await _db.collection('networks').doc(netId).update({'categories': cats});
+                                        _showToast('تمت أرشفة الكرت بنجاح');
+                                      }
+                                    }),
+                                IconButton(
+                                    icon: const Icon(Icons.delete_forever, color: Colors.red),
+                                    tooltip: 'حذف نهائي',
+                                    onPressed: () async {
+                                      if (await _confirmAction("حذف الكرت",
+                                          "سيتم حذف الكرت نهائياً من قاعدة البيانات. هل توافق؟",
+                                          Colors.red,
+                                          requirePassword: true)) {
+                                        await card.reference.delete();
+                                        var netDoc = await _db.collection('networks').doc(netId).get();
+                                        List cats = List.from(netDoc['categories']);
+                                        int idx = cats.indexWhere((c) => c['id'] == catId);
+                                        cats[idx]['stock'] -= 1;
+                                        await _db.collection('networks').doc(netId).update({'categories': cats});
+                                        _showToast('تم حذف الكرت نهائياً');
+                                      }
+                                    }),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
               ),
-            ),
-          ]),
+            ],
+          ),
         ),
       ),
     );
@@ -523,30 +1005,71 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
         builder: (context, setModalState) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
-            title: const Row(children: [Icon(Icons.smart_toy, color: Colors.purple), SizedBox(width: 10), Text('البوت الذكي للتوليد')]),
-            content: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Text('عند تفعيل البوت، سيقوم السيرفر بمراقبة مخزون هذه الفئة وتوليد كروت جديدة تلقائياً عندما ينخفض المخزون.', style: TextStyle(fontSize: 12, color: Colors.grey)),
-              SwitchListTile(title: const Text('حالة التوليد التلقائي', style: TextStyle(fontWeight: FontWeight.bold)), value: isBotEnabled, activeColor: Colors.purple, onChanged: (v) => setModalState(() => isBotEnabled = v)),
-              if (isBotEnabled) ...[
-                TextField(decoration: const InputDecoration(labelText: 'الحد الأدنى للمخزون (متى يبدأ البوت؟)', border: OutlineInputBorder()), keyboardType: TextInputType.number, onChanged: (v) => minStock = int.tryParse(v) ?? 5, controller: TextEditingController(text: minStock.toString())),
-                TextField(decoration: const InputDecoration(labelText: 'كمية التوليد التلقائي (كم كرت ينتج؟)', border: OutlineInputBorder()), keyboardType: TextInputType.number, onChanged: (v) => refillAmount = int.tryParse(v) ?? 50, controller: TextEditingController(text: refillAmount.toString())),
-              ]
+            title: const Row(children: [
+              Icon(Icons.smart_toy, color: Colors.purple),
+              SizedBox(width: 10),
+              Text('البوت الذكي للتوليد')
             ]),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                    'عند تفعيل البوت، سيقوم السيرفر بمراقبة مخزون هذه الفئة وتوليد كروت جديدة تلقائياً عندما ينخفض المخزون.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 15),
+                SwitchListTile(
+                  title:
+                      const Text('حالة التوليد التلقائي', style: TextStyle(fontWeight: FontWeight.bold)),
+                  value: isBotEnabled,
+                  activeColor: Colors.purple,
+                  onChanged: (v) => setModalState(() => isBotEnabled = v),
+                ),
+                if (isBotEnabled) ...[
+                  const SizedBox(height: 10),
+                  TextField(
+                    decoration: const InputDecoration(
+                        labelText: 'الحد الأدنى للمخزون (متى يبدأ البوت؟)',
+                        border: OutlineInputBorder()),
+                    keyboardType: TextInputType.number,
+                    onChanged: (v) => minStock = int.tryParse(v) ?? 5,
+                    controller: TextEditingController(text: minStock.toString()),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    decoration: const InputDecoration(
+                        labelText: 'كمية التوليد التلقائي (كم كرت ينتج؟)',
+                        border: OutlineInputBorder()),
+                    keyboardType: TextInputType.number,
+                    onChanged: (v) => refillAmount = int.tryParse(v) ?? 50,
+                    controller: TextEditingController(text: refillAmount.toString()),
+                  ),
+                ]
+              ],
+            ),
             actions: [
-              TextButton(onPressed: () { _play('click'); Navigator.pop(context); }, child: const Text('إلغاء')),
-              ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.purple), onPressed: () async {
-                _play('click');
-                var netDoc = await _db.collection('networks').doc(netId).get();
-                List cats = List.from(netDoc['categories']);
-                int idx = cats.indexWhere((c) => c['id'] == catId);
-                cats[idx]['botMinStock'] = minStock;
-                cats[idx]['botRefillAmount'] = refillAmount;
-                cats[idx]['isBotEnabled'] = isBotEnabled;
-                await _db.collection('networks').doc(netId).update({'categories': cats});
-                Navigator.pop(context);
-                _play('success');
-                _showToast('تم حفظ إعدادات البوت الذكي');
-              }, child: const Text('حفظ وتشغيل', style: TextStyle(color: Colors.white)))
+              TextButton(
+                  onPressed: () {
+                    _play('click');
+                    Navigator.pop(context);
+                  },
+                  child: const Text('إلغاء')),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.purple),
+                onPressed: () async {
+                  _play('click');
+                  var netDoc = await _db.collection('networks').doc(netId).get();
+                  List cats = List.from(netDoc['categories']);
+                  int idx = cats.indexWhere((c) => c['id'] == catId);
+                  cats[idx]['botMinStock'] = minStock;
+                  cats[idx]['botRefillAmount'] = refillAmount;
+                  cats[idx]['isBotEnabled'] = isBotEnabled;
+                  await _db.collection('networks').doc(netId).update({'categories': cats});
+                  Navigator.pop(context);
+                  _play('success');
+                  _showToast('تم حفظ إعدادات البوت الذكي');
+                },
+                child: const Text('حفظ وتشغيل', style: TextStyle(color: Colors.white)),
+              )
             ],
           ),
         ),
@@ -554,105 +1077,338 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
-  // ========== 3. شرائح الخصم ==========
-  void _showDiscountTierBottomSheet(SystemProvider sys, {Map<String, dynamic>? existingTier, String? docId}) {
+  // ==========================================
+  // 3. إدارة شرائح الخصم
+  // ==========================================
+  void _showDiscountTierBottomSheet(SystemProvider sys,
+      {Map<String, dynamic>? existingTier, String? docId}) {
     _play('click');
     String title = existingTier?['title'] ?? _draftTierTitle;
     String condition = existingTier?['condition']?.toString() ?? _draftTierCondition;
-    String discountValue = existingTier?['discountValue']?.toString() ?? _draftTierDiscountValue;
+    String discountValue =
+        existingTier?['discountValue']?.toString() ?? _draftTierDiscountValue;
     String discountType = existingTier?['discountType'] ?? _draftTierDiscountType;
     String targetType = existingTier?['targetType'] ?? _draftTierTargetType;
-    List<String> targetPhones = existingTier != null ? List<String>.from(existingTier['targetPhones'] ?? []) : List<String>.from(_draftTierTargetPhones);
+    List<String> targetPhones = existingTier != null
+        ? List<String>.from(existingTier['targetPhones'] ?? [])
+        : List<String>.from(_draftTierTargetPhones);
     Color selectedColor = existingTier != null ? Color(existingTier['color']) : _draftTierColor;
     bool isSubmitting = false;
+
     Map<String, Map<String, dynamic>?> searchResults = {};
 
     showModalBottomSheet(
-      context: context, isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, top: 20, left: 16, right: 16),
-          child: Directionality(
-            textDirection: TextDirection.rtl,
-            child: SingleChildScrollView(
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text(docId == null ? 'إضافة شريحة خصم جديدة 🏆' : 'تعديل الشريحة ✏️', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                TextField(decoration: const InputDecoration(labelText: 'اسم الشريحة', border: OutlineInputBorder(), prefixIcon: Icon(Icons.stars, color: Colors.amber)), controller: TextEditingController(text: title), onChanged: (v) => title = v),
-                TextField(decoration: const InputDecoration(labelText: 'شرط السحب الشهري بالريال', border: OutlineInputBorder(), prefixIcon: Icon(Icons.shopping_cart, color: Colors.orange)), controller: TextEditingController(text: condition), keyboardType: TextInputType.number, onChanged: (v) => condition = v),
-                Row(children: [Expanded(child: TextField(decoration: const InputDecoration(labelText: 'قيمة الخصم', border: OutlineInputBorder(), prefixIcon: Icon(Icons.local_offer, color: Colors.green)), controller: TextEditingController(text: discountValue), keyboardType: TextInputType.number, onChanged: (v) => discountValue = v)), const SizedBox(width: 10), Expanded(child: DropdownButtonFormField<String>(decoration: const InputDecoration(labelText: 'نوع الخصم', border: OutlineInputBorder()), value: discountType, items: const [DropdownMenuItem(value: 'percentage', child: Text('نسبة مئوية (%)')), DropdownMenuItem(value: 'fixed', child: Text('مبلغ ثابت (ريال)'))], onChanged: (val) => setModalState(() => discountType = val!)))]),
-                DropdownButtonFormField<String>(decoration: const InputDecoration(labelText: 'نطاق تطبيق الخصم', border: OutlineInputBorder()), value: targetType, items: const [DropdownMenuItem(value: 'all', child: Text('الجميع (كل المستخدمين ونقاط البيع)')), DropdownMenuItem(value: 'pos', child: Text('جميع نقاط البيع فقط')), DropdownMenuItem(value: 'user', child: Text('جميع المستخدمين فقط')), DropdownMenuItem(value: 'specific', child: Text('نقطة بيع / مستخدم محدد'))], onChanged: (val) => setModalState(() => targetType = val!)),
-                if (targetType == 'specific') ...[
-                  ...targetPhones.asMap().entries.map((entry) => Column(children: [
-                    Row(children: [Expanded(child: TextField(decoration: InputDecoration(labelText: 'رقم الهاتف ${entry.key + 1}', border: const OutlineInputBorder(), prefixIcon: const Icon(Icons.phone, color: Colors.blue), suffixIcon: searchResults[entry.value] != null ? IconButton(icon: const Icon(Icons.info_outline, color: Colors.teal), onPressed: () => _showTargetInfoDialog(entry.value, searchResults[entry.value]!, sys.currentUserPhone)) : null), controller: TextEditingController(text: entry.value), keyboardType: TextInputType.phone, onChanged: (v) { targetPhones[entry.key] = v; _debounceSearch(v, sys, setModalState, searchResults, entry.value); })), IconButton(icon: const Icon(Icons.remove_circle, color: Colors.red), onPressed: () { setModalState(() { targetPhones.removeAt(entry.key); searchResults.remove(entry.value); }); })]),
-                    if (searchResults[entry.value] != null) _buildTargetInfoCard(entry.value, searchResults[entry.value]!, sys),
-                  ])).toList(),
-                  TextButton.icon(onPressed: () => setModalState(() => targetPhones.add('')), icon: const Icon(Icons.add, color: Colors.green), label: const Text('إضافة مستهدف آخر')),
-                ],
-                Row(children: [const Text('لون الشريحة المميز: ', style: TextStyle(fontWeight: FontWeight.bold)), GestureDetector(onTap: () async { final color = await _openColorPicker(selectedColor); if (color != null) setModalState(() => selectedColor = color); }, child: Container(width: 40, height: 40, decoration: BoxDecoration(shape: BoxShape.circle, color: selectedColor, border: Border.all(color: Colors.grey)))), const Text('انقر لتغيير اللون', style: TextStyle(fontSize: 12, color: Colors.grey))]),
-                SizedBox(width: double.infinity, height: 50, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: selectedColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), onPressed: isSubmitting ? null : () async {
-                  if (title.isNotEmpty && condition.isNotEmpty && discountValue.isNotEmpty) {
-                    if (docId != null) { bool confirm = await _confirmAction("حفظ الشريحة", "هل أنت متأكد من التعديلات؟", selectedColor); if (!confirm) return; }
-                    _play('click'); setModalState(() => isSubmitting = true);
-                    try {
-                      Map<String, dynamic> tierData = {
-                        'agentPhone': sys.currentUserPhone, 'title': title,
-                        'condition': int.parse(condition), 'discountValue': double.parse(discountValue),
-                        'discountType': discountType, 'color': selectedColor.value,
-                        'isActive': existingTier?['isActive'] ?? true, 'targetType': targetType,
-                        'targetPhones': targetPhones, 'subscribersCount': existingTier?['subscribersCount'] ?? 0,
-                        'updatedAt': FieldValue.serverTimestamp(),
-                      };
-                      if (docId == null) {
-                        tierData['createdAt'] = FieldValue.serverTimestamp();
-                        await _db.collection('discount_tiers').add(tierData);
-                        _draftTierTitle = ''; _draftTierCondition = ''; _draftTierDiscountValue = '';
-                        _draftTierDiscountType = 'percentage'; _draftTierTargetType = 'all'; _draftTierTargetPhones = [];
-                        _draftTierColor = Colors.amber.shade700;
-                      } else {
-                        await _db.collection('discount_tiers').doc(docId).update(tierData);
-                      }
-                      _play('success');
-                      if (mounted) { Navigator.pop(context); _showToast('تم حفظ الشريحة بنجاح!'); }
-                    } catch (e) { setModalState(() => isSubmitting = false); _play('error'); }
-                  } else { _play('error'); _showToast('يرجى تعبئة كافة بيانات الشريحة', isError: true); }
-                }, child: isSubmitting ? const CircularProgressIndicator(color: Colors.white) : const Text('حفظ الشريحة', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)))),
-                SizedBox(width: double.infinity, height: 50, child: OutlinedButton.icon(style: OutlinedButton.styleFrom(foregroundColor: Colors.grey, side: const BorderSide(color: Colors.grey), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), onPressed: () {
-                  _draftTierTitle = title; _draftTierCondition = condition; _draftTierDiscountValue = discountValue;
-                  _draftTierDiscountType = discountType; _draftTierTargetType = targetType; _draftTierTargetPhones = targetPhones;
-                  _draftTierColor = selectedColor;
-                  _play('click'); Navigator.pop(context); _showToast('تم حفظ البيانات كمسودة');
-                }, icon: const Icon(Icons.save_outlined), label: const Text('إغلاق وحفظ كمسودة'))),
-              ]),
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) => Padding(
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+                top: 20,
+                left: 16,
+                right: 16),
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(docId == null ? 'إضافة شريحة خصم جديدة 🏆' : 'تعديل الشريحة ✏️',
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 15),
+                    TextField(
+                        decoration: const InputDecoration(
+                            labelText: 'اسم الشريحة',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.stars, color: Colors.amber)),
+                        controller: TextEditingController(text: title),
+                        onChanged: (v) => title = v),
+                    const SizedBox(height: 12),
+                    TextField(
+                        decoration: const InputDecoration(
+                            labelText: 'شرط السحب الشهري بالريال',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.shopping_cart, color: Colors.orange)),
+                        controller: TextEditingController(text: condition),
+                        keyboardType: TextInputType.number,
+                        onChanged: (v) => condition = v),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                            child: TextField(
+                                decoration: const InputDecoration(
+                                    labelText: 'قيمة الخصم',
+                                    border: OutlineInputBorder(),
+                                    prefixIcon: Icon(Icons.local_offer, color: Colors.green)),
+                                controller: TextEditingController(text: discountValue),
+                                keyboardType: TextInputType.number,
+                                onChanged: (v) => discountValue = v)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            decoration: const InputDecoration(
+                                labelText: 'نوع الخصم', border: OutlineInputBorder()),
+                            value: discountType,
+                            items: const [
+                              DropdownMenuItem(value: 'percentage', child: Text('نسبة مئوية (%)')),
+                              DropdownMenuItem(value: 'fixed', child: Text('مبلغ ثابت (ريال)')),
+                            ],
+                            onChanged: (val) => setModalState(() => discountType = val!),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      decoration: const InputDecoration(
+                          labelText: 'نطاق تطبيق الخصم', border: OutlineInputBorder()),
+                      value: targetType,
+                      items: const [
+                        DropdownMenuItem(value: 'all', child: Text('الجميع (كل المستخدمين ونقاط البيع)')),
+                        DropdownMenuItem(value: 'pos', child: Text('جميع نقاط البيع فقط')),
+                        DropdownMenuItem(value: 'user', child: Text('جميع المستخدمين فقط')),
+                        DropdownMenuItem(value: 'specific', child: Text('نقطة بيع / مستخدم محدد')),
+                      ],
+                      onChanged: (val) => setModalState(() => targetType = val!),
+                    ),
+                    if (targetType == 'specific') ...[
+                      const SizedBox(height: 12),
+                      ...targetPhones.asMap().entries.map((entry) {
+                        int idx = entry.key;
+                        String phone = entry.value;
+                        return Column(
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    decoration: InputDecoration(
+                                      labelText: 'رقم الهاتف ${idx + 1}',
+                                      border: const OutlineInputBorder(),
+                                      prefixIcon: const Icon(Icons.phone, color: Colors.blue),
+                                      suffixIcon: searchResults[phone] != null
+                                          ? IconButton(
+                                              icon: const Icon(Icons.info_outline, color: Colors.teal),
+                                              onPressed: () => _showTargetInfoDialog(
+                                                  phone, searchResults[phone]!, sys.currentUserPhone),
+                                            )
+                                          : null,
+                                    ),
+                                    controller: TextEditingController(text: phone),
+                                    keyboardType: TextInputType.phone,
+                                    onChanged: (v) {
+                                      targetPhones[idx] = v;
+                                      _debounceSearch(v, sys, setModalState, searchResults, phone);
+                                    },
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.remove_circle, color: Colors.red),
+                                  onPressed: () {
+                                    setModalState(() {
+                                      targetPhones.removeAt(idx);
+                                      searchResults.remove(phone);
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                            if (searchResults[phone] != null)
+                              _buildTargetInfoCard(phone, searchResults[phone]!, sys),
+                            const SizedBox(height: 8),
+                          ],
+                        );
+                      }).toList(),
+                      TextButton.icon(
+                        onPressed: () => setModalState(() => targetPhones.add('')),
+                        icon: const Icon(Icons.add, color: Colors.green),
+                        label: const Text('إضافة مستهدف آخر'),
+                      ),
+                    ],
+                    const SizedBox(height: 15),
+                    Row(
+                      children: [
+                        const Text('لون الشريحة المميز: ',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        GestureDetector(
+                          onTap: () async {
+                            final color = await _openColorPicker(selectedColor);
+                            if (color != null) setModalState(() => selectedColor = color);
+                          },
+                          child: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: selectedColor,
+                              border: Border.all(color: Colors.grey),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        const Text('انقر لتغيير اللون',
+                            style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: selectedColor,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                        onPressed: isSubmitting
+                            ? null
+                            : () async {
+                                if (title.isNotEmpty && condition.isNotEmpty && discountValue.isNotEmpty) {
+                                  if (docId != null) {
+                                    bool confirm = await _confirmAction(
+                                        "حفظ الشريحة", "هل أنت متأكد من التعديلات؟", selectedColor);
+                                    if (!confirm) return;
+                                  }
+                                  _play('click');
+                                  setModalState(() => isSubmitting = true);
+                                  try {
+                                    Map<String, dynamic> tierData = {
+                                      'agentPhone': sys.currentUserPhone,
+                                      'title': title,
+                                      'condition': int.parse(condition),
+                                      'discountValue': double.parse(discountValue),
+                                      'discountType': discountType,
+                                      'color': selectedColor.value,
+                                      'isActive': existingTier?['isActive'] ?? true,
+                                      'targetType': targetType,
+                                      'targetPhones': targetPhones,
+                                      'subscribersCount': existingTier?['subscribersCount'] ?? 0,
+                                      'updatedAt': FieldValue.serverTimestamp(),
+                                    };
+                                    if (docId == null) {
+                                      tierData['createdAt'] = FieldValue.serverTimestamp();
+                                      await _db.collection('discount_tiers').add(tierData);
+                                      _draftTierTitle = '';
+                                      _draftTierCondition = '';
+                                      _draftTierDiscountValue = '';
+                                      _draftTierDiscountType = 'percentage';
+                                      _draftTierTargetType = 'all';
+                                      _draftTierTargetPhones = [];
+                                      _draftTierColor = Colors.amber.shade700;
+                                    } else {
+                                      await _db.collection('discount_tiers').doc(docId).update(tierData);
+                                    }
+                                    _play('success');
+                                    if (mounted) {
+                                      Navigator.pop(context);
+                                      _showToast('تم حفظ الشريحة بنجاح!');
+                                    }
+                                  } catch (e) {
+                                    setModalState(() => isSubmitting = false);
+                                    _play('error');
+                                  }
+                                } else {
+                                  _play('error');
+                                  _showToast('يرجى تعبئة كافة بيانات الشريحة', isError: true);
+                                }
+                              },
+                        child: isSubmitting
+                            ? const CircularProgressIndicator(color: Colors.white)
+                            : const Text('حفظ الشريحة',
+                                style: TextStyle(
+                                    fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.grey,
+                          side: const BorderSide(color: Colors.grey),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () {
+                          _draftTierTitle = title;
+                          _draftTierCondition = condition;
+                          _draftTierDiscountValue = discountValue;
+                          _draftTierDiscountType = discountType;
+                          _draftTierTargetType = targetType;
+                          _draftTierTargetPhones = targetPhones;
+                          _draftTierColor = selectedColor;
+                          _play('click');
+                          Navigator.pop(context);
+                          _showToast('تم حفظ البيانات كمسودة');
+                        },
+                        icon: const Icon(Icons.save_outlined),
+                        label: const Text('إغلاق وحفظ كمسودة'),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
   Timer? _debounceTimer;
-  void _debounceSearch(String phone, SystemProvider sys, StateSetter setModalState, Map<String, dynamic?> results, String currentPhone) {
+  void _debounceSearch(String phone, SystemProvider sys, StateSetter setModalState,
+      Map<String, dynamic?> results, String currentPhone) {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 600), () async {
       if (phone.length >= 9) {
         final userData = await sys.searchUserForTransfer(phone);
         setModalState(() => results[currentPhone] = userData);
-        if (userData != null) _play('success');
+        if (userData != null) {
+          _play('success');
+        }
       }
     });
   }
 
   Widget _buildTargetInfoCard(String phone, Map<String, dynamic> data, SystemProvider sys) {
     return Card(
-      color: Colors.teal.shade50, elevation: 2, margin: const EdgeInsets.symmetric(vertical: 6),
-      child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [const Icon(Icons.person, color: Colors.teal), const SizedBox(width: 8), Text(data['name'] ?? 'غير معروف', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))]),
-        const SizedBox(height: 8),
-        _infoRow('الدور', data['role'] == 'pos' ? 'نقطة بيع' : 'مستخدم'),
-        _infoRow('الرصيد العام', '${data['balance'] ?? '0'} ريال'),
-        Row(mainAxisAlignment: MainAxisAlignment.end, children: [TextButton.icon(onPressed: () => _showTargetTransactionsDialog(phone, sys.currentUserPhone, data['name'] ?? ''), icon: const Icon(Icons.history, size: 18), label: const Text('آخر العمليات'))]),
-      ])),
+      color: Colors.teal.shade50,
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.person, color: Colors.teal),
+                const SizedBox(width: 8),
+                Text(data['name'] ?? 'غير معروف',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            _infoRow('الدور', data['role'] == 'pos' ? 'نقطة بيع' : 'مستخدم'),
+            _infoRow('الرصيد العام', '${data['balance'] ?? '0'} ريال'),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton.icon(
+                  onPressed: () =>
+                      _showTargetTransactionsDialog(phone, sys.currentUserPhone, data['name'] ?? ''),
+                  icon: const Icon(Icons.history, size: 18),
+                  label: const Text('آخر العمليات'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -663,24 +1419,56 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: Text('معلومات ${data['name']}', style: const TextStyle(fontWeight: FontWeight.bold)),
-          content: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            _infoRow('الاسم', data['name']), _infoRow('الدور', data['role'] == 'pos' ? 'نقطة بيع' : 'مستخدم'),
-            _infoRow('رقم الهاتف', phone), _infoRow('الرصيد الحالي', '${data['balance']} ريال'),
-            _infoRow('آخر عملية شحن', data['lastRecharge'] ?? 'لا يوجد'),
-            Center(child: ElevatedButton.icon(onPressed: () { Navigator.pop(context); _showTargetTransactionsDialog(phone, agentPhone, data['name'] ?? ''); }, icon: const Icon(Icons.receipt), label: const Text('عرض آخر العمليات'))),
-          ])),
-          actions: [ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('حسناً'))],
+          title:
+              Text('معلومات ${data['name']}', style: const TextStyle(fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _infoRow('الاسم', data['name']),
+                _infoRow('الدور', data['role'] == 'pos' ? 'نقطة بيع' : 'مستخدم'),
+                _infoRow('رقم الهاتف', phone),
+                _infoRow('الرصيد الحالي', '${data['balance']} ريال'),
+                _infoRow('آخر عملية شحن', data['lastRecharge'] ?? 'لا يوجد'),
+                const SizedBox(height: 12),
+                Center(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _showTargetTransactionsDialog(phone, agentPhone, data['name'] ?? '');
+                    },
+                    icon: const Icon(Icons.receipt),
+                    label: const Text('عرض آخر العمليات'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('حسناً'),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Future<List<Map<String, dynamic>>> _fetchTargetTransactions(String phone, String agentPhone) async {
+  Future<List<Map<String, dynamic>>> _fetchTargetTransactions(
+      String phone, String agentPhone) async {
     final netSnap = await _db.collection('networks').where('agentPhone', isEqualTo: agentPhone).get();
     List<String> networkIds = netSnap.docs.map((d) => d.id).toList();
     if (networkIds.isEmpty) return [];
-    final transSnap = await _db.collection('transactions').where('userPhone', isEqualTo: phone).where('networkId', whereIn: networkIds).orderBy('createdAt', descending: true).limit(10).get();
+
+    final transSnap = await _db
+        .collection('transactions')
+        .where('userPhone', isEqualTo: phone)
+        .where('networkId', whereIn: networkIds)
+        .orderBy('createdAt', descending: true)
+        .limit(10)
+        .get();
     return transSnap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
   }
 
@@ -691,24 +1479,55 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           title: Text('آخر عمليات $userName'),
-          content: SizedBox(width: double.maxFinite, height: 300, child: FutureBuilder<List<Map<String, dynamic>>>(future: _fetchTargetTransactions(phone, agentPhone), builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-            final list = snapshot.data ?? [];
-            if (list.isEmpty) return const Center(child: Text('لا توجد عمليات'));
-            return ListView.builder(itemCount: list.length, itemBuilder: (context, i) {
-              final t = list[i];
-              return ListTile(leading: Icon(Icons.receipt_long, color: Colors.orange), title: Text('${t['amount'] ?? 0} ريال'), subtitle: Text('${t['type'] ?? ''} - ${t['createdAt'] != null ? t['createdAt'].toDate().toString() : ''}'));
-            });
-          })),
-          actions: [ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق'))],
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 300,
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: _fetchTargetTransactions(phone, agentPhone),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting)
+                  return const Center(child: CircularProgressIndicator());
+                final list = snapshot.data ?? [];
+                if (list.isEmpty) return const Center(child: Text('لا توجد عمليات'));
+                return ListView.builder(
+                  itemCount: list.length,
+                  itemBuilder: (context, i) {
+                    final t = list[i];
+                    return ListTile(
+                      leading: Icon(Icons.receipt_long, color: Colors.orange),
+                      title: Text('${t['amount'] ?? 0} ريال'),
+                      subtitle: Text(
+                          '${t['type'] ?? ''} - ${t['createdAt'] != null ? t['createdAt'].toDate().toString() : ''}'),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق'))
+          ],
         ),
       ),
     );
   }
 
-  Widget _infoRow(String label, String value) => Padding(padding: const EdgeInsets.only(bottom: 4), child: Row(children: [Text('$label: ', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)), Expanded(child: Text(value))]));
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Text('$label: ',
+              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)),
+          Expanded(child: Text(value)),
+        ],
+      ),
+    );
+  }
 
-  // ========== 4. توليد الكروت ==========
+  // ==========================================
+  // 4. توليد الكروت (مع تعديل زر الطباعة)
+  // ==========================================
   Widget _buildGenerateCardsTab(SystemProvider sys, List<QueryDocumentSnapshot> networks) {
     final textColor = Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
     if (networks.isEmpty) return const Center(child: Text('يجب إضافة شبكة وفئات أولاً!'));
@@ -719,53 +1538,150 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
       List cats = (net.data() as Map)['categories'] ?? [];
       for (var cat in cats) {
         if ((net.data() as Map)['isActive'] != false && cat['isActive'] != false) {
-          allCategories.add({'networkId': netId, 'networkName': (net.data() as Map)['name'], 'category': cat});
+          allCategories.add({
+            'networkId': netId,
+            'networkName': (net.data() as Map)['name'],
+            'category': cat
+          });
         }
       }
     }
+
     if (allCategories.isEmpty) return const Center(child: Text('لا توجد فئات نشطة للتوليد.'));
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: Column(children: [
-        Container(padding: const EdgeInsets.all(12), margin: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.blue)), child: Text('🔌 توليد متعدد: اكتب الكمية بجانب كل فئة، ثم اختر نوع التوليد واضغط توليد.', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textColor))),
-        Expanded(child: ListView.builder(padding: const EdgeInsets.symmetric(horizontal: 16), itemCount: allCategories.length, itemBuilder: (context, index) {
-          var item = allCategories[index];
-          String netId = item['networkId'];
-          String catId = item['category']['id'];
-          String key = "${netId}_$catId";
-          _multiGenControllers.putIfAbsent(key, () => TextEditingController());
-          return Card(color: Theme.of(context).cardColor, elevation: 1, margin: const EdgeInsets.only(bottom: 10), child: Padding(padding: const EdgeInsets.all(12.0), child: Row(children: [
-            Icon(Icons.category, color: Color(item['category']['color']), size: 30),
-            const SizedBox(width: 15),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${item['networkName']} - ${item['category']['name']}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textColor)),
-              Text('المخزون الحالي: ${item['category']['stock']}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            ])),
-            SizedBox(width: 100, child: TextField(controller: _multiGenControllers[key], keyboardType: TextInputType.number, textAlign: TextAlign.center, decoration: InputDecoration(hintText: 'الكمية', contentPadding: const EdgeInsets.symmetric(vertical: 10), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), filled: true, fillColor: Theme.of(context).scaffoldBackgroundColor))),
-          ])));
-        })),
-        Container(padding: const EdgeInsets.all(16), child: Row(children: [
-          Expanded(child: SizedBox(height: 55, child: ElevatedButton.icon(
-            onPressed: _isProcessing ? null : () => _startGeneration(sys, orders: _collectOrders(), forPrint: false),
-            icon: const Icon(Icons.inventory, color: Colors.white),
-            label: const Text('توليد للمخزون', style: TextStyle(fontSize: 14, color: Colors.white, fontWeight: FontWeight.bold)),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-          ))),
-          const SizedBox(width: 10),
-          Expanded(child: SizedBox(height: 55, child: ElevatedButton.icon(
-            onPressed: _isProcessing ? null : () async {
-              final success = await _startGeneration(sys, orders: _collectOrders(), forPrint: true);
-              if (success) {
-                _showToast('✅ تم التوليد للطباعة بنجاح! يمكنك الآن الانتقال إلى تبويب "الطباعة" لطباعة الكروت الجاهزة.');
-              }
-            },
-            icon: const Icon(Icons.print, color: Colors.white),
-            label: const Text('توليد للطباعة', style: TextStyle(fontSize: 14, color: Colors.white, fontWeight: FontWeight.bold)),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-          ))),
-        ])),
-      ]),
+      body: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.blue)),
+            child: Text(
+                '🔌 توليد متعدد: اكتب الكمية بجانب كل فئة، ثم اختر نوع التوليد واضغط توليد.',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textColor)),
+          ),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: allCategories.length,
+              itemBuilder: (context, index) {
+                var item = allCategories[index];
+                String netId = item['networkId'];
+                String catId = item['category']['id'];
+                String key = "${netId}_$catId";
+                _multiGenControllers.putIfAbsent(key, () => TextEditingController());
+
+                return Card(
+                  color: Theme.of(context).cardColor,
+                  elevation: 1,
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.category, color: Color(item['category']['color']), size: 30),
+                        const SizedBox(width: 15),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('${item['networkName']} - ${item['category']['name']}',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                      color: textColor)),
+                              Text('المخزون الحالي: ${item['category']['stock']}',
+                                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                            ],
+                          ),
+                        ),
+                        SizedBox(
+                          width: 100,
+                          child: TextField(
+                            controller: _multiGenControllers[key],
+                            keyboardType: TextInputType.number,
+                            textAlign: TextAlign.center,
+                            decoration: InputDecoration(
+                              hintText: 'الكمية',
+                              contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                              border:
+                                  OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              filled: true,
+                              fillColor: Theme.of(context).scaffoldBackgroundColor,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 55,
+                    child: ElevatedButton.icon(
+                      onPressed: _isProcessing
+                          ? null
+                          : () =>
+                              _startGeneration(sys, orders: _collectOrders(), forPrint: false),
+                      icon: const Icon(Icons.inventory, color: Colors.white),
+                      label: const Text('توليد للمخزون',
+                          style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10))),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SizedBox(
+                    height: 55,
+                    child: ElevatedButton.icon(
+                      onPressed: _isProcessing
+                          ? null
+                          : () async {
+                              final success = await _startGeneration(
+                                sys,
+                                orders: _collectOrders(),
+                                forPrint: true,
+                              );
+                              if (success) {
+                                _showToast('✅ تم التوليد للطباعة بنجاح! يمكنك الآن الانتقال إلى تبويب "الطباعة" لطباعة الكروت الجاهزة.');
+                              }
+                            },
+                      icon: const Icon(Icons.print, color: Colors.white),
+                      label: const Text('توليد للطباعة',
+                          style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.teal,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10))),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -783,34 +1699,74 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     return orders;
   }
 
-  Future<bool> _startGeneration(SystemProvider sys, {required List<Map<String, dynamic>> orders, required bool forPrint}) async {
-    if (orders.isEmpty) { _play('error'); _showToast('الرجاء كتابة كمية واحدة على الأقل', isError: true); return false; }
+  Future<bool> _startGeneration(SystemProvider sys,
+      {required List<Map<String, dynamic>> orders, required bool forPrint}) async {
+    if (orders.isEmpty) {
+      _play('error');
+      _showToast('الرجاء كتابة كمية واحدة على الأقل', isError: true);
+      return false;
+    }
+
     int totalAmount = orders.fold(0, (sum, item) => sum + (item['amount'] as int));
-    if (totalAmount > 400) { _play('error'); _showToast('الحد الأقصى للتوليد هو 400 كرت إجمالاً', isError: true); return false; }
+    if (totalAmount > 400) {
+      _play('error');
+      _showToast('الحد الأقصى للتوليد هو 400 كرت إجمالاً', isError: true);
+      return false;
+    }
+
     String typeText = forPrint ? 'للطباعة' : 'للمخزون';
-    bool confirm = await _confirmAction("تأكيد التوليد المتعدد", "سيتم الآن توليد إجمالي $totalAmount كرت $typeText. هل تريد الاستمرار؟", Colors.green);
+    bool confirm = await _confirmAction("تأكيد التوليد المتعدد",
+        "سيتم الآن توليد إجمالي $totalAmount كرت $typeText. هل تريد الاستمرار؟", Colors.green);
     if (!confirm) return false;
+
     _play('click');
     setState(() => _isProcessing = true);
     _showToast('جاري توليد الكروت... ⏳');
+
     bool success = false;
     if (_simulationMode) {
       try {
-        for (var order in orders) { await _simulateGenerate(order['networkId'], order['categoryId'], order['amount'], forPrint); }
-        _play('success'); _multiGenControllers.forEach((k, v) => v.clear());
+        for (var order in orders) {
+          await _simulateGenerate(
+              order['networkId'], order['categoryId'], order['amount'], forPrint);
+        }
+        _play('success');
+        _multiGenControllers.forEach((k, v) => v.clear());
         _showToast('تم توليد $totalAmount كرت (محاكاة) بنجاح! ✅');
         success = true;
-      } catch (e) { _play('error'); _showToast('فشل التوليد المحلي: $e', isError: true); }
+      } catch (e) {
+        _play('error');
+        _showToast('فشل التوليد المحلي: $e', isError: true);
+      }
     } else {
       bool hasError = false;
       for (var order in orders) {
         try {
-          final response = await http.post(Uri.parse("$_renderUrl/generateMikrotikCards"), headers: {"Content-Type": "application/json"}, body: jsonEncode({"networkId": order['networkId'], "categoryId": order['categoryId'], "amount": order['amount'], "agentPhone": sys.currentUserPhone, "forPrint": forPrint}));
+          final response = await http.post(
+            Uri.parse("$_renderUrl/generateMikrotikCards"),
+            headers: {"Content-Type": "application/json"},
+            body: jsonEncode({
+              "networkId": order['networkId'],
+              "categoryId": order['categoryId'],
+              "amount": order['amount'],
+              "agentPhone": sys.currentUserPhone,
+              "forPrint": forPrint,
+            }),
+          );
           if (response.statusCode != 200) hasError = true;
-        } catch (e) { hasError = true; }
+        } catch (e) {
+          hasError = true;
+        }
       }
-      if (hasError) { _play('error'); _showToast('تمت العملية ولكن حدثت بعض الأخطاء في التوليد', isError: true); }
-      else { _play('success'); _multiGenControllers.forEach((k, v) => v.clear()); _showToast('تم توليد جميع الكروت بنجاح! ✅'); success = true; }
+      if (hasError) {
+        _play('error');
+        _showToast('تمت العملية ولكن حدثت بعض الأخطاء في التوليد', isError: true);
+      } else {
+        _play('success');
+        _multiGenControllers.forEach((k, v) => v.clear());
+        _showToast('تم توليد جميع الكروت بنجاح! ✅');
+        success = true;
+      }
     }
     setState(() => _isProcessing = false);
     if (success && forPrint) {
@@ -1110,7 +2066,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
-  // ======================== تبويب الطباعة (مجمّل) ========================
+  // ======================== واجهة تبويب الطباعة (مجمّل) ========================
   Widget _buildPrintTab() {
     final theme = Theme.of(context);
     return SingleChildScrollView(
@@ -1220,10 +2176,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
       decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), image: templateBytes != null ? DecorationImage(image: MemoryImage(templateBytes), fit: BoxFit.fill) : null),
       child: Stack(children: [
         CustomPaint(size: Size(wMM * PreciseLayoutEngine.mmToPx, hMM * PreciseLayoutEngine.mmToPx), painter: _GuidePainter()),
-        Positioned(left: pos.dx, top: pos.dy, child: GestureDetector(
-          onPanUpdate: (details) { setState(() { textX.value += details.delta.dx / (wMM * PreciseLayoutEngine.mmToPx) * 100; textY.value += details.delta.dy / (hMM * PreciseLayoutEngine.mmToPx) * 100; textX.value = textX.value.clamp(0, 100); textY.value = textY.value.clamp(0, 100); }); _syncPrintPreview(); },
-          child: Container(color: Colors.white.withOpacity(0.7), child: Text(pin, style: TextStyle(fontSize: fontSize.value * 0.8, color: textColor.value)))
-        ))
+        Positioned(left: pos.dx, top: pos.dy, child: GestureDetector(onPanUpdate: (details) { setState(() { textX.value += details.delta.dx / (wMM * PreciseLayoutEngine.mmToPx) * 100; textY.value += details.delta.dy / (hMM * PreciseLayoutEngine.mmToPx) * 100; textX.value = textX.value.clamp(0, 100); textY.value = textY.value.clamp(0, 100); }); _syncPrintPreview(); }, child: Container(color: Colors.white.withOpacity(0.7), child: Text(pin, style: TextStyle(fontSize: fontSize.value * 0.8, color: textColor.value))))
       ]),
     );
   }
@@ -1236,7 +2189,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => Scaffold(appBar: AppBar(title: const Text("معاينة كاملة")), body: InteractiveViewer(minScale: 0.2, maxScale: 5.0, child: Container(width: w * pRow * PreciseLayoutEngine.mmToPx, height: h * pCol * PreciseLayoutEngine.mmToPx, color: Colors.white, child: _buildFakeGrid(pRow, pCol, w, h))))));
   }
 
-  // ======================== التبويبات الأصلية (مع عرض الكروت الجاهزة للطباعة) ========================
+  // ======================== التبويبات الأصلية ========================
   Widget _buildServersTab(SystemProvider sys, List<QueryDocumentSnapshot> networks) {
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -1270,12 +2223,14 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   }
 
   Widget _buildInfoRow(IconData icon, String label, String value, Color textColor, Color iconColor) => Row(children: [Icon(icon, size: 16, color: iconColor), const SizedBox(width: 8), Text('$label: ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey)), Expanded(child: Text(value, style: TextStyle(fontSize: 13, color: textColor)))]);
+
   Widget _buildActionButtons(SystemProvider sys, List<QueryDocumentSnapshot> networks, int index, Map<String, dynamic> net, bool isActive) => Wrap(spacing: 8, runSpacing: 8, children: [
     _actionButton(Icons.bolt, 'اختبار', Colors.blue, () => _testConnection(net)),
     _actionButton(isActive ? Icons.pause_circle_filled : Icons.play_circle_fill, isActive ? 'تجميد' : 'تنشيط', Colors.orange, () async { bool confirm = await _confirmAction(isActive ? "تجميد الشبكة" : "تنشيط الشبكة", "هل تريد تغيير حالة الشبكة؟", Colors.orange); if (confirm) { _db.collection('networks').doc(networks[index].id).update({'isActive': !isActive}); _showToast(isActive ? 'تم تجميد الشبكة' : 'تم تنشيط الشبكة'); } }),
     _actionButton(Icons.edit, 'تعديل', Colors.grey, () => _showAddServerBottomSheet(sys, existingData: net, docId: networks[index].id)),
     _actionButton(Icons.delete, 'حذف', Colors.red, () async { bool confirm = await _confirmAction("حذف الشبكة نهائياً", "سيتم مسح بيانات الشبكة، هل أنت متأكد؟", Colors.red, requirePassword: true); if (confirm) { _play('click'); await _db.collection('networks').doc(networks[index].id).delete(); _showToast('تم حذف الشبكة نهائياً'); } }),
   ]);
+
   Widget _actionButton(IconData icon, String label, Color color, VoidCallback onTap) => TextButton.icon(onPressed: onTap, icon: Icon(icon, size: 18, color: color), label: Text(label, style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.bold)), style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4)));
 
   Widget _buildCategoriesTab(List<QueryDocumentSnapshot> networks) {
@@ -1295,7 +2250,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
             Color catColor = Color(category['color'] ?? Colors.blue.value);
             bool isCatActive = category['isActive'] ?? true;
             bool isBotEnabled = category['isBotEnabled'] ?? false;
-            // عدد الكروت الجاهزة للطباعة
             final readyToPrint = allPrintReadyCards.where((c) => c['categoryId'] == category['id']).length;
             return Card(
               color: isCatActive ? Theme.of(context).cardColor : Colors.grey.shade200,
