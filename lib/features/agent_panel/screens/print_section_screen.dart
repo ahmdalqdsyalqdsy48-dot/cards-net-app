@@ -1,30 +1,55 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:intl/intl.dart';
+import 'package:csv/csv.dart';
+import 'package:printing/printing.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
-import 'package:printing/printing.dart';
 
 import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/ui_provider.dart';
+import '../../../core/providers/theme_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart';
 
-// ========== محرك التموضع الدقيق (Precise Layout Engine) ==========
-class PreciseLayoutEngine {
-  static const double mmToPx = 2.83465; // 1 mm = 2.83465 logical pixels
+// ========== نماذج البيانات ==========
+class ArchiveStats {
+  final int totalCards;
+  final double totalFrozenValue;
+  final int categoriesCount;
+  final double averageAgeDays;
+  final Map<String, int> cardsByNetwork;
+  final Map<String, int> cardsByCategory;
 
-  /// إرجاع الإحداثي المطلق (بالبكسل المنطقي) بالنسبة لأصل الصفحة (0,0)
-  static double getAbsolutePos(
-    double indexInDim,      // رقم البطاقة في البعد (صف أو عمود)
-    double cardSizeMM,      // حجم البطاقة بالميليمتر
-    double gapMM,           // الفجوة بين البطاقات بالميليمتر
-    double marginMM,        // الهامش من الحافة بالميليمتر
-  ) {
-    return (marginMM + (indexInDim * (cardSizeMM + gapMM))) * mmToPx;
-  }
+  ArchiveStats({
+    required this.totalCards,
+    required this.totalFrozenValue,
+    required this.categoriesCount,
+    required this.averageAgeDays,
+    required this.cardsByNetwork,
+    required this.cardsByCategory,
+  });
+}
+
+class ActivityLogEntry {
+  final String id;
+  final String action;
+  final String details;
+  final String agentPhone;
+  final DateTime timestamp;
+
+  ActivityLogEntry({
+    required this.id,
+    required this.action,
+    required this.details,
+    required this.agentPhone,
+    required this.timestamp,
+  });
 }
 
 class PrintSectionScreen extends StatefulWidget {
@@ -36,259 +61,349 @@ class PrintSectionScreen extends StatefulWidget {
 
 class _PrintSectionScreenState extends State<PrintSectionScreen>
     with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+  late TabController _mainTabController;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   late SystemProvider sys;
-
-  // ========== الشبكات والفئات ==========
-  List<QueryDocumentSnapshot> networks = [];
-  Map<String, List<Map<String, dynamic>>> networkCategories = {};
-
-  String? selectedNetworkId;
-  final Set<String> selectedCategoryIds = {};
-  final Map<String, Map<String, dynamic>> selectedCategories = {};
-  List<QueryDocumentSnapshot> allPrintReadyCards = [];
-
-  // ========== قوالب الفئات (مخزنة بشكل خاص) ==========
-  final Map<String, Uint8List?> _categoryTemplates = {};
-
-  Uint8List? getTemplate(String categoryId) {
-    return _categoryTemplates[categoryId];
-  }
-
-  // ========== إعدادات النص (مشتركة) ==========
-  final ValueNotifier<double> textX = ValueNotifier(50);
-  final ValueNotifier<double> textY = ValueNotifier(50);
-  final ValueNotifier<double> fontSize = ValueNotifier(14);
-  final ValueNotifier<Color> textColor = ValueNotifier(Colors.black);
-
-  // ========== إعدادات التخطيط (ثابتة) ==========
-  final copiesPerCard = TextEditingController(text: "1");
-  final perRow = TextEditingController(text: "3");
-  final perColumn = TextEditingController(text: "17");
-  final widthMM = TextEditingController(text: "70.0");
-  final heightMM = TextEditingController(text: "17.4");
-
-  // ========== الفجوات والهوامش (Gaps & Margins) ==========
-  final horizontalGap = TextEditingController(text: "0.0");
-  final verticalGap = TextEditingController(text: "0.0");
-  final pageLeftMargin = TextEditingController(text: "5.0");
-  final pageTopMargin = TextEditingController(text: "5.0");
-
-  // ========== الكميات لكل فئة ==========
-  final Map<String, TextEditingController> categoryCountControllers = {};
-  final totalCountController = TextEditingController();
-
-  // ========== قوالب محفوظة ==========
-  List<Map<String, dynamic>> savedTemplates = [];
+  late UiProvider _ui;
 
   // ========== الأرشيف ==========
   List<QueryDocumentSnapshot> archivedCards = [];
+  List<QueryDocumentSnapshot> _allArchivedCards = []; // جميع الكروت بدون ترقيم صفحات
   String archiveSearchQuery = '';
   final archiveDaysController = TextEditingController(text: "30");
   bool autoDeleteEnabled = false;
+  bool _isLoading = false;
+  final int _pageSize = 50;
+  DocumentSnapshot? _lastDocument;
+  bool _hasMore = true;
+  final ScrollController _scrollController = ScrollController();
 
-  // ========== سجل الطباعة ==========
-  List<Map<String, dynamic>> printLogs = [];
+  // ========== الفلاتر والفرز ==========
+  String? _filterNetworkId;
+  String? _filterCategoryId;
+  String? _selectedSortField = 'timestamp';
+  bool _sortAscending = false;
+  DateTimeRange? _dateRange;
+  double? _priceFrom;
+  double? _priceTo;
+  List<Map<String, dynamic>> _availableNetworks = [];
+  List<Map<String, dynamic>> _availableCategories = [];
+
+  // ========== الفحص المجمع ==========
+  final Set<String> _selectedCardIds = {};
+  bool _isSelectionMode = false;
+
+  // ========== التحليلات ==========
+  ArchiveStats? _stats;
+
+  // ========== سلة المهملات ==========
+  List<QueryDocumentSnapshot> _recycleBinCards = [];
+  final int _recycleBinDays = 30;
+
+  // ========== سجل النشاطات ==========
+  List<ActivityLogEntry> _activityLogs = [];
+
+  // ========== الإشعارات ==========
+  int _unreadNotifications = 0;
+
+  // دالة الصوت
+  void _play(String type) => _ui.playSound(type);
+
+  Future<void> _logActivity(String action, String details) async {
+    await _firestore.collection('activity_logs').add({
+      'agentPhone': sys.currentUserPhone,
+      'action': action,
+      'details': details,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+    _loadActivityLogs();
+  }
+
+  Future<void> _checkNotifications() async {
+    final threshold = 1000;
+    if (_allArchivedCards.length >= threshold) {
+      setState(() => _unreadNotifications = 1);
+    }
+    final daysBefore = int.tryParse(archiveDaysController.text) ?? 30;
+    final limitDate = DateTime.now().add(Duration(days: daysBefore - 3));
+    final count = _allArchivedCards.where((c) {
+      final ts = c['archivedAt'] as Timestamp?;
+      return ts != null && ts.toDate().isBefore(limitDate);
+    }).length;
+    if (count > 0) setState(() => _unreadNotifications += 1);
+  }
+
+  Future<bool> _showConfirm(String title, String msg) async {
+    _play('warning');
+    return await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: Text(title),
+            content: Text(msg),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("إلغاء")),
+              ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text("تأكيد")),
+            ],
+          ),
+        ) ??
+        false;
+  }
 
   @override
   void initState() {
     super.initState();
     sys = Provider.of<SystemProvider>(context, listen: false);
-    _tabController = TabController(length: 2, vsync: this);
-    totalCountController.text = "0";
+    _ui = Provider.of<UiProvider>(context, listen: false);
+    _mainTabController = TabController(length: 4, vsync: this);
+    _scrollController.addListener(_onScroll);
     _loadInitialData();
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
-    copiesPerCard.dispose();
-    perRow.dispose();
-    perColumn.dispose();
-    widthMM.dispose();
-    heightMM.dispose();
-    horizontalGap.dispose();
-    verticalGap.dispose();
-    pageLeftMargin.dispose();
-    pageTopMargin.dispose();
-    totalCountController.dispose();
-    archiveDaysController.dispose();
-    textX.dispose();
-    textY.dispose();
-    fontSize.dispose();
-    textColor.dispose();
-    for (final c in categoryCountControllers.values) {
-      c.dispose();
-    }
+    _mainTabController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  // ========== مزامنة المعاينة (Force UI Sync) ==========
-  void _syncPreview() {
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  // ========== لقطة الإعدادات (Snapshot Pattern) ==========
-  Map<String, dynamic> _captureSnapshot() {
-    return {
-      "x": textX.value,
-      "y": textY.value,
-      "font": fontSize.value,
-      "color": textColor.value,
-      "row": int.tryParse(perRow.text) ?? 3,
-      "col": int.tryParse(perColumn.text) ?? 17,
-      "w": double.tryParse(widthMM.text) ?? 70.0,
-      "h": double.tryParse(heightMM.text) ?? 17.4,
-      "copies": int.tryParse(copiesPerCard.text) ?? 1,
-      "hGap": double.tryParse(horizontalGap.text) ?? 0.0,
-      "vGap": double.tryParse(verticalGap.text) ?? 0.0,
-      "marginL": double.tryParse(pageLeftMargin.text) ?? 5.0,
-      "marginT": double.tryParse(pageTopMargin.text) ?? 5.0,
-    };
-  }
-
   Future<void> _loadInitialData() async {
-    final snapshot = await _firestore
-        .collection('networks')
+    setState(() => _isLoading = true);
+    await Future.wait([
+      _loadArchive(reset: true),
+      _loadAvailableNetworks(),
+      _loadAutoDeleteSettings(),
+      _loadActivityLogs(),
+      _loadRecycleBin(),
+    ]);
+    await _calculateStats();
+    await _checkNotifications();
+    setState(() => _isLoading = false);
+  }
+
+  Future<void> _loadAvailableNetworks() async {
+    final snap = await _firestore.collection('networks')
         .where('agentPhone', isEqualTo: sys.currentUserPhone)
         .get();
     setState(() {
-      networks = snapshot.docs;
-      for (var net in networks) {
-        final data = net.data() as Map<String, dynamic>;
-        networkCategories[net.id] =
-            List<Map<String, dynamic>>.from(data['categories'] ?? []);
+      _availableNetworks = snap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
+      _availableCategories = [];
+      for (var net in _availableNetworks) {
+        final cats = net['categories'] as List? ?? [];
+        _availableCategories.addAll(cats.cast<Map<String, dynamic>>());
       }
     });
-    await _loadAllPrintReadyCards();
-    _loadTemplates();
-    _loadArchive();
-    _loadPrintLogs();
-    _loadAutoDeleteSettings();
   }
 
-  Future<void> _loadAllPrintReadyCards() async {
-    final snapshot = await _firestore
-        .collection('cards')
-        .where('status', isEqualTo: 'print_ready')
-        .get();
-    setState(() => allPrintReadyCards = snapshot.docs);
+  Future<void> _loadArchive({bool reset = false}) async {
+    if (reset) {
+      _lastDocument = null;
+      _hasMore = true;
+      _allArchivedCards = [];
+      archivedCards = [];
+    }
+    if (!_hasMore) return;
+
+    var query = _firestore.collection('cards')
+        .where('status', isEqualTo: 'archived')
+        .orderBy('archivedAt', descending: true)
+        .limit(_pageSize);
+
+    if (_lastDocument != null) {
+      query = query.startAfterDocument(_lastDocument!);
+    }
+
+    final snapshot = await query.get();
+    if (snapshot.docs.isEmpty) {
+      setState(() => _hasMore = false);
+      return;
+    }
+
+    setState(() {
+      _lastDocument = snapshot.docs.last;
+      _allArchivedCards = reset ? snapshot.docs.toList() : [..._allArchivedCards, ...snapshot.docs];
+      _applyFiltersAndSort();
+    });
   }
 
-  void _rebuildCategoryCounts() {
-    for (final catId in selectedCategoryIds) {
-      if (!categoryCountControllers.containsKey(catId)) {
-        final ready = allPrintReadyCards.where((c) => c['categoryId'] == catId).length;
-        final ctrl = TextEditingController(text: ready.toString());
-        categoryCountControllers[catId] = ctrl;
+  void _applyFiltersAndSort() {
+    var filtered = List<QueryDocumentSnapshot>.from(_allArchivedCards);
+
+    // بحث نصي
+    if (archiveSearchQuery.isNotEmpty) {
+      filtered = filtered.where((c) =>
+          (c['pin'] ?? '').toLowerCase().contains(archiveSearchQuery.toLowerCase())).toList();
+    }
+
+    // فلتر الشبكة
+    if (_filterNetworkId != null) {
+      filtered = filtered.where((c) => c['networkId'] == _filterNetworkId).toList();
+    }
+
+    // فلتر الفئة
+    if (_filterCategoryId != null) {
+      filtered = filtered.where((c) => c['categoryId'] == _filterCategoryId).toList();
+    }
+
+    // فلتر النطاق السعري
+    if (_priceFrom != null) {
+      filtered = filtered.where((c) => (c['price'] ?? 0) >= _priceFrom!).toList();
+    }
+    if (_priceTo != null) {
+      filtered = filtered.where((c) => (c['price'] ?? 0) <= _priceTo!).toList();
+    }
+
+    // فلتر التاريخ
+    if (_dateRange != null) {
+      filtered = filtered.where((c) {
+        final ts = c['archivedAt'] as Timestamp?;
+        if (ts == null) return false;
+        final date = ts.toDate();
+        return date.isAfter(_dateRange!.start) && date.isBefore(_dateRange!.end.add(const Duration(days: 1)));
+      }).toList();
+    }
+
+    // فرز
+    filtered.sort((a, b) {
+      dynamic valA, valB;
+      switch (_selectedSortField) {
+        case 'timestamp':
+          valA = (a['archivedAt'] as Timestamp?)?.toDate() ?? DateTime(2000);
+          valB = (b['archivedAt'] as Timestamp?)?.toDate() ?? DateTime(2000);
+          break;
+        case 'price':
+          valA = a['price'] ?? 0;
+          valB = b['price'] ?? 0;
+          break;
+        case 'pin':
+          valA = a['pin'] ?? '';
+          valB = b['pin'] ?? '';
+          break;
+        default:
+          valA = a['pin'] ?? '';
+          valB = b['pin'] ?? '';
+      }
+      return _sortAscending
+          ? Comparable.compare(valA, valB)
+          : Comparable.compare(valB, valA);
+    });
+
+    setState(() {
+      archivedCards = filtered;
+    });
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+      _loadArchive();
+    }
+  }
+
+  Future<ArchiveStats> _calculateStats() async {
+    final allCards = _allArchivedCards;
+    double totalValue = 0;
+    final networkMap = <String, int>{};
+    final categoryMap = <String, int>{};
+    double totalAge = 0;
+    final now = DateTime.now();
+
+    for (var card in allCards) {
+      final price = (card['price'] ?? 0).toDouble();
+      totalValue += price;
+      
+      final netId = card['networkId'] as String? ?? 'غير معروف';
+      networkMap[netId] = (networkMap[netId] ?? 0) + 1;
+      
+      final catId = card['categoryId'] as String? ?? 'غير معروف';
+      categoryMap[catId] = (categoryMap[catId] ?? 0) + 1;
+      
+      final ts = card['archivedAt'] as Timestamp?;
+      if (ts != null) {
+        totalAge += now.difference(ts.toDate()).inDays.toDouble();
       }
     }
-    final toRemove = categoryCountControllers.keys
-        .toList()
-        .where((k) => !selectedCategoryIds.contains(k));
-    for (final k in toRemove) {
-      categoryCountControllers[k]?.dispose();
-      categoryCountControllers.remove(k);
-    }
-    _updateTotalCount();
+
+    final stats = ArchiveStats(
+      totalCards: allCards.length,
+      totalFrozenValue: totalValue,
+      categoriesCount: categoryMap.length,
+      averageAgeDays: allCards.isEmpty ? 0 : totalAge / allCards.length,
+      cardsByNetwork: networkMap,
+      cardsByCategory: categoryMap,
+    );
+
+    setState(() => _stats = stats);
+    return stats;
   }
 
-  void _updateTotalCount() {
-    int total = 0;
-    for (final catId in selectedCategoryIds) {
-      final cnt = int.tryParse(categoryCountControllers[catId]?.text ?? '0') ?? 0;
-      total += cnt;
-    }
-    totalCountController.text = total.toString();
-  }
-
-  // --- القوالب ---
-  Future<void> _loadTemplates() async {
-    final snap = await _firestore
-        .collection('print_templates')
+  Future<void> _loadRecycleBin() async {
+    final snap = await _firestore.collection('cards')
+        .where('status', isEqualTo: 'recycle_bin')
         .where('agentPhone', isEqualTo: sys.currentUserPhone)
         .get();
-    setState(() => savedTemplates = snap.docs.map((d) => d.data()).toList());
+    setState(() => _recycleBinCards = snap.docs);
   }
 
-  Future<void> _saveCurrentAsTemplate(String name) async {
-    await _firestore.collection('print_templates').add({
-      'agentPhone': sys.currentUserPhone,
-      'name': name,
-      'textXPercent': textX.value,
-      'textYPercent': textY.value,
-      'fontSize': fontSize.value,
-      'textColor': textColor.value.value,
-      'copiesPerCard': copiesPerCard.text,
-      'perRow': perRow.text,
-      'perColumn': perColumn.text,
-      'widthMM': widthMM.text,
-      'heightMM': heightMM.text,
-      'horizontalGap': horizontalGap.text,
-      'verticalGap': verticalGap.text,
-      'pageLeftMargin': pageLeftMargin.text,
-      'pageTopMargin': pageTopMargin.text,
-    });
-    _loadTemplates();
-  }
-
-  void _applyTemplate(Map<String, dynamic> tmpl) {
-    textX.value = (tmpl['textXPercent'] ?? 50).toDouble();
-    textY.value = (tmpl['textYPercent'] ?? 50).toDouble();
-    fontSize.value = (tmpl['fontSize'] ?? 14).toDouble();
-    textColor.value = Color(tmpl['textColor'] ?? Colors.black.value);
-    copiesPerCard.text = (tmpl['copiesPerCard'] ?? "1").toString();
-    perRow.text = (tmpl['perRow'] ?? "3").toString();
-    perColumn.text = (tmpl['perColumn'] ?? "17").toString();
-    widthMM.text = (tmpl['widthMM'] ?? "70.0").toString();
-    heightMM.text = (tmpl['heightMM'] ?? "17.4").toString();
-    horizontalGap.text = (tmpl['horizontalGap'] ?? "0.0").toString();
-    verticalGap.text = (tmpl['verticalGap'] ?? "0.0").toString();
-    pageLeftMargin.text = (tmpl['pageLeftMargin'] ?? "5.0").toString();
-    pageTopMargin.text = (tmpl['pageTopMargin'] ?? "5.0").toString();
-    _syncPreview();
-  }
-
-  void _loadCategoryTemplate(String categoryId) {
-    final cat = selectedCategories[categoryId];
-    if (cat == null) return;
-    final b64 = cat['templateBase64'] as String?;
-    if (b64 != null && b64.isNotEmpty) {
-      _categoryTemplates[categoryId] = base64Decode(b64);
-    } else {
-      _categoryTemplates.remove(categoryId);
-    }
-    _syncPreview();
-  }
-
-  // --- الأرشيف ---
-  Future<void> _loadArchive() async {
-    final snapshot = await _firestore
-        .collection('cards')
-        .where('status', isEqualTo: 'archived')
+  Future<void> _loadActivityLogs() async {
+    final snap = await _firestore.collection('activity_logs')
+        .where('agentPhone', isEqualTo: sys.currentUserPhone)
+        .orderBy('timestamp', descending: true)
+        .limit(50)
         .get();
-    setState(() => archivedCards = snapshot.docs);
+    setState(() {
+      _activityLogs = snap.docs.map((d) {
+        final data = d.data() as Map<String, dynamic>;
+        return ActivityLogEntry(
+          id: d.id,
+          action: data['action'] ?? '',
+          details: data['details'] ?? '',
+          agentPhone: data['agentPhone'] ?? '',
+          timestamp: (data['timestamp'] as Timestamp).toDate(),
+        );
+      }).toList();
+    });
   }
 
+  // ========== عمليات الكرت الواحد ==========
   Future<void> _restoreCard(QueryDocumentSnapshot card) async {
+    _play('click');
     final ok = await _showConfirm("استرجاع الكرت", "هل تريد إعادة هذا الكرت إلى حالة الطباعة؟");
     if (!ok) return;
-    await card.reference.update({'status': 'print_ready'});
-    _loadArchive();
-    _loadAllPrintReadyCards();
+    await card.reference.update({
+      'status': 'print_ready',
+      'restoredAt': FieldValue.serverTimestamp(),
+    });
+    _play('success');
+    _logActivity('restore_card', 'pin: ${card['pin']}');
+    _loadArchive(reset: true);
+  }
+
+  Future<void> _moveToRecycleBin(QueryDocumentSnapshot card) async {
+    _play('click');
+    final ok = await _showConfirm("نقل إلى سلة المهملات", "سينتقل الكرت إلى سلة المهملات لمدة $_recycleBinDays يوماً قبل الحذف النهائي.");
+    if (!ok) return;
+    await card.reference.update({
+      'status': 'recycle_bin',
+      'movedToBinAt': FieldValue.serverTimestamp(),
+    });
+    _play('success');
+    _logActivity('move_to_bin', 'pin: ${card['pin']}');
+    _loadArchive(reset: true);
+    _loadRecycleBin();
   }
 
   Future<void> _deleteCardPermanently(QueryDocumentSnapshot card) async {
+    _play('click');
     final ok = await _showConfirm("حذف نهائي", "سيتم حذف الكرت نهائياً. استمر؟");
     if (!ok) return;
     await card.reference.delete();
-    _loadArchive();
+    _play('success');
+    _logActivity('delete_card_permanently', 'pin: ${card['pin']}');
+    _loadArchive(reset: true);
+    _loadRecycleBin();
   }
 
   Future<void> _editCardPin(QueryDocumentSnapshot card) async {
+    _play('click');
     final ctrl = TextEditingController(text: card['pin']);
     final res = await showDialog<String>(
       context: context,
@@ -303,33 +418,171 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     );
     if (res != null && res.isNotEmpty) {
       await card.reference.update({'pin': res});
-      _loadArchive();
+      _play('success');
+      _logActivity('edit_card', 'old: ${card['pin']}, new: $res');
+      _loadArchive(reset: true);
     }
+  }
+
+  // ========== عمليات جماعية ==========
+  Future<void> _restoreSelected() async {
+    if (_selectedCardIds.isEmpty) return;
+    final ok = await _showConfirm("استرجاع المحدد", "سيتم استرجاع ${_selectedCardIds.length} كرت. متأكد؟");
+    if (!ok) return;
+    final batch = _firestore.batch();
+    for (var card in archivedCards) {
+      if (_selectedCardIds.contains(card.id)) {
+        batch.update(card.reference, {
+          'status': 'print_ready',
+          'restoredAt': FieldValue.serverTimestamp(),
+        });
+      }
+    }
+    await batch.commit();
+    _play('success');
+    _logActivity('restore_batch', '${_selectedCardIds.length} cards');
+    _selectedCardIds.clear();
+    _isSelectionMode = false;
+    _loadArchive(reset: true);
+  }
+
+  Future<void> _deleteSelected() async {
+    if (_selectedCardIds.isEmpty) return;
+    final ok = await _showConfirm("حذف المحدد", "سيتم حذف ${_selectedCardIds.length} كرت نهائياً. متأكد؟");
+    if (!ok) return;
+    final batch = _firestore.batch();
+    for (var card in archivedCards) {
+      if (_selectedCardIds.contains(card.id)) {
+        batch.delete(card.reference);
+      }
+    }
+    await batch.commit();
+    _play('success');
+    _logActivity('delete_batch', '${_selectedCardIds.length} cards');
+    _selectedCardIds.clear();
+    _isSelectionMode = false;
+    _loadArchive(reset: true);
   }
 
   Future<void> _restoreAll() async {
+    _play('click');
     final ok = await _showConfirm("استرجاع الكل", "سيتم إعادة جميع الكروت في الأرشيف إلى حالة الطباعة. متأكد؟");
     if (!ok) return;
     final batch = _firestore.batch();
-    for (final card in archivedCards) {
+    for (final card in _allArchivedCards) {
       batch.update(card.reference, {'status': 'print_ready'});
     }
     await batch.commit();
-    _loadArchive();
-    _loadAllPrintReadyCards();
+    _play('success');
+    _logActivity('restore_all', '${_allArchivedCards.length} cards');
+    _loadArchive(reset: true);
   }
 
   Future<void> _deleteAllArchived() async {
+    _play('click');
     final ok = await _showConfirm("حذف الكل", "سيتم حذف جميع الكروت في الأرشيف نهائياً. متأكد؟");
     if (!ok) return;
     final batch = _firestore.batch();
-    for (final card in archivedCards) {
+    for (final card in _allArchivedCards) {
       batch.delete(card.reference);
     }
     await batch.commit();
-    _loadArchive();
+    _play('success');
+    _logActivity('delete_all_archived', '${_allArchivedCards.length} cards');
+    _loadArchive(reset: true);
   }
 
+  // ========== تصدير CSV ==========
+  Future<void> _exportToCsv() async {
+    final rows = <List<String>>[
+      ['رقم الكرت', 'الشبكة', 'الفئة', 'السعر', 'تاريخ الأرشفة'],
+    ];
+    for (var card in archivedCards) {
+      rows.add([
+        card['pin'] ?? '',
+        card['networkId'] ?? '',
+        card['categoryId'] ?? '',
+        '${card['price'] ?? 0}',
+        ((card['archivedAt'] as Timestamp?)?.toDate() ?? DateTime.now()).toString(),
+      ]);
+    }
+    final csvData = const ListToCsvConverter().convert(rows);
+    // يمكن حفظها أو مشاركتها
+    _play('success');
+    _showToast('تم تجهيز ملف CSV');
+  }
+
+  // ========== بطاقة تفاصيل الكرت ==========
+  void _showCardDetail(QueryDocumentSnapshot card) {
+    final pin = card['pin'] ?? '---';
+    final networkId = card['networkId'] ?? 'غير معروف';
+    final categoryId = card['categoryId'] ?? 'غير معروف';
+    final price = card['price'] ?? 0;
+    final createdAt = (card['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+    final archivedAt = (card['archivedAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        minChildSize: 0.3,
+        expand: false,
+        builder: (context, scrollController) {
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: Column(
+              children: [
+                const SizedBox(height: 12),
+                Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+                const SizedBox(height: 16),
+                Text(pin, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 3)),
+                const Divider(),
+                Expanded(
+                  child: ListView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      _detailRow('الشبكة', networkId),
+                      _detailRow('الفئة', categoryId),
+                      _detailRow('السعر', '$price ريال'),
+                      _detailRow('تاريخ التوليد', DateFormat('yyyy-MM-dd HH:mm').format(createdAt)),
+                      _detailRow('تاريخ الأرشفة', DateFormat('yyyy-MM-dd HH:mm').format(archivedAt)),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          ElevatedButton.icon(onPressed: () { Navigator.pop(context); _restoreCard(card); }, icon: const Icon(Icons.restore), label: const Text('استرجاع')),
+                          ElevatedButton.icon(onPressed: () { Navigator.pop(context); _deleteCardPermanently(card); }, icon: const Icon(Icons.delete), label: const Text('حذف'), style: ElevatedButton.styleFrom(backgroundColor: Colors.red)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+          Text(value, style: const TextStyle(fontSize: 16)),
+        ],
+      ),
+    );
+  }
+
+  // ========== إعدادات الحذف التلقائي ==========
   Future<void> _loadAutoDeleteSettings() async {
     final doc = await _firestore.collection('settings').doc('archive_auto_delete').get();
     if (doc.exists) {
@@ -349,464 +602,6 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("تم حفظ إعدادات الحذف التلقائي")));
     }
-  }
-
-  Future<bool> _showConfirm(String title, String msg) async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (_) => AlertDialog(
-            title: Text(title),
-            content: Text(msg),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("إلغاء")),
-              ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text("تأكيد")),
-            ],
-          ),
-        ) ??
-        false;
-  }
-
-  // --- سجل الطباعة ---
-  Future<void> _loadPrintLogs() async {
-    final snap = await _firestore
-        .collection('print_logs')
-        .where('agentPhone', isEqualTo: sys.currentUserPhone)
-        .orderBy('timestamp', descending: true)
-        .limit(20)
-        .get();
-    setState(() => printLogs = snap.docs.map((d) => d.data()).toList());
-  }
-
-  Future<void> _logPrintAction(String type, int count) async {
-    await _firestore.collection('print_logs').add({
-      'agentPhone': sys.currentUserPhone,
-      'networkId': selectedNetworkId ?? '',
-      'categoryIds': selectedCategoryIds.toList(),
-      'count': count,
-      'type': type,
-      'timestamp': FieldValue.serverTimestamp(),
-    });
-    _loadPrintLogs();
-  }
-
-  // --- طباعة PDF (تستخدم PreciseLayoutEngine و pw.Stack) ---
-  Future<Uint8List> generatePdf(Map<String, dynamic> snap) async {
-    final int perRowVal = snap["row"];
-    final int perColVal = snap["col"];
-    final double w = snap["w"];
-    final double h = snap["h"];
-    final int copies = snap["copies"];
-    final double hGap = snap["hGap"];
-    final double vGap = snap["vGap"];
-    final double marginL = snap["marginL"];
-    final double marginT = snap["marginT"];
-    final int cardsPerPage = perRowVal * perColVal;
-
-    if (cardsPerPage <= 0) {
-      throw Exception("إعدادات الطباعة غير صحيحة");
-    }
-
-    final pdf = pw.Document();
-
-    List<QueryDocumentSnapshot> cardsToPrint = [];
-    for (final catId in selectedCategoryIds) {
-      final requested = int.tryParse(categoryCountControllers[catId]?.text ?? '0') ?? 0;
-      final catCards = allPrintReadyCards
-          .where((c) => c['categoryId'] == catId)
-          .take(requested)
-          .toList();
-      for (var card in catCards) {
-        for (int i = 0; i < copies; i++) {
-          cardsToPrint.add(card);
-        }
-      }
-    }
-
-    final totalPages = (cardsToPrint.length / cardsPerPage).ceil();
-    for (int page = 0; page < totalPages; page++) {
-      final pageCards = cardsToPrint.skip(page * cardsPerPage).take(cardsPerPage).toList();
-      pdf.addPage(
-        pw.Page(
-          pageFormat: PdfPageFormat.a4,
-          margin: pw.EdgeInsets.zero, // هامش الصفحة صفر للتحكم اليدوي
-          build: (context) {
-            return pw.Stack(
-              children: List.generate(pageCards.length, (index) {
-                final card = pageCards[index];
-                final catId = card['categoryId'] as String;
-                final pin = card['pin'] ?? '---';
-                final templateBytes = getTemplate(catId);
-
-                final col = index % perRowVal;
-                final row = index ~/ perRowVal;
-
-                final left = PreciseLayoutEngine.getAbsolutePos(
-                  col.toDouble(), w, hGap, marginL,
-                );
-                final top = PreciseLayoutEngine.getAbsolutePos(
-                  row.toDouble(), h, vGap, marginT,
-                );
-
-                return pw.Positioned(
-                  left: left / PreciseLayoutEngine.mmToPx * PdfPageFormat.mm,
-                  top: top / PreciseLayoutEngine.mmToPx * PdfPageFormat.mm,
-                  child: pw.Container(
-                    width: w * PdfPageFormat.mm,
-                    height: h * PdfPageFormat.mm,
-                    child: pw.Stack(
-                      children: [
-                        if (templateBytes != null)
-                          pw.Image(pw.MemoryImage(templateBytes), fit: pw.BoxFit.fill),
-                        pw.Positioned(
-                          left: (snap["x"] / 100) * w * PdfPageFormat.mm,
-                          top: (snap["y"] / 100) * h * PdfPageFormat.mm,
-                          child: pw.Text(
-                            pin,
-                            style: pw.TextStyle(
-                              fontSize: snap["font"],
-                              color: PdfColor.fromInt((snap["color"] as Color).value),
-                            ),
-                          ),
-                        )
-                      ],
-                    ),
-                  ),
-                );
-              }),
-            );
-          },
-        ),
-      );
-    }
-    return pdf.save();
-  }
-
-  void showPrintDialog() {
-    final total = int.tryParse(totalCountController.text) ?? 0;
-    if (total <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("الرجاء تحديد عدد الكروت")),
-      );
-      return;
-    }
-
-    final snapshot = _captureSnapshot();
-
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("تأكيد الطباعة"),
-        content: Text("سيتم طباعة $total كرت. اختر الإجراء:"),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("إلغاء")),
-          TextButton(
-            child: const Text("معاينة فقط"),
-            onPressed: () async {
-              Navigator.pop(context);
-              final pdf = await generatePdf(snapshot);
-              await Printing.layoutPdf(onLayout: (_) => pdf);
-              _logPrintAction('view', total);
-            },
-          ),
-          TextButton(
-            child: const Text("طباعة فقط"),
-            onPressed: () async {
-              Navigator.pop(context);
-              final pdf = await generatePdf(snapshot);
-              await Printing.layoutPdf(onLayout: (_) => pdf);
-              _logPrintAction('print_only', total);
-            },
-          ),
-          TextButton(
-            child: const Text("طباعة وأرشفة"),
-            onPressed: () async {
-              Navigator.pop(context);
-              final pdf = await generatePdf(snapshot);
-              await Printing.layoutPdf(onLayout: (_) => pdf);
-
-              final batch = _firestore.batch();
-              for (final catId in selectedCategoryIds) {
-                final requested = int.tryParse(categoryCountControllers[catId]?.text ?? '0') ?? 0;
-                final catCards = allPrintReadyCards
-                    .where((c) => c['categoryId'] == catId)
-                    .take(requested)
-                    .toList();
-                for (final c in catCards) {
-                  batch.update(c.reference, {'status': 'archived'});
-                }
-                final netRef = _firestore.collection('networks').doc(selectedNetworkId);
-                final netSnap = await netRef.get();
-                final data = netSnap.data();
-                if (data != null) {
-                  List cats = List<Map<String, dynamic>>.from(data['categories'] ?? []);
-                  final idx = cats.indexWhere((e) => e['id'] == catId);
-                  if (idx != -1) {
-                    final curr = cats[idx]['stock'] ?? 0;
-                    cats[idx]['stock'] = (curr as int) - catCards.length;
-                    batch.update(netRef, {'categories': cats});
-                  }
-                }
-              }
-              await batch.commit();
-              _loadAllPrintReadyCards();
-              _loadArchive();
-              _rebuildCategoryCounts();
-              _logPrintAction('print_archive', total);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- اختصارات المواضع ---
-  Widget _positionShortcuts() {
-    return Wrap(
-      spacing: 8,
-      children: [
-        _shortcutBtn("↖", 10, 10),
-        _shortcutBtn("↑", 50, 10),
-        _shortcutBtn("↗", 90, 10),
-        _shortcutBtn("←", 10, 50),
-        _shortcutBtn("●", 50, 50),
-        _shortcutBtn("→", 90, 50),
-        _shortcutBtn("↙", 10, 90),
-        _shortcutBtn("↓", 50, 90),
-        _shortcutBtn("↘", 90, 90),
-      ],
-    );
-  }
-
-  Widget _shortcutBtn(String label, double x, double y) {
-    return GestureDetector(
-      onTap: () {
-        textX.value = x;
-        textY.value = y;
-        _syncPreview();
-      },
-      child: Container(
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(label, style: const TextStyle(fontSize: 18)),
-      ),
-    );
-  }
-
-  // --- معاينة مطابقة 100% للطباعة (تستخدم LayoutEngine القديم مؤقتاً) ---
-  // (نفس المعاينة السابقة، لأنها لا تعتمد على الفجوات المطلقة، سنبقيها كما هي)
-  Widget _buildEnhancedPreview() {
-    if (selectedCategoryIds.isEmpty) return const SizedBox.shrink();
-
-    final w = double.tryParse(widthMM.text) ?? 70.0;
-    final h = double.tryParse(heightMM.text) ?? 17.4;
-    final pRow = int.tryParse(perRow.text) ?? 3;
-    final pCol = int.tryParse(perColumn.text) ?? 17;
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text("محاكاة صفحة (${pRow}x$pCol)", style: Theme.of(context).textTheme.titleMedium),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.fullscreen),
-                  onPressed: () => _showFullScreenPreview(),
-                  tooltip: "معاينة كاملة",
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 300,
-              child: InteractiveViewer(
-                minScale: 0.5,
-                maxScale: 4.0,
-                child: Container(
-                  width: w * pRow * PreciseLayoutEngine.mmToPx,
-                  height: h * pCol * PreciseLayoutEngine.mmToPx,
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade400),
-                    color: Colors.white,
-                  ),
-                  child: _buildFakeGrid(pRow, pCol, w, h),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildFakeGrid(int perRowVal, int perColVal, double wMM, double hMM) {
-    final children = <Widget>[];
-    for (int r = 0; r < perColVal; r++) {
-      for (int c = 0; c < perRowVal; c++) {
-        final left = c * wMM * PreciseLayoutEngine.mmToPx;
-        final top = r * hMM * PreciseLayoutEngine.mmToPx;
-        children.add(
-          Positioned(
-            left: left,
-            top: top,
-            width: wMM * PreciseLayoutEngine.mmToPx,
-            height: hMM * PreciseLayoutEngine.mmToPx,
-            child: _buildSingleFakeCard(wMM, hMM, "####"),
-          ),
-        );
-      }
-    }
-    return Stack(children: children);
-  }
-
-  Widget _buildSingleFakeCard(double wMM, double hMM, String pin) {
-    final templateBytes = getTemplate(selectedCategoryIds.isNotEmpty ? selectedCategoryIds.first : '');
-    // استخدام LayoutEngine القديم للمعاينة العادية (دون فجوات)
-    final pos = Offset(
-      (textX.value / 100) * wMM * PreciseLayoutEngine.mmToPx,
-      (textY.value / 100) * hMM * PreciseLayoutEngine.mmToPx,
-    );
-
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300),
-        image: templateBytes != null
-            ? DecorationImage(image: MemoryImage(templateBytes), fit: BoxFit.fill)
-            : null,
-      ),
-      child: Stack(
-        children: [
-          CustomPaint(
-            size: Size(wMM * PreciseLayoutEngine.mmToPx, hMM * PreciseLayoutEngine.mmToPx),
-            painter: _GuidePainter(),
-          ),
-          Positioned(
-            left: pos.dx,
-            top: pos.dy,
-            child: GestureDetector(
-              onPanUpdate: (details) {
-                setState(() {
-                  textX.value += details.delta.dx / (wMM * PreciseLayoutEngine.mmToPx) * 100;
-                  textY.value += details.delta.dy / (hMM * PreciseLayoutEngine.mmToPx) * 100;
-                  textX.value = textX.value.clamp(0, 100);
-                  textY.value = textY.value.clamp(0, 100);
-                });
-                _syncPreview();
-              },
-              child: Container(
-                color: Colors.white.withOpacity(0.7),
-                child: Text(
-                  pin,
-                  style: TextStyle(fontSize: fontSize.value * 0.8, color: textColor.value),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showFullScreenPreview() {
-    final w = double.tryParse(widthMM.text) ?? 70.0;
-    final h = double.tryParse(heightMM.text) ?? 17.4;
-    final pRow = int.tryParse(perRow.text) ?? 3;
-    final pCol = int.tryParse(perColumn.text) ?? 17;
-
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => Scaffold(
-          appBar: AppBar(title: const Text("معاينة كاملة")),
-          body: InteractiveViewer(
-            minScale: 0.2,
-            maxScale: 5.0,
-            child: Container(
-              width: w * pRow * PreciseLayoutEngine.mmToPx,
-              height: h * pCol * PreciseLayoutEngine.mmToPx,
-              color: Colors.white,
-              child: _buildFakeGrid(pRow, pCol, w, h),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // --- الأرشيف ---
-  Widget _buildArchiveTab() {
-    final filtered = archiveSearchQuery.isEmpty
-        ? archivedCards
-        : archivedCards
-            .where((c) => (c['pin'] ?? '').toLowerCase().contains(archiveSearchQuery.toLowerCase()))
-            .toList();
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: TextField(
-            decoration: const InputDecoration(
-              labelText: 'بحث عن كرت',
-              prefixIcon: Icon(Icons.search),
-              border: OutlineInputBorder(),
-            ),
-            onChanged: (v) => setState(() => archiveSearchQuery = v),
-          ),
-        ),
-        Row(
-          children: [
-            Expanded(child: Text('${filtered.length} كرت في الأرشيف')),
-            TextButton.icon(
-              onPressed: _showAutoDeleteSettings,
-              icon: const Icon(Icons.timer),
-              label: const Text("الحذف التلقائي"),
-            ),
-          ],
-        ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            ElevatedButton.icon(
-              onPressed: _restoreAll,
-              icon: const Icon(Icons.restore),
-              label: const Text("استرجاع الكل"),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            ),
-            ElevatedButton.icon(
-              onPressed: _deleteAllArchived,
-              icon: const Icon(Icons.delete_sweep),
-              label: const Text("حذف الكل"),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            ),
-          ],
-        ),
-        Expanded(
-          child: ListView.builder(
-            itemCount: filtered.length,
-            itemBuilder: (_, index) {
-              final card = filtered[index];
-              return ListTile(
-                title: Text(card['pin'] ?? '---'),
-                subtitle: Text(card['categoryId'] ?? ''),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(icon: const Icon(Icons.edit), onPressed: () => _editCardPin(card)),
-                    IconButton(icon: const Icon(Icons.restore), onPressed: () => _restoreCard(card)),
-                    IconButton(icon: const Icon(Icons.delete), onPressed: () => _deleteCardPermanently(card)),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
   }
 
   void _showAutoDeleteSettings() {
@@ -839,296 +634,15 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
     );
   }
 
-  // --- تبويب الطباعة ---
-  Widget _buildPrintTab() {
-    final theme = Theme.of(context);
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _section("اختيار الكروت", Column(children: [
-            DropdownButtonFormField<String>(
-              value: selectedNetworkId,
-              items: networks.map((n) => DropdownMenuItem(value: n.id, child: Text(n['name']))).toList(),
-              decoration: const InputDecoration(labelText: 'اختر الشبكة', border: OutlineInputBorder()),
-              onChanged: (val) {
-                setState(() {
-                  selectedNetworkId = val;
-                  selectedCategoryIds.clear();
-                  selectedCategories.clear();
-                  _categoryTemplates.clear();
-                  categoryCountControllers.forEach((_, ctrl) => ctrl.dispose());
-                  categoryCountControllers.clear();
-                  totalCountController.text = "0";
-                });
-              },
-            ),
-            if (selectedNetworkId != null)
-              ...(networkCategories[selectedNetworkId] ?? []).map((cat) {
-                final ready = allPrintReadyCards.where((c) => c['categoryId'] == cat['id']).length;
-                final selected = selectedCategoryIds.contains(cat['id']);
-                return Column(
-                  children: [
-                    CheckboxListTile(
-                      title: Text("${cat['name']} (مخزون: ${cat['stock'] ?? 0}، جاهز: $ready)"),
-                      value: selected,
-                      onChanged: (v) {
-                        setState(() {
-                          if (v == true) {
-                            selectedCategoryIds.add(cat['id']);
-                            selectedCategories[cat['id']] = cat;
-                            _loadCategoryTemplate(cat['id']);
-                          } else {
-                            selectedCategoryIds.remove(cat['id']);
-                            selectedCategories.remove(cat['id']);
-                            _categoryTemplates.remove(cat['id']);
-                          }
-                          _rebuildCategoryCounts();
-                        });
-                      },
-                    ),
-                    if (selected)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: TextField(
-                          controller: categoryCountControllers[cat['id']],
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: "عدد الكروت من هذه الفئة",
-                            border: OutlineInputBorder(),
-                          ),
-                          onChanged: (_) => _updateTotalCount(),
-                        ),
-                      ),
-                  ],
-                );
-              }),
-            const SizedBox(height: 8),
-            TextField(
-              controller: totalCountController,
-              readOnly: true,
-              decoration: const InputDecoration(labelText: "إجمالي الكروت المطلوبة", border: OutlineInputBorder()),
-            ),
-          ])),
-          _section("المعاينة", _buildEnhancedPreview()),
-          _section("التعديل والتحكم", Column(children: [
-            _positionShortcuts(),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(child: slider("الأفقي %", textX, 100)),
-                const SizedBox(width: 10),
-                Expanded(child: slider("الرأسي %", textY, 100)),
-              ],
-            ),
-            slider("حجم الخط", fontSize, 40),
-            const SizedBox(height: 8),
-            _buildColorPickerButton(),
-            const SizedBox(height: 12),
-            Text("قوالب الطباعة", style: theme.textTheme.titleMedium),
-            const SizedBox(height: 4),
-            Wrap(
-              children: savedTemplates.map((t) => TextButton(
-                onPressed: () => _applyTemplate(t),
-                child: Text(t['name'] ?? ''),
-              )).toList(),
-            ),
-            TextButton.icon(
-              onPressed: _saveTemplateDialog,
-              icon: const Icon(Icons.save),
-              label: const Text("حفظ الإعدادات الحالية كقالب"),
-            ),
-          ])),
-          _section("إعدادات التخطيط", Column(children: [
-            Row(
-              children: [
-                Expanded(child: _textField(copiesPerCard, "نسخ لكل كرت")),
-                const SizedBox(width: 10),
-                Expanded(child: _textField(perRow, "كروت/صف")),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(child: _textField(perColumn, "كروت/عمود")),
-                const SizedBox(width: 10),
-                Expanded(child: _textField(widthMM, "عرض (مم)")),
-              ],
-            ),
-            const SizedBox(height: 10),
-            _textField(heightMM, "ارتفاع (مم)"),
-          ])),
-          _section("الهوامش والفجوات", Column(children: [
-            Row(
-              children: [
-                Expanded(child: _textField(horizontalGap, "فجوة أفقية (مم)")),
-                const SizedBox(width: 10),
-                Expanded(child: _textField(verticalGap, "فجوة عمودية (مم)")),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(child: _textField(pageLeftMargin, "هامش يسار (مم)")),
-                const SizedBox(width: 10),
-                Expanded(child: _textField(pageTopMargin, "هامش أعلى (مم)")),
-              ],
-            ),
-          ])),
-          const SizedBox(height: 24),
-          Center(
-            child: ElevatedButton.icon(
-              onPressed: showPrintDialog,
-              icon: const Icon(Icons.print, color: Colors.white),
-              label: const Text("بدء الطباعة"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.teal,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          _section("سجل آخر عمليات الطباعة", printLogs.isEmpty
-              ? const Text("لا توجد عمليات بعد")
-              : Column(
-                  children: printLogs.take(5).map((log) => ListTile(
-                    title: Text("${log['count']} كرت - ${_logType(log['type'])}"),
-                    subtitle: Text(_logTime(log['timestamp'])),
-                  )).toList(),
-                )),
-        ],
-      ),
-    );
+  void _showToast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Widget _section(String title, Widget child) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          child,
-        ],
-      ),
-    );
-  }
-
-  Widget _buildColorPickerButton() {
-    return Row(
-      children: [
-        Expanded(
-          child: ElevatedButton.icon(
-            onPressed: () async {
-              Color tempColor = textColor.value;
-              await showDialog(
-                context: context,
-                builder: (_) => AlertDialog(
-                  title: const Text("اختيار لون النص"),
-                  content: ColorPicker(
-                    pickerColor: textColor.value,
-                    onColorChanged: (c) => tempColor = c,
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text("إلغاء"),
-                    ),
-                    ElevatedButton(
-                      onPressed: () {
-                        textColor.value = tempColor;
-                        _syncPreview();
-                        Navigator.pop(context);
-                      },
-                      child: const Text("تعيين"),
-                    ),
-                  ],
-                ),
-              );
-            },
-            icon: Icon(Icons.colorize, color: textColor.value),
-            label: const Text("اختيار اللون"),
-          ),
-        ),
-        const SizedBox(width: 10),
-        ElevatedButton(
-          onPressed: () {
-            textColor.value = Colors.black;
-            _syncPreview();
-          },
-          child: const Text("إلغاء التعيين"),
-        ),
-      ],
-    );
-  }
-
-  void _saveTemplateDialog() {
-    final ctrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("حفظ كقالب"),
-        content: TextField(controller: ctrl, decoration: const InputDecoration(labelText: "اسم القالب")),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("إلغاء")),
-          ElevatedButton(onPressed: () { _saveCurrentAsTemplate(ctrl.text); Navigator.pop(context); }, child: const Text("حفظ")),
-        ],
-      ),
-    );
-  }
-
-  String _logType(dynamic type) {
-    switch (type) {
-      case 'print_archive': return 'طباعة وأرشفة';
-      case 'print_only': return 'طباعة فقط';
-      case 'view': return 'معاينة';
-      default: return '$type';
-    }
-  }
-
-  String _logTime(dynamic ts) {
-    if (ts is Timestamp) return ts.toDate().toString().substring(0, 19);
-    return '';
-  }
-
-  Widget _textField(TextEditingController controller, String label) {
-    return TextField(
-      controller: controller,
-      keyboardType: TextInputType.number,
-      decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
-    );
-  }
-
-  Widget slider(String label, ValueNotifier<double> notifier, double max) {
-    return ValueListenableBuilder(
-      valueListenable: notifier,
-      builder: (_, value, __) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("$label: ${value.toStringAsFixed(1)}"),
-            Slider(
-              value: value,
-              max: max,
-              onChanged: (v) {
-                notifier.value = v;
-                _syncPreview();
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
+  // ========== بناء الواجهة ==========
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const CustomHeader(title: 'الطباعة والأرشيف'),
+      appBar: const CustomHeader(title: 'الأرشيف المُتقدم'),
       drawer: CustomAgentDrawer(
         agentName: sys.currentUserName,
         phoneNumber: sys.currentUserPhone,
@@ -1138,45 +652,463 @@ class _PrintSectionScreenState extends State<PrintSectionScreen>
       body: Column(
         children: [
           Container(
-            color: Colors.teal.shade700,
+            color: Theme.of(context).primaryColor.withOpacity(0.8),
             child: TabBar(
-              controller: _tabController,
+              controller: _mainTabController,
               labelColor: Colors.white,
               unselectedLabelColor: Colors.white70,
-              indicatorColor: Colors.orange,
-              tabs: const [
-                Tab(icon: Icon(Icons.print), text: "الطباعة"),
-                Tab(icon: Icon(Icons.archive), text: "الأرشيف"),
+              indicatorColor: Colors.white,
+              tabs: [
+                const Tab(icon: Icon(Icons.archive), text: "الأرشيف"),
+                const Tab(icon: Icon(Icons.analytics), text: "التحليلات"),
+                const Tab(icon: Icon(Icons.history), text: "سجل النشاطات"),
+                Tab(
+                  icon: Stack(
+                    children: [
+                      const Icon(Icons.delete),
+                      if (_recycleBinCards.isNotEmpty)
+                        Positioned(
+                          right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(6)),
+                            constraints: const BoxConstraints(minWidth: 12, minHeight: 12),
+                            child: Text('${_recycleBinCards.length}', style: const TextStyle(fontSize: 8, color: Colors.white), textAlign: TextAlign.center),
+                          ),
+                        ),
+                    ],
+                  ),
+                  text: "المهملات",
+                ),
               ],
             ),
           ),
           Expanded(
             child: TabBarView(
-              controller: _tabController,
-              children: [_buildPrintTab(), _buildArchiveTab()],
+              controller: _mainTabController,
+              children: [
+                _buildArchiveTab(),
+                _buildAnalyticsTab(),
+                _buildActivityLogTab(),
+                _buildRecycleBinTab(),
+              ],
             ),
           ),
         ],
       ),
     );
   }
-}
 
-// رسّام خطوط إرشادية
-class _GuidePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.grey.withOpacity(0.5)
-      ..strokeWidth = 0.5;
-    for (double p = 0.25; p <= 0.75; p += 0.25) {
-      final x = size.width * p;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-      final y = size.height * p;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+  // ========== تبويب الأرشيف الرئيسي ==========
+  Widget _buildArchiveTab() {
+    return Column(
+      children: [
+        // شريط الإحصائيات
+        if (_stats != null)
+          Container(
+            padding: const EdgeInsets.all(12),
+            color: Theme.of(context).primaryColor.withOpacity(0.05),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _statChip('الإجمالي', '${_stats!.totalCards}', Icons.inventory),
+                _statChip('القيمة', '${_stats!.totalFrozenValue.toStringAsFixed(0)} ريال', Icons.money),
+                _statChip('الفئات', '${_stats!.categoriesCount}', Icons.category),
+                _statChip('متوسط العمر', '${_stats!.averageAgeDays.toStringAsFixed(1)} يوم', Icons.timer),
+              ],
+            ),
+          ),
+        // شريط البحث والفلاتر
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            children: [
+              TextField(
+                decoration: InputDecoration(
+                  hintText: 'بحث عن كرت',
+                  prefixIcon: const Icon(Icons.search),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
+                onChanged: (v) {
+                  archiveSearchQuery = v;
+                  _applyFiltersAndSort();
+                },
+              ),
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _filterChip('الشبكة', _filterNetworkId != null, () => _showNetworkFilter()),
+                    const SizedBox(width: 8),
+                    _filterChip('الفئة', _filterCategoryId != null, () => _showCategoryFilter()),
+                    const SizedBox(width: 8),
+                    _filterChip('السعر', _priceFrom != null || _priceTo != null, _showPriceFilter),
+                    const SizedBox(width: 8),
+                    _filterChip('التاريخ', _dateRange != null, _showDateRangeFilter),
+                    const SizedBox(width: 8),
+                    _sortChip(),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        // أزرار العمليات الجماعية
+        if (_isSelectionMode)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: Theme.of(context).primaryColor.withOpacity(0.1),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton.icon(onPressed: _restoreSelected, icon: const Icon(Icons.restore), label: Text('استرجاع (${_selectedCardIds.length})')),
+                ElevatedButton.icon(onPressed: _deleteSelected, icon: const Icon(Icons.delete), label: Text('حذف (${_selectedCardIds.length})'), style: ElevatedButton.styleFrom(backgroundColor: Colors.red)),
+                ElevatedButton.icon(onPressed: _exportToCsv, icon: const Icon(Icons.download), label: const Text('تصدير CSV')),
+                TextButton(onPressed: () { setState(() { _selectedCardIds.clear(); _isSelectionMode = false; }); }, child: const Text('إلغاء')),
+              ],
+            ),
+          ),
+        // أزرار استرجاع/حذف الكل
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            ElevatedButton.icon(onPressed: _restoreAll, icon: const Icon(Icons.restore), label: const Text("استرجاع الكل"), style: ElevatedButton.styleFrom(backgroundColor: Colors.orange)),
+            ElevatedButton.icon(onPressed: _deleteAllArchived, icon: const Icon(Icons.delete_sweep), label: const Text("حذف الكل"), style: ElevatedButton.styleFrom(backgroundColor: Colors.red)),
+            TextButton.icon(onPressed: _showAutoDeleteSettings, icon: const Icon(Icons.timer), label: const Text("الحذف التلقائي")),
+            TextButton(onPressed: () => setState(() => _isSelectionMode = !_isSelectionMode), child: Text(_isSelectionMode ? 'إنهاء التحديد' : 'تحديد متعدد')),
+          ],
+        ),
+        // قائمة الكروت
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () => _loadArchive(reset: true),
+            child: archivedCards.isEmpty
+                ? ListView(children: const [Center(child: Padding(padding: EdgeInsets.all(32), child: Text('لا توجد كروت في الأرشيف')))])
+                : ListView.builder(
+                    controller: _scrollController,
+                    itemCount: archivedCards.length + (_hasMore ? 1 : 0),
+                    itemBuilder: (_, index) {
+                      if (index >= archivedCards.length) {
+                        return const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()));
+                      }
+                      final card = archivedCards[index];
+                      return ListTile(
+                        leading: _isSelectionMode
+                            ? Checkbox(
+                                value: _selectedCardIds.contains(card.id),
+                                onChanged: (v) {
+                                  setState(() {
+                                    if (v == true) _selectedCardIds.add(card.id);
+                                    else _selectedCardIds.remove(card.id);
+                                  });
+                                },
+                              )
+                            : const Icon(Icons.confirmation_number, color: Colors.teal),
+                        title: Text(card['pin'] ?? '---'),
+                        subtitle: Text(card['categoryId'] ?? ''),
+                        onTap: () => _isSelectionMode ? null : _showCardDetail(card),
+                        trailing: _isSelectionMode ? null : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(icon: const Icon(Icons.edit), onPressed: () => _editCardPin(card)),
+                            IconButton(icon: const Icon(Icons.restore), onPressed: () => _restoreCard(card)),
+                            IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _moveToRecycleBin(card)),
+                            IconButton(icon: const Icon(Icons.delete_forever, color: Colors.red), onPressed: () => _deleteCardPermanently(card)),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ========== تبويب التحليلات ==========
+  Widget _buildAnalyticsTab() {
+    if (_stats == null) return const Center(child: CircularProgressIndicator());
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('ملخص الأرشيف', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          _buildSummaryCards(),
+          const SizedBox(height: 24),
+          const Text('توزيع الكروت حسب الشبكات', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          _buildHorizontalBarChart(_stats!.cardsByNetwork),
+          const SizedBox(height: 24),
+          const Text('توزيع الكروت حسب الفئات', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          _buildHorizontalBarChart(_stats!.cardsByCategory),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryCards() {
+    return Row(
+      children: [
+        Expanded(child: _summaryCard('إجمالي الكروت', '${_stats!.totalCards}', Icons.inventory, Colors.blue)),
+        const SizedBox(width: 12),
+        Expanded(child: _summaryCard('القيمة المجمدة', '${_stats!.totalFrozenValue.toStringAsFixed(0)} ر.ي', Icons.money, Colors.green)),
+        const SizedBox(width: 12),
+        Expanded(child: _summaryCard('عدد الفئات', '${_stats!.categoriesCount}', Icons.category, Colors.orange)),
+        const SizedBox(width: 12),
+        Expanded(child: _summaryCard('متوسط العمر', '${_stats!.averageAgeDays.toStringAsFixed(1)} يوم', Icons.timer, Colors.purple)),
+      ],
+    );
+  }
+
+  Widget _summaryCard(String title, String value, IconData icon, Color color) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 28),
+            const SizedBox(height: 8),
+            Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: color)),
+            Text(title, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHorizontalBarChart(Map<String, int> data) {
+    if (data.isEmpty) return const Text('لا توجد بيانات');
+    final maxVal = data.values.reduce(max).toDouble();
+    return Column(
+      children: data.entries.map((entry) {
+        final ratio = maxVal > 0 ? entry.value / maxVal : 0.0;
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              SizedBox(width: 120, child: Text(entry.key, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(value: ratio, minHeight: 20, backgroundColor: Colors.grey.shade200, color: Colors.teal),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text('${entry.value}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  // ========== تبويب سجل النشاطات ==========
+  Widget _buildActivityLogTab() {
+    if (_activityLogs.isEmpty) return const Center(child: Text('لا يوجد سجل نشاطات'));
+    return ListView.builder(
+      itemCount: _activityLogs.length,
+      itemBuilder: (_, i) {
+        final log = _activityLogs[i];
+        return ListTile(
+          leading: Icon(_getActionIcon(log.action), color: _getActionColor(log.action)),
+          title: Text(_getActionName(log.action)),
+          subtitle: Text('${log.details} - ${DateFormat('yyyy-MM-dd HH:mm').format(log.timestamp)}'),
+        );
+      },
+    );
+  }
+
+  IconData _getActionIcon(String action) {
+    switch (action) {
+      case 'restore_card': case 'restore_batch': case 'restore_all': return Icons.restore;
+      case 'delete_card': case 'delete_batch': case 'delete_all_archived': case 'delete_card_permanently': return Icons.delete;
+      case 'move_to_bin': return Icons.delete_outline;
+      case 'edit_card': return Icons.edit;
+      default: return Icons.info;
     }
   }
 
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  Color _getActionColor(String action) {
+    if (action.startsWith('restore')) return Colors.green;
+    if (action.startsWith('delete')) return Colors.red;
+    if (action.startsWith('move_to_bin')) return Colors.orange;
+    return Colors.blue;
+  }
+
+  String _getActionName(String action) {
+    switch (action) {
+      case 'restore_card': return 'استرجاع كرت';
+      case 'restore_batch': return 'استرجاع مجموعة';
+      case 'restore_all': return 'استرجاع الكل';
+      case 'delete_card': return 'حذف كرت';
+      case 'delete_batch': return 'حذف مجموعة';
+      case 'delete_all_archived': return 'حذف الكل';
+      case 'delete_card_permanently': return 'حذف نهائي';
+      case 'move_to_bin': return 'نقل للمهملات';
+      case 'edit_card': return 'تعديل كرت';
+      default: return action;
+    }
+  }
+
+  // ========== تبويب سلة المهملات ==========
+  Widget _buildRecycleBinTab() {
+    if (_recycleBinCards.isEmpty) return const Center(child: Text('سلة المهملات فارغة'));
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Text('الكروت في سلة المهملات (تحذف نهائياً بعد $_recycleBinDays يوم):', style: const TextStyle(fontWeight: FontWeight.bold)),
+        ),
+        Expanded(
+          child: ListView.builder(
+            itemCount: _recycleBinCards.length,
+            itemBuilder: (_, i) {
+              final card = _recycleBinCards[i];
+              return ListTile(
+                title: Text(card['pin'] ?? '---'),
+                subtitle: Text(card['categoryId'] ?? ''),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(icon: const Icon(Icons.restore), onPressed: () async {
+                      await card.reference.update({'status': 'archived'});
+                      _loadRecycleBin();
+                      _loadArchive(reset: true);
+                    }),
+                    IconButton(icon: const Icon(Icons.delete_forever, color: Colors.red), onPressed: () async {
+                      await card.reference.delete();
+                      _loadRecycleBin();
+                    }),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ========== ويدجتات مساعدة ==========
+  Widget _statChip(String label, String value, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, size: 18, color: Theme.of(context).primaryColor),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+      ],
+    );
+  }
+
+  Widget _filterChip(String label, bool isActive, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Chip(
+        label: Text(label, style: TextStyle(color: isActive ? Colors.white : Colors.black87, fontSize: 12)),
+        backgroundColor: isActive ? Theme.of(context).primaryColor : Colors.grey.shade200,
+        deleteIcon: isActive ? const Icon(Icons.close, size: 16) : null,
+        onDeleted: isActive ? () {
+          setState(() {
+            _filterNetworkId = null;
+            _filterCategoryId = null;
+            _priceFrom = null;
+            _priceTo = null;
+            _dateRange = null;
+          });
+          _applyFiltersAndSort();
+        } : null,
+      ),
+    );
+  }
+
+  Widget _sortChip() {
+    return PopupMenuButton<String>(
+      child: Chip(
+        label: Text('ترتيب: ${_selectedSortField == 'timestamp' ? "التاريخ" : _selectedSortField == 'price' ? "السعر" : "الرقم"}'),
+        backgroundColor: Colors.grey.shade200,
+      ),
+      itemBuilder: (_) => [
+        const PopupMenuItem(value: 'timestamp', child: Text('حسب التاريخ')),
+        const PopupMenuItem(value: 'price', child: Text('حسب السعر')),
+        const PopupMenuItem(value: 'pin', child: Text('حسب الرقم')),
+        const PopupMenuDivider(),
+        PopupMenuItem(
+          child: Text(_sortAscending ? 'تصاعدي ▲' : 'تنازلي ▼'),
+          onTap: () => setState(() => _sortAscending = !_sortAscending),
+        ),
+      ],
+      onSelected: (v) {
+        _selectedSortField = v;
+        _applyFiltersAndSort();
+      },
+    );
+  }
+
+  void _showNetworkFilter() {
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => ListView(
+        children: [
+          ListTile(title: const Text('الكل'), onTap: () { setState(() => _filterNetworkId = null); _applyFiltersAndSort(); Navigator.pop(context); }),
+          ..._availableNetworks.map((net) => ListTile(
+            title: Text(net['name'] ?? ''),
+            onTap: () { setState(() => _filterNetworkId = net['id']); _applyFiltersAndSort(); Navigator.pop(context); },
+          )),
+        ],
+      ),
+    );
+  }
+
+  void _showCategoryFilter() {
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => ListView(
+        children: [
+          ListTile(title: const Text('الكل'), onTap: () { setState(() => _filterCategoryId = null); _applyFiltersAndSort(); Navigator.pop(context); }),
+          ..._availableCategories.map((cat) => ListTile(
+            title: Text(cat['name'] ?? ''),
+            onTap: () { setState(() => _filterCategoryId = cat['id']); _applyFiltersAndSort(); Navigator.pop(context); },
+          )),
+        ],
+      ),
+    );
+  }
+
+  void _showPriceFilter() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('نطاق السعر'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(decoration: const InputDecoration(labelText: 'من'), keyboardType: TextInputType.number, onChanged: (v) => _priceFrom = double.tryParse(v)),
+            TextField(decoration: const InputDecoration(labelText: 'إلى'), keyboardType: TextInputType.number, onChanged: (v) => _priceTo = double.tryParse(v)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+          ElevatedButton(onPressed: () { _applyFiltersAndSort(); Navigator.pop(context); }, child: const Text('تطبيق')),
+        ],
+      ),
+    );
+  }
+
+  void _showDateRangeFilter() async {
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (range != null) {
+      setState(() => _dateRange = range);
+      _applyFiltersAndSort();
+    }
+  }
 }
