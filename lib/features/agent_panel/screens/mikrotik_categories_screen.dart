@@ -153,6 +153,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
+  // ========== أيقونة كلمة المرور ==========
   Future<bool> _confirmAction(String title, String message, Color color,
       {bool requirePassword = false}) async {
     _play('warning');
@@ -886,7 +887,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
       },
     );
   }
-
+    // ======================== دوال عرض الكروت والبوت ========================
   void _showCardsList(String netId, String catId, String catName, Color catColor) {
     _play('click');
     showModalBottomSheet(
@@ -1775,7 +1776,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     return success;
   }
 
-  // ======================== بداية التبويب الخامس: الطباعة ========================
+  // ======================== دوال الطباعة ========================
   Future<void> _loadPrintInitialData() async {
     final sys = Provider.of<SystemProvider>(context, listen: false);
     final snapshot = await _db.collection('networks').where('agentPhone', isEqualTo: sys.currentUserPhone).get();
@@ -1909,17 +1910,41 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     final totalPages = (cardsToPrint.length / cardsPerPage).ceil();
     for (int page = 0; page < totalPages; page++) {
       final pageCards = cardsToPrint.skip(page * cardsPerPage).take(cardsPerPage).toList();
-      pdf.addPage(pw.Page(pageFormat: PdfPageFormat.a4, margin: pw.EdgeInsets.zero, build: (context) => pw.Stack(children: List.generate(pageCards.length, (index) {
-        final card = pageCards[index];
-        final catId = card['categoryId'] as String;
-        final pin = card['pin'] ?? '---';
-        final templateBytes = getTemplate(catId);
-        final col = index % perRowVal;
-        final row = index ~/ perRowVal;
-        final left = PreciseLayoutEngine.getAbsolutePos(col.toDouble(), w, hGap, marginL);
-        final top = PreciseLayoutEngine.getAbsolutePos(row.toDouble(), h, vGap, marginT);
-        return pw.Positioned(left: left / PreciseLayoutEngine.mmToPx * PdfPageFormat.mm, top: top / PreciseLayoutEngine.mmToPx * PdfPageFormat.mm, child: pw.Container(width: w * PdfPageFormat.mm, height: h * PdfPageFormat.mm, child: pw.Stack(children: [if (templateBytes != null) pw.Image(pw.MemoryImage(templateBytes), fit: pw.BoxFit.fill), pw.Positioned(left: (snap["x"] / 100) * w * PdfPageFormat.mm, top: (snap["y"] / 100) * h * PdfPageFormat.mm, child: pw.Text(pin, style: pw.TextStyle(fontSize: snap["font"], color: PdfColor.fromInt((snap["color"] as Color).value)))]))));
-      }))));
+      pdf.addPage(pw.Page(pageFormat: PdfPageFormat.a4, margin: pw.EdgeInsets.zero, build: (context) {
+        return pw.Stack(children: List.generate(pageCards.length, (index) {
+          final card = pageCards[index];
+          final catId = card['categoryId'] as String;
+          final pin = card['pin'] ?? '---';
+          final templateBytes = getTemplate(catId);
+          final col = index % perRowVal;
+          final row = index ~/ perRowVal;
+          final left = PreciseLayoutEngine.getAbsolutePos(col.toDouble(), w, hGap, marginL);
+          final top = PreciseLayoutEngine.getAbsolutePos(row.toDouble(), h, vGap, marginT);
+          return pw.Positioned(
+            left: left / PreciseLayoutEngine.mmToPx * PdfPageFormat.mm,
+            top: top / PreciseLayoutEngine.mmToPx * PdfPageFormat.mm,
+            child: pw.Container(
+              width: w * PdfPageFormat.mm,
+              height: h * PdfPageFormat.mm,
+              child: pw.Stack(children: [
+                if (templateBytes != null)
+                  pw.Image(pw.MemoryImage(templateBytes), fit: pw.BoxFit.fill),
+                pw.Positioned(
+                  left: (snap["x"] / 100) * w * PdfPageFormat.mm,
+                  top: (snap["y"] / 100) * h * PdfPageFormat.mm,
+                  child: pw.Text(
+                    pin,
+                    style: pw.TextStyle(
+                      fontSize: snap["font"],
+                      color: PdfColor.fromInt((snap["color"] as Color).value),
+                    ),
+                  ),
+                )
+              ]),
+            ),
+          );
+        }));
+      }));
     }
     return pdf.save();
   }
@@ -2176,7 +2201,18 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
       decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), image: templateBytes != null ? DecorationImage(image: MemoryImage(templateBytes), fit: BoxFit.fill) : null),
       child: Stack(children: [
         CustomPaint(size: Size(wMM * PreciseLayoutEngine.mmToPx, hMM * PreciseLayoutEngine.mmToPx), painter: _GuidePainter()),
-        Positioned(left: pos.dx, top: pos.dy, child: GestureDetector(onPanUpdate: (details) { setState(() { textX.value += details.delta.dx / (wMM * PreciseLayoutEngine.mmToPx) * 100; textY.value += details.delta.dy / (hMM * PreciseLayoutEngine.mmToPx) * 100; textX.value = textX.value.clamp(0, 100); textY.value = textY.value.clamp(0, 100); }); _syncPrintPreview(); }, child: Container(color: Colors.white.withOpacity(0.7), child: Text(pin, style: TextStyle(fontSize: fontSize.value * 0.8, color: textColor.value))))
+        Positioned(left: pos.dx, top: pos.dy, child: GestureDetector(
+          onPanUpdate: (details) {
+            setState(() {
+              textX.value += details.delta.dx / (wMM * PreciseLayoutEngine.mmToPx) * 100;
+              textY.value += details.delta.dy / (hMM * PreciseLayoutEngine.mmToPx) * 100;
+              textX.value = textX.value.clamp(0, 100);
+              textY.value = textY.value.clamp(0, 100);
+            });
+            _syncPrintPreview();
+          },
+          child: Container(color: Colors.white.withOpacity(0.7), child: Text(pin, style: TextStyle(fontSize: fontSize.value * 0.8, color: textColor.value)))
+        )),
       ]),
     );
   }
@@ -2223,14 +2259,12 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   }
 
   Widget _buildInfoRow(IconData icon, String label, String value, Color textColor, Color iconColor) => Row(children: [Icon(icon, size: 16, color: iconColor), const SizedBox(width: 8), Text('$label: ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey)), Expanded(child: Text(value, style: TextStyle(fontSize: 13, color: textColor)))]);
-
   Widget _buildActionButtons(SystemProvider sys, List<QueryDocumentSnapshot> networks, int index, Map<String, dynamic> net, bool isActive) => Wrap(spacing: 8, runSpacing: 8, children: [
     _actionButton(Icons.bolt, 'اختبار', Colors.blue, () => _testConnection(net)),
     _actionButton(isActive ? Icons.pause_circle_filled : Icons.play_circle_fill, isActive ? 'تجميد' : 'تنشيط', Colors.orange, () async { bool confirm = await _confirmAction(isActive ? "تجميد الشبكة" : "تنشيط الشبكة", "هل تريد تغيير حالة الشبكة؟", Colors.orange); if (confirm) { _db.collection('networks').doc(networks[index].id).update({'isActive': !isActive}); _showToast(isActive ? 'تم تجميد الشبكة' : 'تم تنشيط الشبكة'); } }),
     _actionButton(Icons.edit, 'تعديل', Colors.grey, () => _showAddServerBottomSheet(sys, existingData: net, docId: networks[index].id)),
     _actionButton(Icons.delete, 'حذف', Colors.red, () async { bool confirm = await _confirmAction("حذف الشبكة نهائياً", "سيتم مسح بيانات الشبكة، هل أنت متأكد؟", Colors.red, requirePassword: true); if (confirm) { _play('click'); await _db.collection('networks').doc(networks[index].id).delete(); _showToast('تم حذف الشبكة نهائياً'); } }),
   ]);
-
   Widget _actionButton(IconData icon, String label, Color color, VoidCallback onTap) => TextButton.icon(onPressed: onTap, icon: Icon(icon, size: 18, color: color), label: Text(label, style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.bold)), style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4)));
 
   Widget _buildCategoriesTab(List<QueryDocumentSnapshot> networks) {
