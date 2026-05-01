@@ -2120,7 +2120,24 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
             }),
           TextField(controller: printTotalCountCtrl, readOnly: true, decoration: const InputDecoration(labelText: "إجمالي الكروت المطلوبة", border: OutlineInputBorder()))
         ])),
-        _printSection("المعاينة", Icon(Icons.view_compact, color: Colors.pinkAccent), _buildEnhancedPrintPreview()),
+        _printSection(
+  "المعاينة",
+  Icon(Icons.view_compact, color: Colors.pinkAccent),
+  _PreviewArea(
+    selectedCategoryIds: printSelectedCategoryIds,
+    selectedCategories: printSelectedCategories,
+    categoryTemplates: _categoryTemplates,
+    textX: textX,
+    textY: textY,
+    fontSize: fontSize,
+    textColor: textColor,
+    widthMMCtrl: widthMMCtrl,
+    heightMMCtrl: heightMMCtrl,
+    perRowCtrl: perRowCtrl,
+    perColumnCtrl: perColumnCtrl,
+    onSettingsChanged: _syncPrintPreview,
+  ),
+),
         _printSection("التعديل والتحكم", Icon(Icons.tune, color: Colors.amber.shade700), Column(children: [
           _positionShortcuts(),
           const SizedBox(height: 12),
@@ -2366,7 +2383,158 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 }
+// ==========================================
+// ✅ ويدجت المعاينة المستقلة (يمنع إعادة بناء الشاشة بالكامل)
+// ==========================================
+class _PreviewArea extends StatefulWidget {
+  final Set<String> selectedCategoryIds;
+  final Map<String, Map<String, dynamic>> selectedCategories;
+  final Map<String, Uint8List?> categoryTemplates;
+  final ValueNotifier<double> textX;
+  final ValueNotifier<double> textY;
+  final ValueNotifier<double> fontSize;
+  final ValueNotifier<Color> textColor;
+  final TextEditingController widthMMCtrl;
+  final TextEditingController heightMMCtrl;
+  final TextEditingController perRowCtrl;
+  final TextEditingController perColumnCtrl;
+  final VoidCallback onSettingsChanged;
 
+  const _PreviewArea({
+    required this.selectedCategoryIds,
+    required this.selectedCategories,
+    required this.categoryTemplates,
+    required this.textX,
+    required this.textY,
+    required this.fontSize,
+    required this.textColor,
+    required this.widthMMCtrl,
+    required this.heightMMCtrl,
+    required this.perRowCtrl,
+    required this.perColumnCtrl,
+    required this.onSettingsChanged,
+  });
+
+  @override
+  State<_PreviewArea> createState() => _PreviewAreaState();
+}
+
+class _PreviewAreaState extends State<_PreviewArea> {
+  @override
+  Widget build(BuildContext context) {
+    if (widget.selectedCategoryIds.isEmpty) return const SizedBox.shrink();
+
+    final w = double.tryParse(widget.widthMMCtrl.text) ?? 70.0;
+    final h = double.tryParse(widget.heightMMCtrl.text) ?? 17.4;
+    final pRow = int.tryParse(widget.perRowCtrl.text) ?? 3;
+    final pCol = int.tryParse(widget.perColumnCtrl.text) ?? 17;
+
+    return LayoutBuilder(builder: (context, constraints) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text("محاكاة صفحة (${pRow}x$pCol)", style: Theme.of(context).textTheme.titleMedium),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.fullscreen, color: Colors.teal),
+            onPressed: () {
+              // المعاينة الكاملة
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => Scaffold(appBar: AppBar(title: const Text("معاينة كاملة")), body: InteractiveViewer(minScale: 0.2, maxScale: 5.0, child: Container(width: w * pRow * PreciseLayoutEngine.mmToPx, height: h * pCol * PreciseLayoutEngine.mmToPx, color: Colors.white, child: _buildFakeGrid(pRow, pCol, w, h))))));
+            },
+            tooltip: "معاينة كاملة",
+          ),
+        ]),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 300,
+          child: InteractiveViewer(
+            minScale: 0.5,
+            maxScale: 4.0,
+            child: Container(
+              width: w * pRow * PreciseLayoutEngine.mmToPx,
+              height: h * pCol * PreciseLayoutEngine.mmToPx,
+              decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade400), color: Colors.white),
+              child: _buildFakeGrid(pRow, pCol, w, h),
+            ),
+          ),
+        ),
+      ]);
+    });
+  }
+
+  Widget _buildFakeGrid(int perRowVal, int perColVal, double wMM, double hMM) {
+    List<Widget> children = [];
+    for (int r = 0; r < perColVal; r++) {
+      for (int c = 0; c < perRowVal; c++) {
+        children.add(Positioned(
+          left: c * wMM * PreciseLayoutEngine.mmToPx,
+          top: r * hMM * PreciseLayoutEngine.mmToPx,
+          width: wMM * PreciseLayoutEngine.mmToPx,
+          height: hMM * PreciseLayoutEngine.mmToPx,
+          child: _buildSingleFakeCard(wMM, hMM, "####"),
+        ));
+      }
+    }
+    return Stack(children: children);
+  }
+
+  Widget _buildSingleFakeCard(double wMM, double hMM, String pin) {
+    final templateBytes = widget.categoryTemplates[widget.selectedCategoryIds.isNotEmpty ? widget.selectedCategoryIds.first : ''];
+    return ValueListenableBuilder(
+      valueListenable: widget.textX,
+      builder: (context, _, __) {
+        return ValueListenableBuilder(
+          valueListenable: widget.textY,
+          builder: (context, _, __) {
+            return ValueListenableBuilder(
+              valueListenable: widget.fontSize,
+              builder: (context, _, __) {
+                return ValueListenableBuilder(
+                  valueListenable: widget.textColor,
+                  builder: (context, _, __) {
+                    final pos = Offset(
+                      (widget.textX.value / 100) * wMM * PreciseLayoutEngine.mmToPx,
+                      (widget.textY.value / 100) * hMM * PreciseLayoutEngine.mmToPx,
+                    );
+                    return Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        image: templateBytes != null
+                            ? DecorationImage(image: MemoryImage(templateBytes), fit: BoxFit.fill)
+                            : null,
+                      ),
+                      child: Stack(children: [
+                        CustomPaint(size: Size(wMM * PreciseLayoutEngine.mmToPx, hMM * PreciseLayoutEngine.mmToPx), painter: _GuidePainter()),
+                        Positioned(
+                          left: pos.dx,
+                          top: pos.dy,
+                          child: GestureDetector(
+                            onPanUpdate: (details) {
+                              widget.textX.value += details.delta.dx / (wMM * PreciseLayoutEngine.mmToPx) * 100;
+                              widget.textY.value += details.delta.dy / (hMM * PreciseLayoutEngine.mmToPx) * 100;
+                              widget.textX.value = widget.textX.value.clamp(0, 100);
+                              widget.textY.value = widget.textY.value.clamp(0, 100);
+                              if (widget.onSettingsChanged != null) {
+                                widget.onSettingsChanged();
+                              }
+                            },
+                            child: Container(
+                              color: Colors.white.withOpacity(0.7),
+                              child: Text(pin, style: TextStyle(fontSize: widget.fontSize.value * 0.8, color: widget.textColor.value)),
+                            ),
+                          ),
+                        )
+                      ]),
+                    );
+                  },
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
 class _GuidePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
