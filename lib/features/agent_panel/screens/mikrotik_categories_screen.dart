@@ -137,7 +137,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     super.dispose();
   }
 
-  // ========== دوال مشتركة ==========
+  // ========== دوال الميكروتك المشتركة ==========
   void _play(String type) =>
       Provider.of<UiProvider>(context, listen: false).playSound(type);
 
@@ -153,7 +153,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
-  // ========== أيقونة كلمة المرور ==========
   Future<bool> _confirmAction(String title, String message, Color color,
       {bool requirePassword = false}) async {
     _play('warning');
@@ -1527,7 +1526,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   }
 
   // ==========================================
-  // 4. توليد الكروت (مع تعديل زر الطباعة)
+  // 4. توليد الكروت
   // ==========================================
   Widget _buildGenerateCardsTab(SystemProvider sys, List<QueryDocumentSnapshot> networks) {
     final textColor = Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
@@ -1662,7 +1661,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                 forPrint: true,
                               );
                               if (success) {
-                                // الانتقال لتبويب الطباعة بعد نجاح التوليد
                                 _tabController.animateTo(4);
                               }
                             },
@@ -1870,7 +1868,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     }
   }
 
-  // دالة المزامنة أصبحت فارغة لتحسين الأداء
   void _syncPrintPreview() {}
 
   Map<String, dynamic> _capturePrintSnapshot() {
@@ -2135,7 +2132,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
             heightMMCtrl: heightMMCtrl,
             perRowCtrl: perRowCtrl,
             perColumnCtrl: perColumnCtrl,
-            onSettingsChanged: null, // لا حاجة للمزامنة بعد الآن
+            onSettingsChanged: null,
           ),
         ),
         _printSection("التعديل والتحكم", Icon(Icons.tune, color: Colors.amber.shade700), Column(children: [
@@ -2425,43 +2422,44 @@ class _PreviewAreaState extends State<_PreviewArea> {
   }
 
   Widget _buildSingleFakeCard(double wMM, double hMM, String pin) {
-  final templateBytes = widget.categoryTemplates[widget.selectedCategoryIds.isNotEmpty ? widget.selectedCategoryIds.first : ''];
-  return AnimatedBuilder(
-    animation: Listenable.merge([widget.textX, widget.textY, widget.fontSize, widget.textColor]),
-    builder: (context, _) {
-      final pos = Offset(
-        (widget.textX.value / 100) * wMM * PreciseLayoutEngine.mmToPx,
-        (widget.textY.value / 100) * hMM * PreciseLayoutEngine.mmToPx,
-      );
-      return Container(
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey.shade300),
-          image: templateBytes != null
-              ? DecorationImage(image: MemoryImage(templateBytes), fit: BoxFit.fill)
-              : null,
-        ),
-        child: Stack(children: [
-          CustomPaint(size: Size(wMM * PreciseLayoutEngine.mmToPx, hMM * PreciseLayoutEngine.mmToPx), painter: _GuidePainter()),
-          Positioned(
-            left: pos.dx,
-            top: pos.dy,
-            child: GestureDetector(
-              onPanUpdate: (details) {
-                widget.textX.value += details.delta.dx / (wMM * PreciseLayoutEngine.mmToPx) * 100;
-                widget.textY.value += details.delta.dy / (hMM * PreciseLayoutEngine.mmToPx) * 100;
-                widget.textX.value = widget.textX.value.clamp(0, 100);
-                widget.textY.value = widget.textY.value.clamp(0, 100);
-              },
-              child: Container(
-                color: Colors.white.withOpacity(0.7),
-                child: Text(pin, style: TextStyle(fontSize: widget.fontSize.value * 0.8, color: widget.textColor.value)),
+    final templateBytes = widget.categoryTemplates[widget.selectedCategoryIds.isNotEmpty ? widget.selectedCategoryIds.first : ''];
+    return AnimatedBuilder(
+      animation: Listenable.merge([widget.textX, widget.textY, widget.fontSize, widget.textColor]),
+      builder: (context, _) {
+        final pos = Offset(
+          (widget.textX.value / 100) * wMM * PreciseLayoutEngine.mmToPx,
+          (widget.textY.value / 100) * hMM * PreciseLayoutEngine.mmToPx,
+        );
+        return Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade300),
+            image: templateBytes != null
+                ? DecorationImage(image: MemoryImage(templateBytes), fit: BoxFit.fill)
+                : null,
+          ),
+          child: Stack(children: [
+            CustomPaint(size: Size(wMM * PreciseLayoutEngine.mmToPx, hMM * PreciseLayoutEngine.mmToPx), painter: _GuidePainter()),
+            Positioned(
+              left: pos.dx,
+              top: pos.dy,
+              child: GestureDetector(
+                onPanUpdate: (details) {
+                  widget.textX.value += details.delta.dx / (wMM * PreciseLayoutEngine.mmToPx) * 100;
+                  widget.textY.value += details.delta.dy / (hMM * PreciseLayoutEngine.mmToPx) * 100;
+                  widget.textX.value = widget.textX.value.clamp(0, 100);
+                  widget.textY.value = widget.textY.value.clamp(0, 100);
+                },
+                child: Container(
+                  color: Colors.white.withOpacity(0.7),
+                  child: Text(pin, style: TextStyle(fontSize: widget.fontSize.value * 0.8, color: widget.textColor.value)),
+                ),
               ),
-            ),
-          )
-        ]),
-      );
-    },
-  );
+            )
+          ]),
+        );
+      },
+    );
+  }
 }
 
 // رسّام خطوط إرشادية
