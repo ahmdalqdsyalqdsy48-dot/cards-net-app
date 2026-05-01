@@ -2090,8 +2090,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
       ),
     );
   }
-
-  // ======================== واجهة تبويب الطباعة (مجمّل) ========================
+    // ======================== واجهة تبويب الطباعة (مجمّل) ========================
   Widget _buildPrintTab() {
     final theme = Theme.of(context);
     return SingleChildScrollView(
@@ -2121,23 +2120,23 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
           TextField(controller: printTotalCountCtrl, readOnly: true, decoration: const InputDecoration(labelText: "إجمالي الكروت المطلوبة", border: OutlineInputBorder()))
         ])),
         _printSection(
-  "المعاينة",
-  Icon(Icons.view_compact, color: Colors.pinkAccent),
-  _PreviewArea(
-    selectedCategoryIds: printSelectedCategoryIds,
-    selectedCategories: printSelectedCategories,
-    categoryTemplates: _categoryTemplates,
-    textX: textX,
-    textY: textY,
-    fontSize: fontSize,
-    textColor: textColor,
-    widthMMCtrl: widthMMCtrl,
-    heightMMCtrl: heightMMCtrl,
-    perRowCtrl: perRowCtrl,
-    perColumnCtrl: perColumnCtrl,
-    onSettingsChanged: _syncPrintPreview,
-  ),
-),
+          "المعاينة",
+          Icon(Icons.view_compact, color: Colors.pinkAccent),
+          _PreviewArea(
+            selectedCategoryIds: printSelectedCategoryIds,
+            selectedCategories: printSelectedCategories,
+            categoryTemplates: _categoryTemplates,
+            textX: textX,
+            textY: textY,
+            fontSize: fontSize,
+            textColor: textColor,
+            widthMMCtrl: widthMMCtrl,
+            heightMMCtrl: heightMMCtrl,
+            perRowCtrl: perRowCtrl,
+            perColumnCtrl: perColumnCtrl,
+            onSettingsChanged: _syncPrintPreview,
+          ),
+        ),
         _printSection("التعديل والتحكم", Icon(Icons.tune, color: Colors.amber.shade700), Column(children: [
           _positionShortcuts(),
           const SizedBox(height: 12),
@@ -2169,12 +2168,12 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
 
   Widget _printSection(String title, Icon icon, Widget child) => Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [icon, const SizedBox(width: 8), Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))]), const SizedBox(height: 10), child]));
   Widget _printTextField(TextEditingController ctrl, String label) => TextField(controller: ctrl, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()));
-  Widget printSlider(String label, ValueNotifier<double> notifier, double max, Color activeColor) => ValueListenableBuilder(valueListenable: notifier, builder: (_, value, __) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text("$label: ${value.toStringAsFixed(1)}"), Slider(value: value, max: max, activeColor: activeColor, onChanged: (v) { notifier.value = v; _syncPrintPreview(); })]));
+  Widget printSlider(String label, ValueNotifier<double> notifier, double max, Color activeColor) => ValueListenableBuilder(valueListenable: notifier, builder: (_, value, __) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text("$label: ${value.toStringAsFixed(1)}"), Slider(value: value, max: max, activeColor: activeColor, onChanged: (v) { notifier.value = v; })]));
 
   Widget _buildPrintColorPicker() => Row(children: [
-    Expanded(child: ElevatedButton.icon(onPressed: () async { Color temp = textColor.value; await showDialog(context: context, builder: (_) => AlertDialog(title: const Text("اختيار لون النص"), content: ColorPicker(pickerColor: textColor.value, onColorChanged: (c) => temp = c), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("إلغاء")), ElevatedButton(onPressed: () { textColor.value = temp; _syncPrintPreview(); Navigator.pop(context); }, child: const Text("تعيين"))])); }, icon: Icon(Icons.colorize, color: textColor.value), label: const Text("اختيار اللون"), style: ElevatedButton.styleFrom(backgroundColor: Colors.amber.shade100))),
+    Expanded(child: ElevatedButton.icon(onPressed: () async { Color temp = textColor.value; await showDialog(context: context, builder: (_) => AlertDialog(title: const Text("اختيار لون النص"), content: ColorPicker(pickerColor: textColor.value, onColorChanged: (c) => temp = c), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("إلغاء")), ElevatedButton(onPressed: () { textColor.value = temp; Navigator.pop(context); }, child: const Text("تعيين"))])); }, icon: Icon(Icons.colorize, color: textColor.value), label: const Text("اختيار اللون"), style: ElevatedButton.styleFrom(backgroundColor: Colors.amber.shade100))),
     const SizedBox(width: 10),
-    ElevatedButton(onPressed: () { textColor.value = Colors.black; _syncPrintPreview(); }, style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade100), child: const Text("إلغاء التعيين"))
+    ElevatedButton(onPressed: () { textColor.value = Colors.black; }, style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade100), child: const Text("إلغاء التعيين"))
   ]);
 
   void _savePrintTemplateDialog() {
@@ -2187,62 +2186,9 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     _shortcutBtn("←", 10, 50), _shortcutBtn("●", 50, 50), _shortcutBtn("→", 90, 50),
     _shortcutBtn("↙", 10, 90), _shortcutBtn("↓", 50, 90), _shortcutBtn("↘", 90, 90),
   ]);
-  Widget _shortcutBtn(String label, double x, double y) => GestureDetector(onTap: () { textX.value = x; textY.value = y; _syncPrintPreview(); }, child: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(border: Border.all(color: Colors.blueAccent), borderRadius: BorderRadius.circular(6)), child: Text(label, style: const TextStyle(fontSize: 18, color: Colors.blueAccent))));
+  Widget _shortcutBtn(String label, double x, double y) => GestureDetector(onTap: () { textX.value = x; textY.value = y; }, child: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(border: Border.all(color: Colors.blueAccent), borderRadius: BorderRadius.circular(6)), child: Text(label, style: const TextStyle(fontSize: 18, color: Colors.blueAccent))));
 
-  Widget _buildEnhancedPrintPreview() {
-    if (printSelectedCategoryIds.isEmpty) return const SizedBox.shrink();
-    final w = double.tryParse(widthMMCtrl.text) ?? 70.0;
-    final h = double.tryParse(heightMMCtrl.text) ?? 17.4;
-    final pRow = int.tryParse(perRowCtrl.text) ?? 3;
-    final pCol = int.tryParse(perColumnCtrl.text) ?? 17;
-    return LayoutBuilder(builder: (context, constraints) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [Text("محاكاة صفحة (${pRow}x$pCol)", style: Theme.of(context).textTheme.titleMedium), const Spacer(), IconButton(icon: const Icon(Icons.fullscreen, color: Colors.teal), onPressed: _showFullScreenPreview, tooltip: "معاينة كاملة")]),
-      SizedBox(height: 300, child: InteractiveViewer(minScale: 0.5, maxScale: 4.0, child: Container(width: w * pRow * PreciseLayoutEngine.mmToPx, height: h * pCol * PreciseLayoutEngine.mmToPx, decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade400), color: Colors.white), child: _buildFakeGrid(pRow, pCol, w, h))))
-    ]));
-  }
-
-  Widget _buildFakeGrid(int perRowVal, int perColVal, double wMM, double hMM) {
-    List<Widget> children = [];
-    for (int r = 0; r < perColVal; r++) {
-      for (int c = 0; c < perRowVal; c++) {
-        children.add(Positioned(left: c * wMM * PreciseLayoutEngine.mmToPx, top: r * hMM * PreciseLayoutEngine.mmToPx, width: wMM * PreciseLayoutEngine.mmToPx, height: hMM * PreciseLayoutEngine.mmToPx, child: _buildSingleFakeCard(wMM, hMM, "####")));
-      }
-    }
-    return Stack(children: children);
-  }
-
-  Widget _buildSingleFakeCard(double wMM, double hMM, String pin) {
-    final templateBytes = getTemplate(printSelectedCategoryIds.isNotEmpty ? printSelectedCategoryIds.first : '');
-    final pos = Offset((textX.value / 100) * wMM * PreciseLayoutEngine.mmToPx, (textY.value / 100) * hMM * PreciseLayoutEngine.mmToPx);
-    return Container(
-      decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), image: templateBytes != null ? DecorationImage(image: MemoryImage(templateBytes), fit: BoxFit.fill) : null),
-      child: Stack(children: [
-        CustomPaint(size: Size(wMM * PreciseLayoutEngine.mmToPx, hMM * PreciseLayoutEngine.mmToPx), painter: _GuidePainter()),
-        Positioned(left: pos.dx, top: pos.dy, child: GestureDetector(
-          onPanUpdate: (details) {
-            setState(() {
-              textX.value += details.delta.dx / (wMM * PreciseLayoutEngine.mmToPx) * 100;
-              textY.value += details.delta.dy / (hMM * PreciseLayoutEngine.mmToPx) * 100;
-              textX.value = textX.value.clamp(0, 100);
-              textY.value = textY.value.clamp(0, 100);
-            });
-            _syncPrintPreview();
-          },
-          child: Container(color: Colors.white.withOpacity(0.7), child: Text(pin, style: TextStyle(fontSize: fontSize.value * 0.8, color: textColor.value)))
-        )),
-      ]),
-    );
-  }
-
-  void _showFullScreenPreview() {
-    final w = double.tryParse(widthMMCtrl.text) ?? 70.0;
-    final h = double.tryParse(heightMMCtrl.text) ?? 17.4;
-    final pRow = int.tryParse(perRowCtrl.text) ?? 3;
-    final pCol = int.tryParse(perColumnCtrl.text) ?? 17;
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => Scaffold(appBar: AppBar(title: const Text("معاينة كاملة")), body: InteractiveViewer(minScale: 0.2, maxScale: 5.0, child: Container(width: w * pRow * PreciseLayoutEngine.mmToPx, height: h * pCol * PreciseLayoutEngine.mmToPx, color: Colors.white, child: _buildFakeGrid(pRow, pCol, w, h))))));
-  }
-
-  // ======================== التبويبات الأصلية ========================
+  // ======================== التبويبات الأصلية (كما هي بدون تغيير) ========================
   Widget _buildServersTab(SystemProvider sys, List<QueryDocumentSnapshot> networks) {
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -2383,6 +2329,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 }
+
 // ==========================================
 // ✅ ويدجت المعاينة المستقلة (يمنع إعادة بناء الشاشة بالكامل)
 // ==========================================
@@ -2437,7 +2384,6 @@ class _PreviewAreaState extends State<_PreviewArea> {
           IconButton(
             icon: const Icon(Icons.fullscreen, color: Colors.teal),
             onPressed: () {
-              // المعاينة الكاملة
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => Scaffold(appBar: AppBar(title: const Text("معاينة كاملة")), body: InteractiveViewer(minScale: 0.2, maxScale: 5.0, child: Container(width: w * pRow * PreciseLayoutEngine.mmToPx, height: h * pCol * PreciseLayoutEngine.mmToPx, color: Colors.white, child: _buildFakeGrid(pRow, pCol, w, h))))));
             },
             tooltip: "معاينة كاملة",
@@ -2535,6 +2481,8 @@ class _PreviewAreaState extends State<_PreviewArea> {
     );
   }
 }
+
+// رسّام خطوط إرشادية
 class _GuidePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
