@@ -2526,6 +2526,23 @@ Future<void> _loadAllPrintReadyCards() async {
               border: Border.all(color: Colors.blueAccent),
               borderRadius: BorderRadius.circular(6)),
           child: Text(label, style: const TextStyle(fontSize: 18, color: Colors.blueAccent))));
+String _logType(dynamic type) {
+  switch (type) {
+    case 'print_archive':
+      return 'طباعة وأرشفة';
+    case 'print_only':
+      return 'طباعة فقط';
+    case 'view':
+      return 'معاينة';
+    default:
+      return '$type';
+  }
+}
+
+String _logTime(dynamic ts) {
+  if (ts is Timestamp) return ts.toDate().toString().substring(0, 19);
+  return '';
+}
 
   // ======================== التبويبات الأصلية ========================
   Widget _buildServersTab(SystemProvider sys, List<QueryDocumentSnapshot> networks) {
