@@ -2427,43 +2427,42 @@ class _PreviewAreaState extends State<_PreviewArea> {
   Widget _buildSingleFakeCard(double wMM, double hMM, String pin) {
     final templateBytes = widget.categoryTemplates[widget.selectedCategoryIds.isNotEmpty ? widget.selectedCategoryIds.first : ''];
     return ValueListenableBuilder(
-      valueListenable: Listenable.merge([widget.textX, widget.textY, widget.fontSize, widget.textColor]),
-      builder: (context, _, __) {
-        final pos = Offset(
-          (widget.textX.value / 100) * wMM * PreciseLayoutEngine.mmToPx,
-          (widget.textY.value / 100) * hMM * PreciseLayoutEngine.mmToPx,
-        );
-        return Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300),
-            image: templateBytes != null
-                ? DecorationImage(image: MemoryImage(templateBytes), fit: BoxFit.fill)
-                : null,
-          ),
-          child: Stack(children: [
-            CustomPaint(size: Size(wMM * PreciseLayoutEngine.mmToPx, hMM * PreciseLayoutEngine.mmToPx), painter: _GuidePainter()),
-            Positioned(
-              left: pos.dx,
-              top: pos.dy,
-              child: GestureDetector(
-                onPanUpdate: (details) {
-                  widget.textX.value += details.delta.dx / (wMM * PreciseLayoutEngine.mmToPx) * 100;
-                  widget.textY.value += details.delta.dy / (hMM * PreciseLayoutEngine.mmToPx) * 100;
-                  widget.textX.value = widget.textX.value.clamp(0, 100);
-                  widget.textY.value = widget.textY.value.clamp(0, 100);
-                },
-                child: Container(
-                  color: Colors.white.withOpacity(0.7),
-                  child: Text(pin, style: TextStyle(fontSize: widget.fontSize.value * 0.8, color: widget.textColor.value)),
-                ),
-              ),
-            )
-          ]),
-        );
-      },
+      return AnimatedBuilder(
+  animation: Listenable.merge([widget.textX, widget.textY, widget.fontSize, widget.textColor]),
+  builder: (context, _) {
+    final pos = Offset(
+      (widget.textX.value / 100) * wMM * PreciseLayoutEngine.mmToPx,
+      (widget.textY.value / 100) * hMM * PreciseLayoutEngine.mmToPx,
     );
-  }
-}
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
+        image: templateBytes != null
+            ? DecorationImage(image: MemoryImage(templateBytes), fit: BoxFit.fill)
+            : null,
+      ),
+      child: Stack(children: [
+        CustomPaint(size: Size(wMM * PreciseLayoutEngine.mmToPx, hMM * PreciseLayoutEngine.mmToPx), painter: _GuidePainter()),
+        Positioned(
+          left: pos.dx,
+          top: pos.dy,
+          child: GestureDetector(
+            onPanUpdate: (details) {
+              widget.textX.value += details.delta.dx / (wMM * PreciseLayoutEngine.mmToPx) * 100;
+              widget.textY.value += details.delta.dy / (hMM * PreciseLayoutEngine.mmToPx) * 100;
+              widget.textX.value = widget.textX.value.clamp(0, 100);
+              widget.textY.value = widget.textY.value.clamp(0, 100);
+            },
+            child: Container(
+              color: Colors.white.withOpacity(0.7),
+              child: Text(pin, style: TextStyle(fontSize: widget.fontSize.value * 0.8, color: widget.textColor.value)),
+            ),
+          ),
+        )
+      ]),
+    );
+  },
+);
 
 // رسّام خطوط إرشادية
 class _GuidePainter extends CustomPainter {
