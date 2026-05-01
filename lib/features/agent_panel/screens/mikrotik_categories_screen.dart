@@ -111,7 +111,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this); // 5 تبويبات
+    _tabController = TabController(length: 5, vsync: this);
     printTotalCountCtrl.text = "0";
     _loadPrintInitialData();
   }
@@ -887,7 +887,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
       },
     );
   }
-    // ======================== دوال عرض الكروت والبوت ========================
+
   void _showCardsList(String netId, String catId, String catName, Color catColor) {
     _play('click');
     showModalBottomSheet(
@@ -1079,7 +1079,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   }
 
   // ==========================================
-  // 3. إدارة شرائح الخصم
+  // 3. إدارة شرائح الخصم (مطورة مع استهداف متعدد)
   // ==========================================
   void _showDiscountTierBottomSheet(SystemProvider sys,
       {Map<String, dynamic>? existingTier, String? docId}) {
@@ -1662,7 +1662,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                 forPrint: true,
                               );
                               if (success) {
-                                _showToast('✅ تم التوليد للطباعة بنجاح! يمكنك الآن الانتقال إلى تبويب "الطباعة" لطباعة الكروت الجاهزة.');
+                                // الانتقال لتبويب الطباعة بعد نجاح التوليد
+                                _tabController.animateTo(4);
                               }
                             },
                       icon: const Icon(Icons.print, color: Colors.white),
@@ -1771,7 +1772,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     }
     setState(() => _isProcessing = false);
     if (success && forPrint) {
-      _loadAllPrintReadyCards(); // تحديث الكروت الجاهزة للطباعة
+      _loadAllPrintReadyCards();
     }
     return success;
   }
@@ -1856,7 +1857,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     verticalGapCtrl.text = (tmpl['verticalGap'] ?? "0.0").toString();
     pageLeftMarginCtrl.text = (tmpl['pageLeftMargin'] ?? "5.0").toString();
     pageTopMarginCtrl.text = (tmpl['pageTopMargin'] ?? "5.0").toString();
-    _syncPrintPreview();
   }
 
   void _loadCategoryTemplate(String categoryId) {
@@ -1868,10 +1868,10 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     } else {
       _categoryTemplates.remove(categoryId);
     }
-    _syncPrintPreview();
   }
 
-  void _syncPrintPreview() { if (mounted) setState(() {}); }
+  // دالة المزامنة أصبحت فارغة لتحسين الأداء
+  void _syncPrintPreview() {}
 
   Map<String, dynamic> _capturePrintSnapshot() {
     return {
@@ -2090,7 +2090,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
       ),
     );
   }
-    // ======================== واجهة تبويب الطباعة (مجمّل) ========================
+
+  // ======================== واجهة تبويب الطباعة (مجمّل) ========================
   Widget _buildPrintTab() {
     final theme = Theme.of(context);
     return SingleChildScrollView(
@@ -2134,7 +2135,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
             heightMMCtrl: heightMMCtrl,
             perRowCtrl: perRowCtrl,
             perColumnCtrl: perColumnCtrl,
-            onSettingsChanged: _syncPrintPreview,
+            onSettingsChanged: null, // لا حاجة للمزامنة بعد الآن
           ),
         ),
         _printSection("التعديل والتحكم", Icon(Icons.tune, color: Colors.amber.shade700), Column(children: [
@@ -2188,7 +2189,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   ]);
   Widget _shortcutBtn(String label, double x, double y) => GestureDetector(onTap: () { textX.value = x; textY.value = y; }, child: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(border: Border.all(color: Colors.blueAccent), borderRadius: BorderRadius.circular(6)), child: Text(label, style: const TextStyle(fontSize: 18, color: Colors.blueAccent))));
 
-  // ======================== التبويبات الأصلية (كما هي بدون تغيير) ========================
+  // ======================== التبويبات الأصلية ========================
   Widget _buildServersTab(SystemProvider sys, List<QueryDocumentSnapshot> networks) {
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -2345,7 +2346,7 @@ class _PreviewArea extends StatefulWidget {
   final TextEditingController heightMMCtrl;
   final TextEditingController perRowCtrl;
   final TextEditingController perColumnCtrl;
-  final VoidCallback onSettingsChanged;
+  final VoidCallback? onSettingsChanged;
 
   const _PreviewArea({
     required this.selectedCategoryIds,
@@ -2359,7 +2360,7 @@ class _PreviewArea extends StatefulWidget {
     required this.heightMMCtrl,
     required this.perRowCtrl,
     required this.perColumnCtrl,
-    required this.onSettingsChanged,
+    this.onSettingsChanged,
   });
 
   @override
@@ -2426,56 +2427,38 @@ class _PreviewAreaState extends State<_PreviewArea> {
   Widget _buildSingleFakeCard(double wMM, double hMM, String pin) {
     final templateBytes = widget.categoryTemplates[widget.selectedCategoryIds.isNotEmpty ? widget.selectedCategoryIds.first : ''];
     return ValueListenableBuilder(
-      valueListenable: widget.textX,
+      valueListenable: Listenable.merge([widget.textX, widget.textY, widget.fontSize, widget.textColor]),
       builder: (context, _, __) {
-        return ValueListenableBuilder(
-          valueListenable: widget.textY,
-          builder: (context, _, __) {
-            return ValueListenableBuilder(
-              valueListenable: widget.fontSize,
-              builder: (context, _, __) {
-                return ValueListenableBuilder(
-                  valueListenable: widget.textColor,
-                  builder: (context, _, __) {
-                    final pos = Offset(
-                      (widget.textX.value / 100) * wMM * PreciseLayoutEngine.mmToPx,
-                      (widget.textY.value / 100) * hMM * PreciseLayoutEngine.mmToPx,
-                    );
-                    return Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade300),
-                        image: templateBytes != null
-                            ? DecorationImage(image: MemoryImage(templateBytes), fit: BoxFit.fill)
-                            : null,
-                      ),
-                      child: Stack(children: [
-                        CustomPaint(size: Size(wMM * PreciseLayoutEngine.mmToPx, hMM * PreciseLayoutEngine.mmToPx), painter: _GuidePainter()),
-                        Positioned(
-                          left: pos.dx,
-                          top: pos.dy,
-                          child: GestureDetector(
-                            onPanUpdate: (details) {
-                              widget.textX.value += details.delta.dx / (wMM * PreciseLayoutEngine.mmToPx) * 100;
-                              widget.textY.value += details.delta.dy / (hMM * PreciseLayoutEngine.mmToPx) * 100;
-                              widget.textX.value = widget.textX.value.clamp(0, 100);
-                              widget.textY.value = widget.textY.value.clamp(0, 100);
-                              if (widget.onSettingsChanged != null) {
-                                widget.onSettingsChanged();
-                              }
-                            },
-                            child: Container(
-                              color: Colors.white.withOpacity(0.7),
-                              child: Text(pin, style: TextStyle(fontSize: widget.fontSize.value * 0.8, color: widget.textColor.value)),
-                            ),
-                          ),
-                        )
-                      ]),
-                    );
-                  },
-                );
-              },
-            );
-          },
+        final pos = Offset(
+          (widget.textX.value / 100) * wMM * PreciseLayoutEngine.mmToPx,
+          (widget.textY.value / 100) * hMM * PreciseLayoutEngine.mmToPx,
+        );
+        return Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade300),
+            image: templateBytes != null
+                ? DecorationImage(image: MemoryImage(templateBytes), fit: BoxFit.fill)
+                : null,
+          ),
+          child: Stack(children: [
+            CustomPaint(size: Size(wMM * PreciseLayoutEngine.mmToPx, hMM * PreciseLayoutEngine.mmToPx), painter: _GuidePainter()),
+            Positioned(
+              left: pos.dx,
+              top: pos.dy,
+              child: GestureDetector(
+                onPanUpdate: (details) {
+                  widget.textX.value += details.delta.dx / (wMM * PreciseLayoutEngine.mmToPx) * 100;
+                  widget.textY.value += details.delta.dy / (hMM * PreciseLayoutEngine.mmToPx) * 100;
+                  widget.textX.value = widget.textX.value.clamp(0, 100);
+                  widget.textY.value = widget.textY.value.clamp(0, 100);
+                },
+                child: Container(
+                  color: Colors.white.withOpacity(0.7),
+                  child: Text(pin, style: TextStyle(fontSize: widget.fontSize.value * 0.8, color: widget.textColor.value)),
+                ),
+              ),
+            )
+          ]),
         );
       },
     );
