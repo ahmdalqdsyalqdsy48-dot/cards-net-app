@@ -1047,81 +1047,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     ]);
   }
 
-  // ======================== تبويب شرائح الخصم (كما هو بدون تغيير) ========================
-  // ======================== نافذة إعدادات البوت ========================
-void _showBotSettings(String netId, String catId, Map category) {
-  _play('click');
-  int minStock = category['botMinStock'] ?? 5;
-  int refillAmount = category['botRefillAmount'] ?? 50;
-  bool isBotEnabled = category['isBotEnabled'] ?? false;
-
-  showDialog(
-    context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setModalState) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: const Row(children: [
-            Icon(Icons.smart_toy, color: Colors.purple),
-            SizedBox(width: 10),
-            Text('البوت الذكي للتوليد')
-          ]),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text('عند تفعيل البوت، سيقوم السيرفر بمراقبة مخزون هذه الفئة وتوليد كروت جديدة تلقائياً عندما ينخفض المخزون.',
-                style: TextStyle(fontSize: 12, color: Colors.grey)),
-            const SizedBox(height: 15),
-            SwitchListTile(
-              title: const Text('حالة التوليد التلقائي', style: TextStyle(fontWeight: FontWeight.bold)),
-              value: isBotEnabled,
-              activeColor: Colors.purple,
-              onChanged: (v) => setModalState(() => isBotEnabled = v),
-            ),
-            if (isBotEnabled) ...[
-              const SizedBox(height: 10),
-              TextField(
-                decoration: const InputDecoration(
-                    labelText: 'الحد الأدنى للمخزون (متى يبدأ البوت؟)', border: OutlineInputBorder()),
-                keyboardType: TextInputType.number,
-                onChanged: (v) => minStock = int.tryParse(v) ?? 5,
-                controller: TextEditingController(text: minStock.toString()),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                decoration: const InputDecoration(
-                    labelText: 'كمية التوليد التلقائي (كم كرت ينتج؟)', border: OutlineInputBorder()),
-                keyboardType: TextInputType.number,
-                onChanged: (v) => refillAmount = int.tryParse(v) ?? 50,
-                controller: TextEditingController(text: refillAmount.toString()),
-              ),
-            ]
-          ]),
-          actions: [
-            TextButton(
-                onPressed: () { _play('click'); Navigator.pop(ctx); },
-                child: const Text('إلغاء')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.purple),
-              onPressed: () async {
-                _play('click');
-                var netDoc = await _db.collection('networks').doc(netId).get();
-                List cats = List.from(netDoc['categories']);
-                int idx = cats.indexWhere((c) => c['id'] == catId);
-                cats[idx]['botMinStock'] = minStock;
-                cats[idx]['botRefillAmount'] = refillAmount;
-                cats[idx]['isBotEnabled'] = isBotEnabled;
-                await _db.collection('networks').doc(netId).update({'categories': cats});
-                Navigator.pop(ctx);
-                _play('success');
-                _showToast('تم حفظ إعدادات البوت الذكي');
-              },
-              child: const Text('حفظ وتشغيل', style: TextStyle(color: Colors.white)),
-            )
-          ],
-        ),
-      ),
-    ),
-  );
-}
+  
+            
 
 // ======================== تبويب شرائح الخصم ========================
 void _showDiscountTierBottomSheet(SystemProvider sys,
