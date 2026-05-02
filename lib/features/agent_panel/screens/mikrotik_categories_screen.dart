@@ -1913,9 +1913,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     };
   }
 
-  // ======================== نهاية الجزء الأول ========================
-}
-// ==========================================
+ // ==========================================
 // 3. إدارة شرائح الخصم (مطورة مع استهداف متعدد)
 // ==========================================
 void _showDiscountTierBottomSheet(SystemProvider sys,
@@ -3157,7 +3155,6 @@ String _logTime(dynamic ts) {
   return '';
 }
 
-// نهاية الجزء الثاني
   // ==========================================
   // نافذة إضافة فئة (محفوظة من الجزء الأول)
   // ==========================================
@@ -4203,4 +4200,5 @@ class _GuidePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
 }
