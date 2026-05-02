@@ -2314,7 +2314,7 @@ Widget _buildDiscountTiersTab(SystemProvider sys) {
               await Printing.layoutPdf(
                 onLayout: (_) => pdf,
                 name: 'معاينة الطباعة',
-                usePrintDialog: true,
+                
               );
               _logPrintAction('preview', total);
             },
@@ -2329,7 +2329,7 @@ Widget _buildDiscountTiersTab(SystemProvider sys) {
               await Printing.layoutPdf(
                 onLayout: (_) => pdf,
                 name: 'طباعة وأرشفة الكروت',
-                usePrintDialog: true,
+                
               );
               await _archivePrintedCards(total);
             },
