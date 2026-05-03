@@ -8,6 +8,7 @@ import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/widgets/custom_header.dart';
+import '../widgets/custom_agent_drawer.dart';  // <--- تمت الإضافة
 
 class DiscountScreen extends StatefulWidget {
   const DiscountScreen({super.key});
@@ -20,7 +21,6 @@ class _DiscountScreenState extends State<DiscountScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   bool _isProcessing = false;
 
-  // مسودات النوافذ
   String _draftTierTitle = '';
   String _draftTierCondition = '';
   String _draftTierDiscountValue = '';
@@ -37,7 +37,6 @@ class _DiscountScreenState extends State<DiscountScreen> {
     super.dispose();
   }
 
-  // ---------- دوال مساعدة ----------
   void _play(String type) =>
       Provider.of<UiProvider>(context, listen: false).playSound(type);
 
@@ -681,6 +680,12 @@ class _DiscountScreenState extends State<DiscountScreen> {
 
     return Scaffold(
       appBar: CustomHeader(title: 'الخصومات'),
+      drawer: CustomAgentDrawer(
+        agentName: sys.currentUserName,
+        phoneNumber: sys.currentUserPhone,
+        role: 'وكيل معتمد (Agent)',
+        currentBalance: sys.currentUserBalance,
+      ),
       body: StreamBuilder<QuerySnapshot>(
         stream: _db
             .collection('discount_tiers')
