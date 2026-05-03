@@ -1618,93 +1618,93 @@ class SystemProvider extends ChangeNotifier {
   }
 
   Future<String> executeRealPurchase(
-      double price, String cardTitle, String agentPhone) async {
-    if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً لإتمام الشراء.';
+    double price, String cardTitle, String agentPhone, String categoryId) async {
+  if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً لإتمام الشراء.';
 
-    final userRef = _db.collection('users').doc(_activeUserPhone);
+  final userRef = _db.collection('users').doc(_activeUserPhone);
 
-    final availableCardsQuery = await _db
-        .collection('cards')
-        .where('agentPhone', isEqualTo: agentPhone)
-        .where('cardTitle', isEqualTo: cardTitle)
-        .where('status', isEqualTo: 'متاح')
-        .limit(1)
-        .get();
+  final availableCardsQuery = await _db
+      .collection('cards')
+      .where('agentPhone', isEqualTo: agentPhone)
+      .where('categoryId', isEqualTo: categoryId)   // ✅ تغير هنا
+      .where('status', isEqualTo: 'متاح')
+      .limit(1)
+      .get();
 
-    if (availableCardsQuery.docs.isEmpty) {
-      throw 'عذراً، لقد نفدت الكمية الحقيقية من هذا الكرت! يرجى المحاولة لاحقاً.';
+  if (availableCardsQuery.docs.isEmpty) {
+    throw 'عذراً، لقد نفدت الكمية الحقيقية من هذا الكرت! يرجى المحاولة لاحقاً.';
+  }
+
+  final cardDoc = availableCardsQuery.docs.first;
+  final cardData = cardDoc.data() as Map<String, dynamic>;
+  final String actualPin = cardData['pin'] ?? 'رقم غير معروف';
+  final String cardId = cardDoc.id;
+
+  await _db.runTransaction((transaction) async {
+    final userSnapshot = await transaction.get(userRef);
+    if (!userSnapshot.exists) throw 'حدث خطأ: حساب المستخدم غير موجود.';
+
+    final userData = userSnapshot.data() as Map<String, dynamic>;
+    Map<String, dynamic> wallets = userData['wallets'] ?? {};
+    double currentWalletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
+
+    double creditLimit = 0.0;
+    if (userData['role'] == 'pos') {
+      Map<String, dynamic> relations = userData['agent_relations'] ?? {};
+      Map<String, dynamic> myRel = relations[agentPhone] ?? {};
+      creditLimit = (myRel['creditLimit'] ?? 0.0).toDouble();
     }
 
-    final cardDoc = availableCardsQuery.docs.first;
-    final cardData = cardDoc.data() as Map<String, dynamic>;
-    final String actualPin = cardData['pin'] ?? 'رقم غير معروف';
-    final String cardId = cardDoc.id;
+    if ((currentWalletBalance + creditLimit) < price) {
+      throw 'الرصيد أو الحد الائتماني المسموح لا يكفي لإتمام العملية.';
+    }
 
-    await _db.runTransaction((transaction) async {
-      final userSnapshot = await transaction.get(userRef);
-      if (!userSnapshot.exists) throw 'حدث خطأ: حساب المستخدم غير موجود.';
-
-      final userData = userSnapshot.data() as Map<String, dynamic>;
-      Map<String, dynamic> wallets = userData['wallets'] ?? {};
-      double currentWalletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
-
-      double creditLimit = 0.0;
-      if (userData['role'] == 'pos') {
-        Map<String, dynamic> relations = userData['agent_relations'] ?? {};
-        Map<String, dynamic> myRel = relations[agentPhone] ?? {};
-        creditLimit = (myRel['creditLimit'] ?? 0.0).toDouble();
-      }
-
-      if ((currentWalletBalance + creditLimit) < price) {
-        throw 'الرصيد أو الحد الائتماني المسموح لا يكفي لإتمام العملية.';
-      }
-
-      transaction.update(userRef, {
-        'wallets.$agentPhone': FieldValue.increment(-price),
-      });
-
-      transaction.update(_db.collection('cards').doc(cardId), {
-        'status': 'مباع',
-        'buyerPhone': _activeUserPhone,
-        'soldAt': FieldValue.serverTimestamp(),
-      });
-
-      final Map<String, dynamic> purchaseInvoice = {
-        'title': cardTitle,
-        'pin': actualPin,
-        'price': price,
-        'agentPhone': agentPhone,
-        'date': DateTime.now().toIso8601String(),
-      };
-
-      transaction.update(userRef, {
-        'purchasedCards': FieldValue.arrayUnion([purchaseInvoice])
-      });
-
-      transaction.update(_db.collection('system').doc('main_info'), {
-        'totalSystemCards': FieldValue.increment(-1)
-      });
-
-      DocumentReference txnRef = _db.collection('transactions').doc();
-      transaction.set(txnRef, {
-        'fromPhone': _activeUserPhone,
-        'toPhone': agentPhone,
-        'agentPhone': agentPhone,
-        'agentName': currentUserName,
-        'targetName': userData['name'] ?? 'زبون',
-        'networkName': userData['networkName'] ?? 'غير محدد',
-        'amount': price,
-        'fee': 0.0,
-        'paymentMethod': 'خصم من المحفظة',
-        'type': 'sale',
-        'title': 'بيع كرت: $cardTitle لـ ${userData['name'] ?? 'زبون'}',
-        'reference': 'SAL-$cardId',
-        'timestamp': FieldValue.serverTimestamp()
-      });
+    transaction.update(userRef, {
+      'wallets.$agentPhone': FieldValue.increment(-price),
     });
 
-    return actualPin;
-  }
+    transaction.update(_db.collection('cards').doc(cardId), {
+      'status': 'مباع',
+      'buyerPhone': _activeUserPhone,
+      'soldAt': FieldValue.serverTimestamp(),
+    });
+
+    final Map<String, dynamic> purchaseInvoice = {
+      'title': cardTitle,
+      'pin': actualPin,
+      'price': price,
+      'agentPhone': agentPhone,
+      'date': DateTime.now().toIso8601String(),
+    };
+
+    transaction.update(userRef, {
+      'purchasedCards': FieldValue.arrayUnion([purchaseInvoice])
+    });
+
+    transaction.update(_db.collection('system').doc('main_info'), {
+      'totalSystemCards': FieldValue.increment(-1)
+    });
+
+    DocumentReference txnRef = _db.collection('transactions').doc();
+    transaction.set(txnRef, {
+      'fromPhone': _activeUserPhone,
+      'toPhone': agentPhone,
+      'agentPhone': agentPhone,
+      'agentName': currentUserName,
+      'targetName': userData['name'] ?? 'زبون',
+      'networkName': userData['networkName'] ?? 'غير محدد',
+      'amount': price,
+      'fee': 0.0,
+      'paymentMethod': 'خصم من المحفظة',
+      'type': 'sale',
+      'title': 'بيع كرت: $cardTitle لـ ${userData['name'] ?? 'زبون'}',
+      'reference': 'SAL-$cardId',
+      'timestamp': FieldValue.serverTimestamp()
+    });
+  });
+
+  return actualPin;
+}
 
   Future<void> upgradeUserToPos({
     required String posPhone,
