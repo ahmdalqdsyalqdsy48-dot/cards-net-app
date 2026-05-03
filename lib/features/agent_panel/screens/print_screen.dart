@@ -831,8 +831,34 @@ class _PrintScreenState extends State<PrintScreen> with SingleTickerProviderStat
 
   Widget _tf(TextEditingController c, String label) => TextField(controller: c, decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()));
   Widget _slider(String label, ValueNotifier<double> v, double max, Color color) => ValueListenableBuilder(valueListenable: v, builder: (_, val, __) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('$label: ${val.toStringAsFixed(1)}'), Slider(value: val, max: max, activeColor: color, onChanged: (x) => v.value = x)]));
-  Widget _positionShortcuts() => Wrap(spacing: 8, children: [{'↖': (10,10)}, {'↑': (50,10)}, {'↗': (90,10)}, {'←': (10,50)}, {'●': (50,50)}, {'→': (90,50)}, {'↙': (10,90)}, {'↓': (50,90)}, {'↘': (90,90)}].map((e) => GestureDetector(onTap: () { textX.value = e.values.first.$1; textY.value = e.values.first.$2; }, child: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(border: Border.all(color: Colors.blueAccent), borderRadius: BorderRadius.circular(6)), child: Text(e.keys.first)))).toList());
+  Widget _positionShortcuts() => Wrap(spacing: 8, children: [
+  _shortcutBtn("↖", 10, 10),
+  _shortcutBtn("↑", 50, 10),
+  _shortcutBtn("↗", 90, 10),
+  _shortcutBtn("←", 10, 50),
+  _shortcutBtn("●", 50, 50),
+  _shortcutBtn("→", 90, 50),
+  _shortcutBtn("↙", 10, 90),
+  _shortcutBtn("↓", 50, 90),
+  _shortcutBtn("↘", 90, 90),
+]);
 
+Widget _shortcutBtn(String label, double x, double y) {
+  return GestureDetector(
+    onTap: () {
+      textX.value = x;
+      textY.value = y;
+    },
+    child: Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.blueAccent),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(label, style: const TextStyle(fontSize: 18, color: Colors.blueAccent)),
+    ),
+  );
+}
   void _savePrintTemplateDialog() {
     final ctrl = TextEditingController();
     showDialog(context: context, builder: (_) => AlertDialog(title: const Text('حفظ كقالب'), content: TextField(controller: ctrl, decoration: const InputDecoration(labelText: 'اسم القالب')), actions: [
