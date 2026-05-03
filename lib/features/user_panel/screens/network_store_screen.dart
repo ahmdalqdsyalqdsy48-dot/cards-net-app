@@ -881,7 +881,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     try {
       RenderRepaintBoundary boundary = _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary;
       var image = await boundary.toImage(pixelRatio: 3.0);
-      var byteData = await image.toByteData(format: ImageByteFormat.png);
+      var byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return;
       final tempDir = await getTemporaryDirectory();
       final file = File('${tempDir.path}/card.png');
@@ -896,7 +896,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     try {
       RenderRepaintBoundary boundary = _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary;
       var image = await boundary.toImage(pixelRatio: 3.0);
-      var byteData = await image.toByteData(format: ImageByteFormat.png);
+      var byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return;
       final tempDir = await getTemporaryDirectory();
       final file = File('${tempDir.path}/card_${DateTime.now().millisecondsSinceEpoch}.png');
