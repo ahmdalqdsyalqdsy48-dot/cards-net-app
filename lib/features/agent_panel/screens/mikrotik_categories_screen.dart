@@ -14,8 +14,8 @@ import '../../../core/providers/ui_provider.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart';
-import 'print_screen.dart';       // شاشة الطباعة المستقلة
-import 'discount_screen.dart';    // شاشة الخصومات المستقلة
+import 'print_screen.dart';
+import 'discount_screen.dart';
 
 class MikrotikCategoriesScreen extends StatefulWidget {
   const MikrotikCategoriesScreen({super.key});
@@ -65,15 +65,25 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    // إضافة مستمع لتحديث الواجهة عند تغيير التبويب
+    _tabController.addListener(_onTabChanged);
+  }
+
+  void _onTabChanged() {
+    if (!_tabController.indexIsChanging) {
+      setState(() {}); // تحديث IndexedStack
+    }
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     _multiGenControllers.forEach((_, ctrl) => ctrl.dispose());
     super.dispose();
   }
 
+  // -- بقية الدوال كما هي دون تغيير --
   void _play(String type) =>
       Provider.of<UiProvider>(context, listen: false).playSound(type);
 
@@ -199,7 +209,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     });
   }
 
-  // ========== البناء الأساسي ==========
   @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
@@ -284,6 +293,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
       ),
     );
   }
+
 
   // ======================== تبويب السيرفرات ========================
   Widget _buildServersTab(
