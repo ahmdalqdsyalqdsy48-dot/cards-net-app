@@ -1140,16 +1140,17 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   }
 
   Widget _buildUserViewSlider(String label, double value, double max,
-      Color color, VoidCallback onChanged) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('$label: ${value.toStringAsFixed(1)}'),
-      Slider(
-          value: value,
-          max: max,
-          activeColor: color,
-          onChanged: (v) => onChanged()),
-    ]);
-  }
+    Color color, ValueChanged<double> onChanged) {   // <-- تم تغيير النوع
+  return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Text('$label: ${value.toStringAsFixed(1)}'),
+    Slider(
+        value: value,
+        max: max,
+        activeColor: color,
+        onChanged: onChanged,                         // <-- تم التصحيح
+    ),
+  ]);
+}
 
   // ======================== عرض كروت الفئة ========================
   void _showCardsList(
