@@ -1,13 +1,21 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_user_drawer.dart';
-import 'user_wallet_screen.dart'; // 🆕 شاشة المحفظة الجديدة
+import 'user_wallet_screen.dart';
 
 class NetworkStoreScreen extends StatefulWidget {
   const NetworkStoreScreen({super.key});
@@ -19,6 +27,7 @@ class NetworkStoreScreen extends StatefulWidget {
 class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   String _searchQuery = '';
+  final GlobalKey _cardKey = GlobalKey(); // مفتاح لالتقاط صورة الكرت
 
   void _play(String type) =>
       Provider.of<UiProvider>(context, listen: false).playSound(type);
@@ -685,62 +694,8 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                                 fontWeight: FontWeight.bold)),
                       ),
                     ] else ...[
-                      const Icon(Icons.check_circle,
-                          size: 60, color: Colors.green),
-                      const SizedBox(height: 15),
-                      const Text('تم الشراء بنجاح! 🎉',
-                          style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green)),
-                      const SizedBox(height: 20),
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(15),
-                            border: Border.all(
-                                color: Colors.green.withOpacity(0.5))),
-                        child: Column(
-                          children: [
-                            const Text('رقم الكرت (PIN)',
-                                style: TextStyle(
-                                    color: Colors.grey,
-                                    fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 10),
-                            Text(actualPinFetched,
-                                style: const TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 2)),
-                            const SizedBox(height: 15),
-                            ElevatedButton.icon(
-                              onPressed: () {
-                                _play('click');
-                                Clipboard.setData(
-                                    ClipboardData(text: actualPinFetched));
-                                _showToast('تم نسخ الكرت بنجاح! ✅');
-                              },
-                              icon: const Icon(Icons.copy,
-                                  color: Colors.white),
-                              label: const Text('نسخ الكرت',
-                                  style: TextStyle(color: Colors.white)),
-                              style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.blue.shade800),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      TextButton(
-                        onPressed: () {
-                          _play('click');
-                          Navigator.pop(context);
-                        },
-                        child: const Text('إغلاق',
-                            style: TextStyle(
-                                fontSize: 16, color: Colors.grey)),
-                      ),
+                      // --- 🆕 عرض الكرت داخل القالب ---
+                      _buildPurchasedCardView(actualPinFetched, title, agentPhone, originalPrice),
                     ],
                   ],
                 ),
@@ -752,11 +707,258 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     );
   }
 
+  // ---------- 🆕 عرض الكرت بتصميم القالب ----------
+  Widget _buildPurchasedCardView(
+      String pin, String cardTitle, String agentPhone, double price) {
+    return FutureBuilder<Map<String, dynamic>?>(
+      future: _fetchCardDisplayData(cardTitle, agentPhone),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        
+        final data = snapshot.data;
+        if (data == null) {
+          // عرض بسيط في حال عدم وجود البيانات
+          return _buildSimpleSuccessView(pin, price);
+        }
+
+        final String networkName = data['networkName'] ?? '';
+        final String loginUrl = data['loginUrl'] ?? '';
+        final String note = data['note'] ?? '';
+        final String time = data['time'] ?? '';
+        final String capacity = data['capacity'] ?? '';
+        final Uint8List? templateBytes = data['templateBytes'];
+        final double userViewX = (data['userViewX'] ?? 50).toDouble();
+        final double userViewY = (data['userViewY'] ?? 50).toDouble();
+        final double userViewFontSize = (data['userViewFontSize'] ?? 16).toDouble();
+        final Color userViewColor = Color(data['userViewColor'] ?? Colors.black.value);
+        final DateTime expiryDate = DateTime.now().add(Duration(
+            hours: int.tryParse(time.replaceAll(RegExp(r'[^0-9]'), '')) ?? 24));
+
+        return Column(
+          children: [
+            const Icon(Icons.check_circle, size: 60, color: Colors.green),
+            const SizedBox(height: 10),
+            const Text('تم الشراء بنجاح! 🎉',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
+            const SizedBox(height: 15),
+            // الكرت
+            RepaintBoundary(
+              key: _cardKey,
+              child: Container(
+                width: double.infinity,
+                height: 220,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  image: templateBytes != null
+                      ? DecorationImage(image: MemoryImage(templateBytes), fit: BoxFit.cover)
+                      : null,
+                  color: templateBytes == null ? Colors.blue.withOpacity(0.1) : null,
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Stack(
+                  children: [
+                    // رقم الكرت والمعلومات
+                    Positioned(
+                      left: (userViewX / 100) * MediaQuery.of(context).size.width * 0.85,
+                      top: (userViewY / 100) * 200,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(pin,
+                              style: TextStyle(
+                                  fontSize: userViewFontSize + 4,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 2,
+                                  color: userViewColor)),
+                          const SizedBox(height: 4),
+                          Text(networkName,
+                              style: TextStyle(fontSize: userViewFontSize * 0.7, color: userViewColor)),
+                          Text('السعة: $capacity | المدة: $time',
+                              style: TextStyle(fontSize: userViewFontSize * 0.6, color: userViewColor)),
+                          Text('صالح حتى: ${_formatDateShort(expiryDate)}',
+                              style: TextStyle(fontSize: userViewFontSize * 0.6, color: userViewColor)),
+                          if (note.isNotEmpty)
+                            Text('📝 $note',
+                                style: TextStyle(fontSize: userViewFontSize * 0.55, color: userViewColor)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 15),
+            // أزرار التحكم
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _actionChip(Icons.copy, 'نسخ', () {
+                  _play('click');
+                  Clipboard.setData(ClipboardData(text: pin));
+                  _showToast('تم نسخ الكرت بنجاح! ✅');
+                }),
+                const SizedBox(width: 10),
+                _actionChip(Icons.share, 'مشاركة', () => _shareCard()),
+                const SizedBox(width: 10),
+                _actionChip(Icons.save_alt, 'حفظ', () => _saveCardImage()),
+                if (loginUrl.isNotEmpty) ...[
+                  const SizedBox(width: 10),
+                  _actionChip(Icons.language, '🌐 تسجيل الدخول', () {
+                    _play('click');
+                    launchUrl(Uri.parse(loginUrl), mode: LaunchMode.externalApplication);
+                  }),
+                ],
+              ],
+            ),
+            const SizedBox(height: 20),
+            TextButton(
+              onPressed: () { _play('click'); Navigator.pop(context); },
+              child: const Text('إغلاق', style: TextStyle(fontSize: 16, color: Colors.grey)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildSimpleSuccessView(String pin, double price) {
+    return Column(children: [
+      const Icon(Icons.check_circle, size: 60, color: Colors.green),
+      const SizedBox(height: 15),
+      const Text('تم الشراء بنجاح! 🎉',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
+      const SizedBox(height: 20),
+      Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+            color: Colors.green.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: Colors.green.withOpacity(0.5))),
+        child: Column(children: [
+          const Text('رقم الكرت (PIN)', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          Text(pin, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 2)),
+          const SizedBox(height: 15),
+          ElevatedButton.icon(
+            onPressed: () { _play('click'); Clipboard.setData(ClipboardData(text: pin)); _showToast('تم نسخ الكرت بنجاح! ✅'); },
+            icon: const Icon(Icons.copy, color: Colors.white),
+            label: const Text('نسخ الكرت', style: TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade800),
+          ),
+        ]),
+      ),
+      const SizedBox(height: 20),
+      TextButton(
+        onPressed: () { _play('click'); Navigator.pop(context); },
+        child: const Text('إغلاق', style: TextStyle(fontSize: 16, color: Colors.grey)),
+      ),
+    ]);
+  }
+
+  Widget _actionChip(IconData icon, String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: () { _play('click'); onTap(); },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.4)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 4),
+          Text(label, style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary, fontSize: 12)),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _shareCard() async {
+    try {
+      RenderRepaintBoundary boundary = _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary;
+      var image = await boundary.toImage(pixelRatio: 3.0);
+      var byteData = await image.toByteData(format: ImageByteFormat.png);
+      if (byteData == null) return;
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/card.png');
+      await file.writeAsBytes(byteData.buffer.asUint8List());
+      await Share.shareXFiles([XFile(file.path)], subject: 'بطاقة الكرت');
+    } catch (e) {
+      _showToast('فشلت المشاركة', error: true);
+    }
+  }
+
+  Future<void> _saveCardImage() async {
+    try {
+      RenderRepaintBoundary boundary = _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary;
+      var image = await boundary.toImage(pixelRatio: 3.0);
+      var byteData = await image.toByteData(format: ImageByteFormat.png);
+      if (byteData == null) return;
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/card_${DateTime.now().millisecondsSinceEpoch}.png');
+      await file.writeAsBytes(byteData.buffer.asUint8List());
+      _showToast('تم حفظ الصورة في ${file.path}');
+    } catch (e) {
+      _showToast('فشل الحفظ', error: true);
+    }
+  }
+
+  Future<Map<String, dynamic>?> _fetchCardDisplayData(
+    String cardTitle, String agentPhone) async {
+  try {
+    // cardTitle هو "اسم الشبكة - اسم الفئة" مثل "شبكة النور - فئة الذهب"
+    final parts = cardTitle.split(' - ');
+    final categoryName = parts.length > 1 ? parts.sublist(1).join(' - ') : cardTitle;
+
+    final netSnap = await _db
+        .collection('networks')
+        .where('agentPhone', isEqualTo: agentPhone)
+        .get();
+    
+    for (var netDoc in netSnap.docs) {
+      final netData = netDoc.data() as Map<String, dynamic>;
+      final List categories = netData['categories'] ?? [];
+      for (var cat in categories) {
+        if (cat['name'] == categoryName) {  // تم التصحيح هنا
+          String? templateBase64 = cat['templateBase64'];
+          Uint8List? templateBytes;
+          if (templateBase64 != null && templateBase64.isNotEmpty) {
+            templateBytes = base64Decode(templateBase64);
+          }
+          return {
+            'networkName': netData['name'] ?? '',
+            'loginUrl': netData['loginUrl'] ?? '',
+            'time': cat['time'] ?? '',
+            'capacity': cat['capacity'] ?? '',
+            'note': cat['note'] ?? '',
+            'templateBytes': templateBytes,
+            'userViewX': cat['userViewX'] ?? 50,
+            'userViewY': cat['userViewY'] ?? 50,
+            'userViewFontSize': cat['userViewFontSize'] ?? 16,
+            'userViewColor': cat['userViewColor'] ?? Colors.black.value,
+          };
+        }
+      }
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+  String _formatDateShort(DateTime dt) {
+    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
   // ------------------- بناء الواجهة الرئيسية -------------------
   @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
     final bool isPos = sys.currentUserRole == 'pos';
+    final theme = Theme.of(context);
 
     Map<String, dynamic> currentUserData = {};
     if (sys.currentUserPhone.isNotEmpty) {
@@ -772,7 +974,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        backgroundColor: theme.scaffoldBackgroundColor,
         appBar: const CustomHeader(title: 'سوق الشبكات ونقاط البيع'),
         drawer: CustomUserDrawer(
           userName: sys.currentUserName,
@@ -934,7 +1136,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                       fontSize: 14,
                       color: Colors.blue)),
               const SizedBox(width: 12),
-              // 🆕 زر الذهاب إلى المحفظة
               GestureDetector(
                 onTap: () {
                   Navigator.push(
@@ -976,7 +1177,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                       fontSize: 14,
                       color: Colors.purple)),
               const SizedBox(width: 12),
-              // 🆕 زر الذهاب إلى المحفظة
               GestureDetector(
                 onTap: () {
                   Navigator.push(
