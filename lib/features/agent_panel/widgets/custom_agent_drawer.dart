@@ -9,7 +9,9 @@ import 'package:image_picker/image_picker.dart';
 import '../screens/agent_dashboard_screen.dart';
 import '../screens/quick_pos_screen.dart';
 import '../screens/mikrotik_categories_screen.dart';
-import '../screens/archive_screen.dart';  // 🆕 تم تغيير المسار والاسم
+import '../screens/print_screen.dart';               // 🆕 شاشة الطباعة
+import '../screens/discount_screen.dart';            // 🆕 شاشة الخصومات
+import '../screens/archive_screen.dart';
 import '../screens/sub_agents_screen.dart';
 import '../screens/marketing_offers_screen.dart';
 import '../screens/agent_wallet_screen.dart';
@@ -56,6 +58,16 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     _play('click');
     Navigator.pop(context);
     Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => screen),
+    );
+  }
+
+  // التنقل مع push للعودة (للقائمة المنسدلة)
+  void _navigateToPush(BuildContext context, Widget screen) {
+    _play('click');
+    Navigator.pop(context);
+    Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => screen),
     );
@@ -343,13 +355,45 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                       Colors.green,
                       const QuickPosScreen(),
                       textColor),
+
+                  // 🆕 القائمة المنسدلة: الميكروتك والطباعة
+                  ExpansionTile(
+                    leading: const Icon(Icons.router, color: Colors.orange),
+                    title: Text("الميكروتك والطباعة",
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: textColor)),
+                    initiallyExpanded: false,
+                    children: [
+                      _buildSubItem(
+                        context: context,
+                        title: 'إدارة الميكروتك والفئات',
+                        icon: Icons.dns,
+                        iconColor: Colors.orange,
+                        screen: const MikrotikCategoriesScreen(),
+                        textColor: textColor,
+                      ),
+                      _buildSubItem(
+                        context: context,
+                        title: 'طباعة الكروت',
+                        icon: Icons.print,
+                        iconColor: Colors.teal,
+                        screen: const PrintScreen(),
+                        textColor: textColor,
+                      ),
+                    ],
+                  ),
+
+                  // 🆕 الخصومات (شاشة مستقلة)
                   _buildDrawerItem(
                       context,
-                      'إدارة الميكروتك والطباعة',
-                      Icons.router,
-                      Colors.orange,
-                      const MikrotikCategoriesScreen(),
+                      'الخصومات 🏆',
+                      Icons.local_offer,
+                      Colors.amber,
+                      const DiscountScreen(),
                       textColor),
+
                   // 🆕 قسم الأرشيف المتقدم
                   _buildDrawerItem(
                       context,
@@ -538,6 +582,27 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
       trailing: Icon(Icons.arrow_forward_ios,
           size: 11, color: textColor.withOpacity(0.5)),
       onTap: () => _navigateTo(context, targetScreen),
+    );
+  }
+
+  Widget _buildSubItem({
+    required BuildContext context,
+    required String title,
+    required IconData icon,
+    required Color iconColor,
+    required Widget screen,
+    required Color textColor,
+  }) {
+    return ListTile(
+      dense: true,
+      visualDensity: VisualDensity.compact,
+      leading: Icon(icon, color: iconColor, size: 20),
+      title: Text(title,
+          style: TextStyle(
+              fontWeight: FontWeight.bold, fontSize: 13, color: textColor)),
+      trailing: Icon(Icons.arrow_forward_ios,
+          size: 11, color: textColor.withOpacity(0.5)),
+      onTap: () => _navigateToPush(context, screen),
     );
   }
 }
