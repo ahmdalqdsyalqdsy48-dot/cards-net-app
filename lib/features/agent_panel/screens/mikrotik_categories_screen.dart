@@ -16,7 +16,6 @@ import '../../../core/providers/theme_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart';
 import 'print_screen.dart';
-import 'discount_screen.dart';
 
 class MikrotikCategoriesScreen extends StatefulWidget {
   const MikrotikCategoriesScreen({super.key});
@@ -75,7 +74,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     super.dispose();
   }
 
-  // ---------- دوال مساعدة ----------
   void _play(String type) =>
       Provider.of<UiProvider>(context, listen: false).playSound(type);
 
@@ -204,7 +202,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     });
   }
 
-  // ---------- المحاكاة ----------
   Future<void> _toggleSimulation() async {
     if (!_simulationMode) {
       bool firstConfirm = await _confirmAction(
@@ -232,8 +229,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     final r = Random();
     return (r.nextInt(9000000) + 1000000).toString();
   }
-
-  // ---------- البناء الرئيسي ----------
+  // ======================== واجهة المستخدم الرئيسية ========================
   @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
@@ -342,7 +338,9 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
         },
       ),
     );
-    // ======================== نافذة إضافة/تعديل سيرفر ========================
+  }
+
+  // ======================== نافذة إضافة/تعديل سيرفر ========================
   void _showAddServerBottomSheet(SystemProvider sys,
       {Map<String, dynamic>? existingData, String? docId}) {
     _play('click');
@@ -903,14 +901,14 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                 Row(children: [
                   Expanded(
                       child: _buildUserViewSlider('الأفقي %',
-                          userViewX, 100, Colors.blue, userViewX = v)),
+                          userViewX, 100, Colors.blue, (v) { userViewX = v; })),
                   const SizedBox(width: 10),
                   Expanded(
                       child: _buildUserViewSlider('الرأسي %',
-                          userViewY, 100, Colors.green, userViewY = v)),
+                          userViewY, 100, Colors.green, (v) { userViewY = v; })),
                 ]),
                 _buildUserViewSlider('حجم الخط', userViewFontSize,
-                    40, Colors.purple, userViewFontSize = v),
+                    40, Colors.purple, (v) { userViewFontSize = v; }),
                 Row(children: [
                   const Text('لون النص للمستخدم: '),
                   GestureDetector(
@@ -1142,14 +1140,14 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   }
 
   Widget _buildUserViewSlider(String label, double value, double max,
-      Color color, ValueChanged<double> onChanged) {
+      Color color, VoidCallback onChanged) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('$label: ${value.toStringAsFixed(1)}'),
       Slider(
           value: value,
           max: max,
           activeColor: color,
-          onChanged: onChanged),
+          onChanged: (v) => onChanged()),
     ]);
   }
 
@@ -1619,8 +1617,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     }
     setState(() => _isProcessing = false);
   }
-
-  // ==================== تبويب السيرفرات (مستقل) ====================
+}
+// ==================== تبويب السيرفرات (مستقل) ====================
 class ServersTab extends StatefulWidget {
   final _MikrotikCategoriesScreenState parent;
   final List<QueryDocumentSnapshot> networks;
@@ -2289,29 +2287,6 @@ class _GenerateTabState extends State<GenerateTab>
               ),
             ),
           ]),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 16, left: 16, right: 16),
-          child: SizedBox(
-            width: double.infinity,
-            height: 55,
-            child: ElevatedButton.icon(
-              onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const DiscountScreen())),
-              icon: const Icon(Icons.local_offer, color: Colors.white),
-              label: const Text('الذهاب إلى الخصومات',
-                  style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10))),
-            ),
-          ),
         ),
       ]),
     );
