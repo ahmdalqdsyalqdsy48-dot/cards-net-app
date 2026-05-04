@@ -331,14 +331,11 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                     Tab(icon: Icon(Icons.autorenew, color: Colors.lightBlueAccent), text: 'توليد الكروت'),
                   ],
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    const Text('محاكاة: ', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                    Switch(value: _simulationMode, onChanged: (v) => _toggleSimulation(), activeColor: Colors.redAccent),
-                    Text(_simulationMode ? 'ON' : 'OFF', style: TextStyle(color: _simulationMode ? Colors.redAccent : Colors.white54, fontWeight: FontWeight.bold)),
-                  ]),
-                ),
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  const Text('محاكاة: ', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  Switch(value: _simulationMode, onChanged: (v) => _toggleSimulation(), activeColor: Colors.redAccent),
+                  Text(_simulationMode ? 'ON' : 'OFF', style: TextStyle(color: _simulationMode ? Colors.redAccent : Colors.white54, fontWeight: FontWeight.bold)),
+                ]),
               ]),
             ),
             if (_isProcessing)
@@ -359,7 +356,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
-  // ======================== نافذة إضافة/تعديل سيرفر (كاملة) ========================
+  // ======================== نافذة إضافة/تعديل سيرفر ========================
   void _showAddServerBottomSheet(SystemProvider sys,
       {Map<String, dynamic>? existingData, String? docId}) {
     _play('click');
@@ -611,11 +608,11 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                 const Text('إعدادات عرض الكرت للمستخدم', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 10),
                 Row(children: [
-                  Expanded(child: _buildUserViewSlider('الأفقي %', userViewX, 100, Colors.blue, (v) { userViewX = v; })),
+                  Expanded(child: _buildUserViewSlider('الأفقي %', userViewX, 100, Colors.blue, (v) { setModalState(() => userViewX = v); })),
                   const SizedBox(width: 10),
-                  Expanded(child: _buildUserViewSlider('الرأسي %', userViewY, 100, Colors.green, (v) { userViewY = v; })),
+                  Expanded(child: _buildUserViewSlider('الرأسي %', userViewY, 100, Colors.green, (v) { setModalState(() => userViewY = v); })),
                 ]),
-                _buildUserViewSlider('حجم الخط', userViewFontSize, 40, Colors.purple, (v) { userViewFontSize = v; }),
+                _buildUserViewSlider('حجم الخط', userViewFontSize, 40, Colors.purple, (v) { setModalState(() => userViewFontSize = v); }),
                 Row(children: [
                   const Text('لون النص للمستخدم: '),
                   GestureDetector(onTap: () async { _play('click'); final color = await _openColorPicker(userViewColor); if (color != null) setModalState(() => userViewColor = color); }, child: Container(width: 30, height: 30, decoration: BoxDecoration(shape: BoxShape.circle, color: userViewColor, border: Border.all(color: Colors.grey)))),
@@ -1094,6 +1091,8 @@ class _GenerateTabState extends State<GenerateTab> with AutomaticKeepAliveClient
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
         final networks = snapshot.hasData ? snapshot.data!.docs : <QueryDocumentSnapshot>[];
+        // البوت الذكي عند فتح التبويب
+        WidgetsBinding.instance.addPostFrameCallback((_) => p._checkAutoBot(networks));
         if (networks.isEmpty) return const Center(child: Text('يجب إضافة شبكة وفئات أولاً!'));
         List<Map<String, dynamic>> allCategories = [];
         for (var net in networks) {
