@@ -16,12 +16,15 @@ class UiProvider extends ChangeNotifier {
   bool _hasNewNotifications = false;
   String _globalSearchQuery = '';
 
-  // نجبر الصوت على العمل دائماً بدون الاعتماد على ذاكرة المتصفح.
+  // الصوت مفتوح دائماً
   bool _soundsEnabled = true;
 
+  // رقم هاتف المستخدم الحالي (يُستخدم في الإشعارات)
+  String? _currentUserPhone;
+
   UiProvider(String? currentUserId) {
+    _currentUserPhone = currentUserId;
     _monitorInternetConnection();
-    // لا نقرأ الإعداد القديم. الصوت مفتوح دائماً.
     if (currentUserId != null) {
       _listenToNotifications(currentUserId);
     }
@@ -33,7 +36,6 @@ class UiProvider extends ChangeNotifier {
   String get globalSearchQuery => _globalSearchQuery;
   bool get isSoundsEnabled => _soundsEnabled;
 
-  // هذه الدالة كانت تُستخدم في شاشة الإعدادات. سنبقيها ولكنها لن تؤثر.
   Future<void> updateSoundSettings(bool value) async {
     _soundsEnabled = true; // الصوت مفتوح دائماً
     notifyListeners();
@@ -41,7 +43,6 @@ class UiProvider extends ChangeNotifier {
   }
 
   Future<void> playSound(String type) async {
-    // لا نتحقق من _soundsEnabled. نمرر الصوت مباشرة.
     try {
       if (type == 'click') {
         await _clickPlayer.play(AssetSource('sounds/click.mp3'), volume: 0.5);
@@ -70,15 +71,20 @@ class UiProvider extends ChangeNotifier {
   void _listenToNotifications(String userId) {
     _db
         .collection('notifications')
-        .where('targetUserId', isEqualTo: userId)
-        .where('isRead', isEqualTo: false)
+        .where('targetPhones', arrayContains: userId)
         .orderBy('timestamp', descending: true)
         .snapshots()
         .listen((snapshot) {
       bool hadNew = _hasNewNotifications;
       _unreadNotifications =
-          snapshot.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
-      _hasNewNotifications = _unreadNotifications.isNotEmpty;
+          snapshot.docs.map((doc) {
+            final data = doc.data();
+            final readBy = List<String>.from(data['readBy'] ?? []);
+            final isReadLocal = readBy.contains(userId);
+            return {'docId': doc.id, ...data, 'isReadLocal': isReadLocal};
+          }).toList();
+      _hasNewNotifications =
+          _unreadNotifications.any((n) => n['isReadLocal'] == false);
 
       if (_hasNewNotifications && !hadNew) {
         playSound('notification');
@@ -90,9 +96,14 @@ class UiProvider extends ChangeNotifier {
 
   Future<void> markNotificationsAsRead() async {
     if (_unreadNotifications.isEmpty) return;
+    final phone = _currentUserPhone;
+    if (phone == null) return;
     WriteBatch batch = _db.batch();
     for (var notif in _unreadNotifications) {
-      batch.update(_db.collection('notifications').doc(notif['docId']), {'isRead': true});
+      batch.update(
+        _db.collection('notifications').doc(notif['docId']),
+        {'readBy': FieldValue.arrayUnion([phone])},
+      );
     }
     _unreadNotifications.clear();
     _hasNewNotifications = false;
