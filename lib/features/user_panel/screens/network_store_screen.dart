@@ -12,6 +12,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+// يرجى إضافة image_gallery_saver إلى pubspec.yaml لتفعيل الحفظ في المعرض:
+// dependencies:
+//   image_gallery_saver: ^1.7.1
+import 'package:image_gallery_saver/image_gallery_saver.dart';
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -31,6 +35,8 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   String _searchQuery = '';
   final GlobalKey _cardKey = GlobalKey();
+  Timer? _debounceTimer;
+  bool _isSearching = false;
 
   void _play(String type) =>
       Provider.of<UiProvider>(context, listen: false).playSound(type);
@@ -161,7 +167,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     bool isSubmittingPurchase = false;
     String actualPinFetched = '';
 
-    // بيانات عرض الكرت بعد الشراء
     Map<String, dynamic>? purchasedCardData;
     bool isLoadingCardData = false;
     String? purchasedNetworkName;
@@ -637,7 +642,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                                         isSubmittingPurchase = false;
                                         isLoadingCardData = true;
                                       });
-                                      // تحميل بيانات العرض
                                       final displayData = await _fetchCardDisplayData(title, agentPhone);
                                       updateState(() {
                                         isLoadingCardData = false;
@@ -728,7 +732,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                         const Text('تم الشراء بنجاح! 🎉',
                             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
                         const SizedBox(height: 15),
-                        // حاوية قابلة للتمرير لرؤية القالب كاملاً
                         SizedBox(
                           height: 260,
                           child: InteractiveViewer(
@@ -751,7 +754,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                                         Positioned.fill(
                                           child: Image.memory(purchasedTemplateBytes!, fit: BoxFit.contain),
                                         ),
-                                      // النصوص فوق القالب
                                       Positioned(
                                         left: (purchasedUserViewX / 100) * MediaQuery.of(context).size.width * 0.85,
                                         top: (purchasedUserViewY / 100) * 260,
@@ -909,6 +911,15 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
       var image = await boundary.toImage(pixelRatio: 3.0);
       var byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return;
+      // محاولة الحفظ في معرض الصور
+      try {
+        final result = await ImageGallerySaver.saveImage(byteData.buffer.asUint8List());
+        if (result != null && result['isSuccess'] == true) {
+          _showToast('✅ تم حفظ الصورة في المعرض');
+          return;
+        }
+      } catch (_) {}
+      // الرجوع للحفظ في مجلد مؤقت إذا فشل المعرض
       final tempDir = await getTemporaryDirectory();
       final file = File('${tempDir.path}/card_${DateTime.now().millisecondsSinceEpoch}.png');
       await file.writeAsBytes(byteData.buffer.asUint8List());
@@ -969,13 +980,29 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     return tier != null;
   }
 
+  void _onSearchChanged(String value) {
+    if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+    setState(() => _isSearching = true);
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      setState(() {
+        _searchQuery = value.trim().toLowerCase();
+        _isSearching = false;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
     final theme = Theme.of(context);
     final bool isPos = sys.currentUserRole == 'pos';
     final isDark = theme.brightness == Brightness.dark;
-    final primaryColor = theme.primaryColor;
 
     Map<String, dynamic> currentUserData = {};
     if (sys.currentUserPhone.isNotEmpty) {
@@ -1008,8 +1035,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                 color: isPos ? Colors.purple.shade800 : Colors.blue.shade800,
                 padding: const EdgeInsets.all(16),
                 child: TextField(
-                  onChanged: (value) =>
-                      setState(() => _searchQuery = value.trim().toLowerCase()),
+                  onChanged: _onSearchChanged,
                   style: const TextStyle(color: Colors.black),
                   decoration: InputDecoration(
                     hintText: isPos
@@ -1027,14 +1053,17 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                 ),
               ),
 
+              if (_isSearching)
+                const LinearProgressIndicator(minHeight: 2),
+
               Container(
                 color: isPos ? Colors.purple.shade800 : Colors.blue.shade800,
-                child: TabBar(
+                child: const TabBar(
                   labelColor: Colors.white,
                   unselectedLabelColor: Colors.white54,
                   indicatorColor: Colors.orange,
                   indicatorWeight: 4,
-                  tabs: const [
+                  tabs: [
                     Tab(icon: Icon(Icons.wifi), text: 'الشبكات المتاحة 📡'),
                     Tab(icon: Icon(Icons.store), text: 'نقاط البيع 🏪'),
                   ],
@@ -1072,7 +1101,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                           var net = doc.data() as Map<String, dynamic>;
                           bool match = (net['name']?.toString().toLowerCase().contains(_searchQuery) ?? false) ||
                               (net['location']?.toString().toLowerCase().contains(_searchQuery) ?? false);
-                          // البحث أيضًا في أسماء الفئات
                           if (!match && _searchQuery.isNotEmpty) {
                             final cats = List<Map<String, dynamic>>.from(net['categories'] ?? []);
                             match = cats.any((cat) => (cat['name'] ?? '').toString().toLowerCase().contains(_searchQuery));
@@ -1106,8 +1134,15 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
 
                         var posList = snapshot.data!.docs.where((doc) {
                           var pos = doc.data() as Map<String, dynamic>;
-                          return (pos['name']?.toString().toLowerCase().contains(_searchQuery) ?? false) ||
+                          bool match = (pos['name']?.toString().toLowerCase().contains(_searchQuery) ?? false) ||
                               (pos['location']?.toString().toLowerCase().contains(_searchQuery) ?? false);
+                          if (!match && _searchQuery.isNotEmpty) {
+                            final stock = List<Map<String, dynamic>>.from(pos['stock'] ?? []);
+                            match = stock.any((item) =>
+                                (item['network'] ?? '').toString().toLowerCase().contains(_searchQuery) ||
+                                (item['category'] ?? '').toString().toLowerCase().contains(_searchQuery));
+                          }
+                          return match;
                         }).toList();
 
                         if (posList.isEmpty)
@@ -1136,7 +1171,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   Widget _buildUserSummaryTile(
       SystemProvider sys, Map<String, dynamic> agentRelations, ThemeData theme) {
     if (agentRelations.isEmpty) return const SizedBox();
-    // عرض رصيد الوكيل الأول أو الإجمالي إن لم يوجد
     double displayedBalance = sys.currentUserBalance;
     if (agentRelations.isNotEmpty) {
       final firstRel = agentRelations.values.first;
@@ -1236,9 +1270,9 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
           .toList();
     }
 
-    // ✅ تصفية الفئات المجمدة
+    // إخفاء الفئات المجمدة
     categories = categories.where((cat) => (cat['isActive'] ?? true) == true).toList();
-    // ✅ تصفية إضافية للبحث في أسماء الفئات
+    // فلتر البحث
     if (_searchQuery.isNotEmpty) {
       categories = categories.where((cat) {
         return (cat['name'] ?? '').toString().toLowerCase().contains(_searchQuery);
@@ -1327,7 +1361,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                                           fontWeight: FontWeight.bold,
                                           color: catColor)),
                                   const SizedBox(width: 6),
-                                  // أيقونة الخصم التلقائي الفعلية
                                   FutureBuilder<bool>(
                                     future: _hasAnyAutoDiscountForUser(agentPhone, isPos),
                                     builder: (context, snapshot) {
@@ -1393,10 +1426,18 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   }
 
   Widget _buildPoSCard(Map<String, dynamic> pos, bool isCurrentPos) {
-    List stock = pos['stock'] ?? [];
+    List stock = List<Map<String, dynamic>>.from(pos['stock'] ?? []);
     String ownerName = pos['ownerName'] ?? 'مجهول';
     String ownerPhone = pos['ownerPhone'] ?? '';
     final theme = Theme.of(context);
+
+    // فلتر البحث على مستوى الأصناف
+    if (_searchQuery.isNotEmpty) {
+      stock = stock.where((item) {
+        return (item['network'] ?? '').toString().toLowerCase().contains(_searchQuery) ||
+            (item['category'] ?? '').toString().toLowerCase().contains(_searchQuery);
+      }).toList();
+    }
 
     return Card(
       elevation: 3,
@@ -1427,7 +1468,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                         fontWeight: FontWeight.bold, color: Colors.teal)),
                 const SizedBox(height: 10),
                 if (stock.isEmpty)
-                  const Text('لا يوجد كروت معروضة للبيع حالياً.',
+                  const Text('لم يقم الوكيل بإضافة كروت لهذه النقطة بعد.',
                       style: TextStyle(fontSize: 12, color: Colors.red)),
                 ...stock.map((item) {
                   int available = item['available'] ?? 0;
@@ -1465,7 +1506,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                         ElevatedButton(
                           onPressed: isAvailable
                               ? () async {
-                                  // البحث عن categoryId الفعلي من الشبكة
                                   String catId = '';
                                   try {
                                     final netSnap = await _db
