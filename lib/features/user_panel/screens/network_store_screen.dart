@@ -138,7 +138,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     }
   }
 
-  // ========== نافذة الشراء ==========
+  // ========== نافذة الشراء (خلفية معتمة) ==========
   void _showPurchaseBottomSheet(
     BuildContext context,
     String title,
@@ -152,6 +152,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   ) {
     _play('click');
     final systemProvider = Provider.of<SystemProvider>(context, listen: false);
+    final theme = Theme.of(context);
     final double originalPrice = unitPrice * quantity;
 
     bool isPurchased = false;
@@ -214,10 +215,14 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     }
     double totalPurchasingPower = walletBalance + creditLimit;
 
+    final sheetBackground = theme.brightness == Brightness.dark
+        ? const Color(0xFF1E1E1E)
+        : Colors.white;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: sheetBackground,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
@@ -305,7 +310,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
               child: Padding(
                 padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10))),
+                  Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(10))),
                   const SizedBox(height: 20),
                   if (!isPurchased) ...[
                     const Icon(Icons.shopping_cart_checkout, size: 60, color: Colors.orange),
@@ -325,7 +330,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                         final discount = autoDiscount!;
                         final color = Color(discount['color']);
                         return Container(padding: const EdgeInsets.all(10), margin: const EdgeInsets.only(bottom: 10),
-                          decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: color.withOpacity(0.5))),
+                          decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(10), border: Border.all(color: color.withOpacity(0.5))),
                           child: Row(children: [
                             Icon(Icons.auto_awesome, color: color), const SizedBox(width: 10),
                             Expanded(child: Text('خصم تلقائي: ${discount['title']} (${discount['discountType'] == 'percentage' ? "${discount['discountValue']}%" : "${discount['discountValue']} ريال"})', style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13))),
@@ -336,27 +341,27 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                     ],
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(color: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade100, borderRadius: BorderRadius.circular(10), border: Border.all(color: appliedCouponDocId != null ? Colors.green : Colors.grey.shade300)),
+                      decoration: BoxDecoration(color: theme.brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade100, borderRadius: BorderRadius.circular(10), border: Border.all(color: appliedCouponDocId != null ? Colors.green : Colors.grey.shade400)),
                       child: Row(children: [
-                        Expanded(child: TextField(controller: couponController, enabled: appliedCouponDocId == null && !isApplyingCoupon, style: const TextStyle(fontWeight: FontWeight.bold), decoration: InputDecoration(hintText: 'هل لديك كود خصم؟ (انسخه من الرئيسية)', hintStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 12), border: InputBorder.none, icon: Icon(Icons.local_offer, color: appliedCouponDocId != null ? Colors.green : Colors.grey)))),
+                        Expanded(child: TextField(controller: couponController, enabled: appliedCouponDocId == null && !isApplyingCoupon, style: const TextStyle(fontWeight: FontWeight.bold), decoration: InputDecoration(hintText: 'هل لديك كود خصم؟', hintStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 12), border: InputBorder.none, icon: Icon(Icons.local_offer, color: appliedCouponDocId != null ? Colors.green : Colors.grey)))),
                         if (appliedCouponDocId == null) isApplyingCoupon ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : TextButton(onPressed: applyCoupon, child: const Text('تطبيق', style: TextStyle(fontWeight: FontWeight.bold)))
                         else const Icon(Icons.check_circle, color: Colors.green),
                       ]),
                     ),
                     if (couponMessage.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text(couponMessage, style: TextStyle(color: couponMessageColor, fontSize: 12, fontWeight: FontWeight.bold))),
                     const SizedBox(height: 15),
-                    Container(padding: const EdgeInsets.all(15), decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.3))),
+                    Container(padding: const EdgeInsets.all(15), decoration: BoxDecoration(color: theme.colorScheme.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: theme.colorScheme.primary.withOpacity(0.3))),
                       child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           const Text('رصيدك المتاح لدى:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                           Text('الوكيل $agentName', style: const TextStyle(color: Colors.grey, fontSize: 11)),
                           if (isPos && creditLimit > 0) Text('+ دين مسموح: $creditLimit', style: const TextStyle(color: Colors.purple, fontSize: 10, fontWeight: FontWeight.bold)),
                         ]),
-                        Text('${totalPurchasingPower.toStringAsFixed(0)} ريال', style: TextStyle(fontWeight: FontWeight.bold, color: canAfford ? Theme.of(context).colorScheme.primary : Colors.red, fontSize: 16)),
+                        Text('${totalPurchasingPower.toStringAsFixed(0)} ريال', style: TextStyle(fontWeight: FontWeight.bold, color: canAfford ? theme.colorScheme.primary : Colors.red, fontSize: 16)),
                       ]),
                     ),
                     const SizedBox(height: 10),
-                    Container(padding: const EdgeInsets.all(15), decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.orange.withOpacity(0.3))),
+                    Container(padding: const EdgeInsets.all(15), decoration: BoxDecoration(color: Colors.orange.withOpacity(0.15), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.orange.withOpacity(0.3))),
                       child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                         const Text('المبلغ المطلوب خصمه:', style: TextStyle(fontWeight: FontWeight.bold)),
                         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -447,8 +452,20 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
       if (idx != -1) {
         int realStock = cats[idx]['realStock'] ?? 0;
         int simStock = cats[idx]['simStock'] ?? 0;
-        cats[idx]['realStock'] = (realStock - amount).clamp(0, realStock);
-        cats[idx]['stock'] = cats[idx]['realStock'] + simStock;
+        bool allowSellSim = cats[idx]['allowSellSim'] ?? false;
+        if (allowSellSim) {
+          // ننقص من المخزون الوهمي أولاً إذا سمح بذلك
+          if (simStock >= amount) {
+            cats[idx]['simStock'] = simStock - amount;
+          } else {
+            int remaining = amount - simStock;
+            cats[idx]['simStock'] = 0;
+            cats[idx]['realStock'] = (realStock - remaining).clamp(0, realStock);
+          }
+        } else {
+          cats[idx]['realStock'] = (realStock - amount).clamp(0, realStock);
+        }
+        cats[idx]['stock'] = (cats[idx]['realStock'] ?? 0) + (cats[idx]['simStock'] ?? 0);
         await _db.collection('networks').doc(netDoc.id).update({'categories': cats});
         break;
       }
@@ -493,7 +510,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
           key: _cardKey,
           child: Container(
             width: screenWidth, constraints: const BoxConstraints(maxHeight: 300),
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade300)),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade400)),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: LayoutBuilder(builder: (context, constraints) {
@@ -553,7 +570,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   Widget _actionChip(IconData icon, String label, VoidCallback onTap) {
     final theme = Theme.of(context);
     return InkWell(onTap: () { _play('click'); onTap(); },
-      child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(color: theme.colorScheme.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(20), border: Border.all(color: theme.colorScheme.primary.withOpacity(0.4))),
+      child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(color: theme.colorScheme.primary.withOpacity(0.15), borderRadius: BorderRadius.circular(20), border: Border.all(color: theme.colorScheme.primary.withOpacity(0.5))),
         child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 18, color: theme.colorScheme.primary), const SizedBox(width: 4), Text(label, style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.primary, fontSize: 12))]),
       ),
     );
@@ -661,6 +678,8 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     final List<dynamic> posAgents = currentUserData['pos_agents'] ?? [];
     final Map<String, dynamic> agentRelations = currentUserData['agent_relations'] ?? {};
 
+    final tabBarColor = isPos ? const Color(0xFF6A1B9A) : const Color(0xFF1565C0);
+
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -672,27 +691,24 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
           child: Column(children: [
             if (!isPos) _buildUserSummaryTile(sys, agentRelations, theme),
             if (isPos) _buildPosSummaryTile(sys, agentRelations, theme),
-
             Container(
-              color: theme.colorScheme.primary.withOpacity(0.9),
+              color: tabBarColor,
               padding: const EdgeInsets.all(16),
               child: TextField(
                 onChanged: _onSearchChanged,
-                style: TextStyle(color: theme.colorScheme.onPrimary),
+                style: const TextStyle(color: Colors.black87),
                 decoration: InputDecoration(
                   hintText: isPos ? 'ابحث في شبكات مورديك...' : 'ابحث عن شبكة، بقالة، منطقة، فئة...',
-                  prefixIcon: Icon(Icons.search, color: theme.colorScheme.primary),
-                  filled: true, fillColor: theme.colorScheme.surface,
+                  prefixIcon: Icon(Icons.search, color: tabBarColor),
+                  filled: true, fillColor: Colors.white,
                   contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
                 ),
               ),
             ),
-
             if (_isSearching) const LinearProgressIndicator(minHeight: 2),
-
             Container(
-              color: theme.colorScheme.primary.withOpacity(0.9),
+              color: tabBarColor,
               child: TabBar(
                 labelColor: Colors.white,
                 unselectedLabelColor: Colors.white70,
@@ -702,9 +718,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                 tabs: const [Tab(icon: Icon(Icons.wifi), text: 'الشبكات'), Tab(icon: Icon(Icons.store), text: 'نقاط البيع')],
               ),
             ),
-
             Expanded(child: TabBarView(children: [
-              // تبويب الشبكات
               StreamBuilder<QuerySnapshot>(
                 stream: (isPos && posAgents.isNotEmpty)
                     ? _db.collection('networks').where('agentPhone', whereIn: posAgents.take(10).toList()).where('isActive', isEqualTo: true).snapshots()
@@ -749,8 +763,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                   );
                 },
               ),
-
-              // تبويب نقاط البيع
               StreamBuilder<QuerySnapshot>(
                 stream: _db.collection('points_of_sale').snapshots(),
                 builder: (context, snapshot) {
@@ -800,7 +812,8 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     double displayedBalance = sys.currentUserBalance;
     if (agentRelations.isNotEmpty) displayedBalance = (agentRelations.values.first['balance'] ?? displayedBalance).toDouble();
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), color: theme.colorScheme.primary.withOpacity(0.05),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: theme.colorScheme.primary.withOpacity(0.08),
       child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         const Text('💰 رصيدك لدى الوكيل', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
         Row(children: [
@@ -818,7 +831,8 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     final double balance = sys.currentUserBalance;
     final double credit = (firstRel['creditLimit'] ?? 0.0).toDouble();
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), color: theme.colorScheme.primary.withOpacity(0.05),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: theme.colorScheme.primary.withOpacity(0.08),
       child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         const Text('🏪 رصيدك + الدين المسموح', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
         Row(children: [
@@ -831,7 +845,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   }
 }
 
-// ========== بطاقة الشبكة (StatefulWidget منفصل) ==========
+// ========== بطاقة الشبكة ==========
 class NetworkCard extends StatefulWidget {
   final Map<String, dynamic> network;
   final bool isPos;
@@ -854,7 +868,6 @@ class _NetworkCardState extends State<NetworkCard> with AutomaticKeepAliveClient
   bool get wantKeepAlive => true;
 
   Future<bool> _hasAnyAutoDiscountForUser(String agentPhone, bool isPos) async {
-    // استدعاء دالة من parent إن أمكن، لكن نكررها هنا لاستقلالية الويدجت
     final sys = Provider.of<SystemProvider>(context, listen: false);
     final phone = sys.currentUserPhone;
     final tiersSnap = await _db.collection('discount_tiers').where('agentPhone', isEqualTo: agentPhone).where('isActive', isEqualTo: true).get();
@@ -914,7 +927,7 @@ class _NetworkCardState extends State<NetworkCard> with AutomaticKeepAliveClient
       child: ExpansionTile(
         initiallyExpanded: false,
         leading: CircleAvatar(backgroundColor: widget.isPos ? Colors.purple : theme.colorScheme.primary, child: const Icon(Icons.router, color: Colors.white)),
-        title: Text(networkName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        title: Text(networkName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
         subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('📍 ${network['location'] ?? ''}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
           if (coverageAreas.isNotEmpty) Text('📶 ${coverageAreas.join('، ')}', style: const TextStyle(fontSize: 11, color: Colors.teal)),
@@ -923,12 +936,19 @@ class _NetworkCardState extends State<NetworkCard> with AutomaticKeepAliveClient
           Padding(padding: const EdgeInsets.only(bottom: 12), child: Row(children: [
             Text('الوكيل: $agentName', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
             const Spacer(),
-            InkWell(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UserWalletScreen())), child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: Colors.deepPurple.withOpacity(0.1), borderRadius: BorderRadius.circular(20)), child: const Text('⚡ شحن المحفظة', style: TextStyle(fontSize: 12, color: Colors.deepPurple, fontWeight: FontWeight.bold)))),
+            InkWell(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UserWalletScreen())), child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: Colors.deepPurple.withOpacity(0.15), borderRadius: BorderRadius.circular(20)), child: const Text('⚡ شحن المحفظة', style: TextStyle(fontSize: 12, color: Colors.deepPurple, fontWeight: FontWeight.bold)))),
           ])),
           ...categories.map((cat) {
             double price = (cat['price'] ?? 0).toDouble();
-            int stock = cat['stock'] ?? 0;
-            bool isAvailable = stock > 0;
+            int realStock = cat['realStock'] ?? 0;
+            int simStock = cat['simStock'] ?? 0;
+            int totalStock = cat['stock'] ?? (realStock + simStock);
+            bool allowSellSim = cat['allowSellSim'] ?? false;
+
+            // الكمية القابلة للشراء
+            int buyableStock = allowSellSim ? totalStock : realStock;
+            bool isAvailable = buyableStock > 0;
+
             String catId = cat['id'] ?? '';
             String catName = cat['name'] ?? '';
             String key = '${network['agentPhone']}_$catId';
@@ -938,7 +958,7 @@ class _NetworkCardState extends State<NetworkCard> with AutomaticKeepAliveClient
             }
             final qtyCtrl = _qtyControllers[key]!;
             int currentQty = _qtyValues[key] ?? 1;
-            if (currentQty > stock) { currentQty = stock; qtyCtrl.text = '$stock'; _qtyValues[key] = stock; }
+            if (currentQty > buyableStock) { currentQty = buyableStock; qtyCtrl.text = '$buyableStock'; _qtyValues[key] = buyableStock; }
 
             Uint8List? thumbBytes;
             if (cat['templateBase64'] != null && cat['templateBase64'].isNotEmpty) {
@@ -947,9 +967,8 @@ class _NetworkCardState extends State<NetworkCard> with AutomaticKeepAliveClient
 
             return Container(
               margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: theme.cardColor, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.withOpacity(0.3))),
+              decoration: BoxDecoration(color: theme.cardColor, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.withOpacity(0.4))),
               child: Column(children: [
-                // عرض القالب بحجم كبير
                 if (thumbBytes != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
@@ -958,7 +977,6 @@ class _NetworkCardState extends State<NetworkCard> with AutomaticKeepAliveClient
                       child: Image.memory(thumbBytes, width: double.infinity, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
                     ),
                   ),
-                // تفاصيل الفئة
                 Row(children: [
                   if (thumbBytes == null)
                     Icon(Icons.wifi, color: widget.isPos ? Colors.purple : theme.colorScheme.primary),
@@ -970,18 +988,25 @@ class _NetworkCardState extends State<NetworkCard> with AutomaticKeepAliveClient
                       FutureBuilder<bool>(future: _hasAnyAutoDiscountForUser(agentPhone, widget.isPos), builder: (_, snap) => snap.data == true ? const Icon(Icons.auto_awesome, size: 16, color: Colors.amber) : const SizedBox()),
                     ]),
                     Text('السعة: ${cat['capacity']} | الوقت: ${cat['time']}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                    Text('المخزون: $stock كرت', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isAvailable ? Colors.green : Colors.red)),
+                    Text(
+                      allowSellSim
+                        ? 'المخزون: $totalStock كرت (حقيقي: $realStock)'
+                        : 'المخزون: $realStock كرت',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isAvailable ? Colors.green : Colors.red),
+                    ),
+                    if (!allowSellSim && realStock == 0 && totalStock > 0)
+                      const Text('⚠️ بيع الكروت الوهمية غير مسموح', style: TextStyle(fontSize: 10, color: Colors.orange)),
                   ])),
                 ]),
                 const SizedBox(height: 8),
-                // الكمية والشراء
                 Row(children: [
                   const Text('الكمية: ', style: TextStyle(fontSize: 12)),
                   IconButton(icon: const Icon(Icons.remove_circle_outline, size: 20), onPressed: currentQty > 1 ? () { setState(() { int n = currentQty - 1; qtyCtrl.text = '$n'; _qtyValues[key] = n; }); } : null),
-                  SizedBox(width: 40, child: TextField(controller: qtyCtrl, keyboardType: TextInputType.number, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14), decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero), onChanged: (v) { int? p = int.tryParse(v); if (p != null) { setState(() => _qtyValues[key] = p.clamp(1, stock)); qtyCtrl.text = '${_qtyValues[key]}'; } })),
-                  IconButton(icon: const Icon(Icons.add_circle_outline, size: 20), onPressed: currentQty < stock ? () { setState(() { int n = currentQty + 1; qtyCtrl.text = '$n'; _qtyValues[key] = n; }); } : null),
+                  SizedBox(width: 40, child: TextField(controller: qtyCtrl, keyboardType: TextInputType.number, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14), decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero), onChanged: (v) { int? p = int.tryParse(v); if (p != null) { setState(() => _qtyValues[key] = p.clamp(1, buyableStock)); qtyCtrl.text = '${_qtyValues[key]}'; } })),
+                  IconButton(icon: const Icon(Icons.add_circle_outline, size: 20), onPressed: currentQty < buyableStock ? () { setState(() { int n = currentQty + 1; qtyCtrl.text = '$n'; _qtyValues[key] = n; }); } : null),
                   const Spacer(),
-                  ElevatedButton(onPressed: isAvailable ? () => widget.onPurchase('$networkName - $catName', price, currentQty, agentPhone, agentName, networkName, catId) : null,
+                  ElevatedButton(
+                    onPressed: isAvailable ? () => widget.onPurchase('$networkName - $catName', price, currentQty, agentPhone, agentName, networkName, catId) : null,
                     style: ElevatedButton.styleFrom(backgroundColor: isAvailable ? (widget.isPos ? Colors.purple : theme.colorScheme.primary) : Colors.grey, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
                     child: Text(isAvailable ? 'شراء ($price × $currentQty)' : 'نفدت', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
                   ),
@@ -995,7 +1020,7 @@ class _NetworkCardState extends State<NetworkCard> with AutomaticKeepAliveClient
   }
 }
 
-// ========== بطاقة نقطة البيع (StatefulWidget منفصل) ==========
+// ========== بطاقة نقطة البيع ==========
 class PoSCard extends StatefulWidget {
   final Map<String, dynamic> pos;
   final bool isCurrentPos;
@@ -1037,16 +1062,16 @@ class _PoSCardState extends State<PoSCard> with AutomaticKeepAliveClientMixin {
 
     return Card(
       elevation: 3, color: theme.cardColor, margin: const EdgeInsets.only(bottom: 15),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.teal.withOpacity(0.3))),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.teal.withOpacity(0.4))),
       child: ExpansionTile(
         initiallyExpanded: false,
         leading: const CircleAvatar(backgroundColor: Colors.teal, child: Icon(Icons.storefront, color: Colors.white)),
-        title: Text(pos['name'] ?? 'بقالة بدون اسم', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        title: Text(pos['name'] ?? 'بقالة بدون اسم', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
         subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('📍 ${pos['location'] ?? ''}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
           Text('👤 الوكيل: $ownerName ($ownerPhone)', style: const TextStyle(fontSize: 12, color: Colors.teal)),
         ]),
-        children: [Container(padding: const EdgeInsets.all(16), color: theme.brightness == Brightness.dark ? Colors.teal.withOpacity(0.1) : Colors.teal.shade50, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        children: [Container(padding: const EdgeInsets.all(16), color: theme.brightness == Brightness.dark ? Colors.teal.withOpacity(0.15) : Colors.teal.shade50, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Text('الكروت المتاحة:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
           const SizedBox(height: 10),
           if (stock.isEmpty) const Text('لم يقم الوكيل بإضافة كروت بعد.', style: TextStyle(fontSize: 12, color: Colors.red)),
@@ -1063,7 +1088,7 @@ class _PoSCardState extends State<PoSCard> with AutomaticKeepAliveClientMixin {
             if (currentQty > available) { currentQty = available; qtyCtrl.text = '$available'; _qtyValues[key] = available; }
 
             return Container(
-              margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: theme.cardColor, borderRadius: BorderRadius.circular(10)),
+              margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: theme.cardColor, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.withOpacity(0.4))),
               child: Row(children: [
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('$netName - $catName', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
@@ -1078,7 +1103,6 @@ class _PoSCardState extends State<PoSCard> with AutomaticKeepAliveClientMixin {
                 ])),
                 ElevatedButton(
                   onPressed: isAvailable ? () async {
-                    // جلب categoryId حقيقي
                     String catId = '';
                     try {
                       final netSnap = await _db.collection('networks').where('agentPhone', isEqualTo: ownerPhone).where('name', isEqualTo: netName).limit(1).get();
@@ -1088,7 +1112,11 @@ class _PoSCardState extends State<PoSCard> with AutomaticKeepAliveClientMixin {
                         catId = match['id'] ?? '';
                       }
                     } catch (_) {}
-                    widget.onPurchase('$netName - $catName', price, currentQty, ownerPhone, ownerName, netName, catId);
+                    if (catId.isNotEmpty) {
+                      widget.onPurchase('$netName - $catName', price, currentQty, ownerPhone, ownerName, netName, catId);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر العثور على تفاصيل الكرت. تأكد من أن الفئة لا تزال موجودة.'), backgroundColor: Colors.red));
+                    }
                   } : null,
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
                   child: Text(isAvailable ? 'شراء ($price × $currentQty)' : 'نفدت', style: const TextStyle(color: Colors.white, fontSize: 12)),
