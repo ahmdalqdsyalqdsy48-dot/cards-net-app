@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -156,6 +157,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
 
     bool isPurchased = false;
     bool isSubmittingPurchase = false;
+    bool isLoadingCardData = false;
     List<String> purchasedPins = [];
 
     String? purchasedNetworkName;
@@ -372,7 +374,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                         onPressed: isSubmittingPurchase ? null : () async {
                           _play('click');
-                          // رسالة تأكيد قبل الشراء
                           bool confirm = await showDialog<bool>(
                             context: context,
                             builder: (ctx) => AlertDialog(
@@ -722,7 +723,6 @@ ${autoDiscountAmount + couponDiscountAmount > 0 ? 'السعر بعد الخصم:
       if (!kIsWeb) {
         await ImageGallerySaver.saveImage(byteData.buffer.asUint8List());
       } else {
-        // للويب: تنزيل الصورة
         final blob = html.Blob([byteData.buffer.asUint8List()], 'image/png');
         final url = html.Url.createObjectUrlFromBlob(blob);
         html.window.open(url, '_blank');
@@ -983,13 +983,11 @@ class _NetworkCardState extends State<NetworkCard> with AutomaticKeepAliveClient
       List<dynamic> allowed = rel['allowedCategories'] ?? [];
       categories = categories.where((cat) => allowed.contains(cat['id'])).toList();
     }
-    // تصفية الفئات المجمدة
     categories = categories.where((cat) => (cat['isActive'] ?? true) == true).toList();
-    // إخفاء الفئات التي ليس لها مخزون حقيقي عند منع بيع الوهمية
     categories = categories.where((cat) {
       int realStock = cat['realStock'] ?? 0;
       bool allowSellSim = cat['allowSellSim'] ?? false;
-      if (!allowSellSim && realStock == 0) return false; // لا تظهر إذا ممنوع بيع الوهمي ولا يوجد حقيقي
+      if (!allowSellSim && realStock == 0) return false;
       return true;
     }).toList();
     if (widget.searchQuery.isNotEmpty) {
