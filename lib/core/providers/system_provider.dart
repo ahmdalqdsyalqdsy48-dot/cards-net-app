@@ -770,8 +770,7 @@ class SystemProvider extends ChangeNotifier {
     }).toList();
   }
 
-  Future<Map<String, dynamic>?> searchUserByAccountOrName(
-      String query) async {
+  Future<Map<String, dynamic>?> searchUserByAccountOrName(String query) async {
     if (query.trim().isEmpty) return null;
     final isNumeric = RegExp(r'^\d+$').hasMatch(query.trim());
 
@@ -1057,7 +1056,8 @@ class SystemProvider extends ChangeNotifier {
         'fee': 0.0,
         'type': 'transfer',
         'paymentMethod': 'رصيد محفظة',
-        'title': 'تحويل من ${myData['name'] ?? 'مستخدم'} إلى ${targetData['name'] ?? 'مستخدم'}',
+        'title':
+            'تحويل من ${myData['name'] ?? 'مستخدم'} إلى ${targetData['name'] ?? 'مستخدم'}',
         'reference': 'USR-${DateTime.now().millisecondsSinceEpoch}',
         'timestamp': FieldValue.serverTimestamp()
       });
@@ -1210,15 +1210,18 @@ class SystemProvider extends ChangeNotifier {
     for (String phone in targetPhones) {
       DocumentReference ref = _db.collection('users').doc(phone);
       if (hide) {
-        batch.update(ref, {'hiddenSections': FieldValue.arrayUnion([sectionId])});
+        batch.update(
+            ref, {'hiddenSections': FieldValue.arrayUnion([sectionId])});
       } else {
-        batch.update(ref, {'hiddenSections': FieldValue.arrayRemove([sectionId])});
+        batch.update(
+            ref, {'hiddenSections': FieldValue.arrayRemove([sectionId])});
       }
     }
     await batch.commit();
     logAction(
         action: 'استهداف الأقسام',
-        details: 'تم ${hide ? "إخفاء" : "إظهار"} قسم $sectionId لعدد ${targetPhones.length} مستخدم',
+        details:
+            'تم ${hide ? "إخفاء" : "إظهار"} قسم $sectionId لعدد ${targetPhones.length} مستخدم',
         severity: 'critical');
   }
 
@@ -1467,7 +1470,8 @@ class SystemProvider extends ChangeNotifier {
         _activeUserPhone = phone;
         _currentUserRole = userData['role'] ?? 'user';
         if (_currentUserRole == 'staff' && userData['permissions'] != null) {
-          _currentUserPermissions = Map<String, bool>.from(userData['permissions']);
+          _currentUserPermissions =
+              Map<String, bool>.from(userData['permissions']);
         }
         _listenToUserNotifications();
         notifyListeners();
@@ -1529,7 +1533,8 @@ class SystemProvider extends ChangeNotifier {
     try {
       bool exists = await checkUserExists(phone);
       if (!exists) {
-        final DateTime nextMonth = DateTime.now().add(const Duration(days: 30));
+        final DateTime nextMonth =
+            DateTime.now().add(const Duration(days: 30));
         final String expiryDate =
             '${nextMonth.year}-${nextMonth.month.toString().padLeft(2, '0')}-${nextMonth.day.toString().padLeft(2, '0')}';
 
@@ -1596,7 +1601,8 @@ class SystemProvider extends ChangeNotifier {
         });
         WriteBatch batch = _db.batch();
         batch.set(_db.collection('users').doc(newPhone), data);
-        if (oldPhone != newPhone) batch.delete(_db.collection('users').doc(oldPhone));
+        if (oldPhone != newPhone)
+          batch.delete(_db.collection('users').doc(oldPhone));
         await batch.commit();
       }
     } catch (e) {
@@ -1729,6 +1735,127 @@ class SystemProvider extends ChangeNotifier {
     return actualPin;
   }
 
+  // 2. الدالة المجمعة (للشراءات المتعددة) - هذه هي الإضافة الوحيدة
+  Future<List<String>> executeBulkPurchase({
+    required double totalPrice,
+    required double unitPrice,
+    required int quantity,
+    required double discountAmount,
+    required double couponDiscount,
+    required String cardTitle,
+    required String agentPhone,
+    required String categoryId,
+    String? appliedCouponId,
+  }) async {
+    if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً لإتمام الشراء.';
+
+    final userRef = _db.collection('users').doc(_activeUserPhone);
+
+    // البحث عن كروت متاحة بالعدد المطلوب
+    final availableCardsQuery = await _db
+        .collection('cards')
+        .where('agentPhone', isEqualTo: agentPhone)
+        .where('categoryId', isEqualTo: categoryId)
+        .where('status', isEqualTo: 'متاح')
+        .limit(quantity)
+        .get();
+
+    if (availableCardsQuery.docs.length < quantity) {
+      throw 'عذراً، لا توجد كروت كافية. المتاح: ${availableCardsQuery.docs.length}';
+    }
+
+    final List<String> pins = [];
+    final List<DocumentReference> cardRefs = [];
+
+    for (var doc in availableCardsQuery.docs) {
+      final cardData = doc.data() as Map<String, dynamic>;
+      pins.add(cardData['pin'] ?? 'غير معروف');
+      cardRefs.add(doc.reference);
+    }
+
+    await _db.runTransaction((transaction) async {
+      final userSnapshot = await transaction.get(userRef);
+      if (!userSnapshot.exists) throw 'حساب المستخدم غير موجود.';
+
+      final userData = userSnapshot.data() as Map<String, dynamic>;
+      Map<String, dynamic> wallets = userData['wallets'] ?? {};
+      double currentWalletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
+
+      double creditLimit = 0.0;
+      if (userData['role'] == 'pos') {
+        Map<String, dynamic> relations = userData['agent_relations'] ?? {};
+        Map<String, dynamic> myRel = relations[agentPhone] ?? {};
+        creditLimit = (myRel['creditLimit'] ?? 0.0).toDouble();
+      }
+
+      if ((currentWalletBalance + creditLimit) < totalPrice) {
+        throw 'الرصيد أو الحد الائتماني غير كافٍ.';
+      }
+
+      // خصم المبلغ مرة واحدة فقط
+      transaction.update(userRef, {
+        'wallets.$agentPhone': FieldValue.increment(-totalPrice),
+      });
+
+      // تحديث حالة الكروت إلى مباع
+      for (var ref in cardRefs) {
+        transaction.update(ref, {
+          'status': 'مباع',
+          'buyerPhone': _activeUserPhone,
+          'soldAt': FieldValue.serverTimestamp(),
+          'soldPrice': unitPrice,
+          'discountAmount': discountAmount + couponDiscount,
+        });
+      }
+
+      // إضافة الكروت إلى سجل مشتريات المستخدم
+      for (var pin in pins) {
+        final purchaseInvoice = {
+          'title': cardTitle,
+          'pin': pin,
+          'price': unitPrice,
+          'agentPhone': agentPhone,
+          'date': DateTime.now().toIso8601String(),
+        };
+        transaction.update(userRef, {
+          'purchasedCards': FieldValue.arrayUnion([purchaseInvoice])
+        });
+      }
+
+      // تحديث إحصائيات النظام
+      transaction.update(_db.collection('system').doc('main_info'), {
+        'totalSystemCards': FieldValue.increment(-quantity)
+      });
+
+      // تسجيل الحركة المالية
+      DocumentReference txnRef = _db.collection('transactions').doc();
+      transaction.set(txnRef, {
+        'fromPhone': _activeUserPhone,
+        'toPhone': agentPhone,
+        'agentPhone': agentPhone,
+        'agentName': currentUserName,
+        'targetName': userData['name'] ?? 'زبون',
+        'networkName': userData['networkName'] ?? 'غير محدد',
+        'amount': totalPrice,
+        'fee': 0.0,
+        'paymentMethod': 'خصم من المحفظة',
+        'type': 'sale',
+        'title': 'بيع $quantity كرت: $cardTitle',
+        'reference': 'BULK-${DateTime.now().millisecondsSinceEpoch}',
+        'discount': discountAmount + couponDiscount,
+        'timestamp': FieldValue.serverTimestamp()
+      });
+
+      if (appliedCouponId != null) {
+        transaction.update(_db.collection('coupons').doc(appliedCouponId), {
+          'currentUsage': FieldValue.increment(1),
+        });
+      }
+    });
+
+    return pins;
+  }
+
   // ==================== دوال نقاط البيع ====================
   Future<void> upgradeUserToPos({
     required String posPhone,
@@ -1806,7 +1933,8 @@ class SystemProvider extends ChangeNotifier {
         'location': location,
         'agent_relations.$_activeUserPhone.creditLimit': creditLimit,
         'agent_relations.$_activeUserPhone.commission': commission,
-        'agent_relations.$_activeUserPhone.allowedCategories': allowedCategories,
+        'agent_relations.$_activeUserPhone.allowedCategories':
+            allowedCategories,
       });
 
       batch.update(_db.collection('points_of_sale').doc(posPhone), {
@@ -1823,7 +1951,8 @@ class SystemProvider extends ChangeNotifier {
   Future<void> fundSubAgent(String posPhone, double amount) async {
     if (_activeUserPhone == null) return;
 
-    final agentDoc = await _db.collection('users').doc(_activeUserPhone).get();
+    final agentDoc =
+        await _db.collection('users').doc(_activeUserPhone).get();
     final agentData = agentDoc.data() as Map<String, dynamic>? ?? {};
     if ((agentData['balance'] ?? 0.0) < amount) {
       throw 'رصيد الحصة غير كافٍ لإتمام التحويل.';
@@ -1834,7 +1963,8 @@ class SystemProvider extends ChangeNotifier {
 
     WriteBatch batch = _db.batch();
 
-    batch.update(agentDoc.reference, {'balance': FieldValue.increment(-amount)});
+    batch.update(
+        agentDoc.reference, {'balance': FieldValue.increment(-amount)});
     batch.update(_db.collection('users').doc(posPhone),
         {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
 
@@ -1924,18 +2054,22 @@ class SystemProvider extends ChangeNotifier {
       String requestId, String requesterPhone, double amount) async {
     if (_activeUserPhone == null) return;
 
-    final myDoc = await _db.collection('users').doc(_activeUserPhone).get();
+    final myDoc =
+        await _db.collection('users').doc(_activeUserPhone).get();
     final myData = myDoc.data() as Map<String, dynamic>? ?? {};
     if ((myData['balance'] ?? 0.0) < amount) {
       throw 'رصيدك لا يكفي! قم بتغذية رصيدك أولاً لتتمكن من إعطاء رصيد للآخرين.';
     }
 
-    final requesterDoc = await _db.collection('users').doc(requesterPhone).get();
-    final requesterData = requesterDoc.data() as Map<String, dynamic>? ?? {};
+    final requesterDoc =
+        await _db.collection('users').doc(requesterPhone).get();
+    final requesterData =
+        requesterDoc.data() as Map<String, dynamic>? ?? {};
 
     WriteBatch batch = _db.batch();
 
-    batch.update(_db.collection('user_recharges').doc(requestId), {'status': 'مقبول'});
+    batch.update(_db.collection('user_recharges').doc(requestId),
+        {'status': 'مقبول'});
     batch.update(myDoc.reference, {'balance': FieldValue.increment(-amount)});
 
     batch.update(requesterDoc.reference,
@@ -1960,7 +2094,8 @@ class SystemProvider extends ChangeNotifier {
     batch.set(notifRef, {
       'targetPhones': [requesterPhone],
       'title': 'تم شحن محفظتك 🎉',
-      'body': 'تمت الموافقة وإضافة $amount ريال لمحفظتك من $currentUserName.',
+      'body':
+          'تمت الموافقة وإضافة $amount ريال لمحفظتك من $currentUserName.',
       'timestamp': FieldValue.serverTimestamp(),
       'isRead': false,
       'readBy': [],
@@ -1999,7 +2134,8 @@ class SystemProvider extends ChangeNotifier {
     _sendNotification(
         targetPhones: ['774578241'],
         title: 'طلب شحن حصة جديد 🚀',
-        body: 'الوكيل $currentUserName يطلب حصة بقيمة $quotaAmount (الرسوم المودعة: $feeAmount).');
+        body:
+            'الوكيل $currentUserName يطلب حصة بقيمة $quotaAmount (الرسوم المودعة: $feeAmount).');
   }
 
   Future<void> adminAcceptSaaSRecharge(String requestId, String agentPhone,
@@ -2008,14 +2144,16 @@ class SystemProvider extends ChangeNotifier {
       WriteBatch batch = _db.batch();
       DocumentReference agentRef = _db.collection('users').doc(agentPhone);
 
-      batch.update(agentRef, {'balance': FieldValue.increment(quotaAmount)});
+      batch.update(
+          agentRef, {'balance': FieldValue.increment(quotaAmount)});
       batch.update(_db.collection('recharge_requests').doc(requestId),
           {'status': 'مقبول'});
 
       final agentDoc = await _db.collection('users').doc(agentPhone).get();
       final agentData = agentDoc.data() as Map<String, dynamic>? ?? {};
 
-      DocumentReference transactionRef = _db.collection('transactions').doc();
+      DocumentReference transactionRef =
+          _db.collection('transactions').doc();
       batch.set(transactionRef, {
         'fromPhone': '774578241',
         'toPhone': agentPhone,
@@ -2050,13 +2188,15 @@ class SystemProvider extends ChangeNotifier {
 
   Future<void> rejectRechargeRequest(String requestId, String reason) async {
     try {
-      final reqDoc = await _db.collection('recharge_requests').doc(requestId).get();
+      final reqDoc =
+          await _db.collection('recharge_requests').doc(requestId).get();
       if (reqDoc.exists) {
         final reqData = reqDoc.data() as Map<String, dynamic>;
         String userPhone = reqData['userPhone'];
 
         WriteBatch batch = _db.batch();
-        batch.update(reqDoc.reference, {'status': 'مرفوض', 'rejectReason': reason});
+        batch.update(reqDoc.reference,
+            {'status': 'مرفوض', 'rejectReason': reason});
 
         DocumentReference notifRef = _db.collection('notifications').doc();
         batch.set(notifRef, {
@@ -2104,7 +2244,8 @@ class SystemProvider extends ChangeNotifier {
       double displayBalance = 0.0;
       if (data['role'] == 'user' || data['role'] == 'pos') {
         Map<String, dynamic> wallets = data['wallets'] ?? {};
-        displayBalance = (wallets[_activeUserPhone] ?? 0.0).toDouble();
+        displayBalance =
+            (wallets[_activeUserPhone] ?? 0.0).toDouble();
       } else {
         displayBalance = (data['balance'] ?? 0.0).toDouble();
       }
@@ -2147,8 +2288,10 @@ class SystemProvider extends ChangeNotifier {
     double totalDebt = amount + taxAmount;
 
     await _db.runTransaction((transaction) async {
-      DocumentReference senderRef = _db.collection('users').doc(_activeUserPhone);
-      DocumentReference receiverRef = _db.collection('users').doc(targetPhone);
+      DocumentReference senderRef =
+          _db.collection('users').doc(_activeUserPhone);
+      DocumentReference receiverRef =
+          _db.collection('users').doc(targetPhone);
 
       var senderDoc = await transaction.get(senderRef);
       var receiverDoc = await transaction.get(receiverRef);
@@ -2160,22 +2303,28 @@ class SystemProvider extends ChangeNotifier {
       var sData = senderDoc.data() as Map<String, dynamic>;
       var rData = receiverDoc.data() as Map<String, dynamic>;
 
-      double currentSenderBalance = (sData['balance'] ?? 0.0).toDouble();
-      if (currentSenderBalance < amount) throw 'رصيد المحفظة الفعلي غير كافٍ.';
+      double currentSenderBalance =
+          (sData['balance'] ?? 0.0).toDouble();
+      if (currentSenderBalance < amount)
+        throw 'رصيد المحفظة الفعلي غير كافٍ.';
 
-      transaction.update(senderRef, {'balance': FieldValue.increment(-amount)});
+      transaction.update(
+          senderRef, {'balance': FieldValue.increment(-amount)});
 
       if (rData['role'] == 'user' || rData['role'] == 'pos') {
-        transaction.update(receiverRef,
-            {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
+        transaction.update(receiverRef, {
+          'wallets.$_activeUserPhone': FieldValue.increment(amount)
+        });
       } else {
-        transaction
-            .update(receiverRef, {'balance': FieldValue.increment(amount)});
+        transaction.update(
+            receiverRef, {'balance': FieldValue.increment(amount)});
       }
 
       if (paymentMethod == 'آجل') {
-        transaction.update(receiverRef,
-            {'agent_debts.$_activeUserPhone': FieldValue.increment(totalDebt)});
+        transaction.update(receiverRef, {
+          'agent_debts.$_activeUserPhone':
+              FieldValue.increment(totalDebt)
+        });
       }
 
       DocumentReference txnRef = _db.collection('transactions').doc();
@@ -2227,7 +2376,10 @@ class SystemProvider extends ChangeNotifier {
   }
 
   Future<void> updateDangerLimit(String phone, double newLimit) async {
-    await _db.collection('users').doc(phone).update({'dangerLimit': newLimit});
+    await _db
+        .collection('users')
+        .doc(phone)
+        .update({'dangerLimit': newLimit});
   }
 
   Future<void> manualSettlement({
@@ -2239,12 +2391,14 @@ class SystemProvider extends ChangeNotifier {
     try {
       WriteBatch batch = _db.batch();
       DocumentReference agentRef = _db.collection('users').doc(agentPhone);
-      batch.update(agentRef, {'balance': FieldValue.increment(amount)});
+      batch.update(
+          agentRef, {'balance': FieldValue.increment(amount)});
 
       final agentDoc = await _db.collection('users').doc(agentPhone).get();
       final agentData = agentDoc.data() as Map<String, dynamic>? ?? {};
 
-      DocumentReference transactionRef = _db.collection('transactions').doc();
+      DocumentReference transactionRef =
+          _db.collection('transactions').doc();
       batch.set(transactionRef, {
         'fromPhone': '774578241',
         'toPhone': agentPhone,
@@ -2304,7 +2458,8 @@ class SystemProvider extends ChangeNotifier {
       if (notif['isReadLocal'] == false) {
         DocumentReference ref =
             _db.collection('notifications').doc(notif['docId']);
-        batch.update(ref, {'readBy': FieldValue.arrayUnion([_activeUserPhone])});
+        batch.update(
+            ref, {'readBy': FieldValue.arrayUnion([_activeUserPhone])});
       }
     }
     await batch.commit();
@@ -2326,7 +2481,8 @@ class SystemProvider extends ChangeNotifier {
 
       if (targetingFilter == 1) {
         for (var agent in agentsList) {
-          DocumentReference ref = _db.collection('users').doc(agent['phone']);
+          DocumentReference ref =
+              _db.collection('users').doc(agent['phone']);
           batch.update(ref, {
             'subPlan': planName,
             'subPrice': planPrice,
@@ -2339,7 +2495,8 @@ class SystemProvider extends ChangeNotifier {
             title: 'تحديث الباقة 🎁',
             body: 'تم تجديد باقتك إلى "$planName" بنجاح.');
       } else if (targetingFilter == 2 && targetAgentPhone != null) {
-        DocumentReference ref = _db.collection('users').doc(targetAgentPhone);
+        DocumentReference ref =
+            _db.collection('users').doc(targetAgentPhone);
         batch.update(ref, {
           'subPlan': planName,
           'subPrice': planPrice,
@@ -2364,8 +2521,10 @@ class SystemProvider extends ChangeNotifier {
     required String sendMethod,
   }) async {
     try {
-      final existing =
-          await _db.collection('coupons').where('code', isEqualTo: code).get();
+      final existing = await _db
+          .collection('coupons')
+          .where('code', isEqualTo: code)
+          .get();
       if (existing.docs.isNotEmpty) throw 'كود الكوبون مستخدم مسبقاً!';
 
       await _db.collection('coupons').add({
@@ -2396,7 +2555,10 @@ class SystemProvider extends ChangeNotifier {
 
   Future<void> deactivateCoupon(String docId, String code) async {
     try {
-      await _db.collection('coupons').doc(docId).update({'isActive': false});
+      await _db
+          .collection('coupons')
+          .doc(docId)
+          .update({'isActive': false});
     } catch (e) {
       throw 'فشل إيقاف الكوبون: $e';
     }
@@ -2421,8 +2583,12 @@ class SystemProvider extends ChangeNotifier {
   Future<void> toggleSubscriptionStatus(
       String agentPhone, String currentStatus) async {
     try {
-      String newStatus = currentStatus == 'موقوف مؤقتاً' ? 'نشط' : 'موقوف مؤقتاً';
-      await _db.collection('users').doc(agentPhone).update({'subStatus': newStatus});
+      String newStatus =
+          currentStatus == 'موقوف مؤقتاً' ? 'نشط' : 'موقوف مؤقتاً';
+      await _db
+          .collection('users')
+          .doc(agentPhone)
+          .update({'subStatus': newStatus});
       _sendNotification(
           targetPhones: [agentPhone],
           title: 'حالة الحساب',
@@ -2434,7 +2600,8 @@ class SystemProvider extends ChangeNotifier {
 
   bool changeUserPassword(String oldPassword, String newPassword) {
     if (_activeUserPhone == null) return false;
-    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
+    final user = _usersDatabase
+        .firstWhere((u) => u['phone'] == _activeUserPhone);
     if (user['password'] == oldPassword) {
       _db
           .collection('users')
@@ -2557,7 +2724,8 @@ class SystemProvider extends ChangeNotifier {
     notifyListeners();
     WriteBatch batch = _db.batch();
     for (int i = 0; i < _bankAccounts.length; i++) {
-      batch.update(_db.collection('bank_accounts').doc(_bankAccounts[i]['docId']),
+      batch.update(
+          _db.collection('bank_accounts').doc(_bankAccounts[i]['docId']),
           {'order': i});
     }
     await batch.commit();
@@ -2626,7 +2794,8 @@ class SystemProvider extends ChangeNotifier {
   Future<void> updateUserPin(String pin) async {
     if (_activeUserPhone == null) return;
     await _db.collection('users').doc(_activeUserPhone).update({'pin': pin});
-    final index = _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
+    final index =
+        _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
     if (index != -1) {
       _usersDatabase[index]['pin'] = pin;
       notifyListeners();
@@ -2635,8 +2804,12 @@ class SystemProvider extends ChangeNotifier {
 
   Future<void> updateUserDailyLimit(double limit) async {
     if (_activeUserPhone == null) return;
-    await _db.collection('users').doc(_activeUserPhone).update({'dailyLimit': limit});
-    final index = _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
+    await _db
+        .collection('users')
+        .doc(_activeUserPhone)
+        .update({'dailyLimit': limit});
+    final index =
+        _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
     if (index != -1) {
       _usersDatabase[index]['dailyLimit'] = limit;
       notifyListeners();
@@ -2662,7 +2835,10 @@ class SystemProvider extends ChangeNotifier {
 
   Future<void> updatePrivacySetting(String key, bool value) async {
     if (_activeUserPhone == null) return;
-    await _db.collection('users').doc(_activeUserPhone).update({'privacy_$key': value});
+    await _db
+        .collection('users')
+        .doc(_activeUserPhone)
+        .update({'privacy_$key': value});
   }
 
   Future<Map<String, dynamic>?> getUserTierForAgent(String agentPhone) async {
@@ -2674,7 +2850,8 @@ class SystemProvider extends ChangeNotifier {
     Map<String, dynamic> wallets = user['wallets'] ?? {};
     double walletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
 
-    final tierQuery = await _db.collection('discount_tiers')
+    final tierQuery = await _db
+        .collection('discount_tiers')
         .where('agentPhone', isEqualTo: agentPhone)
         .where('isActive', isEqualTo: true)
         .get();
@@ -2685,7 +2862,8 @@ class SystemProvider extends ChangeNotifier {
         .map((doc) => doc.data() as Map<String, dynamic>)
         .toList();
 
-    tiers.sort((a, b) => (b['condition'] as int).compareTo(a['condition'] as int));
+    tiers.sort(
+        (a, b) => (b['condition'] as int).compareTo(a['condition'] as int));
 
     for (var tier in tiers) {
       if (walletBalance >= (tier['condition'] as num).toDouble()) {
@@ -2709,7 +2887,8 @@ class SystemProvider extends ChangeNotifier {
 
     for (var agentPhone in wallets.keys) {
       final tier = await getUserTierForAgent(agentPhone);
-      if (tier != null && (tier['condition'] as num).toDouble() > bestCondition) {
+      if (tier != null &&
+          (tier['condition'] as num).toDouble() > bestCondition) {
         bestCondition = (tier['condition'] as num).toDouble();
         bestTier = tier;
       }
@@ -2717,7 +2896,8 @@ class SystemProvider extends ChangeNotifier {
     return bestTier;
   }
 
-  Future<String> changeUserPinWithOld(String oldPin, String newPin, String confirmPin) async {
+  Future<String> changeUserPinWithOld(
+      String oldPin, String newPin, String confirmPin) async {
     if (_activeUserPhone == null) return 'يرجى تسجيل الدخول.';
     if (newPin.length != 6) return 'يجب أن يتكون رمز PIN من 6 أرقام.';
     if (newPin != confirmPin) return 'رمز PIN الجديد غير متطابق.';
@@ -2731,7 +2911,8 @@ class SystemProvider extends ChangeNotifier {
     if (storedPin != oldPin) return 'رمز PIN القديم غير صحيح.';
 
     await _db.collection('users').doc(_activeUserPhone).update({'pin': newPin});
-    final index = _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
+    final index =
+        _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
     if (index != -1) {
       _usersDatabase[index]['pin'] = newPin;
       notifyListeners();
