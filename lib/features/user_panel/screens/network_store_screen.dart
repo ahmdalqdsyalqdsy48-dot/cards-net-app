@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
-import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -40,14 +39,30 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
 
   void _showToast(String msg, {bool error = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg, textDirection: TextDirection.rtl),
-        backgroundColor: error ? Colors.red.shade800 : Colors.green.shade800,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
+    final overlay = Overlay.of(context);
+    late OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (context) => Positioned(
+        top: MediaQuery.of(context).padding.top + 60,
+        left: 16,
+        right: 16,
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: error ? Colors.red.shade800 : Colors.green.shade800,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(msg,
+                textDirection: TextDirection.rtl,
+                style: const TextStyle(color: Colors.white)),
+          ),
+        ),
       ),
     );
+    overlay.insert(entry);
+    Future.delayed(const Duration(seconds: 3), () => entry.remove());
   }
 
   bool _isWithinHappyHour(String startStr, String endStr) {
@@ -157,7 +172,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
 
     bool isPurchased = false;
     bool isSubmittingPurchase = false;
-    bool isLoadingCardData = false;
     List<String> purchasedPins = [];
 
     String? purchasedNetworkName;
@@ -388,25 +402,22 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                           if (!confirm) return;
                           updateState(() => isSubmittingPurchase = true);
                           try {
-                            List<String> pins = [];
-                            for (int i = 0; i < quantity; i++) {
-                              String realPin = await systemProvider.executeRealPurchase(
-                                finalPrice: finalPrice,
-                                discountAmount: autoDiscountAmount,
-                                couponDiscount: couponDiscountAmount,
-                                cardTitle: title,
-                                agentPhone: agentPhone,
-                                categoryId: categoryId,
-                                appliedCouponId: appliedCouponDocId,
-                              );
-                              pins.add(realPin);
-                            }
+                            final pins = await systemProvider.executeBulkPurchase(
+                              totalPrice: finalPrice,
+                              unitPrice: unitPrice,
+                              quantity: quantity,
+                              discountAmount: autoDiscountAmount,
+                              couponDiscount: couponDiscountAmount,
+                              cardTitle: title,
+                              agentPhone: agentPhone,
+                              categoryId: categoryId,
+                              appliedCouponId: appliedCouponDocId,
+                            );
                             await _decrementStock(agentPhone, categoryId, quantity);
                             _play('success');
-                            updateState(() { isSubmittingPurchase = false; isLoadingCardData = true; purchasedPins = pins; });
+                            updateState(() { isSubmittingPurchase = false; purchasedPins = pins; });
                             final info = await _fetchCardDisplayData(title, agentPhone);
                             updateState(() {
-                              isLoadingCardData = false;
                               if (info != null) {
                                 purchasedNetworkName = info['networkName'] ?? '';
                                 purchasedLoginUrl = info['loginUrl'] ?? '';
@@ -444,8 +455,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                         icon: const Icon(Icons.account_balance_wallet, color: Colors.deepPurple), label: const Text('⚡ شحن المحفظة', style: TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold))),
                     ],
                   ] else ...[
-                    if (isLoadingCardData) const Center(child: CircularProgressIndicator())
-                    else _buildMultiCardSuccessView(
+                    _buildMultiCardSuccessView(
                       pins: purchasedPins,
                       networkName: purchasedNetworkName ?? '',
                       loginUrl: purchasedLoginUrl ?? '',
@@ -566,75 +576,86 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     final theme = Theme.of(context);
     final screenWidth = MediaQuery.of(context).size.width * 0.9;
     final GlobalKey cardKey = GlobalKey();
+    bool hidePrice = false; // يمكن ربطه بمتغير حالة لإخفاء/إظهار السعر
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16), padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.dividerColor),
-      ),
-      child: Column(children: [
-        if (templateBytes != null)
+    return StatefulBuilder(
+      builder: (context, setState) => Container(
+        margin: const EdgeInsets.only(bottom: 16), padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: theme.dividerColor),
+        ),
+        child: Column(children: [
           RepaintBoundary(
             key: cardKey,
-            child: Container(
-              width: screenWidth,
-              constraints: const BoxConstraints(maxHeight: 220),
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade400)),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: LayoutBuilder(builder: (context, constraints) {
-                  double cw = constraints.maxWidth, ch = constraints.maxHeight;
-                  double iw = cw, ih = ch;
-                  if (imageWidth != null && imageHeight != null && imageWidth > 0 && imageHeight > 0) {
-                    double scale = (cw / imageWidth).clamp(0.0, ch / imageHeight);
-                    iw = imageWidth * scale; ih = imageHeight * scale;
-                  }
-                  double ox = (cw - iw) / 2, oy = (ch - ih) / 2;
-                  return Stack(children: [
-                    Center(child: Image.memory(templateBytes, width: iw, height: ih, fit: BoxFit.fill)),
-                    Positioned(left: ox + (userViewX / 100) * iw, top: oy + (userViewY / 100) * ih, child: Text(pin, style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold, letterSpacing: 2, color: textColor))),
-                  ]);
-                }),
-              ),
-            ),
-          )
-        else
-          Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: theme.colorScheme.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(12)), child: Text(pin, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 2))),
-        const SizedBox(height: 12),
-        _infoRow(icon: Icons.wifi, label: 'الشبكة', value: networkName, color: Colors.blue, theme: theme),
-        _infoRow(icon: Icons.data_usage, label: 'السعة', value: capacity, color: Colors.orange, theme: theme),
-        _infoRow(icon: Icons.timer, label: 'المدة', value: time, color: Colors.purple, theme: theme),
-        if (note.isNotEmpty) _infoRow(icon: Icons.note, label: 'ملاحظة', value: note, color: Colors.amber, theme: theme),
-        _infoRow(icon: Icons.money, label: 'السعر الأصلي', value: '$originalPrice ريال', color: Colors.red, theme: theme),
-        if (autoDiscountAmount + couponDiscountAmount > 0)
-          _infoRow(icon: Icons.discount, label: 'السعر بعد الخصم', value: '$finalPrice ريال', color: Colors.green, theme: theme),
-        const SizedBox(height: 8),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-          _smallButton(Icons.copy, 'نسخ', () { _play('click'); Clipboard.setData(ClipboardData(text: pin)); _showToast('تم نسخ الكرت'); }),
-          _smallButton(Icons.share, 'مشاركة', () => _shareSingleCard(
-            pin: pin, networkName: networkName, loginUrl: loginUrl, time: time, capacity: capacity, note: note,
-            originalPrice: originalPrice, finalPrice: finalPrice, autoDiscountAmount: autoDiscountAmount, couponDiscountAmount: couponDiscountAmount,
-            cardKey: cardKey, templateBytes: templateBytes, imageWidth: imageWidth, imageHeight: imageHeight,
-            userViewX: userViewX, userViewY: userViewY, fontSize: fontSize, textColor: textColor,
-          )),
-          _smallButton(Icons.save_alt, 'حفظ', () => _saveCardImage(cardKey, pin)),
-          if (loginUrl.isNotEmpty)
-            _smallButton(Icons.language, 'تسجيل الدخول', () { _play('click'); launchUrl(Uri.parse(loginUrl), mode: LaunchMode.externalApplication); }),
+            child: Column(children: [
+              if (templateBytes != null)
+                Container(
+                  width: screenWidth,
+                  constraints: const BoxConstraints(maxHeight: 220),
+                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade400)),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: LayoutBuilder(builder: (context, constraints) {
+                      double cw = constraints.maxWidth, ch = constraints.maxHeight;
+                      double iw = cw, ih = ch;
+                      if (imageWidth != null && imageHeight != null && imageWidth > 0 && imageHeight > 0) {
+                        double scale = (cw / imageWidth).clamp(0.0, ch / imageHeight);
+                        iw = imageWidth * scale; ih = imageHeight * scale;
+                      }
+                      double ox = (cw - iw) / 2, oy = (ch - ih) / 2;
+                      return Stack(children: [
+                        Center(child: Image.memory(templateBytes, width: iw, height: ih, fit: BoxFit.fill)),
+                        Positioned(left: ox + (userViewX / 100) * iw, top: oy + (userViewY / 100) * ih, child: Text(pin, style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold, letterSpacing: 2, color: textColor))),
+                      ]);
+                    }),
+                  ),
+                )
+              else
+                Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: theme.colorScheme.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(12)), child: Text(pin, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 2))),
+              const SizedBox(height: 12),
+              _infoRow(icon: Icons.wifi, label: 'الشبكة', value: networkName, color: Colors.blue),
+              _infoRow(icon: Icons.data_usage, label: 'السعة', value: capacity, color: Colors.orange),
+              _infoRow(icon: Icons.timer, label: 'المدة', value: time, color: Colors.purple),
+              if (note.isNotEmpty) _infoRow(icon: Icons.note, label: 'ملاحظة', value: note, color: Colors.amber),
+              if (!hidePrice) ...[
+                _infoRow(icon: Icons.money, label: 'السعر الأصلي', value: '$originalPrice ريال', color: Colors.red),
+                if (autoDiscountAmount + couponDiscountAmount > 0)
+                  _infoRow(icon: Icons.discount, label: 'السعر بعد الخصم', value: '$finalPrice ريال', color: Colors.green),
+              ],
+            ]),
+          ),
+          const SizedBox(height: 8),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+            _smallButton(Icons.copy, 'نسخ', () { _play('click'); Clipboard.setData(ClipboardData(text: pin)); _showToast('تم نسخ الكرت'); }),
+            _smallButton(Icons.share, 'مشاركة', () => _shareSingleCard(
+              pin: pin, networkName: networkName, loginUrl: loginUrl, time: time, capacity: capacity, note: note,
+              originalPrice: originalPrice, finalPrice: finalPrice,
+              cardKey: cardKey, hidePrice: hidePrice,
+            )),
+            _smallButton(Icons.save_alt, 'حفظ', () => _saveCardImage(cardKey, pin)),
+            if (loginUrl.isNotEmpty)
+              _smallButton(Icons.language, 'تسجيل الدخول', () { _play('click'); launchUrl(Uri.parse(loginUrl), mode: LaunchMode.externalApplication); }),
+          ]),
+          SwitchListTile(
+            title: const Text('إخفاء السعر', style: TextStyle(fontSize: 12)),
+            value: hidePrice,
+            onChanged: (v) => setState(() => hidePrice = v),
+          ),
+          if (!isLast) const Divider(height: 20),
         ]),
-        if (!isLast) const Divider(height: 20),
-      ]),
+      ),
     );
   }
 
-  Widget _infoRow({required IconData icon, required String label, required String value, required Color color, required ThemeData theme}) {
+  Widget _infoRow({required IconData icon, required String label, required String value, required Color color}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(children: [
         Icon(icon, size: 16, color: color), const SizedBox(width: 6),
-        Text('$label: ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: theme.textTheme.bodyMedium?.color)),
-        Expanded(child: Text(value, style: TextStyle(fontSize: 12, color: theme.textTheme.bodyMedium?.color), textAlign: TextAlign.end)),
+        Text('$label: ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+        Expanded(child: Text(value, style: const TextStyle(fontSize: 12), textAlign: TextAlign.end)),
       ]),
     );
   }
@@ -653,10 +674,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     required String pin, required String networkName, required String loginUrl,
     required String time, required String capacity, required String note,
     required double originalPrice, required double finalPrice,
-    required double autoDiscountAmount, required double couponDiscountAmount,
-    required GlobalKey cardKey, Uint8List? templateBytes,
-    int? imageWidth, int? imageHeight, double userViewX = 50, double userViewY = 50,
-    double fontSize = 16, Color textColor = Colors.black,
+    required GlobalKey cardKey, bool hidePrice = false,
   }) async {
     showModalBottomSheet(
       context: context,
@@ -701,7 +719,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
 المدة: $time
 رابط الدخول: $loginUrl
 السعر الأصلي: $originalPrice ريال
-${autoDiscountAmount + couponDiscountAmount > 0 ? 'السعر بعد الخصم: $finalPrice ريال' : ''}
+${hidePrice ? '' : 'السعر بعد الخصم: $finalPrice ريال'}
 ملاحظة: $note
 ''';
                 await Share.share(text, subject: 'بطاقة $networkName');
@@ -981,7 +999,13 @@ class _NetworkCardState extends State<NetworkCard> with AutomaticKeepAliveClient
     if (widget.isPos) {
       Map<String, dynamic> rel = widget.agentRelations[network['agentPhone'] ?? ''] ?? {};
       List<dynamic> allowed = rel['allowedCategories'] ?? [];
+      double commission = double.tryParse(rel['commission']?.replaceAll('%', '') ?? '0') ?? 0;
       categories = categories.where((cat) => allowed.contains(cat['id'])).toList();
+      // تطبيق العمولة
+      for (var cat in categories) {
+        double originalPrice = (cat['price'] ?? 0).toDouble();
+        cat['effectivePrice'] = originalPrice * (1 - commission / 100);
+      }
     }
     categories = categories.where((cat) => (cat['isActive'] ?? true) == true).toList();
     categories = categories.where((cat) {
@@ -1011,7 +1035,7 @@ class _NetworkCardState extends State<NetworkCard> with AutomaticKeepAliveClient
           padding: const EdgeInsets.all(16), color: theme.brightness == Brightness.dark ? Colors.black12 : Colors.grey.shade50,
           child: Column(children: [
             ...categories.map((cat) {
-              double price = (cat['price'] ?? 0).toDouble();
+              double price = widget.isPos ? (cat['effectivePrice'] ?? (cat['price'] ?? 0).toDouble()) : (cat['price'] ?? 0).toDouble();
               int realStock = cat['realStock'] ?? 0;
               int simStock = cat['simStock'] ?? 0;
               int totalStock = cat['stock'] ?? (realStock + simStock);
@@ -1032,7 +1056,14 @@ class _NetworkCardState extends State<NetworkCard> with AutomaticKeepAliveClient
                 decoration: BoxDecoration(color: theme.cardColor, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade300)),
                 child: Column(children: [
                   Row(children: [
-                    Icon(Icons.wifi, color: theme.colorScheme.primary), const SizedBox(width: 10),
+                    if (cat['templateBase64'] != null)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(base64Decode(cat['templateBase64']), width: 60, height: 60, fit: BoxFit.cover),
+                        ),
+                      ),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(cat['name'] ?? '', style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
                       Text('السعة: ${cat['capacity']} | الوقت: ${cat['time']}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
