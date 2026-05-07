@@ -1712,126 +1712,125 @@ class SystemProvider extends ChangeNotifier {
     return actualPin;
   }
 
-  // ========== دالة الشراء المتعدد (الجديدة) ==========
-  Future<List<String>> executeBulkPurchase({
-    required double totalPrice,
-    required double unitPrice,
-    required int quantity,
-    required double discountAmount,
-    required double couponDiscount,
-    required String cardTitle,
-    required String agentPhone,
-    required String categoryId,
-    String? appliedCouponId,
-  }) async {
-    if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً لإتمام الشراء.';
+  // ========== دالة الشراء المتعدد (المُصححة) ==========
+Future<List<String>> executeBulkPurchase({
+  required double totalPrice,
+  required double unitPrice,
+  required int quantity,
+  required double discountAmount,
+  required double couponDiscount,
+  required String cardTitle,
+  required String agentPhone,
+  required String categoryId,
+  String? appliedCouponId,
+}) async {
+  if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً لإتمام الشراء.';
 
-    final userRef = _db.collection('users').doc(_activeUserPhone);
+  final userRef = _db.collection('users').doc(_activeUserPhone);
 
-    final availableCardsQuery = await _db
-        .collection('cards')
-        .where('agentPhone', isEqualTo: agentPhone)
-        .where('categoryId', isEqualTo: categoryId)
-        .where('status', isEqualTo: 'متاح')
-        .limit(quantity)
-        .get();
+  final availableCardsQuery = await _db
+      .collection('cards')
+      .where('agentPhone', isEqualTo: agentPhone)
+      .where('categoryId', isEqualTo: categoryId)
+      .where('status', isEqualTo: 'متاح')
+      .limit(quantity)
+      .get();
 
-    if (availableCardsQuery.docs.length < quantity) {
-      throw 'عذراً، لا توجد كروت كافية. المتاح: ${availableCardsQuery.docs.length}';
+  if (availableCardsQuery.docs.length < quantity) {
+    throw 'عذراً، لا توجد كروت كافية. المتاح: ${availableCardsQuery.docs.length}';
+  }
+
+  final List<String> pins = [];
+  final List<DocumentReference> cardRefs = [];
+
+  for (var doc in availableCardsQuery.docs) {
+    final cardData = doc.data() as Map<String, dynamic>;
+    pins.add(cardData['pin'] ?? 'غير معروف');
+    cardRefs.add(doc.reference);
+  }
+
+  await _db.runTransaction((transaction) async {
+    final userSnapshot = await transaction.get(userRef);
+    if (!userSnapshot.exists) throw 'حساب المستخدم غير موجود.';
+
+    final userData = userSnapshot.data() as Map<String, dynamic>;
+    Map<String, dynamic> wallets = userData['wallets'] ?? {};
+    double currentWalletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
+
+    double creditLimit = 0.0;
+    if (userData['role'] == 'pos') {
+      Map<String, dynamic> relations = userData['agent_relations'] ?? {};
+      Map<String, dynamic> myRel = relations[agentPhone] ?? {};
+      creditLimit = (myRel['creditLimit'] ?? 0.0).toDouble();
     }
 
-    final List<String> pins = [];
-    final List<DocumentReference> cardRefs = [];
-
-    for (var doc in availableCardsQuery.docs) {
-      final cardData = doc.data() as Map<String, dynamic>;
-      pins.add(cardData['pin'] ?? 'غير معروف');
-      cardRefs.add(doc.reference);
+    if ((currentWalletBalance + creditLimit) < totalPrice) {
+      throw 'الرصيد أو الحد الائتماني غير كافٍ.';
     }
 
-    await _db.runTransaction((transaction) async {
-      final userSnapshot = await transaction.get(userRef);
-      if (!userSnapshot.exists) throw 'حساب المستخدم غير موجود.';
-
-      final userData = userSnapshot.data() as Map<String, dynamic>;
-      Map<String, dynamic> wallets = userData['wallets'] ?? {};
-      double currentWalletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
-
-      double creditLimit = 0.0;
-      if (userData['role'] == 'pos') {
-        Map<String, dynamic> relations = userData['agent_relations'] ?? {};
-        Map<String, dynamic> myRel = relations[agentPhone] ?? {};
-        creditLimit = (myRel['creditLimit'] ?? 0.0).toDouble();
-      }
-
-      if ((currentWalletBalance + creditLimit) < totalPrice) {
-        throw 'الرصيد أو الحد الائتماني غير كافٍ.';
-      }
-
-      // خصم المبلغ مرة واحدة فقط
-      transaction.update(userRef, {
-        'wallets.$agentPhone': FieldValue.increment(-totalPrice),
-      });
-
-      // تحديث حالة الكروت إلى مباع
-      for (var ref in cardRefs) {
-        transaction.update(ref, {
-          'status': 'مباع',
-          'buyerPhone': _activeUserPhone,
-          'soldAt': FieldValue.serverTimestamp(),
-          'soldPrice': unitPrice,
-          'originalPrice': (cardData['price'] ?? 0.0),
-          'discountAmount': discountAmount + couponDiscount,
-        });
-      }
-
-      // إضافة الكروت إلى سجل مشتريات المستخدم
-      for (var pin in pins) {
-        final purchaseInvoice = {
-          'title': cardTitle,
-          'pin': pin,
-          'price': unitPrice,
-          'agentPhone': agentPhone,
-          'date': DateTime.now().toIso8601String(),
-        };
-        transaction.update(userRef, {
-          'purchasedCards': FieldValue.arrayUnion([purchaseInvoice])
-        });
-      }
-
-      // تحديث إحصائيات النظام
-      transaction.update(_db.collection('system').doc('main_info'), {
-        'totalSystemCards': FieldValue.increment(-quantity)
-      });
-
-      // تسجيل الحركة المالية
-      DocumentReference txnRef = _db.collection('transactions').doc();
-      transaction.set(txnRef, {
-        'fromPhone': _activeUserPhone,
-        'toPhone': agentPhone,
-        'agentPhone': agentPhone,
-        'agentName': currentUserName,
-        'targetName': userData['name'] ?? 'زبون',
-        'networkName': userData['networkName'] ?? 'غير محدد',
-        'amount': totalPrice,
-        'fee': 0.0,
-        'paymentMethod': 'خصم من المحفظة',
-        'type': 'sale',
-        'title': 'بيع $quantity كرت: $cardTitle',
-        'reference': 'BULK-${DateTime.now().millisecondsSinceEpoch}',
-        'discount': discountAmount + couponDiscount,
-        'timestamp': FieldValue.serverTimestamp()
-      });
-
-      if (appliedCouponId != null) {
-        transaction.update(_db.collection('coupons').doc(appliedCouponId), {
-          'currentUsage': FieldValue.increment(1),
-        });
-      }
+    // خصم المبلغ مرة واحدة فقط
+    transaction.update(userRef, {
+      'wallets.$agentPhone': FieldValue.increment(-totalPrice),
     });
 
-    return pins;
-  }
+    // تحديث حالة الكروت إلى مباع
+    for (var ref in cardRefs) {
+      transaction.update(ref, {
+        'status': 'مباع',
+        'buyerPhone': _activeUserPhone,
+        'soldAt': FieldValue.serverTimestamp(),
+        'soldPrice': unitPrice,
+        'discountAmount': discountAmount + couponDiscount,
+      });
+    }
+
+    // إضافة الكروت إلى سجل مشتريات المستخدم
+    for (var pin in pins) {
+      final purchaseInvoice = {
+        'title': cardTitle,
+        'pin': pin,
+        'price': unitPrice,
+        'agentPhone': agentPhone,
+        'date': DateTime.now().toIso8601String(),
+      };
+      transaction.update(userRef, {
+        'purchasedCards': FieldValue.arrayUnion([purchaseInvoice])
+      });
+    }
+
+    // تحديث إحصائيات النظام
+    transaction.update(_db.collection('system').doc('main_info'), {
+      'totalSystemCards': FieldValue.increment(-quantity)
+    });
+
+    // تسجيل الحركة المالية
+    DocumentReference txnRef = _db.collection('transactions').doc();
+    transaction.set(txnRef, {
+      'fromPhone': _activeUserPhone,
+      'toPhone': agentPhone,
+      'agentPhone': agentPhone,
+      'agentName': currentUserName,
+      'targetName': userData['name'] ?? 'زبون',
+      'networkName': userData['networkName'] ?? 'غير محدد',
+      'amount': totalPrice,
+      'fee': 0.0,
+      'paymentMethod': 'خصم من المحفظة',
+      'type': 'sale',
+      'title': 'بيع $quantity كرت: $cardTitle',
+      'reference': 'BULK-${DateTime.now().millisecondsSinceEpoch}',
+      'discount': discountAmount + couponDiscount,
+      'timestamp': FieldValue.serverTimestamp()
+    });
+
+    if (appliedCouponId != null) {
+      transaction.update(_db.collection('coupons').doc(appliedCouponId), {
+        'currentUsage': FieldValue.increment(1),
+      });
+    }
+  });
+
+  return pins;
+}
 
   // ==================== دوال نقاط البيع ====================
   Future<void> upgradeUserToPos({
