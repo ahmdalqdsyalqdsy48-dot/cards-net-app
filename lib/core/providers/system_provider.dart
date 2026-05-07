@@ -1623,16 +1623,9 @@ class SystemProvider extends ChangeNotifier {
     } catch (e) {}
   }
 
-  // ==================== دالة الشراء الجوهرية (محدثة) ====================
-  Future<String> executeRealPurchase({
-    required double finalPrice,
-    required double discountAmount,
-    required double couponDiscount,
-    required String cardTitle,
-    required String agentPhone,
-    required String categoryId,
-    String? appliedCouponId,
-  }) async {
+  // ========== دالة الشراء الأصلية (بدون تعديل) ==========
+  Future<String> executeRealPurchase(
+      double price, String cardTitle, String agentPhone, String categoryId) async {
     if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً لإتمام الشراء.';
 
     final userRef = _db.collection('users').doc(_activeUserPhone);
@@ -1669,30 +1662,24 @@ class SystemProvider extends ChangeNotifier {
         creditLimit = (myRel['creditLimit'] ?? 0.0).toDouble();
       }
 
-      if ((currentWalletBalance + creditLimit) < finalPrice) {
+      if ((currentWalletBalance + creditLimit) < price) {
         throw 'الرصيد أو الحد الائتماني المسموح لا يكفي لإتمام العملية.';
       }
 
-      // خصم المبلغ النهائي (بعد كل الخصومات)
       transaction.update(userRef, {
-        'wallets.$agentPhone': FieldValue.increment(-finalPrice),
+        'wallets.$agentPhone': FieldValue.increment(-price),
       });
 
-      // تحديث حالة الكرت إلى مباع
       transaction.update(_db.collection('cards').doc(cardId), {
         'status': 'مباع',
         'buyerPhone': _activeUserPhone,
         'soldAt': FieldValue.serverTimestamp(),
-        'soldPrice': finalPrice,
-        'originalPrice': (cardData['price'] ?? 0.0),
-        'discountAmount': discountAmount + couponDiscount,
       });
 
-      // إضافة إلى سجل مشتريات المستخدم
       final Map<String, dynamic> purchaseInvoice = {
         'title': cardTitle,
         'pin': actualPin,
-        'price': finalPrice,
+        'price': price,
         'agentPhone': agentPhone,
         'date': DateTime.now().toIso8601String(),
       };
@@ -1700,12 +1687,10 @@ class SystemProvider extends ChangeNotifier {
         'purchasedCards': FieldValue.arrayUnion([purchaseInvoice])
       });
 
-      // تحديث إحصائيات النظام
       transaction.update(_db.collection('system').doc('main_info'), {
         'totalSystemCards': FieldValue.increment(-1)
       });
 
-      // تسجيل الحركة المالية
       DocumentReference txnRef = _db.collection('transactions').doc();
       transaction.set(txnRef, {
         'fromPhone': _activeUserPhone,
@@ -1714,28 +1699,20 @@ class SystemProvider extends ChangeNotifier {
         'agentName': currentUserName,
         'targetName': userData['name'] ?? 'زبون',
         'networkName': userData['networkName'] ?? 'غير محدد',
-        'amount': finalPrice,
+        'amount': price,
         'fee': 0.0,
         'paymentMethod': 'خصم من المحفظة',
         'type': 'sale',
         'title': 'بيع كرت: $cardTitle لـ ${userData['name'] ?? 'زبون'}',
         'reference': 'SAL-$cardId',
-        'discount': discountAmount + couponDiscount,
         'timestamp': FieldValue.serverTimestamp()
       });
-
-      // زيادة استخدام الكوبون إذا وُجد
-      if (appliedCouponId != null) {
-        transaction.update(_db.collection('coupons').doc(appliedCouponId), {
-          'currentUsage': FieldValue.increment(1),
-        });
-      }
     });
 
     return actualPin;
   }
 
-  // 2. الدالة المجمعة (للشراءات المتعددة) - هذه هي الإضافة الوحيدة
+  // ========== دالة الشراء المتعدد (الجديدة) ==========
   Future<List<String>> executeBulkPurchase({
     required double totalPrice,
     required double unitPrice,
@@ -1751,7 +1728,6 @@ class SystemProvider extends ChangeNotifier {
 
     final userRef = _db.collection('users').doc(_activeUserPhone);
 
-    // البحث عن كروت متاحة بالعدد المطلوب
     final availableCardsQuery = await _db
         .collection('cards')
         .where('agentPhone', isEqualTo: agentPhone)
@@ -1804,6 +1780,7 @@ class SystemProvider extends ChangeNotifier {
           'buyerPhone': _activeUserPhone,
           'soldAt': FieldValue.serverTimestamp(),
           'soldPrice': unitPrice,
+          'originalPrice': (cardData['price'] ?? 0.0),
           'discountAmount': discountAmount + couponDiscount,
         });
       }
