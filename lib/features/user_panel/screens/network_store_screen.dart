@@ -13,7 +13,9 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_gallery_saver/image_gallery_saver.dart';
+// للويب فقط
 import 'dart:html' as html;
+
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_header.dart';
@@ -31,7 +33,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   String _searchQuery = '';
   Timer? _debounceTimer;
   bool _isSearching = false;
-  final GlobalKey _cardKey = GlobalKey();
 
   void _play(String type) =>
       Provider.of<UiProvider>(context, listen: false).playSound(type);
@@ -844,8 +845,6 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
     final List<dynamic> posAgents = currentUserData['pos_agents'] ?? [];
     final Map<String, dynamic> agentRelations = currentUserData['agent_relations'] ?? {};
 
-    final Color tabBarColor = theme.colorScheme.primary;
-
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -858,14 +857,14 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
             if (!isPos) _buildUserSummaryTile(sys, agentRelations, theme),
             if (isPos) _buildPosSummaryTile(sys, agentRelations, theme),
             Container(
-              color: tabBarColor,
+              color: isPos ? const Color(0xFF7B1FA2) : const Color(0xFF1565C0),
               padding: const EdgeInsets.all(16),
               child: TextField(
                 onChanged: _onSearchChanged,
                 style: const TextStyle(color: Colors.black87),
                 decoration: InputDecoration(
                   hintText: isPos ? 'ابحث في شبكات مورديك...' : 'ابحث عن شبكة، بقالة، منطقة، فئة...',
-                  prefixIcon: Icon(Icons.search, color: tabBarColor),
+                  prefixIcon: Icon(Icons.search, color: isPos ? const Color(0xFF7B1FA2) : const Color(0xFF1565C0)),
                   filled: true, fillColor: Colors.white,
                   contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
@@ -874,7 +873,7 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
             ),
             if (_isSearching) const LinearProgressIndicator(minHeight: 2),
             Container(
-              color: tabBarColor,
+              color: isPos ? const Color(0xFF7B1FA2) : const Color(0xFF1565C0),
               child: TabBar(
                 labelColor: Colors.white,
                 unselectedLabelColor: Colors.white70,
