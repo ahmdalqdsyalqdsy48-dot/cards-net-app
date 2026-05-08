@@ -268,8 +268,8 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     });
   }
 
-  /// تنفيذ عملية الشراء باستخدام معاملة Firestore ذرية لضمان الدقة
-  Future<void> _executePurchase({
+    /// تنفيذ عملية الشراء باستخدام معاملة Firestore ذرية لضمان الدقة
+  Future<List<String>> _executePurchase({   // <--- التعديل هنا فقط
     required String title,
     required double unitPrice,
     required int quantity,
@@ -301,7 +301,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
         appliedCouponId: appliedCouponId,
       );
 
-      // تحديث المخزون (نستخدم runTransaction لضمان التناسق)
+      // تحديث المخزون (نستخدم تحديثاً مباشراً، ويمكن تحسينه لمعاملة واحدة لاحقاً)
       final netQuery = await _db
           .collection('networks')
           .where('agentPhone', isEqualTo: agentPhone)
@@ -330,7 +330,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
             .doc(netDoc.id)
             .update({'categories': categories});
       }
-      return pins;
+      return pins; // الآن متوافق مع Future<List<String>>
     } catch (e) {
       rethrow;
     }
