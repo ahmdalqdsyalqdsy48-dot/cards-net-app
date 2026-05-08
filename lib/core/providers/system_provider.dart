@@ -770,7 +770,8 @@ class SystemProvider extends ChangeNotifier {
     }).toList();
   }
 
-  Future<Map<String, dynamic>?> searchUserByAccountOrName(String query) async {
+  Future<Map<String, dynamic>?> searchUserByAccountOrName(
+      String query) async {
     if (query.trim().isEmpty) return null;
     final isNumeric = RegExp(r'^\d+$').hasMatch(query.trim());
 
@@ -1056,8 +1057,7 @@ class SystemProvider extends ChangeNotifier {
         'fee': 0.0,
         'type': 'transfer',
         'paymentMethod': 'رصيد محفظة',
-        'title':
-            'تحويل من ${myData['name'] ?? 'مستخدم'} إلى ${targetData['name'] ?? 'مستخدم'}',
+        'title': 'تحويل من ${myData['name'] ?? 'مستخدم'} إلى ${targetData['name'] ?? 'مستخدم'}',
         'reference': 'USR-${DateTime.now().millisecondsSinceEpoch}',
         'timestamp': FieldValue.serverTimestamp()
       });
@@ -1210,18 +1210,15 @@ class SystemProvider extends ChangeNotifier {
     for (String phone in targetPhones) {
       DocumentReference ref = _db.collection('users').doc(phone);
       if (hide) {
-        batch.update(
-            ref, {'hiddenSections': FieldValue.arrayUnion([sectionId])});
+        batch.update(ref, {'hiddenSections': FieldValue.arrayUnion([sectionId])});
       } else {
-        batch.update(
-            ref, {'hiddenSections': FieldValue.arrayRemove([sectionId])});
+        batch.update(ref, {'hiddenSections': FieldValue.arrayRemove([sectionId])});
       }
     }
     await batch.commit();
     logAction(
         action: 'استهداف الأقسام',
-        details:
-            'تم ${hide ? "إخفاء" : "إظهار"} قسم $sectionId لعدد ${targetPhones.length} مستخدم',
+        details: 'تم ${hide ? "إخفاء" : "إظهار"} قسم $sectionId لعدد ${targetPhones.length} مستخدم',
         severity: 'critical');
   }
 
@@ -1470,8 +1467,7 @@ class SystemProvider extends ChangeNotifier {
         _activeUserPhone = phone;
         _currentUserRole = userData['role'] ?? 'user';
         if (_currentUserRole == 'staff' && userData['permissions'] != null) {
-          _currentUserPermissions =
-              Map<String, bool>.from(userData['permissions']);
+          _currentUserPermissions = Map<String, bool>.from(userData['permissions']);
         }
         _listenToUserNotifications();
         notifyListeners();
@@ -1533,8 +1529,7 @@ class SystemProvider extends ChangeNotifier {
     try {
       bool exists = await checkUserExists(phone);
       if (!exists) {
-        final DateTime nextMonth =
-            DateTime.now().add(const Duration(days: 30));
+        final DateTime nextMonth = DateTime.now().add(const Duration(days: 30));
         final String expiryDate =
             '${nextMonth.year}-${nextMonth.month.toString().padLeft(2, '0')}-${nextMonth.day.toString().padLeft(2, '0')}';
 
@@ -1601,8 +1596,7 @@ class SystemProvider extends ChangeNotifier {
         });
         WriteBatch batch = _db.batch();
         batch.set(_db.collection('users').doc(newPhone), data);
-        if (oldPhone != newPhone)
-          batch.delete(_db.collection('users').doc(oldPhone));
+        if (oldPhone != newPhone) batch.delete(_db.collection('users').doc(oldPhone));
         await batch.commit();
       }
     } catch (e) {
@@ -1623,107 +1617,8 @@ class SystemProvider extends ChangeNotifier {
     } catch (e) {}
   }
 
-  // ========== دالة الشراء الأصلية (بدون تعديل) ==========
   Future<String> executeRealPurchase(
-      double price, String cardTitle, String agentPhone, String categoryId) async {
-    if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً لإتمام الشراء.';
-
-    final userRef = _db.collection('users').doc(_activeUserPhone);
-
-    final availableCardsQuery = await _db
-        .collection('cards')
-        .where('agentPhone', isEqualTo: agentPhone)
-        .where('categoryId', isEqualTo: categoryId)
-        .where('status', isEqualTo: 'متاح')
-        .limit(1)
-        .get();
-
-    if (availableCardsQuery.docs.isEmpty) {
-      throw 'عذراً، لقد نفدت الكمية الحقيقية من هذا الكرت! يرجى المحاولة لاحقاً.';
-    }
-
-    final cardDoc = availableCardsQuery.docs.first;
-    final cardData = cardDoc.data() as Map<String, dynamic>;
-    final String actualPin = cardData['pin'] ?? 'رقم غير معروف';
-    final String cardId = cardDoc.id;
-
-    await _db.runTransaction((transaction) async {
-      final userSnapshot = await transaction.get(userRef);
-      if (!userSnapshot.exists) throw 'حدث خطأ: حساب المستخدم غير موجود.';
-
-      final userData = userSnapshot.data() as Map<String, dynamic>;
-      Map<String, dynamic> wallets = userData['wallets'] ?? {};
-      double currentWalletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
-
-      double creditLimit = 0.0;
-      if (userData['role'] == 'pos') {
-        Map<String, dynamic> relations = userData['agent_relations'] ?? {};
-        Map<String, dynamic> myRel = relations[agentPhone] ?? {};
-        creditLimit = (myRel['creditLimit'] ?? 0.0).toDouble();
-      }
-
-      if ((currentWalletBalance + creditLimit) < price) {
-        throw 'الرصيد أو الحد الائتماني المسموح لا يكفي لإتمام العملية.';
-      }
-
-      transaction.update(userRef, {
-        'wallets.$agentPhone': FieldValue.increment(-price),
-      });
-
-      transaction.update(_db.collection('cards').doc(cardId), {
-        'status': 'مباع',
-        'buyerPhone': _activeUserPhone,
-        'soldAt': FieldValue.serverTimestamp(),
-      });
-
-      final Map<String, dynamic> purchaseInvoice = {
-        'title': cardTitle,
-        'pin': actualPin,
-        'price': price,
-        'agentPhone': agentPhone,
-        'date': DateTime.now().toIso8601String(),
-      };
-      transaction.update(userRef, {
-        'purchasedCards': FieldValue.arrayUnion([purchaseInvoice])
-      });
-
-      transaction.update(_db.collection('system').doc('main_info'), {
-        'totalSystemCards': FieldValue.increment(-1)
-      });
-
-      DocumentReference txnRef = _db.collection('transactions').doc();
-      transaction.set(txnRef, {
-        'fromPhone': _activeUserPhone,
-        'toPhone': agentPhone,
-        'agentPhone': agentPhone,
-        'agentName': currentUserName,
-        'targetName': userData['name'] ?? 'زبون',
-        'networkName': userData['networkName'] ?? 'غير محدد',
-        'amount': price,
-        'fee': 0.0,
-        'paymentMethod': 'خصم من المحفظة',
-        'type': 'sale',
-        'title': 'بيع كرت: $cardTitle لـ ${userData['name'] ?? 'زبون'}',
-        'reference': 'SAL-$cardId',
-        'timestamp': FieldValue.serverTimestamp()
-      });
-    });
-
-    return actualPin;
-  }
-
-  // ========== دالة الشراء المتعدد (المُصححة) ==========
-Future<List<String>> executeBulkPurchase({
-  required double totalPrice,
-  required double unitPrice,
-  required int quantity,
-  required double discountAmount,
-  required double couponDiscount,
-  required String cardTitle,
-  required String agentPhone,
-  required String categoryId,
-  String? appliedCouponId,
-}) async {
+    double price, String cardTitle, String agentPhone, String categoryId) async {
   if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً لإتمام الشراء.';
 
   final userRef = _db.collection('users').doc(_activeUserPhone);
@@ -1731,27 +1626,23 @@ Future<List<String>> executeBulkPurchase({
   final availableCardsQuery = await _db
       .collection('cards')
       .where('agentPhone', isEqualTo: agentPhone)
-      .where('categoryId', isEqualTo: categoryId)
+      .where('categoryId', isEqualTo: categoryId)   // ✅ تغير هنا
       .where('status', isEqualTo: 'متاح')
-      .limit(quantity)
+      .limit(1)
       .get();
 
-  if (availableCardsQuery.docs.length < quantity) {
-    throw 'عذراً، لا توجد كروت كافية. المتاح: ${availableCardsQuery.docs.length}';
+  if (availableCardsQuery.docs.isEmpty) {
+    throw 'عذراً، لقد نفدت الكمية الحقيقية من هذا الكرت! يرجى المحاولة لاحقاً.';
   }
 
-  final List<String> pins = [];
-  final List<DocumentReference> cardRefs = [];
-
-  for (var doc in availableCardsQuery.docs) {
-    final cardData = doc.data() as Map<String, dynamic>;
-    pins.add(cardData['pin'] ?? 'غير معروف');
-    cardRefs.add(doc.reference);
-  }
+  final cardDoc = availableCardsQuery.docs.first;
+  final cardData = cardDoc.data() as Map<String, dynamic>;
+  final String actualPin = cardData['pin'] ?? 'رقم غير معروف';
+  final String cardId = cardDoc.id;
 
   await _db.runTransaction((transaction) async {
     final userSnapshot = await transaction.get(userRef);
-    if (!userSnapshot.exists) throw 'حساب المستخدم غير موجود.';
+    if (!userSnapshot.exists) throw 'حدث خطأ: حساب المستخدم غير موجود.';
 
     final userData = userSnapshot.data() as Map<String, dynamic>;
     Map<String, dynamic> wallets = userData['wallets'] ?? {};
@@ -1764,46 +1655,36 @@ Future<List<String>> executeBulkPurchase({
       creditLimit = (myRel['creditLimit'] ?? 0.0).toDouble();
     }
 
-    if ((currentWalletBalance + creditLimit) < totalPrice) {
-      throw 'الرصيد أو الحد الائتماني غير كافٍ.';
+    if ((currentWalletBalance + creditLimit) < price) {
+      throw 'الرصيد أو الحد الائتماني المسموح لا يكفي لإتمام العملية.';
     }
 
-    // خصم المبلغ مرة واحدة فقط
     transaction.update(userRef, {
-      'wallets.$agentPhone': FieldValue.increment(-totalPrice),
+      'wallets.$agentPhone': FieldValue.increment(-price),
     });
 
-    // تحديث حالة الكروت إلى مباع
-    for (var ref in cardRefs) {
-      transaction.update(ref, {
-        'status': 'مباع',
-        'buyerPhone': _activeUserPhone,
-        'soldAt': FieldValue.serverTimestamp(),
-        'soldPrice': unitPrice,
-        'discountAmount': discountAmount + couponDiscount,
-      });
-    }
+    transaction.update(_db.collection('cards').doc(cardId), {
+      'status': 'مباع',
+      'buyerPhone': _activeUserPhone,
+      'soldAt': FieldValue.serverTimestamp(),
+    });
 
-    // إضافة الكروت إلى سجل مشتريات المستخدم
-    for (var pin in pins) {
-      final purchaseInvoice = {
-        'title': cardTitle,
-        'pin': pin,
-        'price': unitPrice,
-        'agentPhone': agentPhone,
-        'date': DateTime.now().toIso8601String(),
-      };
-      transaction.update(userRef, {
-        'purchasedCards': FieldValue.arrayUnion([purchaseInvoice])
-      });
-    }
+    final Map<String, dynamic> purchaseInvoice = {
+      'title': cardTitle,
+      'pin': actualPin,
+      'price': price,
+      'agentPhone': agentPhone,
+      'date': DateTime.now().toIso8601String(),
+    };
 
-    // تحديث إحصائيات النظام
+    transaction.update(userRef, {
+      'purchasedCards': FieldValue.arrayUnion([purchaseInvoice])
+    });
+
     transaction.update(_db.collection('system').doc('main_info'), {
-      'totalSystemCards': FieldValue.increment(-quantity)
+      'totalSystemCards': FieldValue.increment(-1)
     });
 
-    // تسجيل الحركة المالية
     DocumentReference txnRef = _db.collection('transactions').doc();
     transaction.set(txnRef, {
       'fromPhone': _activeUserPhone,
@@ -1812,27 +1693,19 @@ Future<List<String>> executeBulkPurchase({
       'agentName': currentUserName,
       'targetName': userData['name'] ?? 'زبون',
       'networkName': userData['networkName'] ?? 'غير محدد',
-      'amount': totalPrice,
+      'amount': price,
       'fee': 0.0,
       'paymentMethod': 'خصم من المحفظة',
       'type': 'sale',
-      'title': 'بيع $quantity كرت: $cardTitle',
-      'reference': 'BULK-${DateTime.now().millisecondsSinceEpoch}',
-      'discount': discountAmount + couponDiscount,
+      'title': 'بيع كرت: $cardTitle لـ ${userData['name'] ?? 'زبون'}',
+      'reference': 'SAL-$cardId',
       'timestamp': FieldValue.serverTimestamp()
     });
-
-    if (appliedCouponId != null) {
-      transaction.update(_db.collection('coupons').doc(appliedCouponId), {
-        'currentUsage': FieldValue.increment(1),
-      });
-    }
   });
 
-  return pins;
+  return actualPin;
 }
 
-  // ==================== دوال نقاط البيع ====================
   Future<void> upgradeUserToPos({
     required String posPhone,
     required String storeName,
@@ -1909,8 +1782,7 @@ Future<List<String>> executeBulkPurchase({
         'location': location,
         'agent_relations.$_activeUserPhone.creditLimit': creditLimit,
         'agent_relations.$_activeUserPhone.commission': commission,
-        'agent_relations.$_activeUserPhone.allowedCategories':
-            allowedCategories,
+        'agent_relations.$_activeUserPhone.allowedCategories': allowedCategories,
       });
 
       batch.update(_db.collection('points_of_sale').doc(posPhone), {
@@ -1927,8 +1799,7 @@ Future<List<String>> executeBulkPurchase({
   Future<void> fundSubAgent(String posPhone, double amount) async {
     if (_activeUserPhone == null) return;
 
-    final agentDoc =
-        await _db.collection('users').doc(_activeUserPhone).get();
+    final agentDoc = await _db.collection('users').doc(_activeUserPhone).get();
     final agentData = agentDoc.data() as Map<String, dynamic>? ?? {};
     if ((agentData['balance'] ?? 0.0) < amount) {
       throw 'رصيد الحصة غير كافٍ لإتمام التحويل.';
@@ -1939,8 +1810,7 @@ Future<List<String>> executeBulkPurchase({
 
     WriteBatch batch = _db.batch();
 
-    batch.update(
-        agentDoc.reference, {'balance': FieldValue.increment(-amount)});
+    batch.update(agentDoc.reference, {'balance': FieldValue.increment(-amount)});
     batch.update(_db.collection('users').doc(posPhone),
         {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
 
@@ -2030,8 +1900,7 @@ Future<List<String>> executeBulkPurchase({
       String requestId, String requesterPhone, double amount) async {
     if (_activeUserPhone == null) return;
 
-    final myDoc =
-        await _db.collection('users').doc(_activeUserPhone).get();
+    final myDoc = await _db.collection('users').doc(_activeUserPhone).get();
     final myData = myDoc.data() as Map<String, dynamic>? ?? {};
     if ((myData['balance'] ?? 0.0) < amount) {
       throw 'رصيدك لا يكفي! قم بتغذية رصيدك أولاً لتتمكن من إعطاء رصيد للآخرين.';
@@ -2039,13 +1908,12 @@ Future<List<String>> executeBulkPurchase({
 
     final requesterDoc =
         await _db.collection('users').doc(requesterPhone).get();
-    final requesterData =
-        requesterDoc.data() as Map<String, dynamic>? ?? {};
+    final requesterData = requesterDoc.data() as Map<String, dynamic>? ?? {};
 
     WriteBatch batch = _db.batch();
 
-    batch.update(_db.collection('user_recharges').doc(requestId),
-        {'status': 'مقبول'});
+    batch.update(
+        _db.collection('user_recharges').doc(requestId), {'status': 'مقبول'});
     batch.update(myDoc.reference, {'balance': FieldValue.increment(-amount)});
 
     batch.update(requesterDoc.reference,
@@ -2070,8 +1938,7 @@ Future<List<String>> executeBulkPurchase({
     batch.set(notifRef, {
       'targetPhones': [requesterPhone],
       'title': 'تم شحن محفظتك 🎉',
-      'body':
-          'تمت الموافقة وإضافة $amount ريال لمحفظتك من $currentUserName.',
+      'body': 'تمت الموافقة وإضافة $amount ريال لمحفظتك من $currentUserName.',
       'timestamp': FieldValue.serverTimestamp(),
       'isRead': false,
       'readBy': [],
@@ -2120,16 +1987,14 @@ Future<List<String>> executeBulkPurchase({
       WriteBatch batch = _db.batch();
       DocumentReference agentRef = _db.collection('users').doc(agentPhone);
 
-      batch.update(
-          agentRef, {'balance': FieldValue.increment(quotaAmount)});
+      batch.update(agentRef, {'balance': FieldValue.increment(quotaAmount)});
       batch.update(_db.collection('recharge_requests').doc(requestId),
           {'status': 'مقبول'});
 
       final agentDoc = await _db.collection('users').doc(agentPhone).get();
       final agentData = agentDoc.data() as Map<String, dynamic>? ?? {};
 
-      DocumentReference transactionRef =
-          _db.collection('transactions').doc();
+      DocumentReference transactionRef = _db.collection('transactions').doc();
       batch.set(transactionRef, {
         'fromPhone': '774578241',
         'toPhone': agentPhone,
@@ -2171,8 +2036,8 @@ Future<List<String>> executeBulkPurchase({
         String userPhone = reqData['userPhone'];
 
         WriteBatch batch = _db.batch();
-        batch.update(reqDoc.reference,
-            {'status': 'مرفوض', 'rejectReason': reason});
+        batch.update(
+            reqDoc.reference, {'status': 'مرفوض', 'rejectReason': reason});
 
         DocumentReference notifRef = _db.collection('notifications').doc();
         batch.set(notifRef, {
@@ -2220,8 +2085,7 @@ Future<List<String>> executeBulkPurchase({
       double displayBalance = 0.0;
       if (data['role'] == 'user' || data['role'] == 'pos') {
         Map<String, dynamic> wallets = data['wallets'] ?? {};
-        displayBalance =
-            (wallets[_activeUserPhone] ?? 0.0).toDouble();
+        displayBalance = (wallets[_activeUserPhone] ?? 0.0).toDouble();
       } else {
         displayBalance = (data['balance'] ?? 0.0).toDouble();
       }
@@ -2264,10 +2128,8 @@ Future<List<String>> executeBulkPurchase({
     double totalDebt = amount + taxAmount;
 
     await _db.runTransaction((transaction) async {
-      DocumentReference senderRef =
-          _db.collection('users').doc(_activeUserPhone);
-      DocumentReference receiverRef =
-          _db.collection('users').doc(targetPhone);
+      DocumentReference senderRef = _db.collection('users').doc(_activeUserPhone);
+      DocumentReference receiverRef = _db.collection('users').doc(targetPhone);
 
       var senderDoc = await transaction.get(senderRef);
       var receiverDoc = await transaction.get(receiverRef);
@@ -2279,28 +2141,22 @@ Future<List<String>> executeBulkPurchase({
       var sData = senderDoc.data() as Map<String, dynamic>;
       var rData = receiverDoc.data() as Map<String, dynamic>;
 
-      double currentSenderBalance =
-          (sData['balance'] ?? 0.0).toDouble();
-      if (currentSenderBalance < amount)
-        throw 'رصيد المحفظة الفعلي غير كافٍ.';
+      double currentSenderBalance = (sData['balance'] ?? 0.0).toDouble();
+      if (currentSenderBalance < amount) throw 'رصيد المحفظة الفعلي غير كافٍ.';
 
-      transaction.update(
-          senderRef, {'balance': FieldValue.increment(-amount)});
+      transaction.update(senderRef, {'balance': FieldValue.increment(-amount)});
 
       if (rData['role'] == 'user' || rData['role'] == 'pos') {
-        transaction.update(receiverRef, {
-          'wallets.$_activeUserPhone': FieldValue.increment(amount)
-        });
+        transaction.update(receiverRef,
+            {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
       } else {
-        transaction.update(
-            receiverRef, {'balance': FieldValue.increment(amount)});
+        transaction
+            .update(receiverRef, {'balance': FieldValue.increment(amount)});
       }
 
       if (paymentMethod == 'آجل') {
-        transaction.update(receiverRef, {
-          'agent_debts.$_activeUserPhone':
-              FieldValue.increment(totalDebt)
-        });
+        transaction.update(receiverRef,
+            {'agent_debts.$_activeUserPhone': FieldValue.increment(totalDebt)});
       }
 
       DocumentReference txnRef = _db.collection('transactions').doc();
@@ -2367,14 +2223,12 @@ Future<List<String>> executeBulkPurchase({
     try {
       WriteBatch batch = _db.batch();
       DocumentReference agentRef = _db.collection('users').doc(agentPhone);
-      batch.update(
-          agentRef, {'balance': FieldValue.increment(amount)});
+      batch.update(agentRef, {'balance': FieldValue.increment(amount)});
 
       final agentDoc = await _db.collection('users').doc(agentPhone).get();
       final agentData = agentDoc.data() as Map<String, dynamic>? ?? {};
 
-      DocumentReference transactionRef =
-          _db.collection('transactions').doc();
+      DocumentReference transactionRef = _db.collection('transactions').doc();
       batch.set(transactionRef, {
         'fromPhone': '774578241',
         'toPhone': agentPhone,
@@ -2434,8 +2288,7 @@ Future<List<String>> executeBulkPurchase({
       if (notif['isReadLocal'] == false) {
         DocumentReference ref =
             _db.collection('notifications').doc(notif['docId']);
-        batch.update(
-            ref, {'readBy': FieldValue.arrayUnion([_activeUserPhone])});
+        batch.update(ref, {'readBy': FieldValue.arrayUnion([_activeUserPhone])});
       }
     }
     await batch.commit();
@@ -2457,8 +2310,7 @@ Future<List<String>> executeBulkPurchase({
 
       if (targetingFilter == 1) {
         for (var agent in agentsList) {
-          DocumentReference ref =
-              _db.collection('users').doc(agent['phone']);
+          DocumentReference ref = _db.collection('users').doc(agent['phone']);
           batch.update(ref, {
             'subPlan': planName,
             'subPrice': planPrice,
@@ -2471,8 +2323,7 @@ Future<List<String>> executeBulkPurchase({
             title: 'تحديث الباقة 🎁',
             body: 'تم تجديد باقتك إلى "$planName" بنجاح.');
       } else if (targetingFilter == 2 && targetAgentPhone != null) {
-        DocumentReference ref =
-            _db.collection('users').doc(targetAgentPhone);
+        DocumentReference ref = _db.collection('users').doc(targetAgentPhone);
         batch.update(ref, {
           'subPlan': planName,
           'subPrice': planPrice,
@@ -2497,10 +2348,8 @@ Future<List<String>> executeBulkPurchase({
     required String sendMethod,
   }) async {
     try {
-      final existing = await _db
-          .collection('coupons')
-          .where('code', isEqualTo: code)
-          .get();
+      final existing =
+          await _db.collection('coupons').where('code', isEqualTo: code).get();
       if (existing.docs.isNotEmpty) throw 'كود الكوبون مستخدم مسبقاً!';
 
       await _db.collection('coupons').add({
@@ -2531,10 +2380,7 @@ Future<List<String>> executeBulkPurchase({
 
   Future<void> deactivateCoupon(String docId, String code) async {
     try {
-      await _db
-          .collection('coupons')
-          .doc(docId)
-          .update({'isActive': false});
+      await _db.collection('coupons').doc(docId).update({'isActive': false});
     } catch (e) {
       throw 'فشل إيقاف الكوبون: $e';
     }
@@ -2559,8 +2405,7 @@ Future<List<String>> executeBulkPurchase({
   Future<void> toggleSubscriptionStatus(
       String agentPhone, String currentStatus) async {
     try {
-      String newStatus =
-          currentStatus == 'موقوف مؤقتاً' ? 'نشط' : 'موقوف مؤقتاً';
+      String newStatus = currentStatus == 'موقوف مؤقتاً' ? 'نشط' : 'موقوف مؤقتاً';
       await _db
           .collection('users')
           .doc(agentPhone)
@@ -2576,8 +2421,7 @@ Future<List<String>> executeBulkPurchase({
 
   bool changeUserPassword(String oldPassword, String newPassword) {
     if (_activeUserPhone == null) return false;
-    final user = _usersDatabase
-        .firstWhere((u) => u['phone'] == _activeUserPhone);
+    final user = _usersDatabase.firstWhere((u) => u['phone'] == _activeUserPhone);
     if (user['password'] == oldPassword) {
       _db
           .collection('users')
@@ -2700,8 +2544,7 @@ Future<List<String>> executeBulkPurchase({
     notifyListeners();
     WriteBatch batch = _db.batch();
     for (int i = 0; i < _bankAccounts.length; i++) {
-      batch.update(
-          _db.collection('bank_accounts').doc(_bankAccounts[i]['docId']),
+      batch.update(_db.collection('bank_accounts').doc(_bankAccounts[i]['docId']),
           {'order': i});
     }
     await batch.commit();
@@ -2770,8 +2613,7 @@ Future<List<String>> executeBulkPurchase({
   Future<void> updateUserPin(String pin) async {
     if (_activeUserPhone == null) return;
     await _db.collection('users').doc(_activeUserPhone).update({'pin': pin});
-    final index =
-        _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
+    final index = _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
     if (index != -1) {
       _usersDatabase[index]['pin'] = pin;
       notifyListeners();
@@ -2780,12 +2622,8 @@ Future<List<String>> executeBulkPurchase({
 
   Future<void> updateUserDailyLimit(double limit) async {
     if (_activeUserPhone == null) return;
-    await _db
-        .collection('users')
-        .doc(_activeUserPhone)
-        .update({'dailyLimit': limit});
-    final index =
-        _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
+    await _db.collection('users').doc(_activeUserPhone).update({'dailyLimit': limit});
+    final index = _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
     if (index != -1) {
       _usersDatabase[index]['dailyLimit'] = limit;
       notifyListeners();
@@ -2811,10 +2649,7 @@ Future<List<String>> executeBulkPurchase({
 
   Future<void> updatePrivacySetting(String key, bool value) async {
     if (_activeUserPhone == null) return;
-    await _db
-        .collection('users')
-        .doc(_activeUserPhone)
-        .update({'privacy_$key': value});
+    await _db.collection('users').doc(_activeUserPhone).update({'privacy_$key': value});
   }
 
   Future<Map<String, dynamic>?> getUserTierForAgent(String agentPhone) async {
@@ -2826,8 +2661,7 @@ Future<List<String>> executeBulkPurchase({
     Map<String, dynamic> wallets = user['wallets'] ?? {};
     double walletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
 
-    final tierQuery = await _db
-        .collection('discount_tiers')
+    final tierQuery = await _db.collection('discount_tiers')
         .where('agentPhone', isEqualTo: agentPhone)
         .where('isActive', isEqualTo: true)
         .get();
@@ -2838,8 +2672,7 @@ Future<List<String>> executeBulkPurchase({
         .map((doc) => doc.data() as Map<String, dynamic>)
         .toList();
 
-    tiers.sort(
-        (a, b) => (b['condition'] as int).compareTo(a['condition'] as int));
+    tiers.sort((a, b) => (b['condition'] as int).compareTo(a['condition'] as int));
 
     for (var tier in tiers) {
       if (walletBalance >= (tier['condition'] as num).toDouble()) {
@@ -2863,8 +2696,7 @@ Future<List<String>> executeBulkPurchase({
 
     for (var agentPhone in wallets.keys) {
       final tier = await getUserTierForAgent(agentPhone);
-      if (tier != null &&
-          (tier['condition'] as num).toDouble() > bestCondition) {
+      if (tier != null && (tier['condition'] as num).toDouble() > bestCondition) {
         bestCondition = (tier['condition'] as num).toDouble();
         bestTier = tier;
       }
@@ -2872,8 +2704,7 @@ Future<List<String>> executeBulkPurchase({
     return bestTier;
   }
 
-  Future<String> changeUserPinWithOld(
-      String oldPin, String newPin, String confirmPin) async {
+  Future<String> changeUserPinWithOld(String oldPin, String newPin, String confirmPin) async {
     if (_activeUserPhone == null) return 'يرجى تسجيل الدخول.';
     if (newPin.length != 6) return 'يجب أن يتكون رمز PIN من 6 أرقام.';
     if (newPin != confirmPin) return 'رمز PIN الجديد غير متطابق.';
@@ -2887,8 +2718,7 @@ Future<List<String>> executeBulkPurchase({
     if (storedPin != oldPin) return 'رمز PIN القديم غير صحيح.';
 
     await _db.collection('users').doc(_activeUserPhone).update({'pin': newPin});
-    final index =
-        _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
+    final index = _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
     if (index != -1) {
       _usersDatabase[index]['pin'] = newPin;
       notifyListeners();
