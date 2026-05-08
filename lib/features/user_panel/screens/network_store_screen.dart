@@ -23,12 +23,11 @@ import '../widgets/custom_user_drawer.dart';
 import 'user_wallet_screen.dart';
 
 // =============================================================================
-// كلاس مساعد لتجميع منطق الخصم التلقائي والكوبونات (يبقى داخل هذا الملف)
+// كلاس مساعد لتجميع منطق الخصم التلقائي والكوبونات
 // =============================================================================
 class DiscountHelper {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  /// التحقق مما إذا كان الوقت الحالي يقع ضمن نافذة وقت السعادة
   static bool isWithinHappyHour(String startStr, String endStr) {
     try {
       final now = TimeOfDay.now();
@@ -49,22 +48,19 @@ class DiscountHelper {
     }
   }
 
-  /// جلب الخصم التلقائي المناسب للمستخدم الحالي بناءً على الإنفاق الشهري
   Future<Map<String, dynamic>?> fetchAutoDiscount(
       String agentPhone, String currentPhone, bool isPos) async {
     try {
-      // جلب شرائح الخصم النشطة
       final tiersSnap = await _db
           .collection('discount_tiers')
           .where('agentPhone', isEqualTo: agentPhone)
           .where('isActive', isEqualTo: true)
           .get();
       if (tiersSnap.docs.isEmpty) {
-        debugPrint('لا توجد شرائح خصم نشطة لهذا الوكيل');
+        debugPrint('لا توجد شرائح خصم نشطة');
         return null;
       }
 
-      // حساب إجمالي المشتريات الشهرية
       final DateTime now = DateTime.now();
       final DateTime startOfMonth = DateTime(now.year, now.month, 1);
       double monthlyTotal = 0.0;
@@ -83,7 +79,7 @@ class DiscountHelper {
         }
         debugPrint('إجمالي مشتريات الشهر: $monthlyTotal');
       } catch (e) {
-        debugPrint('خطأ في جلب المعاملات الشهرية: $e');
+        debugPrint('خطأ في جلب المعاملات: $e');
       }
 
       Map<String, dynamic>? bestTier;
@@ -135,7 +131,6 @@ class DiscountHelper {
     }
   }
 
-  /// تطبيق قيمة الخصم على السعر الأصلي
   static double applyAutoDiscount(
       double originalPrice, Map<String, dynamic> tier) {
     final double val = tier['discountValue'] as double;
@@ -147,7 +142,6 @@ class DiscountHelper {
     }
   }
 
-  /// التحقق من صلاحية كوبون والحصول على الخصم
   Future<Map<String, dynamic>?> validateCoupon({
     required String code,
     required String agentPhone,
@@ -247,14 +241,12 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   Timer? _debounceTimer;
   bool _isSearching = false;
 
-  // تخزين مؤقت للبيانات لتجنب إعادة الجلب غير الضرورية (غير مفعل حالياً)
-  List<Map<String, dynamic>>? _cachedNetworks;
-  List<Map<String, dynamic>>? _cachedPosList;
+  // لحفظ مفاتيح RepaintBoundary لكل بطاقة (مهم للمشاركة)
+  final Map<String, GlobalKey> _cardKeys = {};
 
   void _play(String type) =>
       Provider.of<UiProvider>(context, listen: false).playSound(type);
 
-  // Toast محسّن باستخدام SnackBar
   void _showToast(String msg, {bool error = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -278,7 +270,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     });
   }
 
-  /// تنفيذ عملية الشراء وإرجاع قائمة الكروت المشتراة
   Future<List<String>> _executePurchase({
     required String title,
     required double unitPrice,
@@ -297,7 +288,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     try {
       final systemProvider = Provider.of<SystemProvider>(context, listen: false);
 
-      // تنفيذ عملية الشراء عبر موفر النظام
       final pins = await systemProvider.executeBulkPurchase(
         totalPrice: finalPrice,
         unitPrice: unitPrice,
@@ -310,7 +300,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
         appliedCouponId: appliedCouponId,
       );
 
-      // تحديث المخزون
       final netQuery = await _db
           .collection('networks')
           .where('agentPhone', isEqualTo: agentPhone)
@@ -345,7 +334,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     }
   }
 
-  /// الحصول على بيانات عرض الكرت بعد الشراء
   Future<Map<String, dynamic>?> _fetchCardDisplayData(
       String cardTitle, String agentPhone) async {
     try {
@@ -733,7 +721,8 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                             ]),
                       ),
                       const SizedBox(height: 25),
-                      if (canAfford)
+                      // زر الشراء (إذا الرصيد يكفي)
+                      if (canAfford) ...[
                         SizedBox(
                             width: double.infinity,
                             height: 50,
@@ -846,8 +835,25 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                                           fontSize: 16,
                                           color: Colors.white,
                                           fontWeight: FontWeight.bold)),
-                            ))
-                      else ...[
+                            )),
+                        const SizedBox(height: 8),
+                        // زر الشحن (موجود دائماً حتى لو الرصيد يكفي)
+                        TextButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) =>
+                                          const UserWalletScreen()));
+                            },
+                            icon: const Icon(Icons.account_balance_wallet,
+                                color: Colors.deepPurple),
+                            label: const Text('⚡ شحن المحفظة',
+                                style: TextStyle(
+                                    color: Colors.deepPurple,
+                                    fontWeight: FontWeight.bold))),
+                      ] else ...[
                         SizedBox(
                             width: double.infinity,
                             height: 50,
@@ -892,7 +898,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                                     fontWeight: FontWeight.bold))),
                       ],
                     ] else ...[
-                      // عرض الكروت المشتراة (مع SingleChildScrollView لضمان ظهور الكل)
                       Flexible(
                         child: SingleChildScrollView(
                           child: _buildMultiCardSuccessView(
@@ -957,29 +962,36 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
               fontWeight: FontWeight.bold,
               color: Colors.green)),
       const SizedBox(height: 20),
-      // عرض جميع البطاقات
-      ...List.generate(pins.length, (index) => _buildSingleCard(
-            pin: pins[index],
-            templateBytes: templateBytes,
-            imageWidth: imageWidth,
-            imageHeight: imageHeight,
-            userViewX: userViewX,
-            userViewY: userViewY,
-            fontSize: fontSize,
-            textColor: textColor,
-            networkName: networkName,
-            loginUrl: loginUrl,
-            time: time,
-            capacity: capacity,
-            note: note,
-            isLast: index == pins.length - 1,
-            allPins: pins,
-            originalPrice: originalPrice,
-            finalPrice: finalPrice,
-            autoDiscountAmount: autoDiscountAmount,
-            couponDiscountAmount: couponDiscountAmount,
-            theme: theme,
-          )),
+      ...List.generate(pins.length, (index) {
+        final pin = pins[index];
+        // إنشاء أو استرداد GlobalKey ثابت لهذا الكرت
+        if (!_cardKeys.containsKey(pin)) {
+          _cardKeys[pin] = GlobalKey();
+        }
+        return _buildSingleCard(
+          pin: pin,
+          templateBytes: templateBytes,
+          imageWidth: imageWidth,
+          imageHeight: imageHeight,
+          userViewX: userViewX,
+          userViewY: userViewY,
+          fontSize: fontSize,
+          textColor: textColor,
+          networkName: networkName,
+          loginUrl: loginUrl,
+          time: time,
+          capacity: capacity,
+          note: note,
+          isLast: index == pins.length - 1,
+          allPins: pins,
+          originalPrice: originalPrice,
+          finalPrice: finalPrice,
+          autoDiscountAmount: autoDiscountAmount,
+          couponDiscountAmount: couponDiscountAmount,
+          theme: theme,
+          cardKey: _cardKeys[pin]!,
+        );
+      }),
       const SizedBox(height: 16),
       _buildGlobalActions(
           pins: pins,
@@ -992,7 +1004,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     ]);
   }
 
-  // ---------- بناء بطاقة فردية (مع التعديل: RepaintBoundary يغلف المحتوى بالكامل) ----------
+  // ---------- بناء بطاقة فردية (مع تحسينات الصورة) ----------
   Widget _buildSingleCard({
     required String pin,
     Uint8List? templateBytes,
@@ -1014,119 +1026,110 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     required double autoDiscountAmount,
     required double couponDiscountAmount,
     required ThemeData theme,
+    required GlobalKey cardKey, // المفتاح ثابت
   }) {
-    final GlobalKey cardKey = GlobalKey();
+    // تحديد ألوان النص بناءً على السمة
+    final isDark = theme.brightness == Brightness.dark;
+    final infoTextColor = isDark ? Colors.white : Colors.black87;
+    final cardBackground = isDark ? Colors.grey.shade900 : Colors.white;
+    final gradientColors = isDark
+        ? [Colors.blueGrey.shade800, Colors.blueGrey.shade900]
+        : [Colors.blue.shade50, Colors.lightBlue.shade100];
 
-    // هذا الجزء الذي سيتم التقاطه كصورة (كل شيء عدا الأزرار)
-    Widget cardContent = Column(
-      children: [
-        if (templateBytes != null)
-          Container(
-            constraints: const BoxConstraints(maxHeight: 220),
-            decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey.shade400)),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: LayoutBuilder(builder: (context, constraints) {
-                double cw = constraints.maxWidth,
-                    ch = constraints.maxHeight;
-                double iw = cw, ih = ch;
-                if (imageWidth != null &&
-                    imageHeight != null &&
-                    imageWidth > 0 &&
-                    imageHeight > 0) {
-                  double scale =
-                      (cw / imageWidth).clamp(0.0, ch / imageHeight);
-                  iw = imageWidth * scale;
-                  ih = imageHeight * scale;
-                }
-                double ox = (cw - iw) / 2, oy = (ch - ih) / 2;
-                return Stack(children: [
-                  Center(
-                      child: Image.memory(templateBytes,
-                          width: iw, height: ih, fit: BoxFit.contain)),
-                  Positioned(
-                      left: ox + (userViewX / 100) * iw,
-                      top: oy + (userViewY / 100) * ih,
-                      child: Text(pin,
-                          style: TextStyle(
-                              fontSize: fontSize,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 2,
-                              color: textColor))),
-                ]);
-              }),
-            ),
-          )
-        else
-          Container(
-              padding: const EdgeInsets.all(16),
+    Widget cardContent = Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: gradientColors,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, 4))
+        ],
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          if (templateBytes != null)
+            Container(
+              constraints: const BoxConstraints(maxHeight: 220),
               decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12)),
-              child: Text(pin,
-                  style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 2))),
-        const SizedBox(height: 12),
-        _infoRow(
-            icon: Icons.wifi,
-            label: 'الشبكة',
-            value: networkName,
-            color: Colors.blue,
-            theme: theme),
-        _infoRow(
-            icon: Icons.data_usage,
-            label: 'السعة',
-            value: capacity,
-            color: Colors.orange,
-            theme: theme),
-        _infoRow(
-            icon: Icons.timer,
-            label: 'المدة',
-            value: time,
-            color: Colors.purple,
-            theme: theme),
-        if (note.isNotEmpty)
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white30)),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: LayoutBuilder(builder: (context, constraints) {
+                  double cw = constraints.maxWidth,
+                      ch = constraints.maxHeight;
+                  double iw = cw, ih = ch;
+                  if (imageWidth != null &&
+                      imageHeight != null &&
+                      imageWidth > 0 &&
+                      imageHeight > 0) {
+                    double scale =
+                        (cw / imageWidth).clamp(0.0, ch / imageHeight);
+                    iw = imageWidth * scale;
+                    ih = imageHeight * scale;
+                  }
+                  double ox = (cw - iw) / 2, oy = (ch - ih) / 2;
+                  return Stack(children: [
+                    Center(
+                        child: Image.memory(templateBytes,
+                            width: iw, height: ih, fit: BoxFit.contain)),
+                    Positioned(
+                        left: ox + (userViewX / 100) * iw,
+                        top: oy + (userViewY / 100) * ih,
+                        child: Text(pin,
+                            style: TextStyle(
+                                fontSize: fontSize,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 2,
+                                color: textColor))),
+                  ]);
+                }),
+              ),
+            )
+          else
+            Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12)),
+                child: Text(pin,
+                    style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 2))),
+          const SizedBox(height: 12),
+          _infoRow(Icons.wifi, 'الشبكة', networkName, Colors.blue,
+              infoTextColor),
+          _infoRow(Icons.data_usage, 'السعة', capacity, Colors.orange,
+              infoTextColor),
+          _infoRow(Icons.timer, 'المدة', time, Colors.purple, infoTextColor),
+          if (note.isNotEmpty)
+            _infoRow(Icons.note, 'ملاحظة', note, Colors.amber, infoTextColor),
           _infoRow(
-              icon: Icons.note,
-              label: 'ملاحظة',
-              value: note,
-              color: Colors.amber,
-              theme: theme),
-        _infoRow(
-            icon: Icons.money,
-            label: 'السعر الأصلي',
-            value: '$originalPrice ريال',
-            color: Colors.red,
-            theme: theme),
-        if (autoDiscountAmount + couponDiscountAmount > 0)
-          _infoRow(
-              icon: Icons.discount,
-              label: 'السعر بعد الخصم',
-              value: '$finalPrice ريال',
-              color: Colors.green,
-              theme: theme),
-      ],
+              Icons.money, 'السعر الأصلي', '$originalPrice ريال', Colors.red, infoTextColor),
+          if (autoDiscountAmount + couponDiscountAmount > 0)
+            _infoRow(Icons.discount, 'السعر بعد الخصم', '$finalPrice ريال',
+                Colors.green, infoTextColor),
+        ],
+      ),
     );
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.dividerColor),
-      ),
       child: Column(children: [
         RepaintBoundary(
-          key: cardKey,
+          key: cardKey, // المفتاح المستقر
           child: cardContent,
         ),
         const SizedBox(height: 8),
-        // أزرار مشاركة ونسخ تحت البطاقة (خارج RepaintBoundary)
+        // أزرار التحكم
         Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
           _smallButton(Icons.copy, 'نسخ', () {
             _play('click');
@@ -1158,14 +1161,8 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     );
   }
 
-  // صف معلومات
-  Widget _infoRow({
-    required IconData icon,
-    required String label,
-    required String value,
-    required Color color,
-    required ThemeData theme,
-  }) {
+  Widget _infoRow(
+      IconData icon, String label, String value, Color color, Color textColor) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(children: [
@@ -1175,12 +1172,10 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
             style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 12,
-                color: theme.textTheme.bodyMedium?.color)),
+                color: textColor)),
         Expanded(
             child: Text(value,
-                style: TextStyle(
-                    fontSize: 12,
-                    color: theme.textTheme.bodyMedium?.color),
+                style: TextStyle(fontSize: 12, color: textColor),
                 textAlign: TextAlign.end)),
       ]),
     );
@@ -1196,7 +1191,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     );
   }
 
-  // أزرار نسخ ومشاركة الكل
   Widget _buildGlobalActions({
     required List<String> pins,
     required String networkName,
@@ -1237,7 +1231,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     ]);
   }
 
-  // مشاركة كرت فردي
   Future<void> _shareSingleCard({
     required String pin,
     required String networkName,
@@ -1312,7 +1305,6 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
     );
   }
 
-  // حفظ صورة الكرت
   Future<void> _saveCardImage(GlobalKey cardKey, String pin) async {
     try {
       RenderRepaintBoundary boundary =
@@ -1325,7 +1317,6 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
       if (!kIsWeb) {
         await ImageGallerySaver.saveImage(byteData.buffer.asUint8List());
       } else {
-        // للويب فقط
         final blob =
             html.Blob([byteData.buffer.asUint8List()], 'image/png');
         final url = html.Url.createObjectUrlFromBlob(blob);
@@ -1343,7 +1334,6 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
     super.dispose();
   }
 
-  // ---------- بناء الملخص العلوي للمستخدم ----------
   Widget _buildUserSummaryTile(SystemProvider sys,
       Map<String, dynamic> agentRelations, ThemeData theme) {
     if (agentRelations.isEmpty) return const SizedBox();
@@ -1407,7 +1397,6 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
     );
   }
 
-  // ---------- البناء الرئيسي ----------
   @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
@@ -1478,7 +1467,6 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
             ),
             Expanded(
               child: TabBarView(children: [
-                // قائمة الشبكات
                 StreamBuilder<QuerySnapshot>(
                   stream: (isPos && posAgents.isNotEmpty)
                       ? _db
@@ -1551,7 +1539,6 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
                     );
                   },
                 ),
-                // قائمة نقاط البيع
                 StreamBuilder<QuerySnapshot>(
                   stream: _db.collection('points_of_sale').snapshots(),
                   builder: (context, snapshot) {
@@ -1619,7 +1606,7 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
 }
 
 // =============================================================================
-// بطاقة الشبكة - NetworkCard (مع تحسين معاينة القالب)
+// بطاقة الشبكة - NetworkCard
 // =============================================================================
 class NetworkCard extends StatefulWidget {
   final Map<String, dynamic> network;
@@ -1751,7 +1738,6 @@ class _NetworkCardState extends State<NetworkCard>
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: Colors.grey.shade300)),
                   child: Column(children: [
-                    // معاينة القالب بحجم كامل
                     if (cat['templateBase64'] != null)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
@@ -1846,7 +1832,7 @@ class _NetworkCardState extends State<NetworkCard>
 }
 
 // =============================================================================
-// أداة اختيار الكمية (تم إصلاحها)
+// أداة اختيار الكمية (QuantitySelector)
 // =============================================================================
 class QuantitySelector extends StatefulWidget {
   final int currentQty;
@@ -1916,7 +1902,6 @@ class _QuantitySelectorState extends State<QuantitySelector>
               if (p != null && p >= 1 && p <= widget.maxQty) {
                 widget.onChanged(p);
               } else {
-                // إعادة تعيين النص القديم إذا كانت القيمة غير صالحة
                 _controller.text = '${widget.currentQty}';
               }
             },
@@ -1933,7 +1918,7 @@ class _QuantitySelectorState extends State<QuantitySelector>
 }
 
 // =============================================================================
-// بطاقة نقطة البيع - PoSCard (دون تغيير)
+// بطاقة نقطة البيع - PoSCard
 // =============================================================================
 class PoSCard extends StatefulWidget {
   final Map<String, dynamic> pos;
