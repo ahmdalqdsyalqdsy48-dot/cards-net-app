@@ -9,6 +9,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -36,14 +38,13 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
 
   String _draftServerName = '';
   String _draftServerLocation = '';
-  String _draftServerGovernorate = '';
-  String _draftServerDistrict = '';
-  List<String> _draftServerCoverageAreas = [];
   String _draftServerIp = '';
   String _draftServerUser = '';
   String _draftServerPass = '';
   String _draftServerPort = '8728';
   String _draftServerLoginUrl = '';
+  double? _draftServerLat;
+  double? _draftServerLng;
 
   String _draftCategoryName = '';
   String _draftCategoryTime = '';
@@ -289,22 +290,86 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     }
   }
 
-  // =================== زر الإضافة العائم الديناميكي ===================
+  // =================== فتح خريطة لاختيار موقع ===================
+  Future<LatLng?> _pickLocationOnMap() async {
+    LatLng selected = LatLng(15.3694, 44.1910); // صنعاء كموقع مبدئي
+    return await showDialog<LatLng>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setMapState) => AlertDialog(
+          title: const Text('اختر الموقع على الخريطة'),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 400,
+            child: FlutterMap(
+              options: MapOptions(
+                initialCenter: selected,
+                initialZoom: 12.0,
+                onTap: (tapPosition, point) {
+                  setMapState(() {
+                    selected = point;
+                  });
+                },
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                ),
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: selected,
+                      width: 40,
+                      height: 40,
+                      child: const Icon(Icons.location_pin, color: Colors.red, size: 40),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, selected),
+              child: const Text('تأكيد الموقع'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // =================== زر الإضافة العائم مع شرط الرصيد ===================
   Widget? _buildCurrentFab() {
     final sys = Provider.of<SystemProvider>(context, listen: false);
     switch (_tabController.index) {
       case 0: // تبويب السيرفرات
         return FloatingActionButton.extended(
-          onPressed: () => _showAddServerBottomSheet(sys),
+          onPressed: () {
+            if (sys.currentUserBalance <= 0) {
+              _play('error');
+              _showBalanceRequiredDialog();
+              return;
+            }
+            _showAddServerBottomSheet(sys);
+          },
           backgroundColor: Colors.blue.shade800,
           icon: const Icon(Icons.add, color: Colors.white),
           label: const Text('إضافة سيرفر',
-              style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         );
       case 1: // تبويب الفئات
         return FloatingActionButton.extended(
           onPressed: () async {
+            if (sys.currentUserBalance <= 0) {
+              _play('error');
+              _showBalanceRequiredDialog();
+              return;
+            }
             final snap = await _db
                 .collection('networks')
                 .where('agentPhone', isEqualTo: sys.currentUserPhone)
@@ -318,12 +383,48 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
           backgroundColor: Colors.orange.shade700,
           icon: const Icon(Icons.add_circle, color: Colors.white),
           label: const Text('إضافة فئة',
-              style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         );
       default:
         return null;
     }
+  }
+
+  void _showBalanceRequiredDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber, color: Colors.red),
+              SizedBox(width: 10),
+              Text('الرصيد غير كافٍ',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: const Text(
+              'رصيد محفظتك صفر. يجب شحن المحفظة أولاً قبل إضافة سيرفر أو فئة جديدة.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                // انتقل إلى محفظة الوكيل
+                Navigator.pushNamed(context, '/agent_wallet_screen');
+              },
+              icon: const Icon(Icons.account_balance_wallet),
+              label: const Text('الذهاب إلى المحفظة'),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -414,22 +515,19 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
-  // ======================== نافذة إضافة/تعديل سيرفر ========================
+  // ======================== نافذة إضافة/تعديل سيرفر (معدلة) ========================
   void _showAddServerBottomSheet(SystemProvider sys,
       {Map<String, dynamic>? existingData, String? docId}) {
     _play('click');
     String name = existingData?['name'] ?? _draftServerName;
     String location = existingData?['location'] ?? _draftServerLocation;
-    String governorate = existingData?['governorate'] ?? _draftServerGovernorate;
-    String district = existingData?['district'] ?? _draftServerDistrict;
-    List<String> coverageAreas = existingData != null
-        ? List<String>.from(existingData['coverageAreas'] ?? [])
-        : List<String>.from(_draftServerCoverageAreas);
     String ip = existingData?['ip'] ?? _draftServerIp;
     String user = existingData?['apiUser'] ?? _draftServerUser;
     String pass = existingData?['apiPassword'] ?? _draftServerPass;
     String port = existingData?['apiPort'] ?? _draftServerPort;
     String loginUrl = existingData?['loginUrl'] ?? _draftServerLoginUrl;
+    double? lat = existingData?['latitude']?.toDouble() ?? _draftServerLat;
+    double? lng = existingData?['longitude']?.toDouble() ?? _draftServerLng;
     bool isSubmitting = false;
 
     showModalBottomSheet(
@@ -471,68 +569,36 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                             Icon(Icons.location_on, color: Colors.orange)),
                     controller: TextEditingController(text: location),
                     onChanged: (v) => location = v),
-                const SizedBox(height: 12),
-                ExpansionTile(
-                    iconColor: Colors.teal,
-                    collapsedIconColor: Colors.teal,
-                    title:
-                        const Text('تفاصيل الموقع (اختياري)'),
-                    children: [
-                      TextField(
-                          decoration: const InputDecoration(
-                              labelText: 'المحافظة',
-                              border: OutlineInputBorder(),
-                              prefixIcon:
-                                  Icon(Icons.map, color: Colors.teal)),
-                          controller:
-                              TextEditingController(text: governorate),
-                          onChanged: (v) => governorate = v),
-                      const SizedBox(height: 12),
-                      TextField(
-                          decoration: const InputDecoration(
-                              labelText: 'المديرية',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.map_outlined,
-                                  color: Colors.teal)),
-                          controller:
-                              TextEditingController(text: district),
-                          onChanged: (v) => district = v),
-                      const SizedBox(height: 12),
-                      ...coverageAreas.asMap().entries.map((entry) {
-                        int idx = entry.key;
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Row(children: [
-                            Expanded(
-                              child: TextField(
-                                  decoration: InputDecoration(
-                                      labelText:
-                                          'منطقة البث ${idx + 1}',
-                                      border:
-                                          const OutlineInputBorder(),
-                                      prefixIcon: const Icon(
-                                          Icons.wifi_find,
-                                          color: Colors.teal)),
-                                  controller: TextEditingController(
-                                      text: coverageAreas[idx]),
-                                  onChanged: (v) =>
-                                      coverageAreas[idx] = v),
-                            ),
-                            IconButton(
-                                icon: const Icon(Icons.remove_circle,
-                                    color: Colors.red),
-                                onPressed: () => setModalState(() =>
-                                    coverageAreas.removeAt(idx)))
-                          ]),
-                        );
-                      }).toList(),
-                      TextButton.icon(
-                          onPressed: () => setModalState(
-                              () => coverageAreas.add('')),
-                          icon: const Icon(Icons.add,
-                              color: Colors.green),
-                          label: const Text('إضافة منطقة بث جديدة')),
-                    ]),
+                const SizedBox(height: 6),
+                // زر الخريطة
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await _pickLocationOnMap();
+                    if (picked != null) {
+                      setModalState(() {
+                        lat = picked.latitude;
+                        lng = picked.longitude;
+                        // يمكن تحديث الموقع النصي آلياً (اختياري)
+                        location = 'خط عرض ${picked.latitude.toStringAsFixed(4)}, خط طول ${picked.longitude.toStringAsFixed(4)}';
+                      });
+                    }
+                  },
+                  icon: const Icon(Icons.map),
+                  label: Text(
+                    (lat == null || lng == null)
+                        ? 'اختيار الموقع على الخريطة *'
+                        : 'تم تحديد الموقع ✅',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor:
+                        (lat == null || lng == null) ? Colors.red : Colors.green,
+                  ),
+                ),
+                if (lat != null && lng != null)
+                  Text(
+                    'الإحداثيات: ${lat!.toStringAsFixed(4)}, ${lng!.toStringAsFixed(4)}',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
                 const SizedBox(height: 12),
                 TextField(
                     decoration: const InputDecoration(
@@ -545,8 +611,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                 const SizedBox(height: 12),
                 TextField(
                     decoration: const InputDecoration(
-                        labelText:
-                            'رابط صفحة تسجيل الدخول للزبائن',
+                        labelText: 'رابط صفحة تسجيل الدخول للزبائن',
                         border: OutlineInputBorder(),
                         prefixIcon:
                             Icon(Icons.link, color: Colors.indigo)),
@@ -602,6 +667,13 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                             if (name.isNotEmpty &&
                                 location.isNotEmpty &&
                                 ip.isNotEmpty) {
+                              if (lat == null || lng == null) {
+                                _play('error');
+                                _showOverlayToast(
+                                    'يجب تحديد الموقع على الخريطة',
+                                    isError: true);
+                                return;
+                              }
                               if (docId != null) {
                                 bool confirm = await _confirmAction(
                                     "حفظ التعديلات",
@@ -616,9 +688,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                 Map<String, dynamic> networkData = {
                                   'name': name,
                                   'location': location,
-                                  'governorate': governorate,
-                                  'district': district,
-                                  'coverageAreas': coverageAreas,
                                   'ip': ip,
                                   'apiUser': user,
                                   'apiPassword': pass,
@@ -630,6 +699,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                   'isActive':
                                       existingData?['isActive'] ??
                                           true,
+                                  'latitude': lat,
+                                  'longitude': lng,
                                   'updatedAt':
                                       FieldValue.serverTimestamp(),
                                 };
@@ -644,14 +715,13 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                       .add(networkData);
                                   _draftServerName = '';
                                   _draftServerLocation = '';
-                                  _draftServerGovernorate = '';
-                                  _draftServerDistrict = '';
-                                  _draftServerCoverageAreas = [];
                                   _draftServerIp = '';
                                   _draftServerUser = '';
                                   _draftServerPass = '';
                                   _draftServerPort = '8728';
                                   _draftServerLoginUrl = '';
+                                  _draftServerLat = null;
+                                  _draftServerLng = null;
                                 } else {
                                   await _db
                                       .collection('networks')
@@ -703,14 +773,13 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                     onPressed: () {
                       _draftServerName = name;
                       _draftServerLocation = location;
-                      _draftServerGovernorate = governorate;
-                      _draftServerDistrict = district;
-                      _draftServerCoverageAreas = coverageAreas;
                       _draftServerIp = ip;
                       _draftServerUser = user;
                       _draftServerPass = pass;
                       _draftServerPort = port;
                       _draftServerLoginUrl = loginUrl;
+                      _draftServerLat = lat;
+                      _draftServerLng = lng;
                       _play('click');
                       Navigator.pop(ctx);
                       _showOverlayToast('تم حفظ البيانات كمسودة');
@@ -728,7 +797,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
-  // ======================== نافذة إضافة فئة (مع معاينة محسّنة) ========================
+  // ======================== نافذة إضافة فئة (بدون تغيير يُذكر) ========================
+  // (باقي الكود مطابق للنسخة السابقة مع بقاء جميع الوظائف)
   void _showAddCategoryBottomSheet(List<QueryDocumentSnapshot> agentNetworks,
       {Map? existingCat, String? preSelectedNetId}) {
     _play('click');
@@ -895,7 +965,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         elevation: 0),
                   ),
                 ]),
-                // معاينة القالب المحسّنة
                 if (templateBase64 != null && templateBase64!.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
