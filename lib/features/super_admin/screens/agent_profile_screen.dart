@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/providers/system_provider.dart';
 import '../../../core/widgets/custom_header.dart'; 
 
@@ -14,11 +15,12 @@ class AgentProfileScreen extends StatefulWidget {
 
 class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this); // زدنا تبويب للشبكات
   }
 
   @override
@@ -32,8 +34,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final provider = Provider.of<SystemProvider>(context);
     
-    // 👈 السحر الهندسي: جلب بيانات الوكيل "الحية" من العقل المدبر بناءً على رقم هاتفه
-    // إذا لم يجده (في حالة الحذف مثلاً)، سيعرض البيانات القديمة كاحتياط
+    // بيانات الوكيل الحية من القائمة المركزية
     final liveAgent = provider.agentsList.firstWhere(
       (a) => a['phone'] == widget.agentData['phone'], 
       orElse: () => widget.agentData
@@ -42,10 +43,10 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
     final String agentName = liveAgent['name'] ?? 'غير معروف';
     final String nameInitial = agentName.trim().isNotEmpty ? agentName.trim().substring(0, 1) : '?';
     
-    // استخراج المصفوفات برمجياً (ستكون فارغة حالياً حتى نبرمج تطبيق الوكيل)
     final List posList = liveAgent['posList'] ?? [];
     final List inventoryList = liveAgent['inventory'] ?? [];
     final double balance = double.parse((liveAgent['balance'] ?? 0).toString());
+    final String agentPhone = liveAgent['phone'] ?? '';
 
     return Scaffold(
       appBar: const CustomHeader(title: 'الملف الشامل للوكيل'),
@@ -53,9 +54,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // ==========================================
-            // بطاقة هوية الوكيل العلوية (حية ومباشرة 🔴)
-            // ==========================================
+            // بطاقة هوية الوكيل العلوية
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -81,7 +80,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
                           children: [
                             const Icon(Icons.account_balance_wallet, color: Colors.greenAccent, size: 16),
                             const SizedBox(width: 5),
-                            // الرصيد الحي من السحابة
                             Text('الرصيد: $balance ريال', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
                           ],
                         ),
@@ -100,9 +98,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
               ),
             ),
 
-            // ==========================================
-            // شريط التبويبات القابل للتنقل
-            // ==========================================
+            // شريط التبويبات مع إضافة "الشبكات"
             Container(
               color: Colors.transparent,
               child: TabBar(
@@ -115,13 +111,11 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
                   Tab(icon: Icon(Icons.analytics), text: 'نظرة عامة'),
                   Tab(icon: Icon(Icons.inventory_2), text: 'المخزون'),
                   Tab(icon: Icon(Icons.store), text: 'البقالات'),
+                  Tab(icon: Icon(Icons.dns), text: 'الشبكات'),   // 🆕 تبويب الشبكات
                 ],
               ),
             ),
 
-            // ==========================================
-            // محتوى التبويبات المتغير
-            // ==========================================
             Expanded(
               child: TabBarView(
                 controller: _tabController,
@@ -129,6 +123,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
                   _buildSalesOverviewTab(liveAgent),
                   _buildInventoryTab(inventoryList),
                   _buildPosTab(posList),
+                  _buildNetworksTab(agentPhone),    // 🆕 محتوى تبويب الشبكات
                 ],
               ),
             ),
@@ -138,13 +133,106 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
     );
   }
 
-  // ==========================================
-  // التبويب الأول: المبيعات والنظرة العامة (مربوط بالوكيل)
-  // ==========================================
+  // ========== تبويب الشبكات (الجديد) ==========
+  Widget _buildNetworksTab(String agentPhone) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _db
+          .collection('networks')
+          .where('agentPhone', isEqualTo: agentPhone)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.dns_outlined, size: 80, color: Colors.grey.shade300),
+                const SizedBox(height: 10),
+                const Text('لم يقم الوكيل بإضافة أي شبكة ميكروتك بعد.',
+                    style: TextStyle(color: Colors.grey)),
+              ],
+            ),
+          );
+        }
+
+        final networks = snapshot.data!.docs;
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: networks.length,
+          itemBuilder: (context, index) {
+            final net = networks[index].data() as Map<String, dynamic>;
+            final bool isActive = net['isActive'] ?? true;
+            final String name = net['name'] ?? 'بدون اسم';
+            final String location = net['location'] ?? 'غير محدد';
+            final String ip = net['ip'] ?? 'غير محدد';
+            final int catCount = (net['categories'] as List?)?.length ?? 0;
+
+            return Card(
+              elevation: 2,
+              margin: const EdgeInsets.only(bottom: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.router, color: isActive ? Colors.green : Colors.grey, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(name,
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  decoration: isActive ? null : TextDecoration.lineThrough)),
+                        ),
+                        Chip(
+                          label: Text(isActive ? 'نشط' : 'مجمد',
+                              style: const TextStyle(fontSize: 11, color: Colors.white)),
+                          backgroundColor: isActive ? Colors.green : Colors.red,
+                          padding: EdgeInsets.zero,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _infoRow(Icons.location_on, 'الموقع', location),
+                    _infoRow(Icons.wifi, 'IP', ip),
+                    _infoRow(Icons.category, 'عدد الفئات', '$catCount فئة'),
+                    if (net['latitude'] != null && net['longitude'] != null)
+                      _infoRow(Icons.map, 'الإحداثيات',
+                          '${net['latitude'].toStringAsFixed(4)}, ${net['longitude'].toStringAsFixed(4)}'),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _infoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: Colors.grey),
+          const SizedBox(width: 6),
+          Text('$label: ', style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
+          Expanded(child: Text(value, style: const TextStyle(fontSize: 12))),
+        ],
+      ),
+    );
+  }
+
+  // ========== باقي التبويبات (كما هي دون تغيير) ==========
   Widget _buildSalesOverviewTab(Map<String, dynamic> agent) {
-    // إحصائيات تقريبية تعتمد على بيانات الوكيل
     final String profitMargin = agent['profitMargin'] ?? '0%';
-    final int totalSales = agent['totalSales'] ?? 0; // سيتم تحديثه لاحقاً عند برمجة المبيعات
+    final int totalSales = agent['totalSales'] ?? 0;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -173,7 +261,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
             ),
           ),
           const SizedBox(height: 20),
-
           const Text('تفاصيل إضافية:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
           const SizedBox(height: 10),
           Row(
@@ -205,9 +292,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
     );
   }
 
-  // ==========================================
-  // التبويب الثاني: المخزون والفئات (مربوط بالسحابة)
-  // ==========================================
   Widget _buildInventoryTab(List inventoryList) {
     if (inventoryList.isEmpty) {
       return Center(
@@ -270,9 +354,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
     );
   }
 
-  // ==========================================
-  // التبويب الثالث: نقاط البيع (البقالات) المعقدة (مربوط بالسحابة)
-  // ==========================================
   Widget _buildPosTab(List posList) {
     if (posList.isEmpty) {
       return Center(
@@ -352,7 +433,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with SingleTick
     );
   }
 
-  // أداة بناء البطاقات الإحصائية الصغيرة 
   Widget _buildStatCard(String title, String value, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.all(12),
