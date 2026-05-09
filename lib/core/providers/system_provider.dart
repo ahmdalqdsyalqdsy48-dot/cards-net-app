@@ -1827,13 +1827,14 @@ class SystemProvider extends ChangeNotifier {
     return pins;
   }
 
-  Future<void> upgradeUserToPos({
+    Future<void> upgradeUserToPos({
     required String posPhone,
     required String storeName,
     required String location,
     required double creditLimit,
     required String commission,
     required List<String> allowedCategories,
+    required double creditDeduction, // 🆕 المبلغ المخصوم من رصيد الوكيل
   }) async {
     if (_activeUserPhone == null) return;
     try {
@@ -1871,6 +1872,26 @@ class SystemProvider extends ChangeNotifier {
           },
           SetOptions(merge: true));
 
+      // 🆕 خصم الرصيد الانتمائي من الوكيل
+      final agentRef = _db.collection('users').doc(_activeUserPhone);
+      batch.update(agentRef, {'balance': FieldValue.increment(-creditDeduction)});
+
+      // 🆕 تسجيل عملية الخصم في المعاملات
+      DocumentReference txnRef = _db.collection('transactions').doc();
+      batch.set(txnRef, {
+        'fromPhone': _activeUserPhone,
+        'toPhone': posPhone,
+        'agentPhone': _activeUserPhone,
+        'agentName': currentUserName,
+        'targetName': userData['name'] ?? 'مستخدم',
+        'networkName': userData['networkName'] ?? 'غير محدد',
+        'amount': creditDeduction,
+        'type': 'credit_deduction',
+        'title': 'حجز رصيد ائتماني لنقطة بيع: $storeName',
+        'reference': 'CRD-${DateTime.now().millisecondsSinceEpoch}',
+        'timestamp': FieldValue.serverTimestamp()
+      });
+
       batch.set(_db.collection('notifications').doc(), {
         'targetPhones': [posPhone],
         'title': 'اعتماد نقطة بيع 🏪',
@@ -1886,13 +1907,14 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> updatePosDetails({
+    Future<void> updatePosDetails({
     required String posPhone,
     required String storeName,
     required String location,
     required double creditLimit,
     required String commission,
     required List<String> allowedCategories,
+    required double oldCreditLimit, // 🆕 الحد القديم للمقارنة
   }) async {
     if (_activeUserPhone == null) return;
     try {
@@ -1911,59 +1933,57 @@ class SystemProvider extends ChangeNotifier {
         'location': location,
       });
 
+      // 🆕 معالجة فرق الحد الائتماني
+      double difference = creditLimit - oldCreditLimit;
+      if (difference > 0) {
+        // زاد الحد → نخصم من الوكيل
+        final agentRef = _db.collection('users').doc(_activeUserPhone);
+        batch.update(agentRef, {'balance': FieldValue.increment(-difference)});
+        
+        // تسجيل
+        DocumentReference txnRef = _db.collection('transactions').doc();
+        batch.set(txnRef, {
+          'fromPhone': _activeUserPhone,
+          'toPhone': posPhone,
+          'agentPhone': _activeUserPhone,
+          'agentName': currentUserName,
+          'targetName': 'نقطة بيع: $storeName',
+          'networkName': 'النظام',
+          'amount': difference,
+          'type': 'credit_deduction',
+          'title': 'زيادة الحد الائتماني لـ $storeName',
+          'reference': 'CRD-${DateTime.now().millisecondsSinceEpoch}',
+          'timestamp': FieldValue.serverTimestamp()
+        });
+      } else if (difference < 0) {
+        // قل الحد → نُعيد للوكيل (فقط إذا لم تستهلكه البقالة)
+        double refund = (-difference);
+        final agentRef = _db.collection('users').doc(_activeUserPhone);
+        batch.update(agentRef, {'balance': FieldValue.increment(refund)});
+        
+        DocumentReference txnRef = _db.collection('transactions').doc();
+        batch.set(txnRef, {
+          'fromPhone': posPhone,
+          'toPhone': _activeUserPhone,
+          'agentPhone': _activeUserPhone,
+          'agentName': currentUserName,
+          'targetName': 'نقطة بيع: $storeName',
+          'networkName': 'النظام',
+          'amount': refund,
+          'type': 'credit_refund',
+          'title': 'تخفيض الحد الائتماني لـ $storeName وإعادة للمحفظة',
+          'reference': 'RFD-${DateTime.now().millisecondsSinceEpoch}',
+          'timestamp': FieldValue.serverTimestamp()
+        });
+      }
+
       await batch.commit();
     } catch (e) {
       throw 'فشل التعديل: $e';
     }
   }
 
-  Future<void> fundSubAgent(String posPhone, double amount) async {
-    if (_activeUserPhone == null) return;
-
-    final agentDoc = await _db.collection('users').doc(_activeUserPhone).get();
-    final agentData = agentDoc.data() as Map<String, dynamic>? ?? {};
-    if ((agentData['balance'] ?? 0.0) < amount) {
-      throw 'رصيد الحصة غير كافٍ لإتمام التحويل.';
-    }
-
-    final posDoc = await _db.collection('users').doc(posPhone).get();
-    final posData = posDoc.data() as Map<String, dynamic>? ?? {};
-
-    WriteBatch batch = _db.batch();
-
-    batch.update(agentDoc.reference, {'balance': FieldValue.increment(-amount)});
-    batch.update(_db.collection('users').doc(posPhone),
-        {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
-
-    batch.set(_db.collection('transactions').doc(), {
-      'fromPhone': _activeUserPhone,
-      'toPhone': posPhone,
-      'agentPhone': _activeUserPhone,
-      'agentName': currentUserName,
-      'targetName': posData['name'] ?? 'نقطة بيع',
-      'networkName': posData['networkName'] ?? 'غير محدد',
-      'amount': amount,
-      'fee': 0.0,
-      'type': 'transfer',
-      'paymentMethod': 'آجل (من حصة الوكيل)',
-      'title': 'تغذية محفظة نقطة البيع: ${posData['name'] ?? ''}',
-      'reference': 'FND-${DateTime.now().millisecondsSinceEpoch}',
-      'timestamp': FieldValue.serverTimestamp()
-    });
-
-    batch.set(_db.collection('notifications').doc(), {
-      'targetPhones': [posPhone],
-      'title': 'تغذية رصيد 💰',
-      'body': 'تم تحويل $amount ريال لمحفظتك من الوكيل $currentUserName.',
-      'timestamp': FieldValue.serverTimestamp(),
-      'isRead': false,
-      'readBy': [],
-    });
-
-    await batch.commit();
-  }
-
-  Future<void> receivePosPayment(
+    Future<void> receivePosPayment(
       String posPhone, double amount, String note) async {
     if (_activeUserPhone == null) return;
     try {
@@ -1972,8 +1992,13 @@ class SystemProvider extends ChangeNotifier {
 
       WriteBatch batch = _db.batch();
 
+      // زيادة رصيد البقالة في محفظتها مع هذا الوكيل
       batch.update(_db.collection('users').doc(posPhone),
           {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
+
+      // 🆕 زيادة رصيد الوكيل (استرداد جزء من الدين المحجوز)
+      final agentRef = _db.collection('users').doc(_activeUserPhone);
+      batch.update(agentRef, {'balance': FieldValue.increment(amount)});
 
       batch.set(_db.collection('transactions').doc(), {
         'fromPhone': posPhone,
