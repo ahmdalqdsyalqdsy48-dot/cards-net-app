@@ -2022,6 +2022,51 @@ class SystemProvider extends ChangeNotifier {
       throw e.toString();
     }
   }
+    Future<void> fundSubAgent(String posPhone, double amount) async {
+    if (_activeUserPhone == null) return;
+
+    final agentDoc = await _db.collection('users').doc(_activeUserPhone).get();
+    final agentData = agentDoc.data() as Map<String, dynamic>? ?? {};
+    if ((agentData['balance'] ?? 0.0) < amount) {
+      throw 'رصيد الحصة غير كافٍ لإتمام التحويل.';
+    }
+
+    final posDoc = await _db.collection('users').doc(posPhone).get();
+    final posData = posDoc.data() as Map<String, dynamic>? ?? {};
+
+    WriteBatch batch = _db.batch();
+
+    batch.update(agentDoc.reference, {'balance': FieldValue.increment(-amount)});
+    batch.update(_db.collection('users').doc(posPhone),
+        {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
+
+    batch.set(_db.collection('transactions').doc(), {
+      'fromPhone': _activeUserPhone,
+      'toPhone': posPhone,
+      'agentPhone': _activeUserPhone,
+      'agentName': currentUserName,
+      'targetName': posData['name'] ?? 'نقطة بيع',
+      'networkName': posData['networkName'] ?? 'غير محدد',
+      'amount': amount,
+      'fee': 0.0,
+      'type': 'transfer',
+      'paymentMethod': 'آجل (من حصة الوكيل)',
+      'title': 'تغذية محفظة نقطة البيع: ${posData['name'] ?? ''}',
+      'reference': 'FND-${DateTime.now().millisecondsSinceEpoch}',
+      'timestamp': FieldValue.serverTimestamp()
+    });
+
+    batch.set(_db.collection('notifications').doc(), {
+      'targetPhones': [posPhone],
+      'title': 'تغذية رصيد 💰',
+      'body': 'تم تحويل $amount ريال لمحفظتك من الوكيل $currentUserName.',
+      'timestamp': FieldValue.serverTimestamp(),
+      'isRead': false,
+      'readBy': [],
+    });
+
+    await batch.commit();
+    }
 
   Future<void> requestWalletRecharge(String targetPhone, double amount) async {
     await submitSaaSRechargeRequest(
