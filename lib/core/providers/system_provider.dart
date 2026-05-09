@@ -1518,6 +1518,7 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
+    // داخل class SystemProvider … استبدل الدالة الحالية بهذه
   Future<void> addAgent({
     required String name,
     required String phone,
@@ -1525,6 +1526,7 @@ class SystemProvider extends ChangeNotifier {
     String? networkName,
     String? profitMargin,
     String? location,
+    double initialBalance = 0.0,   // ← المضافة حديثاً
   }) async {
     try {
       bool exists = await checkUserExists(phone);
@@ -1542,7 +1544,7 @@ class SystemProvider extends ChangeNotifier {
           'networkName': networkName ?? 'غير محدد',
           'profitMargin': profitMargin ?? 'غير محدد',
           'location': location ?? 'غير محدد',
-          'balance': 0.0,
+          'balance': initialBalance,   // ← يُستخدم هنا مباشرة
           'dangerLimit': 0.0,
           'status': 'نشط',
           'pin': '123456',
