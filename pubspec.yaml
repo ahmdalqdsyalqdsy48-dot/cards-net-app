@@ -30,7 +30,10 @@ dependencies:
   http: ^1.2.0 
   share_plus: ^13.1.0
   qr_flutter: ^4.1.0
-  image_gallery_saver: ^1.7.1   # 🆕 لحفظ الصور في المعرض
+  image_gallery_saver: ^1.7.1
+  # 🆕 خرائط مجانية ومفتوحة المصدر
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
   flutter_localizations:
     sdk: flutter
 
