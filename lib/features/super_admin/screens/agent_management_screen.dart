@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/providers/system_provider.dart'; 
-import '../../../core/providers/ui_provider.dart'; // 👈 استدعاء محرك الصوت
+import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart'; 
 import 'agent_profile_screen.dart'; 
@@ -17,21 +17,19 @@ class AgentManagementScreen extends StatefulWidget {
 class _AgentManagementScreenState extends State<AgentManagementScreen> {
   String _searchQuery = '';
 
-  // دالة مساعدة لتشغيل الأصوات بسهولة
   void _play(BuildContext context, String type) => 
       Provider.of<UiProvider>(context, listen: false).playSound(type);
 
   // ==========================================
-  // 1. نافذة إضافة وكيل جديد (بأصوات تفاعلية)
+  // 1. نافذة إضافة وكيل جديد (مُعدلة)
   // ==========================================
   void _showAddAgentDialog(SystemProvider provider) {
     _play(context, 'click');
     final nameController = TextEditingController();
     final phoneController = TextEditingController();
-    final networkController = TextEditingController();
-    final locationController = TextEditingController(); 
     final profitController = TextEditingController();
-    final passwordController = TextEditingController(); 
+    final passwordController = TextEditingController();
+    final balanceController = TextEditingController(); // 🆕 رصيد ابتدائي
 
     showDialog(
       context: context,
@@ -57,19 +55,28 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                   children: [
                     _buildTextField('الاسم الرباعي للوكيل', Icons.person, controller: nameController),
                     _buildTextField('رقم الهاتف (اسم المستخدم)', Icons.phone, controller: phoneController, isNumber: true),
-                    _buildTextField('اسم الشبكة', Icons.wifi, controller: networkController),
-                    _buildTextField('موقع الشبكة', Icons.location_on, controller: locationController),
                     _buildTextField('نسبة ربح النظام %', Icons.percent, controller: profitController, isNumber: true),
                     _buildTextField('كلمة المرور', Icons.lock, controller: passwordController),
+                    const Divider(height: 20),
+                    _buildTextField('الرصيد الابتدائي (اختياري)', Icons.account_balance_wallet, controller: balanceController, isNumber: true),
+                    const SizedBox(height: 5),
+                    const Text('اتركه فارغاً إذا كنت لا تريد إضافة رصيد الآن.',
+                        style: TextStyle(fontSize: 11, color: Colors.grey)),
                   ],
                 ),
               ),
               actions: [
                 if (!isLoading)
-                  TextButton(onPressed: () { _play(context, 'click'); Navigator.pop(context); }, child: const Text('إلغاء', style: TextStyle(color: Colors.red))),
+                  TextButton(
+                    onPressed: () { _play(context, 'click'); Navigator.pop(context); },
+                    child: const Text('إلغاء', style: TextStyle(color: Colors.red)),
+                  ),
                 
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueAccent,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
                   onPressed: isLoading ? null : () async {
                     String phone = phoneController.text.trim();
                     String name = nameController.text.trim();
@@ -81,27 +88,36 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                         await provider.addAgent(
                           name: name,
                           phone: phone,
-                          password: passwordController.text.trim().isNotEmpty ? passwordController.text.trim() : phone,
-                          networkName: networkController.text.trim(),
+                          password: passwordController.text.trim().isNotEmpty
+                              ? passwordController.text.trim()
+                              : phone,
+                          // لم نعد نمرر networkName أو location
                           profitMargin: profitController.text.trim(),
-                          location: locationController.text.trim(),
+                          // 🆕 تمرير الرصيد الابتدائي إن وجد
+                          initialBalance: double.tryParse(balanceController.text.trim()) ?? 0,
                         );
 
                         if (mounted) {
-                          _play(context, 'success'); // 👈 صوت النجاح
+                          _play(context, 'success');
                           Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إضافة الوكيل بنجاح! ✅'), backgroundColor: Colors.green));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('تم إضافة الوكيل بنجاح! ✅'), backgroundColor: Colors.green),
+                          );
                         }
                       } catch (error) {
-                        _play(context, 'error'); // 👈 صوت الخطأ
+                        _play(context, 'error');
                         setStateDialog(() => isLoading = false);
                         if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل الحفظ ❌: $error'), backgroundColor: Colors.red));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('فشل الحفظ ❌: $error'), backgroundColor: Colors.red),
+                          );
                         }
                       }
                     } else {
                         _play(context, 'error');
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال الاسم ورقم الهاتف على الأقل! ❌'), backgroundColor: Colors.red));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('يرجى إدخال الاسم ورقم الهاتف على الأقل! ❌'), backgroundColor: Colors.red),
+                        );
                     }
                   },
                   child: isLoading 
@@ -117,14 +133,12 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
   }
 
   // ==========================================
-  // 2. نافذة تعديل بيانات وكيل حالي
+  // 2. نافذة تعديل بيانات وكيل حالي (مُعدلة - بدون اسم الشبكة والموقع)
   // ==========================================
   void _showEditAgentDialog(Map<String, dynamic> agent, SystemProvider provider) {
     _play(context, 'click');
     final nameController = TextEditingController(text: agent['name']);
     final phoneController = TextEditingController(text: agent['phone']);
-    final networkController = TextEditingController(text: agent['networkName'] ?? '');
-    final locationController = TextEditingController(text: agent['location'] ?? '');
     final profitController = TextEditingController(text: agent['profitMargin'].toString().replaceAll('%', ''));
     final passwordController = TextEditingController(text: agent['password']);
 
@@ -154,8 +168,6 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                   children: [
                     _buildTextField('الاسم الرباعي', Icons.person, controller: nameController),
                     _buildTextField('رقم الهاتف (الآيدي للحساب)', Icons.phone, controller: phoneController, isNumber: true),
-                    _buildTextField('اسم الشبكة', Icons.wifi, controller: networkController),
-                    _buildTextField('موقع الشبكة', Icons.location_on, controller: locationController),
                     _buildTextField('نسبة الربح %', Icons.percent, controller: profitController, isNumber: true),
                     _buildTextField('كلمة المرور', Icons.lock, controller: passwordController),
                   ],
@@ -175,8 +187,8 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                         oldPhone: oldPhone,
                         newPhone: phoneController.text.trim(),
                         newName: nameController.text.trim(),
-                        newNetwork: networkController.text.trim(),
-                        newLocation: locationController.text.trim(),
+                        newNetwork: '', // لم نعد نستخدمه
+                        newLocation: '', // لم نعد نستخدمه
                         newProfit: '${profitController.text.trim()}%',
                         newPassword: passwordController.text.trim(),
                       );
@@ -207,7 +219,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
   }
 
   // ==========================================
-  // 3. تجميد الوكيل (مع صوت تبديل الحالة)
+  // 3. تجميد الوكيل (بدون تغيير)
   // ==========================================
   void _toggleFreeze(Map<String, dynamic> agent, SystemProvider provider) {
     _play(context, 'click');
@@ -227,7 +239,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
   }
 
   // ==========================================
-  // 4. حذف الوكيل (تم إصلاح خطأ الـ await)
+  // 4. حذف الوكيل (بدون تغيير)
   // ==========================================
   void _deleteAgent(Map<String, dynamic> agent, SystemProvider provider) {
     _play(context, 'click');
@@ -244,7 +256,6 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () {
                 try {
-                  // 👈 تم إزالة await من هنا ليتوافق مع المترجم
                   provider.deleteAgent(agent['phone']); 
                   _play(context, 'success');
                   Navigator.pop(context);
