@@ -11,7 +11,6 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:nominatim_flutter/nominatim_flutter.dart';
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -404,6 +403,137 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                       },
                     ),
                     children: [
+// =================== فتح خريطة مع شريط بحث (بدون nominatim_flutter) ===================
+Future<Map<String, dynamic>?> _pickLocationOnMap() async {
+    LatLng selected = const LatLng(15.3694, 44.1910);
+    String selectedAddress = '';
+    final TextEditingController searchController = TextEditingController();
+    List<Map<String, dynamic>> searchResults = [];
+    bool isSearching = false;
+
+    // دالة البحث عبر Nominatim (http)
+    Future<List<Map<String, dynamic>>> _searchAddress(String query) async {
+      try {
+        final url = Uri.parse(
+            'https://nominatim.openstreetmap.org/search?format=json&q=${Uri.encodeComponent(query)}&limit=5');
+        final response = await http.get(url);
+        if (response.statusCode == 200) {
+          final List<dynamic> data = jsonDecode(response.body);
+          return data
+              .map((e) => {
+                    'name': e['display_name'] ?? '',
+                    'lat': double.parse(e['lat'] ?? '0'),
+                    'lon': double.parse(e['lon'] ?? '0'),
+                  })
+              .toList();
+        }
+      } catch (_) {}
+      return [];
+    }
+
+    // دالة الترميز العكسي
+    Future<String> _reverseGeo(double lat, double lon) async {
+      try {
+        final url = Uri.parse(
+            'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lon');
+        final response = await http.get(url);
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          return data['display_name'] ?? '';
+        }
+      } catch (_) {}
+      return '';
+    }
+
+    return await showDialog<Map<String, dynamic>?>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setMapState) => AlertDialog(
+          title: const Text('اختر الموقع على الخريطة'),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 500,
+            child: Column(
+              children: [
+                // شريط البحث
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: searchController,
+                        decoration: const InputDecoration(
+                          hintText: 'ابحث عن مكان...',
+                          prefixIcon: Icon(Icons.search),
+                        ),
+                        onChanged: (value) async {
+                          if (value.trim().length < 3) {
+                            setMapState(() {
+                              searchResults = [];
+                            });
+                            return;
+                          }
+                          setMapState(() {
+                            isSearching = true;
+                          });
+                          final results = await _searchAddress(value.trim());
+                          setMapState(() {
+                            searchResults = results;
+                            isSearching = false;
+                          });
+                        },
+                      ),
+                    ),
+                    if (isSearching)
+                      const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                  ],
+                ),
+                // نتائج البحث
+                if (searchResults.isNotEmpty)
+                  SizedBox(
+                    height: 100,
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: searchResults.length,
+                      itemBuilder: (context, index) {
+                        final item = searchResults[index];
+                        return ListTile(
+                          title: Text(item['name'],
+                              style: const TextStyle(fontSize: 12)),
+                          onTap: () {
+                            setMapState(() {
+                              selected = LatLng(item['lat'], item['lon']);
+                              selectedAddress = item['name'];
+                              searchResults = [];
+                              searchController.text = item['name'];
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                // الخريطة
+                Expanded(
+                  child: FlutterMap(
+                    options: MapOptions(
+                      initialCenter: selected,
+                      initialZoom: 13.0,
+                      onTap: (tapPosition, point) {
+                        setMapState(() {
+                          selected = point;
+                        });
+                        _reverseGeo(point.latitude, point.longitude).then((addr) {
+                          if (addr.isNotEmpty) {
+                            setMapState(() {
+                              selectedAddress = addr;
+                            });
+                          }
+                        });
+                      },
+                    ),
+                    children: [
                       TileLayer(
                         urlTemplate:
                             'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -426,8 +556,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                   Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: Text('الموقع: $selectedAddress',
-                        style: const TextStyle(
-                            fontSize: 12, color: Colors.grey)),
+                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
                   ),
               ],
             ),
@@ -457,12 +586,12 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
 
   Future<String> _reverseGeocode(double lat, double lon) async {
     try {
-      final results = await NominatimFlutter.reverse(
-        lat: lat,
-        lon: lon,
-      );
-      if (results.isNotEmpty) {
-        return results.first.displayName;
+      final url = Uri.parse(
+          'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lon');
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['display_name'] ?? '';
       }
     } catch (_) {}
     return '';
