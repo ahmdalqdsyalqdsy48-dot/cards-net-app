@@ -68,7 +68,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() {
-      if (mounted) setState(() {}); // لتحديث FAB عند تغيير التبويب
+      if (mounted) setState(() {});
     });
   }
 
@@ -291,15 +291,13 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     }
   }
 
-    // =================== فتح خريطة متطورة مع شريط بحث ===================
+  // =================== فتح خريطة متطورة مع شريط بحث ===================
   Future<Map<String, dynamic>?> _pickLocationOnMap() async {
-    // نقطة البداية (صنعاء)
     LatLng selected = const LatLng(15.3694, 44.1910);
     String selectedAddress = '';
     final TextEditingController searchController = TextEditingController();
     List<Map<String, dynamic>> searchResults = [];
     bool isSearching = false;
-    final NominatimFlutter nominatim = NominatimFlutter();
 
     return await showDialog<Map<String, dynamic>?>(
       context: context,
@@ -332,7 +330,9 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                             isSearching = true;
                           });
                           try {
-                            final results = await nominatim.search(value.trim());
+                            final results = await NominatimFlutter.search(
+                              query: value.trim(),
+                            );
                             setMapState(() {
                               searchResults = results
                                   .map((r) => {
@@ -369,7 +369,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                       itemBuilder: (context, index) {
                         final item = searchResults[index];
                         return ListTile(
-                          title: Text(item['name'], style: const TextStyle(fontSize: 12)),
+                          title: Text(item['name'],
+                              style: const TextStyle(fontSize: 12)),
                           onTap: () {
                             setMapState(() {
                               selected = LatLng(item['lat'], item['lon']);
@@ -392,8 +393,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                         setMapState(() {
                           selected = point;
                         });
-                        // الحصول على العنوان من الإحداثيات
-                        _reverseGeocode(point.latitude, point.longitude).then((addr) {
+                        _reverseGeocode(point.latitude, point.longitude).then(
+                            (addr) {
                           if (addr.isNotEmpty) {
                             setMapState(() {
                               selectedAddress = addr;
@@ -413,31 +414,20 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                             point: selected,
                             width: 40,
                             height: 40,
-                            child: GestureDetector(
-                              onPanUpdate: (details) {
-                                // السحب لتحديد الموقع بدقة
-                                setMapState(() {
-                                  selected = LatLng(
-                                    selected.latitude + details.delta.dy * -0.0001,
-                                    selected.longitude + details.delta.dx * 0.0001,
-                                  );
-                                });
-                              },
-                              child: const Icon(Icons.location_pin,
-                                  color: Colors.red, size: 40),
-                            ),
+                            child: const Icon(Icons.location_pin,
+                                color: Colors.red, size: 40),
                           ),
                         ],
                       ),
                     ],
                   ),
                 ),
-                // عرض العنوان الحالي
                 if (selectedAddress.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: Text('الموقع: $selectedAddress',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        style: const TextStyle(
+                            fontSize: 12, color: Colors.grey)),
                   ),
               ],
             ),
@@ -449,20 +439,13 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
             ),
             ElevatedButton(
               onPressed: () {
-                if (selectedAddress.isEmpty) {
-                  // لو لم يبحث، نعيد الإحداثيات فقط
-                  Navigator.pop(ctx, {
-                    'latitude': selected.latitude,
-                    'longitude': selected.longitude,
-                    'address': 'موقع غير معروف',
-                  });
-                } else {
-                  Navigator.pop(ctx, {
-                    'latitude': selected.latitude,
-                    'longitude': selected.longitude,
-                    'address': selectedAddress,
-                  });
-                }
+                Navigator.pop(ctx, {
+                  'latitude': selected.latitude,
+                  'longitude': selected.longitude,
+                  'address': selectedAddress.isEmpty
+                      ? 'موقع غير معروف'
+                      : selectedAddress,
+                });
               },
               child: const Text('تأكيد الموقع'),
             ),
@@ -474,8 +457,10 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
 
   Future<String> _reverseGeocode(double lat, double lon) async {
     try {
-      final nominatim = NominatimFlutter();
-      final results = await nominatim.reverse(lat: lat, lon: lon);
+      final results = await NominatimFlutter.reverse(
+        lat: lat,
+        lon: lon,
+      );
       if (results.isNotEmpty) {
         return results.first.displayName;
       }
@@ -487,7 +472,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   Widget? _buildCurrentFab() {
     final sys = Provider.of<SystemProvider>(context, listen: false);
     switch (_tabController.index) {
-      case 0: // تبويب السيرفرات
+      case 0:
         return FloatingActionButton.extended(
           onPressed: () {
             if (sys.currentUserBalance <= 0) {
@@ -502,7 +487,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
           label: const Text('إضافة سيرفر',
               style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         );
-      case 1: // تبويب الفئات
+      case 1:
         return FloatingActionButton.extended(
           onPressed: () async {
             if (sys.currentUserBalance <= 0) {
@@ -554,7 +539,6 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
             ElevatedButton.icon(
               onPressed: () {
                 Navigator.pop(ctx);
-                // انتقل إلى محفظة الوكيل
                 Navigator.pushNamed(context, '/agent_wallet_screen');
               },
               icon: const Icon(Icons.account_balance_wallet),
@@ -714,13 +698,14 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                 OutlinedButton.icon(
                   onPressed: () async {
                     final picked = await _pickLocationOnMap();
-if (picked != null) {
-  setModalState(() {
-    lat = picked['latitude'];
-    lng = picked['longitude'];
-    location = picked['address'] ?? 'موقع غير معروف';
-  });
-}
+                    if (picked != null) {
+                      setModalState(() {
+                        lat = picked['latitude'];
+                        lng = picked['longitude'];
+                        location = picked['address'] ?? 'موقع غير معروف';
+                      });
+                    }
+                  },
                   icon: const Icon(Icons.map),
                   label: Text(
                     (lat == null || lng == null)
@@ -935,8 +920,7 @@ if (picked != null) {
     );
   }
 
-  // ======================== نافذة إضافة فئة (بدون تغيير يُذكر) ========================
-  // (باقي الكود مطابق للنسخة السابقة مع بقاء جميع الوظائف)
+  // ======================== نافذة إضافة فئة (بدون تغيير) ========================
   void _showAddCategoryBottomSheet(List<QueryDocumentSnapshot> agentNetworks,
       {Map? existingCat, String? preSelectedNetId}) {
     _play('click');
@@ -1858,7 +1842,6 @@ if (picked != null) {
       _multiGenControllers.forEach((k, v) => v.clear());
       _showOverlayToast('تم توليد $totalAmount كرت بنجاح! ✅');
       _logAction('generate_cards', totalAmount);
-      // تشغيل البوت الذكي بعد التوليد
       final netSnap = await _db
           .collection('networks')
           .where('agentPhone', isEqualTo: sys.currentUserPhone)
@@ -2458,7 +2441,6 @@ class _GenerateTabState extends State<GenerateTab>
         final networks = snapshot.hasData
             ? snapshot.data!.docs
             : <QueryDocumentSnapshot>[];
-        // البوت الذكي عند فتح التبويب
         WidgetsBinding.instance
             .addPostFrameCallback((_) => p._checkAutoBot(networks));
         if (networks.isEmpty)
