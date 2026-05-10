@@ -33,7 +33,6 @@ dependencies:
   image_gallery_saver: ^1.7.1
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
-  nominatim_flutter: ^0.0.8
   flutter_localizations:
     sdk: flutter
 
