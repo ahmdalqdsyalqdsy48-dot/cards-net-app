@@ -1228,6 +1228,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   }
 
   // ✅ إصلاح مشاركة الكرت كصورة
+    // ========== مشاركة كرت (بوستر على غرار التسويق) ==========
   Future<void> _shareSingleCard({
     required String pin,
     required String networkName,
@@ -1239,59 +1240,164 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     required double finalPrice,
     required GlobalKey cardKey,
   }) async {
-    showModalBottomSheet(
+    final GlobalKey posterKey = GlobalKey();
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    showDialog(
       context: context,
-      backgroundColor: Theme.of(context).brightness == Brightness.dark
-          ? const Color(0xFF1E1E1E)
-          : Colors.white,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text('مشاركة الكرت',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            const SizedBox(height: 20),
-            ListTile(
-              leading: const Icon(Icons.image, color: Colors.teal),
-              title: const Text('مشاركة كصورة'),
-              onTap: () async {
-                Navigator.pop(ctx);
-                // ضمان أن المفتاح جاهز
-                await Future.delayed(const Duration(milliseconds: 100));
-                try {
-                  final boundary = cardKey.currentContext
-                      ?.findRenderObject() as RenderRepaintBoundary;
-                  if (boundary == null) {
-                    _showToast('فشلت المشاركة: لم يتم العثور على الصورة', error: true);
-                    return;
-                  }
-                  ui.Image image =
-                      await boundary.toImage(pixelRatio: 3.0);
-                  ByteData? byteData =
-                      await image.toByteData(format: ui.ImageByteFormat.png);
-                  if (byteData == null) {
-                    _showToast('فشلت المشاركة', error: true);
-                    return;
-                  }
-                  final dir = await getTemporaryDirectory();
-                  final file = File('${dir.path}/card_$pin.png');
-                  await file.writeAsBytes(byteData.buffer.asUint8List());
-                  await Share.shareXFiles([XFile(file.path)],
-                      text: '$networkName - $pin');
-                } catch (e) {
-                  _showToast('فشلت المشاركة', error: true);
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.text_fields, color: Colors.blue),
-              title: const Text('مشاركة كنص'),
-              onTap: () async {
-                Navigator.pop(ctx);
-                final text = '''
+        child: AlertDialog(
+          contentPadding: const EdgeInsets.all(0),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 🖼️ بوستر الكرت
+              RepaintBoundary(
+                key: posterKey,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: isDark
+                          ? [Colors.blueGrey.shade800, Colors.black87]
+                          : [Colors.blue.shade700, Colors.lightBlue.shade900],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(20),
+                        topRight: Radius.circular(20)),
+                  ),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.wifi, color: Colors.amber, size: 36),
+                      const SizedBox(height: 8),
+                      Text(networkName,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 10),
+                        decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10)),
+                        child: Text(pin,
+                            style: const TextStyle(
+                                color: Colors.black,
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 3)),
+                      ),
+                      const SizedBox(height: 15),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.data_usage,
+                              color: Colors.white70, size: 16),
+                          const SizedBox(width: 4),
+                          Text(capacity,
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 14)),
+                          const SizedBox(width: 16),
+                          const Icon(Icons.timer,
+                              color: Colors.white70, size: 16),
+                          const SizedBox(width: 4),
+                          Text(time,
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 14)),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      if (originalPrice != finalPrice)
+                        Text('السعر الأصلي: $originalPrice ريال',
+                            style: const TextStyle(
+                                decoration: TextDecoration.lineThrough,
+                                color: Colors.white54,
+                                fontSize: 13)),
+                      const SizedBox(height: 4),
+                      Text(
+                          originalPrice != finalPrice
+                              ? 'السعر بعد الخصم: $finalPrice ريال'
+                              : 'السعر: $originalPrice ريال',
+                          style: const TextStyle(
+                              color: Colors.greenAccent,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16)),
+                      if (note.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text('📝 $note',
+                            style: const TextStyle(
+                                color: Colors.white54, fontSize: 12)),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              // أزرار المشاركة
+              Padding(
+                padding: const EdgeInsets.all(15.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.text_fields),
+                        label: const Text('كنص'),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _shareCardText(
+                              pin: pin,
+                              networkName: networkName,
+                              time: time,
+                              capacity: capacity,
+                              loginUrl: loginUrl,
+                              originalPrice: originalPrice,
+                              finalPrice: finalPrice,
+                              note: note);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green),
+                        icon: const Icon(Icons.image, color: Colors.white),
+                        label: const Text('كصورة',
+                            style: TextStyle(color: Colors.white)),
+                        onPressed: () async {
+                          Navigator.pop(ctx);
+                          await _shareCardPosterImage(posterKey, pin);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _shareCardText({
+    required String pin,
+    required String networkName,
+    required String time,
+    required String capacity,
+    required String loginUrl,
+    required double originalPrice,
+    required double finalPrice,
+    required String note,
+  }) {
+    final text = '''
 رقم الكرت: $pin
 الشبكة: $networkName
 السعة: $capacity
@@ -1301,13 +1407,33 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
 ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ريال' : ''}
 ملاحظة: $note
 ''';
-                await Share.share(text, subject: 'بطاقة $networkName');
-              },
-            ),
-          ]),
-        ),
-      ),
-    );
+    Share.share(text, subject: 'بطاقة $networkName');
+  }
+
+  Future<void> _shareCardPosterImage(GlobalKey posterKey, String pin) async {
+    _play('click');
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (c) => const Center(child: CircularProgressIndicator()));
+    try {
+      await Future.delayed(const Duration(milliseconds: 100));
+      RenderRepaintBoundary boundary = posterKey.currentContext!
+          .findRenderObject() as RenderRepaintBoundary;
+      ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+      ByteData? byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData != null) {
+        Uint8List pngBytes = byteData.buffer.asUint8List();
+        Navigator.pop(context); // إغلاق مؤشر التحميل
+        await Share.shareXFiles(
+            [XFile.fromData(pngBytes, mimeType: 'image/png', name: 'card_$pin.png')],
+            text: '$networkName - $pin');
+      }
+    } catch (e) {
+      Navigator.pop(context);
+      _showToast('فشلت مشاركة الصورة', error: true);
+    }
   }
 
   Future<void> _saveCardImage(GlobalKey cardKey, String pin) async {
