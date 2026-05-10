@@ -35,7 +35,7 @@ dependencies:
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
   # البحث في الخرائط (Nominatim)
-  nominatim_flutter: ^1.2.0
+    nominatim_flutter: ^0.0.8
   flutter_localizations:
     sdk: flutter
 
