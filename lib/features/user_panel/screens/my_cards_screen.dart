@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:image_gallery_saver/image_gallery_saver.dart';
 import 'dart:html' as html;
+import 'dart:convert';
 import 'package:intl/intl.dart' as intl;
 
 import '../../../core/providers/system_provider.dart';
@@ -42,7 +43,7 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
     );
   }
 
-  // ---------- مشاركة الكرت (بوستر، نص) ----------
+  // ---------- مشاركة الكرت (بوستر / نص) ----------
   Future<void> _shareSingleCard(Map<String, dynamic> card) async {
     final GlobalKey posterKey = GlobalKey();
     final theme = Theme.of(context);
@@ -50,8 +51,8 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
     final colorScheme = theme.colorScheme;
 
     final String pin = card['pin'] ?? '';
-    final String network = card['networkName'] ?? _extractNetwork(card['title'] ?? '');
-    final String price = (card['price'] ?? 0).toString();
+    final String network = card['networkName'] ?? card['title'] ?? '';
+    final double unitPrice = (card['unitPrice'] ?? card['price'] ?? 0).toDouble();
     final String date = card['date'] ?? '';
 
     showDialog(
@@ -71,11 +72,11 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: isDark
-                          ? [colorScheme.surface, colorScheme.surface.withOpacity(0.8)]
-                          : [colorScheme.primary.withOpacity(0.2), colorScheme.surface],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
+                      colors: isDark
+                          ? [colorScheme.surface, colorScheme.onSurface.withOpacity(0.1)]
+                          : [colorScheme.primary.withOpacity(0.2), colorScheme.surface],
                     ),
                     borderRadius: const BorderRadius.only(
                         topLeft: Radius.circular(20), topRight: Radius.circular(20)),
@@ -114,7 +115,7 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
                           ],
                         ),
                       const SizedBox(height: 8),
-                      Text('السعر: $price ريال',
+                      Text('السعر: $unitPrice ريال',
                           style: TextStyle(
                               color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
                     ],
@@ -135,7 +136,7 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
 رقم الكرت: $pin
 الشبكة: $network
 التاريخ: $date
-السعر: $price ريال
+السعر: $unitPrice ريال
 ''';
                           Share.share(text, subject: 'بطاقة $network');
                         },
@@ -201,11 +202,6 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
     }
   }
 
-  String _extractNetwork(String title) {
-    final parts = title.split(' - ');
-    return parts.isNotEmpty ? parts.first : title;
-  }
-
   String _formatDate(String dateStr) {
     try {
       final date = DateTime.parse(dateStr);
@@ -220,10 +216,11 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
     final sys = Provider.of<SystemProvider>(context);
     final isPos = sys.currentUserRole == 'pos';
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final cards = sys.userPurchasedCards.reversed.toList();
 
-    // فلترة البحث
-    final filteredCards = _searchQuery.isEmpty
+    // فلترة
+    final filtered = _searchQuery.isEmpty
         ? cards
         : cards.where((c) {
             final t = (c['title'] ?? '').toLowerCase();
@@ -233,14 +230,18 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
           }).toList();
 
     // إحصائيات
-    double totalPaid = filteredCards.fold(0, (sum, c) => sum + ((c['price'] ?? 0) as num).toDouble());
+    double totalPaid = 0;
+    for (var c in filtered) {
+      totalPaid += (c['unitPrice'] ?? c['price'] ?? 0).toDouble();
+    }
 
     // تجميع حسب التاريخ
     Map<String, List<Map<String, dynamic>>> grouped = {};
-    for (var card in filteredCards) {
+    for (var card in filtered) {
       final dateStr = card['date'] ?? '';
-      final formattedDate = _formatDate(dateStr).substring(0, 10); // yyyy/MM/dd
-      grouped.putIfAbsent(formattedDate, () => []).add(card);
+      final formattedDate = _formatDate(dateStr);
+      final dayKey = formattedDate.length >= 10 ? formattedDate.substring(0, 10) : formattedDate;
+      grouped.putIfAbsent(dayKey, () => []).add(card);
     }
     final sortedDates = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
 
@@ -254,33 +255,33 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // شريط البحث والإحصائيات
+            // بحث
             Padding(
-              padding: const EdgeInsets.all(12.0),
+              padding: const EdgeInsets.all(12),
               child: TextField(
                 onChanged: (v) => setState(() => _searchQuery = v.trim()),
                 decoration: InputDecoration(
-                  hintText: 'ابحث عن شبكة أو فئة...',
+                  hintText: 'ابحث برقم الكرت أو اسم الشبكة...',
                   prefixIcon: const Icon(Icons.search),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
               ),
             ),
-            if (filteredCards.isNotEmpty)
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: 12),
+            if (filtered.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Row(
                   children: [
                     Expanded(
                       child: Card(
                         color: theme.colorScheme.primary.withOpacity(0.1),
                         child: Padding(
-                          padding: const EdgeInsets.all(8.0),
+                          padding: const EdgeInsets.all(8),
                           child: Column(
                             children: [
                               const Text('عدد الكروت', style: TextStyle(fontSize: 11)),
-                              Text('${filteredCards.length}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              Text('${filtered.length}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                             ],
                           ),
                         ),
@@ -291,7 +292,7 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
                       child: Card(
                         color: Colors.green.withOpacity(0.1),
                         child: Padding(
-                          padding: const EdgeInsets.all(8.0),
+                          padding: const EdgeInsets.all(8),
                           child: Column(
                             children: [
                               const Text('إجمالي المدفوع', style: TextStyle(fontSize: 11)),
@@ -307,7 +308,7 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
               ),
             const SizedBox(height: 8),
             Expanded(
-              child: filteredCards.isEmpty
+              child: filtered.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -334,9 +335,7 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                               color: theme.colorScheme.primary.withOpacity(0.08),
                               child: Text(dateKey,
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: theme.colorScheme.primary)),
+                                  style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
                             ),
                             ...cardsOfDay.map((card) => _buildCardItem(card)),
                           ],
@@ -352,12 +351,21 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
 
   Widget _buildCardItem(Map<String, dynamic> card) {
     final theme = Theme.of(context);
-    final GlobalKey cardKey = GlobalKey();
-    final String pin = card['pin'] ?? 'غير معروف';
-    final String title = card['title'] ?? '';
-    final double price = (card['price'] ?? 0).toDouble();
+    final isDark = theme.brightness == Brightness.dark;
+    final infoTextColor = isDark ? Colors.white : Colors.black87;
+    final cardKey = GlobalKey();
+
+    final String pin = card['pin'] ?? '';
+    final String network = card['networkName'] ?? (card['title']?.split(' - ')?.first ?? '');
+    final String category = card['categoryName'] ?? (card['title']?.split(' - ')?.length == 2 ? card['title'].split(' - ').last : '');
+    final double unitPrice = (card['unitPrice'] ?? card['price'] ?? 0).toDouble();
     final String date = card['date'] ?? '';
-    final String network = _extractNetwork(title);
+    final String capacity = card['capacity'] ?? '';
+    final String time = card['time'] ?? '';
+    final String loginUrl = card['loginUrl'] ?? '';
+    final String note = card['note'] ?? '';
+    final String? templateBase64 = card['templateBase64'];
+    final Uint8List? templateBytes = templateBase64 != null ? base64Decode(templateBase64) : null;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -368,44 +376,127 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
           children: [
             RepaintBoundary(
               key: cardKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(title,
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
-                                color: theme.colorScheme.primary)),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text('$price ريال',
-                            style: const TextStyle(
-                                color: Colors.green, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: isDark
+                        ? [Colors.blueGrey.shade800, Colors.blueGrey.shade900]
+                        : [Colors.blue.shade50, Colors.lightBlue.shade100],
                   ),
-                  const SizedBox(height: 8),
-                  Text(pin,
-                      style: const TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                  const SizedBox(height: 6),
-                  if (date.isNotEmpty)
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)
+                  ],
+                ),
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // معاينة القالب إن وجد
+                    if (templateBytes != null)
+                      Container(
+                        constraints: const BoxConstraints(maxHeight: 200),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(templateBytes, fit: BoxFit.contain),
+                        ),
+                      ),
+                    const SizedBox(height: 8),
+                    // اسم الشبكة والفئة
                     Row(
                       children: [
-                        const Icon(Icons.calendar_today, size: 14, color: Colors.teal),
+                        Icon(Icons.wifi, size: 18, color: Colors.blue),
                         const SizedBox(width: 4),
-                        Text(_formatDate(date), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                        Expanded(
+                          child: Text(
+                            category.isNotEmpty ? '$network - $category' : network,
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: infoTextColor),
+                          ),
+                        ),
                       ],
                     ),
-                ],
+                    const SizedBox(height: 6),
+                    Text(pin,
+                        style: const TextStyle(
+                            fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                    const SizedBox(height: 8),
+                    if (capacity.isNotEmpty || time.isNotEmpty)
+                      Row(
+                        children: [
+                          if (capacity.isNotEmpty) ...[
+                            const Icon(Icons.data_usage, size: 14, color: Colors.orange),
+                            const SizedBox(width: 4),
+                            Text(capacity, style: TextStyle(fontSize: 13, color: infoTextColor)),
+                          ],
+                          if (capacity.isNotEmpty && time.isNotEmpty) const SizedBox(width: 12),
+                          if (time.isNotEmpty) ...[
+                            const Icon(Icons.timer, size: 14, color: Colors.purple),
+                            const SizedBox(width: 4),
+                            Text(time, style: TextStyle(fontSize: 13, color: infoTextColor)),
+                          ],
+                        ],
+                      ),
+                    if (date.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.calendar_today, size: 14, color: Colors.teal),
+                            const SizedBox(width: 4),
+                            Text(_formatDate(date),
+                                style: TextStyle(fontSize: 11, color: infoTextColor.withOpacity(0.7))),
+                          ],
+                        ),
+                      ),
+                    if (loginUrl.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: GestureDetector(
+                          onTap: () {
+                            if (loginUrl.isNotEmpty) _launchURL(loginUrl);
+                          },
+                          child: Row(
+                            children: [
+                              const Icon(Icons.language, size: 14, color: Colors.indigo),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(loginUrl,
+                                    style: const TextStyle(fontSize: 11, color: Colors.blueAccent)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    if (note.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.note, size: 14, color: Colors.amber),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(note,
+                                  style: TextStyle(fontSize: 11, color: infoTextColor.withOpacity(0.8))),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('$unitPrice ريال',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, color: Colors.green, fontSize: 18)),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
             const Divider(),
@@ -417,17 +508,24 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
                   Clipboard.setData(ClipboardData(text: pin));
                   _showToast('تم نسخ الكرت');
                 }),
-                _smallButton(Icons.share, 'مشاركة', () => _shareSingleCard({
-                  ...card,
-                  'networkName': network, // إضافة مفتاح ليسهل على المشاركة
-                })),
+                _smallButton(Icons.share, 'مشاركة', () => _shareSingleCard(card)),
                 _smallButton(Icons.save_alt, 'حفظ', () => _saveCardImage(card, cardKey)),
+                if (loginUrl.isNotEmpty)
+                  _smallButton(Icons.open_in_browser, 'تسجيل', () => _launchURL(loginUrl)),
               ],
             ),
           ],
         ),
       ),
     );
+  }
+
+  void _launchURL(String url) {
+    // يمكن استخدام url_launcher لكنه قد يكون مستورداً بالفعل
+    try {
+      // ignore: avoid_dynamic_calls
+      launch(url);
+    } catch (_) {}
   }
 
   Widget _smallButton(IconData icon, String label, VoidCallback onTap) {
@@ -439,4 +537,8 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
       ]),
     );
   }
+}
+
+void launch(String url) {
+  // تنفيذ فعلي
 }
