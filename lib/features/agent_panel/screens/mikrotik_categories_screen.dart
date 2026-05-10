@@ -290,135 +290,21 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     }
   }
 
-  // =================== فتح خريطة متطورة مع شريط بحث ===================
+  // ========== خريطة مع شريط بحث (HTTP) ==========
   Future<Map<String, dynamic>?> _pickLocationOnMap() async {
     LatLng selected = const LatLng(15.3694, 44.1910);
     String selectedAddress = '';
-    final TextEditingController searchController = TextEditingController();
+    final searchController = TextEditingController();
     List<Map<String, dynamic>> searchResults = [];
     bool isSearching = false;
 
-    return await showDialog<Map<String, dynamic>?>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setMapState) => AlertDialog(
-          title: const Text('اختر الموقع على الخريطة'),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: 500,
-            child: Column(
-              children: [
-                // شريط البحث
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: searchController,
-                        decoration: const InputDecoration(
-                          hintText: 'ابحث عن مكان...',
-                          prefixIcon: Icon(Icons.search),
-                        ),
-                        onChanged: (value) async {
-                          if (value.trim().length < 3) {
-                            setMapState(() {
-                              searchResults = [];
-                            });
-                            return;
-                          }
-                          setMapState(() {
-                            isSearching = true;
-                          });
-                          try {
-                            final results = await NominatimFlutter.search(
-                              query: value.trim(),
-                            );
-                            setMapState(() {
-                              searchResults = results
-                                  .map((r) => {
-                                        'name': r.displayName,
-                                        'lat': double.parse(r.lat),
-                                        'lon': double.parse(r.lon),
-                                      })
-                                  .toList();
-                              isSearching = false;
-                            });
-                          } catch (_) {
-                            setMapState(() {
-                              searchResults = [];
-                              isSearching = false;
-                            });
-                          }
-                        },
-                      ),
-                    ),
-                    if (isSearching)
-                      const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                  ],
-                ),
-                // نتائج البحث
-                if (searchResults.isNotEmpty)
-                  SizedBox(
-                    height: 100,
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: searchResults.length,
-                      itemBuilder: (context, index) {
-                        final item = searchResults[index];
-                        return ListTile(
-                          title: Text(item['name'],
-                              style: const TextStyle(fontSize: 12)),
-                          onTap: () {
-                            setMapState(() {
-                              selected = LatLng(item['lat'], item['lon']);
-                              selectedAddress = item['name'];
-                              searchResults = [];
-                              searchController.text = item['name'];
-                            });
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                // الخريطة
-                Expanded(
-                  child: FlutterMap(
-                    options: MapOptions(
-                      initialCenter: selected,
-                      initialZoom: 13.0,
-                      onTap: (tapPosition, point) {
-                        setMapState(() {
-                          selected = point;
-                        });
-                        _reverseGeocode(point.latitude, point.longitude).then(
-                            (addr) {
-                          if (addr.isNotEmpty) {
-                            setMapState(() {
-                              selectedAddress = addr;
-                            });
-                          }
-                        });
-                      },
-                    ),
-                    children: [
-// =================== فتح خريطة مع شريط بحث (بدون nominatim_flutter) ===================
-Future<Map<String, dynamic>?> _pickLocationOnMap() async {
-    LatLng selected = const LatLng(15.3694, 44.1910);
-    String selectedAddress = '';
-    final TextEditingController searchController = TextEditingController();
-    List<Map<String, dynamic>> searchResults = [];
-    bool isSearching = false;
-
-    // دالة البحث عبر Nominatim (http)
-    Future<List<Map<String, dynamic>>> _searchAddress(String query) async {
+    Future<List<Map<String, dynamic>>> _search(String q) async {
       try {
         final url = Uri.parse(
-            'https://nominatim.openstreetmap.org/search?format=json&q=${Uri.encodeComponent(query)}&limit=5');
-        final response = await http.get(url);
-        if (response.statusCode == 200) {
-          final List<dynamic> data = jsonDecode(response.body);
+            'https://nominatim.openstreetmap.org/search?format=json&q=${Uri.encodeComponent(q)}&limit=5');
+        final res = await http.get(url);
+        if (res.statusCode == 200) {
+          final List<dynamic> data = jsonDecode(res.body);
           return data
               .map((e) => {
                     'name': e['display_name'] ?? '',
@@ -431,14 +317,13 @@ Future<Map<String, dynamic>?> _pickLocationOnMap() async {
       return [];
     }
 
-    // دالة الترميز العكسي
-    Future<String> _reverseGeo(double lat, double lon) async {
+    Future<String> _reverse(double lat, double lon) async {
       try {
         final url = Uri.parse(
             'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lon');
-        final response = await http.get(url);
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
+        final res = await http.get(url);
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
           return data['display_name'] ?? '';
         }
       } catch (_) {}
@@ -455,7 +340,7 @@ Future<Map<String, dynamic>?> _pickLocationOnMap() async {
             height: 500,
             child: Column(
               children: [
-                // شريط البحث
+                // شريط بحث
                 Row(
                   children: [
                     Expanded(
@@ -465,17 +350,13 @@ Future<Map<String, dynamic>?> _pickLocationOnMap() async {
                           hintText: 'ابحث عن مكان...',
                           prefixIcon: Icon(Icons.search),
                         ),
-                        onChanged: (value) async {
-                          if (value.trim().length < 3) {
-                            setMapState(() {
-                              searchResults = [];
-                            });
+                        onChanged: (v) async {
+                          if (v.trim().length < 3) {
+                            setMapState(() => searchResults = []);
                             return;
                           }
-                          setMapState(() {
-                            isSearching = true;
-                          });
-                          final results = await _searchAddress(value.trim());
+                          setMapState(() => isSearching = true);
+                          final results = await _search(v.trim());
                           setMapState(() {
                             searchResults = results;
                             isSearching = false;
@@ -490,7 +371,6 @@ Future<Map<String, dynamic>?> _pickLocationOnMap() async {
                       ),
                   ],
                 ),
-                // نتائج البحث
                 if (searchResults.isNotEmpty)
                   SizedBox(
                     height: 100,
@@ -514,21 +394,16 @@ Future<Map<String, dynamic>?> _pickLocationOnMap() async {
                       },
                     ),
                   ),
-                // الخريطة
                 Expanded(
                   child: FlutterMap(
                     options: MapOptions(
                       initialCenter: selected,
                       initialZoom: 13.0,
                       onTap: (tapPosition, point) {
-                        setMapState(() {
-                          selected = point;
-                        });
-                        _reverseGeo(point.latitude, point.longitude).then((addr) {
+                        setMapState(() => selected = point);
+                        _reverse(point.latitude, point.longitude).then((addr) {
                           if (addr.isNotEmpty) {
-                            setMapState(() {
-                              selectedAddress = addr;
-                            });
+                            setMapState(() => selectedAddress = addr);
                           }
                         });
                       },
@@ -556,7 +431,8 @@ Future<Map<String, dynamic>?> _pickLocationOnMap() async {
                   Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: Text('الموقع: $selectedAddress',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        style:
+                            const TextStyle(fontSize: 12, color: Colors.grey)),
                   ),
               ],
             ),
@@ -584,20 +460,7 @@ Future<Map<String, dynamic>?> _pickLocationOnMap() async {
     );
   }
 
-  Future<String> _reverseGeocode(double lat, double lon) async {
-    try {
-      final url = Uri.parse(
-          'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lon');
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['display_name'] ?? '';
-      }
-    } catch (_) {}
-    return '';
-  }
-
-  // =================== زر الإضافة العائم مع شرط الرصيد ===================
+  // ========== زر الإضافة مع شرط الرصيد ==========
   Widget? _buildCurrentFab() {
     final sys = Provider.of<SystemProvider>(context, listen: false);
     switch (_tabController.index) {
@@ -768,7 +631,7 @@ Future<Map<String, dynamic>?> _pickLocationOnMap() async {
     );
   }
 
-  // ======================== نافذة إضافة/تعديل سيرفر (معدلة) ========================
+  // ========== نافذة إضافة/تعديل سيرفر ==========
   void _showAddServerBottomSheet(SystemProvider sys,
       {Map<String, dynamic>? existingData, String? docId}) {
     _play('click');
@@ -823,7 +686,6 @@ Future<Map<String, dynamic>?> _pickLocationOnMap() async {
                     controller: TextEditingController(text: location),
                     onChanged: (v) => location = v),
                 const SizedBox(height: 6),
-                // زر الخريطة
                 OutlinedButton.icon(
                   onPressed: () async {
                     final picked = await _pickLocationOnMap();
@@ -1049,7 +911,7 @@ Future<Map<String, dynamic>?> _pickLocationOnMap() async {
     );
   }
 
-  // ======================== نافذة إضافة فئة (بدون تغيير) ========================
+  // ========== نافذة إضافة فئة (بدون تغيير) ==========
   void _showAddCategoryBottomSheet(List<QueryDocumentSnapshot> agentNetworks,
       {Map? existingCat, String? preSelectedNetId}) {
     _play('click');
@@ -1552,7 +1414,7 @@ Future<Map<String, dynamic>?> _pickLocationOnMap() async {
     ]);
   }
 
-  // ======================== عرض كروت الفئة ========================
+  // ======================== باقي الدوال (عرض كروت، بوت، حذف، توليد) ========================
   void _showCardsList(
       String netId, String catId, String catName, Color catColor) {
     _play('click');
@@ -1677,7 +1539,6 @@ Future<Map<String, dynamic>?> _pickLocationOnMap() async {
     );
   }
 
-  // ======================== البوت الذكي ========================
   void _showBotSettings(String netId, String catId, Map category) {
     _play('click');
     int minStock = category['botMinStock'] ?? 5;
@@ -1774,7 +1635,6 @@ Future<Map<String, dynamic>?> _pickLocationOnMap() async {
     );
   }
 
-  // ======================== حذف شبكة/فئة مع الأرشفة ========================
   Future<void> _deleteNetworkAndArchiveCards(
       SystemProvider sys, String networkId) async {
     bool confirm = await _confirmAction(
@@ -1845,7 +1705,6 @@ Future<Map<String, dynamic>?> _pickLocationOnMap() async {
     }
   }
 
-  // ======================== التوليد ========================
   List<Map<String, dynamic>> _collectOrders() {
     List<Map<String, dynamic>> orders = [];
     _multiGenControllers.forEach((key, controller) {
@@ -1986,7 +1845,6 @@ Future<Map<String, dynamic>?> _pickLocationOnMap() async {
     return success;
   }
 
-  // ======================== اختبار الاتصال ========================
   Future<void> _testConnection(Map<String, dynamic> net) async {
     _play('click');
     setState(() => _isProcessing = true);
@@ -2015,7 +1873,7 @@ Future<Map<String, dynamic>?> _pickLocationOnMap() async {
   }
 }
 
-// ==================== تبويب السيرفرات (بدون Scaffold) ====================
+// ==================== تبويبات ====================
 class ServersTab extends StatefulWidget {
   final _MikrotikCategoriesScreenState parent;
   const ServersTab({required this.parent, super.key});
@@ -2202,7 +2060,6 @@ class _ServersTabState extends State<ServersTab>
                   horizontal: 8, vertical: 4)));
 }
 
-// ==================== تبويب الفئات (بدون Scaffold) ====================
 class CategoriesTab extends StatefulWidget {
   final _MikrotikCategoriesScreenState parent;
   const CategoriesTab({required this.parent, super.key});
@@ -2541,7 +2398,6 @@ class _CategoriesTabState extends State<CategoriesTab>
   }
 }
 
-// ==================== تبويب التوليد (بدون Scaffold) ====================
 class GenerateTab extends StatefulWidget {
   final _MikrotikCategoriesScreenState parent;
   const GenerateTab({required this.parent, super.key});
