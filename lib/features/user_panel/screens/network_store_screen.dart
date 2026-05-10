@@ -1227,7 +1227,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     ]);
   }
 
-    // ========== مشاركة كرت (بوستر على غرار التسويق) ==========
+  // ========== مشاركة كرت (بوستر على غرار التسويق) ==========
   Future<void> _shareSingleCard({
     required String pin,
     required String networkName,
@@ -1372,7 +1372,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                             style: TextStyle(color: Colors.white)),
                         onPressed: () async {
                           Navigator.pop(ctx);
-                          await _shareCardPosterImage(posterKey, pin);
+                          await _shareCardPosterImage(posterKey, pin, networkName);
                         },
                       ),
                     ),
@@ -1409,7 +1409,7 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
     Share.share(text, subject: 'بطاقة $networkName');
   }
 
-  Future<void> _shareCardPosterImage(GlobalKey posterKey, String pin) async {
+  Future<void> _shareCardPosterImage(GlobalKey posterKey, String pin, String networkName) async {
     _play('click');
     showDialog(
         context: context,
@@ -2177,7 +2177,7 @@ class _PoSCardState extends State<PoSCard> with AutomaticKeepAliveClientMixin {
                 const Text('لا توجد كروت متاحة حالياً.',
                     style: TextStyle(color: Colors.red)),
               ...stock.map((item) {
-                int available = item['available'] ?? 0; // سيُحدَّث أدناه
+                int available = item['available'] ?? 0;
                 double price = (item['price'] ?? 0).toDouble();
                 bool isAvailable = available > 0;
                 String key =
@@ -2194,7 +2194,6 @@ class _PoSCardState extends State<PoSCard> with AutomaticKeepAliveClientMixin {
                   _qtyValues[key] = available;
                 }
 
-                // جلب المخزون الحقيقي من networks
                 return FutureBuilder<int>(
                   future: _getRealStock(ownerPhone, item['network'] ?? '', item['category'] ?? ''),
                   initialData: available,
