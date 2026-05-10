@@ -13,8 +13,9 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_gallery_saver/image_gallery_saver.dart';
-// للويب فقط
 import 'dart:html' as html;
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -23,7 +24,7 @@ import '../widgets/custom_user_drawer.dart';
 import 'user_wallet_screen.dart';
 
 // =============================================================================
-// كلاس مساعد لتجميع منطق الخصم التلقائي والكوبونات
+// كلاس مساعد لتجميع منطق الخصم التلقائي والكوبونات (بدون تغيير)
 // =============================================================================
 class DiscountHelper {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -241,7 +242,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   Timer? _debounceTimer;
   bool _isSearching = false;
 
-  // لحفظ مفاتيح RepaintBoundary لكل بطاقة (مهم للمشاركة)
   final Map<String, GlobalKey> _cardKeys = {};
 
   void _play(String type) =>
@@ -593,7 +593,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                           );
                         }),
                       ],
-                      // حقل الكوبون
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 5),
@@ -648,7 +647,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold))),
                       const SizedBox(height: 15),
-                      // ملخص الرصيد
                       Container(
                         padding: const EdgeInsets.all(15),
                         decoration: BoxDecoration(
@@ -687,7 +685,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                             ]),
                       ),
                       const SizedBox(height: 10),
-                      // المبلغ المطلوب
                       Container(
                         padding: const EdgeInsets.all(15),
                         decoration: BoxDecoration(
@@ -721,7 +718,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                             ]),
                       ),
                       const SizedBox(height: 25),
-                      // زر الشراء (إذا الرصيد يكفي)
                       if (canAfford) ...[
                         SizedBox(
                             width: double.infinity,
@@ -837,7 +833,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                                           fontWeight: FontWeight.bold)),
                             )),
                         const SizedBox(height: 8),
-                        // زر الشحن (موجود دائماً حتى لو الرصيد يكفي)
                         TextButton.icon(
                             onPressed: () {
                               Navigator.pop(context);
@@ -932,7 +927,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     );
   }
 
-  // ---------- بناء عرض الكروت بعد الشراء ----------
+  // ---------- بناء عرض الكروت بعد الشراء (بدون تغيير كبير) ----------
   Widget _buildMultiCardSuccessView({
     required List<String> pins,
     required String networkName,
@@ -964,7 +959,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
       const SizedBox(height: 20),
       ...List.generate(pins.length, (index) {
         final pin = pins[index];
-        // إنشاء أو استرداد GlobalKey ثابت لهذا الكرت
         if (!_cardKeys.containsKey(pin)) {
           _cardKeys[pin] = GlobalKey();
         }
@@ -1004,7 +998,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     ]);
   }
 
-  // ---------- بناء بطاقة فردية (مع تحسينات الصورة) ----------
+  // ---------- بناء بطاقة فردية (مع إصلاح حجم الخط في القالب) ----------
   Widget _buildSingleCard({
     required String pin,
     Uint8List? templateBytes,
@@ -1026,12 +1020,10 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     required double autoDiscountAmount,
     required double couponDiscountAmount,
     required ThemeData theme,
-    required GlobalKey cardKey, // المفتاح ثابت
+    required GlobalKey cardKey,
   }) {
-    // تحديد ألوان النص بناءً على السمة
     final isDark = theme.brightness == Brightness.dark;
     final infoTextColor = isDark ? Colors.white : Colors.black87;
-    final cardBackground = isDark ? Colors.grey.shade900 : Colors.white;
     final gradientColors = isDark
         ? [Colors.blueGrey.shade800, Colors.blueGrey.shade900]
         : [Colors.blue.shade50, Colors.lightBlue.shade100];
@@ -1076,6 +1068,11 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                     ih = imageHeight * scale;
                   }
                   double ox = (cw - iw) / 2, oy = (ch - ih) / 2;
+                  // ✅ إصلاح حجم النص باستخدام scale
+                  final double scaleFactor = (imageWidth != null && imageWidth > 0)
+                      ? iw / imageWidth
+                      : 1.0;
+
                   return Stack(children: [
                     Center(
                         child: Image.memory(templateBytes,
@@ -1085,7 +1082,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                         top: oy + (userViewY / 100) * ih,
                         child: Text(pin,
                             style: TextStyle(
-                                fontSize: fontSize,
+                                fontSize: fontSize * scaleFactor,
                                 fontWeight: FontWeight.bold,
                                 letterSpacing: 2,
                                 color: textColor))),
@@ -1125,11 +1122,10 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
       margin: const EdgeInsets.only(bottom: 16),
       child: Column(children: [
         RepaintBoundary(
-          key: cardKey, // المفتاح المستقر
+          key: cardKey,
           child: cardContent,
         ),
         const SizedBox(height: 8),
-        // أزرار التحكم
         Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
           _smallButton(Icons.copy, 'نسخ', () {
             _play('click');
@@ -1231,6 +1227,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     ]);
   }
 
+  // ✅ إصلاح مشاركة الكرت كصورة
   Future<void> _shareSingleCard({
     required String pin,
     required String networkName,
@@ -1262,15 +1259,23 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
               title: const Text('مشاركة كصورة'),
               onTap: () async {
                 Navigator.pop(ctx);
+                // ضمان أن المفتاح جاهز
+                await Future.delayed(const Duration(milliseconds: 100));
                 try {
-                  RenderRepaintBoundary boundary = cardKey.currentContext
+                  final boundary = cardKey.currentContext
                       ?.findRenderObject() as RenderRepaintBoundary;
-                  if (boundary == null) return;
+                  if (boundary == null) {
+                    _showToast('فشلت المشاركة: لم يتم العثور على الصورة', error: true);
+                    return;
+                  }
                   ui.Image image =
                       await boundary.toImage(pixelRatio: 3.0);
                   ByteData? byteData =
                       await image.toByteData(format: ui.ImageByteFormat.png);
-                  if (byteData == null) return;
+                  if (byteData == null) {
+                    _showToast('فشلت المشاركة', error: true);
+                    return;
+                  }
                   final dir = await getTemporaryDirectory();
                   final file = File('${dir.path}/card_$pin.png');
                   await file.writeAsBytes(byteData.buffer.asUint8List());
@@ -1539,41 +1544,28 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
                     );
                   },
                 ),
+                // ✅ تبويب نقاط البيع (مُحسَّن)
                 StreamBuilder<QuerySnapshot>(
                   stream: _db.collection('points_of_sale').snapshots(),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(
-                          child: CircularProgressIndicator());
+                      return const Center(child: CircularProgressIndicator());
                     }
                     if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                      return const Center(
-                          child: Text('لا توجد نقاط بيع.'));
+                      return const Center(child: Text('لا توجد نقاط بيع.'));
                     }
                     var posList = snapshot.data!.docs.where((doc) {
                       var pos = doc.data() as Map<String, dynamic>;
-                      return (pos['name']
-                                  ?.toLowerCase()
-                                  .contains(_searchQuery) ??
-                              false) ||
-                          (pos['location']
-                                  ?.toLowerCase()
-                                  .contains(_searchQuery) ??
-                              false) ||
-                          (pos['ownerName']
-                                  ?.toLowerCase()
-                                  .contains(_searchQuery) ??
-                              false);
+                      return (pos['name']?.toLowerCase().contains(_searchQuery) ?? false) ||
+                          (pos['location']?.toLowerCase().contains(_searchQuery) ?? false) ||
+                          (pos['ownerName']?.toLowerCase().contains(_searchQuery) ?? false);
                     }).toList();
-                    if (posList.isEmpty) {
-                      return const Center(child: Text('لا نتائج مطابقة'));
-                    }
+                    if (posList.isEmpty) return const Center(child: Text('لا نتائج مطابقة'));
                     return ListView.builder(
                       padding: const EdgeInsets.all(16),
                       itemCount: posList.length,
                       itemBuilder: (context, index) {
-                        var pos =
-                            posList[index].data() as Map<String, dynamic>;
+                        var pos = posList[index].data() as Map<String, dynamic>;
                         return PoSCard(
                           key: ValueKey(posList[index].id),
                           pos: pos,
@@ -1581,16 +1573,7 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
                           searchQuery: _searchQuery,
                           onPurchase: (title, price, qty, agentPhone,
                                   agentName, networkName, catId) =>
-                              _showPurchaseBottomSheet(
-                                  context,
-                                  title,
-                                  price,
-                                  qty,
-                                  agentPhone,
-                                  agentName,
-                                  isPos,
-                                  networkName,
-                                  catId),
+                              _showPurchaseBottomSheet(context, title, price, qty, agentPhone, agentName, isPos, networkName, catId),
                         );
                       },
                     );
@@ -1606,7 +1589,7 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
 }
 
 // =============================================================================
-// بطاقة الشبكة - NetworkCard
+// بطاقة الشبكة - NetworkCard (مُحدَّثة مع زر الخريطة)
 // =============================================================================
 class NetworkCard extends StatefulWidget {
   final Map<String, dynamic> network;
@@ -1642,6 +1625,51 @@ class _NetworkCardState extends State<NetworkCard>
   void dispose() {
     _qtyControllers.values.forEach((c) => c.dispose());
     super.dispose();
+  }
+
+  void _showMap(double lat, double lng, String title) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: Text('موقع: $title'),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 300,
+            child: FlutterMap(
+              options: MapOptions(
+                initialCenter: LatLng(lat, lng),
+                initialZoom: 15.0,
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate:
+                      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                ),
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: LatLng(lat, lng),
+                      width: 40,
+                      height: 40,
+                      child: const Icon(Icons.location_pin,
+                          color: Colors.red, size: 40),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إغلاق'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -1680,6 +1708,9 @@ class _NetworkCardState extends State<NetworkCard>
     }
     if (categories.isEmpty) return const SizedBox.shrink();
 
+    final double? lat = network['latitude']?.toDouble();
+    final double? lng = network['longitude']?.toDouble();
+
     return Card(
       elevation: 3,
       color: theme.cardColor,
@@ -1690,8 +1721,21 @@ class _NetworkCardState extends State<NetworkCard>
         leading: CircleAvatar(
             backgroundColor: theme.colorScheme.primary,
             child: const Icon(Icons.router, color: Colors.white)),
-        title: Text(network['name'] ?? '',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(network['name'] ?? '',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
+            if (lat != null && lng != null)
+              IconButton(
+                icon: const Icon(Icons.map, size: 20, color: Colors.teal),
+                onPressed: () => _showMap(lat, lng, network['name'] ?? ''),
+                tooltip: 'عرض على الخريطة',
+              ),
+          ],
+        ),
         subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('📍 ${network['location'] ?? ''}',
               style: const TextStyle(fontSize: 12, color: Colors.grey)),
@@ -1832,7 +1876,7 @@ class _NetworkCardState extends State<NetworkCard>
 }
 
 // =============================================================================
-// أداة اختيار الكمية (QuantitySelector)
+// أداة اختيار الكمية (QuantitySelector) - بدون تغيير
 // =============================================================================
 class QuantitySelector extends StatefulWidget {
   final int currentQty;
@@ -1918,7 +1962,7 @@ class _QuantitySelectorState extends State<QuantitySelector>
 }
 
 // =============================================================================
-// بطاقة نقطة البيع - PoSCard
+// بطاقة نقطة البيع - PoSCard (مع إصلاح المخزون)
 // =============================================================================
 class PoSCard extends StatefulWidget {
   final Map<String, dynamic> pos;
@@ -2008,7 +2052,7 @@ class _PoSCardState extends State<PoSCard> with AutomaticKeepAliveClientMixin {
                 const Text('لا توجد كروت متاحة حالياً.',
                     style: TextStyle(color: Colors.red)),
               ...stock.map((item) {
-                int available = item['available'] ?? 0;
+                int available = item['available'] ?? 0; // سيُحدَّث أدناه
                 double price = (item['price'] ?? 0).toDouble();
                 bool isAvailable = available > 0;
                 String key =
@@ -2025,93 +2069,112 @@ class _PoSCardState extends State<PoSCard> with AutomaticKeepAliveClientMixin {
                   _qtyValues[key] = available;
                 }
 
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                      color: theme.cardColor,
-                      borderRadius: BorderRadius.circular(10)),
-                  child: Row(children: [
-                    Expanded(
-                        child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                          Text(
-                              '${item['network']} - ${item['category']}',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 13)),
-                          Text('المتاح: $available كرت',
-                              style: TextStyle(
-                                  color: isAvailable ? Colors.green : Colors.red,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 8),
-                          QuantitySelector(
-                            currentQty: currentQty,
-                            maxQty: available,
-                            onChanged: (newQty) {
-                              setState(() {
-                                _qtyValues[key] = newQty;
-                                qtyCtrl.text = '$newQty';
-                              });
-                            },
-                          ),
-                        ])),
-                    ElevatedButton(
-                      onPressed: isAvailable
-                          ? () async {
-                              String catId = '';
-                              try {
-                                final netSnap = await _db
-                                    .collection('networks')
-                                    .where('agentPhone',
-                                        isEqualTo: ownerPhone)
-                                    .where('name',
-                                        isEqualTo: item['network'])
-                                    .limit(1)
-                                    .get();
-                                if (netSnap.docs.isNotEmpty) {
-                                  final cats = List<Map<String, dynamic>>.from(
-                                      netSnap.docs.first
-                                          .data()['categories'] ??
-                                          []);
-                                  final match = cats.firstWhere(
-                                      (c) =>
-                                          c['name'] == item['category'],
-                                      orElse: () => {});
-                                  catId = match['id'] ?? '';
+                // جلب المخزون الحقيقي من networks
+                return FutureBuilder<int>(
+                  future: _getRealStock(ownerPhone, item['network'] ?? '', item['category'] ?? ''),
+                  initialData: available,
+                  builder: (context, snapshot) {
+                    int realAvailable = snapshot.data ?? available;
+                    if (realAvailable != available && mounted) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        setState(() {
+                          item['available'] = realAvailable;
+                          if (currentQty > realAvailable) {
+                            qtyCtrl.text = '$realAvailable';
+                            _qtyValues[key] = realAvailable;
+                          }
+                        });
+                      });
+                    }
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                          color: theme.cardColor,
+                          borderRadius: BorderRadius.circular(10)),
+                      child: Row(children: [
+                        Expanded(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                              Text(
+                                  '${item['network']} - ${item['category']}',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold, fontSize: 13)),
+                              Text('المتاح: $realAvailable كرت',
+                                  style: TextStyle(
+                                      color: realAvailable > 0 ? Colors.green : Colors.red,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 8),
+                              QuantitySelector(
+                                currentQty: currentQty,
+                                maxQty: realAvailable,
+                                onChanged: (newQty) {
+                                  setState(() {
+                                    _qtyValues[key] = newQty;
+                                    qtyCtrl.text = '$newQty';
+                                  });
+                                },
+                              ),
+                            ])),
+                        ElevatedButton(
+                          onPressed: realAvailable > 0
+                              ? () async {
+                                  String catId = '';
+                                  try {
+                                    final netSnap = await _db
+                                        .collection('networks')
+                                        .where('agentPhone',
+                                            isEqualTo: ownerPhone)
+                                        .where('name',
+                                            isEqualTo: item['network'])
+                                        .limit(1)
+                                        .get();
+                                    if (netSnap.docs.isNotEmpty) {
+                                      final cats = List<Map<String, dynamic>>.from(
+                                          netSnap.docs.first
+                                              .data()['categories'] ??
+                                              []);
+                                      final match = cats.firstWhere(
+                                          (c) =>
+                                              c['name'] == item['category'],
+                                          orElse: () => {});
+                                      catId = match['id'] ?? '';
+                                    }
+                                  } catch (_) {}
+                                  if (catId.isNotEmpty) {
+                                    widget.onPurchase(
+                                        '${item['network']} - ${item['category']}',
+                                        price,
+                                        currentQty,
+                                        ownerPhone,
+                                        ownerName,
+                                        item['network'],
+                                        catId);
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                            content: Text(
+                                                'تعذر العثور على تفاصيل الكرت.'),
+                                            backgroundColor: Colors.red));
+                                  }
                                 }
-                              } catch (_) {}
-                              if (catId.isNotEmpty) {
-                                widget.onPurchase(
-                                    '${item['network']} - ${item['category']}',
-                                    price,
-                                    currentQty,
-                                    ownerPhone,
-                                    ownerName,
-                                    item['network'],
-                                    catId);
-                              } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                        content: Text(
-                                            'تعذر العثور على تفاصيل الكرت.'),
-                                        backgroundColor: Colors.red));
-                              }
-                            }
-                          : null,
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8))),
-                      child: Text(
-                          isAvailable
-                              ? 'شراء ($price × $currentQty)'
-                              : 'نفدت',
-                          style: const TextStyle(fontSize: 12)),
-                    ),
-                  ]),
+                              : null,
+                          style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8))),
+                          child: Text(
+                              realAvailable > 0
+                                  ? 'شراء ($price × $currentQty)'
+                                  : 'نفدت',
+                              style: const TextStyle(fontSize: 12)),
+                        ),
+                      ]),
+                    );
+                  },
                 );
               }).toList(),
             ]),
@@ -2119,5 +2182,25 @@ class _PoSCardState extends State<PoSCard> with AutomaticKeepAliveClientMixin {
         ],
       ),
     );
+  }
+
+  Future<int> _getRealStock(String agentPhone, String networkName, String categoryName) async {
+    try {
+      final query = await _db
+          .collection('networks')
+          .where('agentPhone', isEqualTo: agentPhone)
+          .where('name', isEqualTo: networkName)
+          .limit(1)
+          .get();
+      if (query.docs.isNotEmpty) {
+        final data = query.docs.first.data() as Map<String, dynamic>;
+        final categories = List<Map<String, dynamic>>.from(data['categories'] ?? []);
+        final cat = categories.firstWhere((c) => c['name'] == categoryName, orElse: () => {});
+        if (cat.isNotEmpty) {
+          return cat['stock'] ?? 0;
+        }
+      }
+    } catch (_) {}
+    return 0;
   }
 }
