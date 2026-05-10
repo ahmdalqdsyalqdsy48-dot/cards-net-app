@@ -11,6 +11,7 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:nominatim_flutter/nominatim_flutter.dart';
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -290,41 +291,154 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     }
   }
 
-  // =================== فتح خريطة لاختيار موقع ===================
-  Future<LatLng?> _pickLocationOnMap() async {
-    LatLng selected = LatLng(15.3694, 44.1910); // صنعاء كموقع مبدئي
-    return await showDialog<LatLng>(
+    // =================== فتح خريطة متطورة مع شريط بحث ===================
+  Future<Map<String, dynamic>?> _pickLocationOnMap() async {
+    // نقطة البداية (صنعاء)
+    LatLng selected = const LatLng(15.3694, 44.1910);
+    String selectedAddress = '';
+    final TextEditingController searchController = TextEditingController();
+    List<Map<String, dynamic>> searchResults = [];
+    bool isSearching = false;
+    final NominatimFlutter nominatim = NominatimFlutter();
+
+    return await showDialog<Map<String, dynamic>?>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setMapState) => AlertDialog(
           title: const Text('اختر الموقع على الخريطة'),
           content: SizedBox(
             width: double.maxFinite,
-            height: 400,
-            child: FlutterMap(
-              options: MapOptions(
-                initialCenter: selected,
-                initialZoom: 12.0,
-                onTap: (tapPosition, point) {
-                  setMapState(() {
-                    selected = point;
-                  });
-                },
-              ),
+            height: 500,
+            child: Column(
               children: [
-                TileLayer(
-                  urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                ),
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: selected,
-                      width: 40,
-                      height: 40,
-                      child: const Icon(Icons.location_pin, color: Colors.red, size: 40),
+                // شريط البحث
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: searchController,
+                        decoration: const InputDecoration(
+                          hintText: 'ابحث عن مكان...',
+                          prefixIcon: Icon(Icons.search),
+                        ),
+                        onChanged: (value) async {
+                          if (value.trim().length < 3) {
+                            setMapState(() {
+                              searchResults = [];
+                            });
+                            return;
+                          }
+                          setMapState(() {
+                            isSearching = true;
+                          });
+                          try {
+                            final results = await nominatim.search(value.trim());
+                            setMapState(() {
+                              searchResults = results
+                                  .map((r) => {
+                                        'name': r.displayName,
+                                        'lat': double.parse(r.lat),
+                                        'lon': double.parse(r.lon),
+                                      })
+                                  .toList();
+                              isSearching = false;
+                            });
+                          } catch (_) {
+                            setMapState(() {
+                              searchResults = [];
+                              isSearching = false;
+                            });
+                          }
+                        },
+                      ),
                     ),
+                    if (isSearching)
+                      const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
                   ],
                 ),
+                // نتائج البحث
+                if (searchResults.isNotEmpty)
+                  SizedBox(
+                    height: 100,
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: searchResults.length,
+                      itemBuilder: (context, index) {
+                        final item = searchResults[index];
+                        return ListTile(
+                          title: Text(item['name'], style: const TextStyle(fontSize: 12)),
+                          onTap: () {
+                            setMapState(() {
+                              selected = LatLng(item['lat'], item['lon']);
+                              selectedAddress = item['name'];
+                              searchResults = [];
+                              searchController.text = item['name'];
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                // الخريطة
+                Expanded(
+                  child: FlutterMap(
+                    options: MapOptions(
+                      initialCenter: selected,
+                      initialZoom: 13.0,
+                      onTap: (tapPosition, point) {
+                        setMapState(() {
+                          selected = point;
+                        });
+                        // الحصول على العنوان من الإحداثيات
+                        _reverseGeocode(point.latitude, point.longitude).then((addr) {
+                          if (addr.isNotEmpty) {
+                            setMapState(() {
+                              selectedAddress = addr;
+                            });
+                          }
+                        });
+                      },
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate:
+                            'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      ),
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: selected,
+                            width: 40,
+                            height: 40,
+                            child: GestureDetector(
+                              onPanUpdate: (details) {
+                                // السحب لتحديد الموقع بدقة
+                                setMapState(() {
+                                  selected = LatLng(
+                                    selected.latitude + details.delta.dy * -0.0001,
+                                    selected.longitude + details.delta.dx * 0.0001,
+                                  );
+                                });
+                              },
+                              child: const Icon(Icons.location_pin,
+                                  color: Colors.red, size: 40),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                // عرض العنوان الحالي
+                if (selectedAddress.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Text('الموقع: $selectedAddress',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  ),
               ],
             ),
           ),
@@ -334,13 +448,39 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
               child: const Text('إلغاء'),
             ),
             ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, selected),
+              onPressed: () {
+                if (selectedAddress.isEmpty) {
+                  // لو لم يبحث، نعيد الإحداثيات فقط
+                  Navigator.pop(ctx, {
+                    'latitude': selected.latitude,
+                    'longitude': selected.longitude,
+                    'address': 'موقع غير معروف',
+                  });
+                } else {
+                  Navigator.pop(ctx, {
+                    'latitude': selected.latitude,
+                    'longitude': selected.longitude,
+                    'address': selectedAddress,
+                  });
+                }
+              },
               child: const Text('تأكيد الموقع'),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<String> _reverseGeocode(double lat, double lon) async {
+    try {
+      final nominatim = NominatimFlutter();
+      final results = await nominatim.reverse(lat: lat, lon: lon);
+      if (results.isNotEmpty) {
+        return results.first.displayName;
+      }
+    } catch (_) {}
+    return '';
   }
 
   // =================== زر الإضافة العائم مع شرط الرصيد ===================
