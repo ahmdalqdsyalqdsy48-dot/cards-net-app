@@ -911,6 +911,8 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                             textColor: purchasedUserViewColor,
                             originalPrice: originalPrice,
                             finalPrice: finalPrice,
+                            unitPrice: unitPrice,
+                            quantity: quantity,
                             autoDiscountAmount: autoDiscountAmount,
                             couponDiscountAmount: couponDiscountAmount,
                           ),
@@ -927,7 +929,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     );
   }
 
-  // ---------- بناء عرض الكروت بعد الشراء (بدون تغيير كبير) ----------
+  // ---------- بناء عرض الكروت بعد الشراء ----------
   Widget _buildMultiCardSuccessView({
     required List<String> pins,
     required String networkName,
@@ -944,10 +946,16 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     required Color textColor,
     required double originalPrice,
     required double finalPrice,
+    required double unitPrice,
+    required int quantity,
     required double autoDiscountAmount,
     required double couponDiscountAmount,
   }) {
     final theme = Theme.of(context);
+    final purchaseDate = DateTime.now();
+    final dateStr =
+        '${purchaseDate.year}-${purchaseDate.month.toString().padLeft(2, '0')}-${purchaseDate.day.toString().padLeft(2, '0')}  ${purchaseDate.hour.toString().padLeft(2, '0')}:${purchaseDate.minute.toString().padLeft(2, '0')}';
+
     return Column(mainAxisSize: MainAxisSize.min, children: [
       const Icon(Icons.check_circle, size: 50, color: Colors.green),
       const SizedBox(height: 8),
@@ -980,10 +988,12 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
           allPins: pins,
           originalPrice: originalPrice,
           finalPrice: finalPrice,
+          unitPrice: unitPrice,
           autoDiscountAmount: autoDiscountAmount,
           couponDiscountAmount: couponDiscountAmount,
           theme: theme,
           cardKey: _cardKeys[pin]!,
+          purchaseDate: dateStr,
         );
       }),
       const SizedBox(height: 16),
@@ -994,11 +1004,15 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
           time: time,
           capacity: capacity,
           note: note,
+          unitPrice: unitPrice,
+          quantity: quantity,
+          originalPrice: originalPrice,
+          finalPrice: finalPrice,
           theme: theme),
     ]);
   }
 
-  // ---------- بناء بطاقة فردية (مع إصلاح حجم الخط في القالب) ----------
+  // ---------- بناء بطاقة فردية ----------
   Widget _buildSingleCard({
     required String pin,
     Uint8List? templateBytes,
@@ -1017,10 +1031,12 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     required List<String> allPins,
     required double originalPrice,
     required double finalPrice,
+    required double unitPrice,
     required double autoDiscountAmount,
     required double couponDiscountAmount,
     required ThemeData theme,
     required GlobalKey cardKey,
+    required String purchaseDate,
   }) {
     final isDark = theme.brightness == Brightness.dark;
     final infoTextColor = isDark ? Colors.white : Colors.black87;
@@ -1068,7 +1084,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                     ih = imageHeight * scale;
                   }
                   double ox = (cw - iw) / 2, oy = (ch - ih) / 2;
-                  // ✅ إصلاح حجم النص باستخدام scale
                   final double scaleFactor = (imageWidth != null && imageWidth > 0)
                       ? iw / imageWidth
                       : 1.0;
@@ -1102,18 +1117,17 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                         fontWeight: FontWeight.bold,
                         letterSpacing: 2))),
           const SizedBox(height: 12),
-          _infoRow(Icons.wifi, 'الشبكة', networkName, Colors.blue,
-              infoTextColor),
-          _infoRow(Icons.data_usage, 'السعة', capacity, Colors.orange,
-              infoTextColor),
+          _infoRow(Icons.wifi, 'الشبكة', networkName, Colors.blue, infoTextColor),
+          _infoRow(Icons.data_usage, 'السعة', capacity, Colors.orange, infoTextColor),
           _infoRow(Icons.timer, 'المدة', time, Colors.purple, infoTextColor),
+          _infoRow(Icons.calendar_today, 'تاريخ الشراء', purchaseDate, Colors.teal, infoTextColor),
+          if (loginUrl.isNotEmpty)
+            _infoRow(Icons.language, 'رابط الدخول', loginUrl, Colors.indigo, infoTextColor),
           if (note.isNotEmpty)
             _infoRow(Icons.note, 'ملاحظة', note, Colors.amber, infoTextColor),
-          _infoRow(
-              Icons.money, 'السعر الأصلي', '$originalPrice ريال', Colors.red, infoTextColor),
+          _infoRow(Icons.money, 'سعر الكرت', '$unitPrice ريال', Colors.red, infoTextColor),
           if (autoDiscountAmount + couponDiscountAmount > 0)
-            _infoRow(Icons.discount, 'السعر بعد الخصم', '$finalPrice ريال',
-                Colors.green, infoTextColor),
+            _infoRow(Icons.discount, 'السعر بعد الخصم', '${(finalPrice / allPins.length).toStringAsFixed(0)} ريال', Colors.green, infoTextColor),
         ],
       ),
     );
@@ -1141,10 +1155,11 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                 note: note,
                 originalPrice: originalPrice,
                 finalPrice: finalPrice,
+                unitPrice: unitPrice,
+                purchaseDate: purchaseDate,
                 cardKey: cardKey,
               )),
-          _smallButton(
-              Icons.save_alt, 'حفظ', () => _saveCardImage(cardKey, pin)),
+          _smallButton(Icons.save_alt, 'حفظ', () => _saveCardImage(cardKey, pin)),
           if (loginUrl.isNotEmpty)
             _smallButton(Icons.language, 'تسجيل الدخول', () {
               _play('click');
@@ -1166,9 +1181,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
         const SizedBox(width: 6),
         Text('$label: ',
             style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-                color: textColor)),
+                fontWeight: FontWeight.bold, fontSize: 12, color: textColor)),
         Expanded(
             child: Text(value,
                 style: TextStyle(fontSize: 12, color: textColor),
@@ -1194,6 +1207,10 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     required String time,
     required String capacity,
     required String note,
+    required double unitPrice,
+    required int quantity,
+    required double originalPrice,
+    required double finalPrice,
     required ThemeData theme,
   }) {
     return Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
@@ -1208,23 +1225,214 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
         style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey),
       ),
       ElevatedButton.icon(
-        onPressed: () async {
-          final text = pins
-              .map((p) => '''
-الرقم: $p
-الشبكة: $networkName
-السعة: $capacity
-المدة: $time
-رابط: $loginUrl
-''')
-              .join('\n---\n');
-          await Share.share(text, subject: 'كروت $networkName');
+        onPressed: () {
+          _showShareAllDialog(
+            pins: pins,
+            networkName: networkName,
+            time: time,
+            capacity: capacity,
+            loginUrl: loginUrl,
+            note: note,
+            unitPrice: unitPrice,
+            quantity: quantity,
+            originalPrice: originalPrice,
+            finalPrice: finalPrice,
+          );
         },
         icon: const Icon(Icons.share),
         label: const Text('مشاركة الكل'),
         style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
       ),
     ]);
+  }
+
+  void _showShareAllDialog({
+    required List<String> pins,
+    required String networkName,
+    required String time,
+    required String capacity,
+    required String loginUrl,
+    required String note,
+    required double unitPrice,
+    required int quantity,
+    required double originalPrice,
+    required double finalPrice,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF1E1E1E)
+          : Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('مشاركة الكل',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: const Icon(Icons.text_fields, color: Colors.blue),
+              title: const Text('مشاركة كنص'),
+              onTap: () {
+                Navigator.pop(ctx);
+                final text = pins
+                    .map((p) => '''
+الرقم: $p
+الشبكة: $networkName
+السعة: $capacity
+المدة: $time
+رابط: $loginUrl
+''')
+                    .join('\n---\n');
+                Share.share(text, subject: 'كروت $networkName');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.image, color: Colors.teal),
+              title: const Text('مشاركة كصورة'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _shareAllCardsAsImage(
+                  pins: pins,
+                  networkName: networkName,
+                  time: time,
+                  capacity: capacity,
+                  loginUrl: loginUrl,
+                  note: note,
+                  unitPrice: unitPrice,
+                  quantity: quantity,
+                  originalPrice: originalPrice,
+                  finalPrice: finalPrice,
+                );
+              },
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _shareAllCardsAsImage({
+    required List<String> pins,
+    required String networkName,
+    required String time,
+    required String capacity,
+    required String loginUrl,
+    required String note,
+    required double unitPrice,
+    required int quantity,
+    required double originalPrice,
+    required double finalPrice,
+  }) async {
+    final GlobalKey allKey = GlobalKey();
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final colorScheme = theme.colorScheme;
+
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (c) => const Center(child: CircularProgressIndicator()));
+
+    try {
+      Widget poster = Directionality(
+        textDirection: TextDirection.rtl,
+        child: RepaintBoundary(
+          key: allKey,
+          child: Container(
+            width: 600,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: isDark
+                    ? [colorScheme.surface, colorScheme.surface.withOpacity(0.8)]
+                    : [colorScheme.primary.withOpacity(0.1), colorScheme.surface],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(networkName,
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 22,
+                        color: colorScheme.onSurface)),
+                const SizedBox(height: 10),
+                ...pins.map((pin) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.confirmation_number, size: 18, color: colorScheme.primary),
+                          const SizedBox(width: 4),
+                          Text(pin, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: colorScheme.onSurface)),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Icon(Icons.monetization_on, size: 14, color: Colors.red),
+                          const SizedBox(width: 4),
+                          Text('سعر الكرت: $unitPrice ريال', style: const TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                      const Divider(),
+                    ],
+                  ),
+                )),
+                const SizedBox(height: 8),
+                Text('الكمية: $quantity كرت',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: colorScheme.onSurface)),
+                Text('الإجمالي: $originalPrice ريال',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green)),
+                if (originalPrice != finalPrice)
+                  Text('بعد الخصم: $finalPrice ريال',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.red)),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      // لضمان بناء العنصر في الشجرة بدون أن يظهر للمستخدم
+      OverlayEntry? entry;
+      entry = OverlayEntry(
+        builder: (context) => Positioned(
+          left: -1000,
+          top: 0,
+          child: Material(child: poster),
+        ),
+      );
+      Overlay.of(context).insert(entry);
+
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      final RenderRepaintBoundary boundary =
+          allKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+      final ui.Image image = await boundary.toImage(pixelRatio: 2.0);
+      final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+
+      entry.remove();
+
+      if (byteData != null) {
+        final Uint8List pngBytes = byteData.buffer.asUint8List();
+        Navigator.pop(context); // إغلاق التحميل
+        await Share.shareXFiles(
+            [XFile.fromData(pngBytes, mimeType: 'image/png', name: 'cards_all.png')],
+            text: 'كروت $networkName');
+      } else {
+        Navigator.pop(context);
+        _showToast('فشلت المشاركة', error: true);
+      }
+    } catch (e) {
+      Navigator.pop(context);
+      _showToast('فشلت المشاركة', error: true);
+    }
   }
 
   // ========== مشاركة كرت (بوستر على غرار التسويق) ==========
@@ -1237,11 +1445,14 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     required String note,
     required double originalPrice,
     required double finalPrice,
+    required double unitPrice,
+    required String purchaseDate,
     required GlobalKey cardKey,
   }) async {
     final GlobalKey posterKey = GlobalKey();
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final colorScheme = theme.colorScheme;
 
     showDialog(
       context: context,
@@ -1253,7 +1464,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 🖼️ بوستر الكرت
               RepaintBoundary(
                 key: posterKey,
                 child: Container(
@@ -1262,8 +1472,8 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: isDark
-                          ? [Colors.blueGrey.shade800, Colors.black87]
-                          : [Colors.blue.shade700, Colors.lightBlue.shade900],
+                          ? [colorScheme.surface, colorScheme.surface.withOpacity(0.8)]
+                          : [colorScheme.primary.withOpacity(0.2), colorScheme.surface],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -1273,23 +1483,22 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                   ),
                   child: Column(
                     children: [
-                      const Icon(Icons.wifi, color: Colors.amber, size: 36),
+                      Icon(Icons.wifi, color: colorScheme.primary, size: 36),
                       const SizedBox(height: 8),
                       Text(networkName,
-                          style: const TextStyle(
-                              color: Colors.white,
+                          style: TextStyle(
+                              color: colorScheme.onSurface,
                               fontSize: 22,
                               fontWeight: FontWeight.bold)),
                       const SizedBox(height: 12),
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                         decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: colorScheme.primary.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(10)),
                         child: Text(pin,
-                            style: const TextStyle(
-                                color: Colors.black,
+                            style: TextStyle(
+                                color: colorScheme.onSurface,
                                 fontSize: 28,
                                 fontWeight: FontWeight.bold,
                                 letterSpacing: 3)),
@@ -1298,48 +1507,65 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.data_usage,
-                              color: Colors.white70, size: 16),
+                          Icon(Icons.data_usage, color: colorScheme.secondary, size: 16),
                           const SizedBox(width: 4),
                           Text(capacity,
-                              style: const TextStyle(
-                                  color: Colors.white70, fontSize: 14)),
+                              style: TextStyle(color: colorScheme.onSurface, fontSize: 14)),
                           const SizedBox(width: 16),
-                          const Icon(Icons.timer,
-                              color: Colors.white70, size: 16),
+                          Icon(Icons.timer, color: colorScheme.secondary, size: 16),
                           const SizedBox(width: 4),
-                          Text(time,
-                              style: const TextStyle(
-                                  color: Colors.white70, fontSize: 14)),
+                          Text(time, style: TextStyle(color: colorScheme.onSurface, fontSize: 14)),
                         ],
                       ),
-                      const SizedBox(height: 10),
-                      if (originalPrice != finalPrice)
-                        Text('السعر الأصلي: $originalPrice ريال',
-                            style: const TextStyle(
-                                decoration: TextDecoration.lineThrough,
-                                color: Colors.white54,
-                                fontSize: 13)),
-                      const SizedBox(height: 4),
-                      Text(
-                          originalPrice != finalPrice
-                              ? 'السعر بعد الخصم: $finalPrice ريال'
-                              : 'السعر: $originalPrice ريال',
-                          style: const TextStyle(
-                              color: Colors.greenAccent,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16)),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.calendar_today, color: Colors.teal, size: 16),
+                          const SizedBox(width: 4),
+                          Flexible(
+                              child: Text(purchaseDate,
+                                  style: TextStyle(color: colorScheme.onSurface, fontSize: 12))),
+                        ],
+                      ),
+                      if (loginUrl.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.language, color: Colors.indigo, size: 16),
+                            const SizedBox(width: 4),
+                            Flexible(
+                                child: Text(loginUrl,
+                                    style: TextStyle(color: colorScheme.onSurface, fontSize: 12))),
+                          ],
+                        ),
+                      ],
                       if (note.isNotEmpty) ...[
                         const SizedBox(height: 8),
-                        Text('📝 $note',
-                            style: const TextStyle(
-                                color: Colors.white54, fontSize: 12)),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.note, color: Colors.amber, size: 16),
+                            const SizedBox(width: 4),
+                            Flexible(
+                                child: Text(note,
+                                    style: TextStyle(color: colorScheme.onSurface, fontSize: 12))),
+                          ],
+                        ),
                       ],
+                      const SizedBox(height: 12),
+                      Text('سعر الكرت: $unitPrice ريال',
+                          style: TextStyle(
+                              color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
+                      if (unitPrice != (finalPrice / (originalPrice / unitPrice)))
+                        Text('السعر المخفض للكرت: ${(finalPrice / (originalPrice / unitPrice)).toStringAsFixed(0)} ريال',
+                            style: const TextStyle(
+                                color: Colors.green, fontWeight: FontWeight.bold, fontSize: 14)),
                     ],
                   ),
                 ),
               ),
-              // أزرار المشاركة
               Padding(
                 padding: const EdgeInsets.all(15.0),
                 child: Row(
@@ -1358,18 +1584,18 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                               loginUrl: loginUrl,
                               originalPrice: originalPrice,
                               finalPrice: finalPrice,
-                              note: note);
+                              unitPrice: unitPrice,
+                              note: note,
+                              purchaseDate: purchaseDate);
                         },
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                         icon: const Icon(Icons.image, color: Colors.white),
-                        label: const Text('كصورة',
-                            style: TextStyle(color: Colors.white)),
+                        label: const Text('كصورة', style: TextStyle(color: Colors.white)),
                         onPressed: () async {
                           Navigator.pop(ctx);
                           await _shareCardPosterImage(posterKey, pin, networkName);
@@ -1394,16 +1620,19 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     required String loginUrl,
     required double originalPrice,
     required double finalPrice,
+    required double unitPrice,
     required String note,
+    required String purchaseDate,
   }) {
     final text = '''
 رقم الكرت: $pin
 الشبكة: $networkName
 السعة: $capacity
 المدة: $time
+تاريخ الشراء: $purchaseDate
 رابط الدخول: $loginUrl
-السعر الأصلي: $originalPrice ريال
-${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ريال' : ''}
+سعر الكرت: $unitPrice ريال
+${unitPrice != (finalPrice / (originalPrice / unitPrice)) ? 'السعر المخفض للكرت: ${(finalPrice / (originalPrice / unitPrice)).toStringAsFixed(0)} ريال' : ''}
 ملاحظة: $note
 ''';
     Share.share(text, subject: 'بطاقة $networkName');
@@ -1420,11 +1649,10 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
       RenderRepaintBoundary boundary = posterKey.currentContext!
           .findRenderObject() as RenderRepaintBoundary;
       ui.Image image = await boundary.toImage(pixelRatio: 3.0);
-      ByteData? byteData =
-          await image.toByteData(format: ui.ImageByteFormat.png);
+      ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData != null) {
         Uint8List pngBytes = byteData.buffer.asUint8List();
-        Navigator.pop(context); // إغلاق مؤشر التحميل
+        Navigator.pop(context);
         await Share.shareXFiles(
             [XFile.fromData(pngBytes, mimeType: 'image/png', name: 'card_$pin.png')],
             text: '$networkName - $pin');
@@ -1441,14 +1669,12 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
           cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary;
       if (boundary == null) return;
       ui.Image image = await boundary.toImage(pixelRatio: 3.0);
-      ByteData? byteData =
-          await image.toByteData(format: ui.ImageByteFormat.png);
+      ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return;
       if (!kIsWeb) {
         await ImageGallerySaver.saveImage(byteData.buffer.asUint8List());
       } else {
-        final blob =
-            html.Blob([byteData.buffer.asUint8List()], 'image/png');
+        final blob = html.Blob([byteData.buffer.asUint8List()], 'image/png');
         final url = html.Url.createObjectUrlFromBlob(blob);
         html.window.open(url, '_blank');
       }
@@ -1567,8 +1793,7 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
                       ? 'ابحث في شبكات مورديك...'
                       : 'ابحث عن شبكة، بقالة، منطقة، فئة...',
                   prefixIcon: Icon(Icons.search,
-                      color:
-                          isPos ? const Color(0xFF7B1FA2) : const Color(0xFF1565C0)),
+                      color: isPos ? const Color(0xFF7B1FA2) : const Color(0xFF1565C0)),
                   filled: true,
                   fillColor: Colors.white,
                   contentPadding:
@@ -1611,31 +1836,22 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
                           .snapshots(),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(
-                          child: CircularProgressIndicator());
+                      return const Center(child: CircularProgressIndicator());
                     }
                     if (isPos && posAgents.isEmpty) {
-                      return const Center(
-                          child: Text('لم يتم ربطك بأي وكيل.'));
+                      return const Center(child: Text('لم يتم ربطك بأي وكيل.'));
                     }
                     if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                       return const Center(child: Text('لا توجد شبكات.'));
                     }
-                    var networks =
-                        snapshot.data!.docs.where((doc) {
+                    var networks = snapshot.data!.docs.where((doc) {
                       var net = doc.data() as Map<String, dynamic>;
-                      return (net['name']
-                                  ?.toString()
-                                  .toLowerCase()
-                                  .contains(_searchQuery) ??
-                              false) ||
-                          (net['location']
-                                  ?.toString()
-                                  .toLowerCase()
-                                  .contains(_searchQuery) ??
-                              false) ||
+                      final q = _searchQuery;
+                      if (q.isEmpty) return true;
+                      return (net['name']?.toString().toLowerCase().contains(q) ?? false) ||
+                          (net['location']?.toString().toLowerCase().contains(q) ?? false) ||
                           (List<String>.from(net['coverageAreas'] ?? []).any(
-                              (a) => a.toLowerCase().contains(_searchQuery)));
+                              (a) => a.toLowerCase().contains(q)));
                     }).toList();
                     if (networks.isEmpty) {
                       return const Center(child: Text('لا نتائج مطابقة'));
@@ -1644,8 +1860,7 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
                       padding: const EdgeInsets.all(16),
                       itemCount: networks.length,
                       itemBuilder: (context, index) {
-                        var net =
-                            networks[index].data() as Map<String, dynamic>;
+                        var net = networks[index].data() as Map<String, dynamic>;
                         return NetworkCard(
                           key: ValueKey(networks[index].id),
                           network: net,
@@ -1669,7 +1884,6 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
                     );
                   },
                 ),
-                // ✅ تبويب نقاط البيع (مُحسَّن)
                 StreamBuilder<QuerySnapshot>(
                   stream: _db.collection('points_of_sale').snapshots(),
                   builder: (context, snapshot) {
@@ -1681,9 +1895,11 @@ ${originalPrice != finalPrice ? 'السعر بعد الخصم: $finalPrice ري�
                     }
                     var posList = snapshot.data!.docs.where((doc) {
                       var pos = doc.data() as Map<String, dynamic>;
-                      return (pos['name']?.toLowerCase().contains(_searchQuery) ?? false) ||
-                          (pos['location']?.toLowerCase().contains(_searchQuery) ?? false) ||
-                          (pos['ownerName']?.toLowerCase().contains(_searchQuery) ?? false);
+                      final q = _searchQuery;
+                      if (q.isEmpty) return true;
+                      return (pos['name']?.toLowerCase().contains(q) ?? false) ||
+                          (pos['location']?.toLowerCase().contains(q) ?? false) ||
+                          (pos['ownerName']?.toLowerCase().contains(q) ?? false);
                     }).toList();
                     if (posList.isEmpty) return const Center(child: Text('لا نتائج مطابقة'));
                     return ListView.builder(
@@ -1864,9 +2080,6 @@ class _NetworkCardState extends State<NetworkCard>
         subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('📍 ${network['location'] ?? ''}',
               style: const TextStyle(fontSize: 12, color: Colors.grey)),
-          if ((network['coverageAreas'] as List?)?.isNotEmpty == true)
-            Text('📶 ${(network['coverageAreas'] as List).join('، ')}',
-                style: const TextStyle(fontSize: 11, color: Colors.teal)),
         ]),
         children: [
           Container(
