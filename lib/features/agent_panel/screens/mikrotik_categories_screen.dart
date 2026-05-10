@@ -714,15 +714,13 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                 OutlinedButton.icon(
                   onPressed: () async {
                     final picked = await _pickLocationOnMap();
-                    if (picked != null) {
-                      setModalState(() {
-                        lat = picked.latitude;
-                        lng = picked.longitude;
-                        // يمكن تحديث الموقع النصي آلياً (اختياري)
-                        location = 'خط عرض ${picked.latitude.toStringAsFixed(4)}, خط طول ${picked.longitude.toStringAsFixed(4)}';
-                      });
-                    }
-                  },
+if (picked != null) {
+  setModalState(() {
+    lat = picked['latitude'];
+    lng = picked['longitude'];
+    location = picked['address'] ?? 'موقع غير معروف';
+  });
+}
                   icon: const Icon(Icons.map),
                   label: Text(
                     (lat == null || lng == null)
