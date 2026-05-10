@@ -286,7 +286,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
                 final data = doc.data() as Map<String, dynamic>;
                 if (data['type'] == 'sale') {
                   totalSales += (data['amount'] ?? 0).toDouble();
-                  totalCards += data['quantity'] ?? 1;
+                  totalCards += (data['quantity'] as int?) ?? 1;
                   final catName = data['categoryName'] ?? 'غير معروف';
                   categorySales[catName] =
                       (categorySales[catName] ?? 0) + (data['amount'] ?? 0).toDouble();
