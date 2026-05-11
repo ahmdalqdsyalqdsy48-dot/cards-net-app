@@ -1,3 +1,4 @@
+const functions = require('firebase-functions');
 const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
@@ -5,11 +6,8 @@ const cron = require('node-cron');
 const { RouterOSAPI } = require('node-routeros');
 const admin = require('firebase-admin');
 
-// ---------- تهيئة Firebase Admin ----------
-// اقرأ مفتاح الخدمة من متغير بيئة (JSON string)
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
-admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-
+// ---------- تهيئة Firebase Admin (يستخدم اعتماديات البيئة بدون ملف) ----------
+admin.initializeApp();
 const db = admin.firestore();
 const storage = admin.storage().bucket();
 
@@ -17,10 +15,10 @@ const app = express();
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: '10mb' }));
 
-// ---------- مفتاح التوقيع ----------
+// ---------- مفتاح التوقيع (متغير بيئة أو افتراضي) ----------
 const SECRET = process.env.SECRET_KEY || 'netcards_secret_change_me';
 
-// ---------- دوال المصادقة المخصصة ----------
+// ---------- دوال المصادقة (JWT بسيط) ----------
 function generateToken(phone, role) {
   const payload = `${phone}:${role}:${Date.now()}`;
   const signature = crypto.createHmac('sha256', SECRET).update(payload).digest('hex');
@@ -31,15 +29,13 @@ function verifyToken(token) {
   try {
     const [payload, signature] = token.split('.');
     const expectedSig = crypto.createHmac('sha256', SECRET)
-      .update(Buffer.from(payload, 'base64').toString())
-      .digest('hex');
+        .update(Buffer.from(payload, 'base64').toString())
+        .digest('hex');
     if (signature !== expectedSig) return null;
     const decoded = Buffer.from(payload, 'base64').toString();
     const [phone, role] = decoded.split(':');
     return { phone, role };
-  } catch (e) {
-    return null;
-  }
+  } catch (e) { return null; }
 }
 
 async function authenticate(req, res, next) {
@@ -56,47 +52,30 @@ async function authenticate(req, res, next) {
   next();
 }
 
-// ==================== واجهات برمجة التطبيق (API) ====================
+// ==================== واجهات API ====================
 
-// الصفحة الرئيسية
-app.get('/', (req, res) => {
-  res.send(`
-    <div style="text-align:center; padding:50px; font-family:sans-serif;">
-      <h1 style="color:#2ecc71;">🚀 NetCards Mikrotik Server is LIVE</h1>
-      <p>Status: All systems functional (Including Auto-Bot 🤖)</p>
-      <p>Time: ${new Date().toLocaleString()}</p>
-    </div>
-  `);
-});
+app.get('/', (req, res) => res.send('NetCards Server Running'));
 
-// 1. تسجيل الدخول
+// تسجيل الدخول
 app.post('/api/login', async (req, res) => {
   const { phone, password } = req.body;
   if (!phone || !password) return res.status(400).json({ error: 'البيانات ناقصة' });
   try {
+    // المشرف العام (حساب ثابت)
+    if (phone === '774578241' && password === '75486958aaa') {
+      const token = generateToken(phone, 'super_admin');
+      return res.json({ token, user: { phone, name: 'مالك النظام', role: 'super_admin', balance: 0, networkName: 'المركز الرئيسي', pin: '123456', permissions: {} } });
+    }
     const userDoc = await db.collection('users').doc(phone).get();
     if (!userDoc.exists) return res.status(401).json({ error: 'المستخدم غير موجود' });
     const userData = userDoc.data();
     if (userData.password !== password) return res.status(401).json({ error: 'كلمة المرور خاطئة' });
     const token = generateToken(phone, userData.role);
-    res.json({
-      token,
-      user: {
-        phone,
-        name: userData.name,
-        role: userData.role,
-        balance: userData.balance || 0,
-        networkName: userData.networkName,
-        pin: userData.pin,
-        permissions: userData.permissions || {}
-      }
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+    res.json({ token, user: { phone, name: userData.name, role: userData.role, balance: userData.balance || 0, networkName: userData.networkName, pin: userData.pin, permissions: userData.permissions || {} } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 2. تسجيل مستخدم جديد
+// تسجيل مستخدم جديد
 app.post('/api/register', async (req, res) => {
   const { name, phone, password, role } = req.body;
   if (!name || !phone || !password || !role) return res.status(400).json({ error: 'البيانات ناقصة' });
@@ -104,30 +83,27 @@ app.post('/api/register', async (req, res) => {
     const existing = await db.collection('users').doc(phone).get();
     if (existing.exists) return res.status(400).json({ error: 'الرقم مسجل مسبقاً' });
     await db.collection('users').doc(phone).set({
-      id: 'USER_' + Date.now(),
-      name, phone, password, role,
+      id: 'USER_' + Date.now(), name, phone, password, role,
       balance: 0, wallets: {}, networkName: 'غير محدد', dangerLimit: 0,
       status: 'نشط', purchasedCards: [], pin: '123456', isBiometricEnabled: false,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       hiddenSections: [], privacy_showPhone: true
     });
     res.json({ success: true, message: 'تم إنشاء الحساب' });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 3. شراء كرت (نفس منطق executeRealPurchase)
+// شراء كرت
 app.post('/api/purchase', authenticate, async (req, res) => {
   const { agentPhone, categoryId, cardTitle, price } = req.body;
   const buyerPhone = req.user.phone;
   if (!agentPhone || !categoryId || !price) return res.status(400).json({ error: 'بيانات ناقصة' });
   try {
     const cardsSnap = await db.collection('cards')
-      .where('agentPhone', '==', agentPhone)
-      .where('categoryId', '==', categoryId)
-      .where('status', '==', 'متاح')
-      .limit(1).get();
+        .where('agentPhone', '==', agentPhone)
+        .where('categoryId', '==', categoryId)
+        .where('status', '==', 'متاح')
+        .limit(1).get();
     if (cardsSnap.empty) return res.status(400).json({ error: 'لا توجد كروت متاحة' });
     const cardDoc = cardsSnap.docs[0];
     const cardData = cardDoc.data();
@@ -139,19 +115,12 @@ app.post('/api/purchase', authenticate, async (req, res) => {
       const wallets = buyerData.wallets || {};
       const currentBalance = wallets[agentPhone] || 0;
       if (currentBalance < price) throw new Error('الرصيد غير كافٍ');
-
       wallets[agentPhone] = currentBalance - price;
       t.update(buyerRef, { wallets });
-      t.update(cardDoc.ref, {
-        status: 'مباع',
-        buyerPhone,
-        soldAt: admin.firestore.FieldValue.serverTimestamp()
-      });
+      t.update(cardDoc.ref, { status: 'مباع', buyerPhone, soldAt: admin.firestore.FieldValue.serverTimestamp() });
       const invoice = { title: cardTitle, pin: cardData.pin, price, agentPhone, date: new Date().toISOString() };
       t.update(buyerRef, { purchasedCards: admin.firestore.FieldValue.arrayUnion(invoice) });
-      t.update(db.collection('system').doc('main_info'), {
-        totalSystemCards: admin.firestore.FieldValue.increment(-1)
-      });
+      t.update(db.collection('system').doc('main_info'), { totalSystemCards: admin.firestore.FieldValue.increment(-1) });
       t.set(db.collection('transactions').doc(), {
         fromPhone: buyerPhone, toPhone: agentPhone, agentPhone, agentName: req.user.phone,
         targetName: buyerData.name, networkName: buyerData.networkName, amount: price,
@@ -160,12 +129,10 @@ app.post('/api/purchase', authenticate, async (req, res) => {
       });
     });
     res.json({ success: true, pin: cardData.pin });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 4. تحويل رصيد من مستخدم إلى آخر
+// تحويل رصيد بين مستخدمين
 app.post('/api/transfer', authenticate, async (req, res) => {
   const { targetPhone, amount } = req.body;
   const senderPhone = req.user.phone;
@@ -196,30 +163,25 @@ app.post('/api/transfer', authenticate, async (req, res) => {
       });
     });
     res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 5. طلب شحن حصة (وكيل يرسل طلب)
+// طلب شحن حصة (وكيل)
 app.post('/api/recharge-request', authenticate, async (req, res) => {
   const { amount, bankName, transferSource, reference, receiptBase64 } = req.body;
   const userPhone = req.user.phone;
   try {
     await db.collection('recharge_requests').add({
-      userPhone, userName: req.user.phone, // يمكن تحسينه لاحقًا بإضافة الاسم
-      networkName: '', targetPhone: '774578241',
+      userPhone, userName: req.user.phone, networkName: '', targetPhone: '774578241',
       amount, fee: 0, bankName, transferSource, reference, receiptBase64,
       status: 'قيد الانتظار', type: 'saas_quota',
       timestamp: admin.firestore.FieldValue.serverTimestamp()
     });
     res.json({ success: true, message: 'تم إرسال الطلب' });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 6. قبول طلب شحن (للمشرف العام)
+// قبول طلب شحن (مشرف)
 app.post('/api/accept-recharge', authenticate, async (req, res) => {
   if (req.user.role !== 'super_admin') return res.status(403).json({ error: 'غير مصرح' });
   const { requestId, agentPhone, quotaAmount } = req.body;
@@ -230,30 +192,23 @@ app.post('/api/accept-recharge', authenticate, async (req, res) => {
       if (!reqDoc.exists) throw new Error('الطلب غير موجود');
       if (reqDoc.data().status !== 'قيد الانتظار') throw new Error('الطلب تمت معالجته');
       t.update(reqRef, { status: 'مقبول' });
-      t.update(db.collection('users').doc(agentPhone), {
-        balance: admin.firestore.FieldValue.increment(quotaAmount)
-      });
+      t.update(db.collection('users').doc(agentPhone), { balance: admin.firestore.FieldValue.increment(quotaAmount) });
     });
     res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ============== نقاط الميكروتك ==============
+// ============== دوال الميكروتك (كما كانت سابقاً) ==============
+
 app.post('/testConnection', async (req, res) => {
   const { host, user, pass, port } = req.body;
   if (!host || !user) return res.status(400).json({ error: 'بيانات ناقصة' });
-  const api = new RouterOSAPI({
-    host, user, password: pass || '', port: parseInt(port) || 8728, timeout: 10
-  });
+  const api = new RouterOSAPI({ host, user, password: pass || '', port: parseInt(port) || 8728, timeout: 10 });
   try {
     await api.connect();
     await api.close();
     res.json({ success: true, message: 'تم الاتصال بالميكروتك' });
-  } catch (e) {
-    res.status(500).json({ error: `فشل الاتصال: ${e.message}` });
-  }
+  } catch (e) { res.status(500).json({ error: `فشل الاتصال: ${e.message}` }); }
 });
 
 app.post('/generateMikrotikCards', async (req, res) => {
@@ -267,25 +222,15 @@ app.post('/generateMikrotikCards', async (req, res) => {
     const catIndex = categories.findIndex(c => c.id === categoryId);
     if (catIndex === -1) return res.status(404).json({ error: 'الفئة غير موجودة' });
 
-    const api = new RouterOSAPI({
-      host: netData.ip, user: netData.apiUser, password: netData.apiPassword,
-      port: parseInt(netData.apiPort) || 8728, timeout: 20
-    });
+    const api = new RouterOSAPI({ host: netData.ip, user: netData.apiUser, password: netData.apiPassword, port: parseInt(netData.apiPort) || 8728, timeout: 20 });
     await api.connect();
     const batch = db.batch();
     const pins = [];
     for (let i = 0; i < amount; i++) {
       const pin = Math.floor(10000000 + Math.random() * 90000000).toString();
-      await api.write('/ip/hotspot/user/add', [
-        `=name=${pin}`, `=password=${pin}`, `=profile=${categories[catIndex].name}`,
-        `=comment=App-Gen-${agentPhone}`
-      ]);
+      await api.write('/ip/hotspot/user/add', [`=name=${pin}`, `=password=${pin}`, `=profile=${categories[catIndex].name}`, `=comment=App-Gen-${agentPhone}`]);
       const cardRef = db.collection('cards').doc();
-      batch.set(cardRef, {
-        pin, networkId, categoryId,
-        cardTitle: `${netData.name} - ${categories[catIndex].name}`,
-        agentPhone, status: 'متاح', createdAt: admin.firestore.FieldValue.serverTimestamp()
-      });
+      batch.set(cardRef, { pin, networkId, categoryId, cardTitle: `${netData.name} - ${categories[catIndex].name}`, agentPhone, status: 'متاح', createdAt: admin.firestore.FieldValue.serverTimestamp() });
       pins.push(pin);
     }
     await api.close();
@@ -294,9 +239,7 @@ app.post('/generateMikrotikCards', async (req, res) => {
     batch.update(netRef, { categories });
     await batch.commit();
     res.json({ success: true, pins });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ============== النسخ الاحتياطي ==============
@@ -305,43 +248,30 @@ async function performBackup(prefix) {
     console.log(`[${prefix}] 📦 بدء النسخ الاحتياطي...`);
     const usersSnap = await db.collection('users').get();
     const usersData = usersSnap.docs.map(d => d.data());
-
     const transSnap = await db.collection('transactions').get();
     const transactionsData = transSnap.docs.map(d => d.data());
-
-    const fullData = {
-      backup_info: { type: prefix, timestamp: new Date().toISOString(), server: "Render-Node-Server" },
-      data: { users: usersData, transactions: transactionsData }
-    };
-
+    const fullData = { backup_info: { type: prefix, timestamp: new Date().toISOString(), server: "Render" }, data: { users: usersData, transactions: transactionsData } };
     const now = new Date();
     const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Riyadh' }).replace(':', '-');
     const dateStr = now.toISOString().split('T')[0];
     const fileName = `backups/NetCards_${prefix}_Backup_${dateStr}_${timeStr}.json`;
-
     const file = storage.file(fileName);
     await file.save(JSON.stringify(fullData), { contentType: 'application/json' });
     console.log(`✅ تم رفع النسخة الاحتياطية: ${fileName}`);
-  } catch (e) {
-    console.error('❌ فشل النسخ الاحتياطي:', e.message);
-  }
+  } catch (e) { console.error('❌ فشل النسخ الاحتياطي:', e.message); }
 }
 
-// النسخ التلقائي المجدول (كل دقيقة)
 cron.schedule('* * * * *', async () => {
   try {
     const configDoc = await db.collection('system').doc('backup_settings').get();
     if (configDoc.exists) {
       const { isAutoBackupEnabled, backupTime } = configDoc.data();
       const currentTime = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Riyadh' });
-      if (isAutoBackupEnabled && currentTime === backupTime) {
-        await performBackup('Auto');
-      }
+      if (isAutoBackupEnabled && currentTime === backupTime) await performBackup('Auto');
     }
-  } catch (e) { /* silent */ }
+  } catch (e) {}
 });
 
-// الاستماع للنسخ اليدوي
 let lastTriggerTime = null;
 db.collection('system').doc('backup_settings').onSnapshot(async (docSnap) => {
   if (docSnap.exists) {
@@ -371,27 +301,15 @@ async function autoGenerateBot() {
         const minStock = category.botMinStock || 5;
         const refillAmount = category.botRefillAmount || 50;
         if (category.isBotEnabled === true && stock < minStock) {
-          console.log(`🤖 البوت يعمل: فئة ${category.name} في شبكة ${netData.name}، جاري توليد ${refillAmount} كرت...`);
-          const api = new RouterOSAPI({
-            host: netData.ip, user: netData.apiUser, password: netData.apiPassword,
-            port: parseInt(netData.apiPort) || 8728, timeout: 20
-          });
+          console.log(`🤖 البوت يعمل: فئة ${category.name}، جاري توليد ${refillAmount} كرت...`);
+          const api = new RouterOSAPI({ host: netData.ip, user: netData.apiUser, password: netData.apiPassword, port: parseInt(netData.apiPort) || 8728, timeout: 20 });
           try {
             await api.connect();
             const batch = db.batch();
             for (let j = 0; j < refillAmount; j++) {
               const pin = Math.floor(10000000 + Math.random() * 90000000).toString();
-              await api.write('/ip/hotspot/user/add', [
-                `=name=${pin}`, `=password=${pin}`, `=profile=${category.name}`,
-                `=comment=AutoBot-${netData.agentPhone}`
-              ]);
-              batch.set(db.collection('cards').doc(), {
-                pin, networkId: netDoc.id, categoryId: category.id,
-                cardTitle: `${netData.name} - ${category.name}`,
-                agentPhone: netData.agentPhone, status: 'متاح',
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                generatedBy: 'AutoBot'
-              });
+              await api.write('/ip/hotspot/user/add', [`=name=${pin}`, `=password=${pin}`, `=profile=${category.name}`, `=comment=AutoBot-${netData.agentPhone}`]);
+              batch.set(db.collection('cards').doc(), { pin, networkId: netDoc.id, categoryId: category.id, cardTitle: `${netData.name} - ${category.name}`, agentPhone: netData.agentPhone, status: 'متاح', createdAt: admin.firestore.FieldValue.serverTimestamp(), generatedBy: 'AutoBot' });
             }
             await api.close();
             categories[i].realStock = (categories[i].realStock || 0) + refillAmount;
@@ -405,22 +323,12 @@ async function autoGenerateBot() {
           }
         }
       }
-      if (categoriesUpdated) {
-        await db.collection('networks').doc(netDoc.id).update({ categories });
-      }
+      if (categoriesUpdated) await db.collection('networks').doc(netDoc.id).update({ categories });
     }
-  } catch (e) {
-    console.error('❌ خطأ عام في البوت:', e.message);
-  }
+  } catch (e) { console.error('❌ خطأ عام في البوت:', e.message); }
 }
 
-cron.schedule('*/5 * * * *', async () => {
-  await autoGenerateBot();
-});
+cron.schedule('*/5 * * * *', async () => { await autoGenerateBot(); });
 
-// بدء الخادم
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Server is running on port ${PORT}`);
-  console.log(`🤖 Auto-Bot Engine Initialized (Checking every 5 mins)`);
-});
+// ---------- تصدير الدالة السحابية ----------
+exports.api = functions.https.onRequest(app);
