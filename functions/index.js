@@ -9,7 +9,7 @@ const admin = require('firebase-admin');
 // ---------- تهيئة Firebase Admin (يستخدم اعتماديات البيئة بدون ملف) ----------
 admin.initializeApp();
 const db = admin.firestore();
-const storage = admin.storage().bucket();
+const storage = admin.storage().bucket('netcardsapp.appspot.com');
 
 const app = express();
 app.use(cors({ origin: true }));
