@@ -10,7 +10,7 @@ class SystemProvider extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // ---------- رابط الخادم السحابي (استبدل <project-id> بمعرف مشروعك) ----------
-  static const String _serverUrl = 'https://us-central1-<project-id>.cloudfunctions.net/api';
+  static const String _serverUrl = 'https://mikrotik-server-qu6a.onrender.com';
 
   // ---------- رمز الجلسة بعد تسجيل الدخول ----------
   String? _authToken;
