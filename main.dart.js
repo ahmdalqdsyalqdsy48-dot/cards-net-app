@@ -76243,7 +76243,7 @@ vs(a,b,c){return this.aXF(a,b,c)},
 agp(a,b){return this.vs(a,b,!1)},
 aXF(a,b,c){var s=0,r=A.u(t.P),q,p=this,o,n,m,l,k
 var $async$vs=A.v(function(d,e){if(d===1)return A.q(e,r)
-for(;;)switch(s){case 0:m=A.hA("https://us-central1-<project-id>.cloudfunctions.net/api"+a,0,null)
+for(;;)switch(s){case 0:m=A.hA("https://mikrotik-server-qu6a.onrender.com"+a,0,null)
 l=t.N
 k=A.d(["Content-Type","application/json"],l,l)
 if(c&&p.b!=null)k.l(0,"Authorization","Bearer "+A.i(p.b))
