@@ -1,12 +1,30 @@
-const functions = require('firebase-functions');
 const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
 const cron = require('node-cron');
 const { RouterOSAPI } = require('node-routeros');
 const { initializeApp } = require('firebase/app');
-const { getFirestore, collection, doc, getDoc, setDoc, updateDoc, serverTimestamp, writeBatch, onSnapshot } = require('firebase/firestore');
+const {
+  getFirestore,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  addDoc,
+  query,
+  where,
+  limit,
+  runTransaction,
+  serverTimestamp,
+  writeBatch,
+  arrayUnion,
+  increment,
+  onSnapshot
+} = require('firebase/firestore');
 const { getAuth, signInWithEmailAndPassword } = require('firebase/auth');
+const { getStorage, ref, uploadString } = require('firebase/storage');
 
 // ---------- إعدادات Firebase ----------
 const firebaseConfig = {
@@ -21,6 +39,7 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 const auth = getAuth(firebaseApp);
+const storage = getStorage(firebaseApp);
 
 const app = express();
 app.use(cors({ origin: true }));
@@ -63,7 +82,6 @@ async function authenticate(req, res, next) {
   const token = authHeader.slice(7);
   const user = verifyToken(token);
   if (!user) return res.status(401).json({ error: 'رمز غير صالح' });
-  // لا نحتاج للتحقق من Firestore لأن الرمز صالح
   req.user = { phone: user.phone, role: user.role };
   next();
 }
@@ -83,7 +101,7 @@ app.post('/api/login', async (req, res) => {
         user: { phone, name: 'مالك النظام', role: 'super_admin', balance: 0, networkName: 'المركز الرئيسي', pin: '123456', permissions: {} }
       });
     }
-    await serverLogin(); // فقط لضمان صلاحية الكتابة لاحقاً
+    await serverLogin();
     const userDoc = await getDoc(doc(db, 'users', phone));
     if (!userDoc.exists()) return res.status(401).json({ error: 'المستخدم غير موجود' });
     const userData = userDoc.data();
@@ -123,7 +141,13 @@ app.post('/api/purchase', authenticate, async (req, res) => {
   if (!agentPhone || !categoryId || !price) return res.status(400).json({ error: 'بيانات ناقصة' });
   try {
     await serverLogin();
-    const cardsSnap = await getDocs(query(collection(db, 'cards'), where('agentPhone', '==', agentPhone), where('categoryId', '==', categoryId), where('status', '==', 'متاح'), limit(1)));
+    const cardsSnap = await getDocs(query(
+      collection(db, 'cards'),
+      where('agentPhone', '==', agentPhone),
+      where('categoryId', '==', categoryId),
+      where('status', '==', 'متاح'),
+      limit(1)
+    ));
     if (cardsSnap.empty) return res.status(400).json({ error: 'لا توجد كروت متاحة' });
     const cardDocRef = cardsSnap.docs[0].ref;
     const cardData = cardsSnap.docs[0].data();
@@ -278,9 +302,6 @@ app.post('/generateMikrotikCards', async (req, res) => {
 });
 
 // ============== النسخ الاحتياطي ==============
-const { getStorage, ref, uploadString } = require('firebase/storage');
-const storage = getStorage(firebaseApp);
-
 async function performBackup(prefix) {
   try {
     await serverLogin();
@@ -371,4 +392,8 @@ async function autoGenerateBot() {
 
 cron.schedule('*/5 * * * *', async () => { await autoGenerateBot(); });
 
-exports.api = functions.https.onRequest(app);
+// ---------- بدء الخادم (بدلاً من functions.https.onRequest) ----------
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Server is running on port ${PORT}`);
+});
