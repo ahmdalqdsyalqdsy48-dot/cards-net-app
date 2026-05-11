@@ -7,7 +7,10 @@ const { RouterOSAPI } = require('node-routeros');
 const admin = require('firebase-admin');
 
 // ---------- تهيئة Firebase Admin (يستخدم اعتماديات البيئة بدون ملف) ----------
-admin.initializeApp();
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
 const db = admin.firestore();
 const storage = admin.storage().bucket('netcardsapp.appspot.com');
 
