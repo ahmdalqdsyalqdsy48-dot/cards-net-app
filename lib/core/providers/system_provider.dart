@@ -1009,6 +1009,268 @@ class SystemProvider extends ChangeNotifier {
         body: '${currentUserName} يطلب شحن مبلغ $amount ريال.');
   }
 
+  // ====================================================================
+  // دوال العمليات المالية (المُحدَّثة بالحقول الإضافية)
+  // ====================================================================
+
+  Future<String> executeRealPurchase(
+      double price, String cardTitle, String agentPhone, String categoryId) async {
+    if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً لإتمام الشراء.';
+
+    final userRef = _db.collection('users').doc(_activeUserPhone);
+
+    final availableCardsQuery = await _db
+        .collection('cards')
+        .where('agentPhone', isEqualTo: agentPhone)
+        .where('categoryId', isEqualTo: categoryId)
+        .where('status', isEqualTo: 'متاح')
+        .limit(1)
+        .get();
+
+    if (availableCardsQuery.docs.isEmpty) {
+      throw 'عذراً، لقد نفدت الكمية الحقيقية من هذا الكرت! يرجى المحاولة لاحقاً.';
+    }
+
+    final cardDoc = availableCardsQuery.docs.first;
+    final cardData = cardDoc.data() as Map<String, dynamic>;
+    final String actualPin = cardData['pin'] ?? 'رقم غير معروف';
+    final String cardId = cardDoc.id;
+
+    String networkName = '';
+    String categoryName = '';
+    String capacity = '';
+    String time = '';
+    try {
+      final netSnap = await _db
+          .collection('networks')
+          .where('agentPhone', isEqualTo: agentPhone)
+          .where('categories.id', isEqualTo: categoryId)
+          .limit(1)
+          .get();
+      if (netSnap.docs.isNotEmpty) {
+        final netData = netSnap.docs.first.data() as Map<String, dynamic>;
+        networkName = netData['name'] ?? '';
+        final cats = List<Map<String, dynamic>>.from(netData['categories'] ?? []);
+        final cat = cats.firstWhere((c) => c['id'] == categoryId, orElse: () => {});
+        categoryName = cat['name'] ?? '';
+        capacity = cat['capacity'] ?? '';
+        time = cat['time'] ?? '';
+      }
+    } catch (_) {}
+
+    await _db.runTransaction((transaction) async {
+      final userSnapshot = await transaction.get(userRef);
+      if (!userSnapshot.exists) throw 'حدث خطأ: حساب المستخدم غير موجود.';
+
+      final userData = userSnapshot.data() as Map<String, dynamic>;
+      Map<String, dynamic> wallets = userData['wallets'] ?? {};
+      double currentWalletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
+
+      double creditLimit = 0.0;
+      if (userData['role'] == 'pos') {
+        Map<String, dynamic> relations = userData['agent_relations'] ?? {};
+        Map<String, dynamic> myRel = relations[agentPhone] ?? {};
+        creditLimit = (myRel['creditLimit'] ?? 0.0).toDouble();
+      }
+
+      if ((currentWalletBalance + creditLimit) < price) {
+        throw 'الرصيد أو الحد الائتماني المسموح لا يكفي لإتمام العملية.';
+      }
+
+      transaction.update(userRef, {
+        'wallets.$agentPhone': FieldValue.increment(-price),
+      });
+
+      transaction.update(_db.collection('cards').doc(cardId), {
+        'status': 'مباع',
+        'buyerPhone': _activeUserPhone,
+        'soldAt': FieldValue.serverTimestamp(),
+      });
+
+      final Map<String, dynamic> purchaseInvoice = {
+        'title': cardTitle,
+        'pin': actualPin,
+        'price': price,
+        'agentPhone': agentPhone,
+        'date': DateTime.now().toIso8601String(),
+      };
+
+      transaction.update(userRef, {
+        'purchasedCards': FieldValue.arrayUnion([purchaseInvoice])
+      });
+
+      transaction.update(_db.collection('system').doc('main_info'), {
+        'totalSystemCards': FieldValue.increment(-1)
+      });
+
+      DocumentReference txnRef = _db.collection('transactions').doc();
+      transaction.set(txnRef, {
+        'fromPhone': _activeUserPhone,
+        'toPhone': agentPhone,
+        'agentPhone': agentPhone,
+        'agentName': currentUserName,
+        'targetName': userData['name'] ?? 'زبون',
+        'networkName': networkName,
+        'categoryName': categoryName,
+        'capacity': capacity,
+        'time': time,
+        'quantity': 1,
+        'unitPrice': price,
+        'totalDiscount': 0.0,
+        'amount': price,
+        'fee': 0.0,
+        'paymentMethod': 'خصم من المحفظة',
+        'type': 'sale',
+        'title': 'بيع كرت: $cardTitle لـ ${userData['name'] ?? 'زبون'}',
+        'reference': 'SAL-$cardId',
+        'timestamp': FieldValue.serverTimestamp()
+      });
+    });
+
+    return actualPin;
+  }
+
+  Future<List<String>> executeBulkPurchase({
+    required double totalPrice,
+    required double unitPrice,
+    required int quantity,
+    required double discountAmount,
+    required double couponDiscount,
+    required String cardTitle,
+    required String agentPhone,
+    required String categoryId,
+    String? appliedCouponId,
+  }) async {
+    if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً لإتمام الشراء.';
+
+    final userRef = _db.collection('users').doc(_activeUserPhone);
+
+    final availableCardsQuery = await _db
+        .collection('cards')
+        .where('agentPhone', isEqualTo: agentPhone)
+        .where('categoryId', isEqualTo: categoryId)
+        .where('status', isEqualTo: 'متاح')
+        .limit(quantity)
+        .get();
+
+    if (availableCardsQuery.docs.length < quantity) {
+      throw 'عذراً، لا توجد كروت كافية. المتاح: ${availableCardsQuery.docs.length}';
+    }
+
+    final List<String> pins = [];
+    final List<DocumentReference> cardRefs = [];
+
+    String networkName = '';
+    String categoryName = '';
+    String capacity = '';
+    String time = '';
+    try {
+      final netSnap = await _db
+          .collection('networks')
+          .where('agentPhone', isEqualTo: agentPhone)
+          .where('categories.id', isEqualTo: categoryId)
+          .limit(1)
+          .get();
+      if (netSnap.docs.isNotEmpty) {
+        final netData = netSnap.docs.first.data() as Map<String, dynamic>;
+        networkName = netData['name'] ?? '';
+        final cats = List<Map<String, dynamic>>.from(netData['categories'] ?? []);
+        final cat = cats.firstWhere((c) => c['id'] == categoryId, orElse: () => {});
+        categoryName = cat['name'] ?? '';
+        capacity = cat['capacity'] ?? '';
+        time = cat['time'] ?? '';
+      }
+    } catch (_) {}
+
+    for (var doc in availableCardsQuery.docs) {
+      final cardData = doc.data() as Map<String, dynamic>;
+      pins.add(cardData['pin'] ?? 'غير معروف');
+      cardRefs.add(doc.reference);
+    }
+
+    await _db.runTransaction((transaction) async {
+      final userSnapshot = await transaction.get(userRef);
+      if (!userSnapshot.exists) throw 'حساب المستخدم غير موجود.';
+
+      final userData = userSnapshot.data() as Map<String, dynamic>;
+      Map<String, dynamic> wallets = userData['wallets'] ?? {};
+      double currentWalletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
+
+      double creditLimit = 0.0;
+      if (userData['role'] == 'pos') {
+        Map<String, dynamic> relations = userData['agent_relations'] ?? {};
+        Map<String, dynamic> myRel = relations[agentPhone] ?? {};
+        creditLimit = (myRel['creditLimit'] ?? 0.0).toDouble();
+      }
+
+      if ((currentWalletBalance + creditLimit) < totalPrice) {
+        throw 'الرصيد أو الحد الائتماني غير كافٍ.';
+      }
+
+      transaction.update(userRef, {
+        'wallets.$agentPhone': FieldValue.increment(-totalPrice),
+      });
+
+      for (var ref in cardRefs) {
+        transaction.update(ref, {
+          'status': 'مباع',
+          'buyerPhone': _activeUserPhone,
+          'soldAt': FieldValue.serverTimestamp(),
+          'soldPrice': unitPrice,
+          'discountAmount': discountAmount + couponDiscount,
+        });
+      }
+
+      for (var pin in pins) {
+        final purchaseInvoice = {
+          'title': cardTitle,
+          'pin': pin,
+          'price': unitPrice,
+          'agentPhone': agentPhone,
+          'date': DateTime.now().toIso8601String(),
+        };
+        transaction.update(userRef, {
+          'purchasedCards': FieldValue.arrayUnion([purchaseInvoice])
+        });
+      }
+
+      transaction.update(_db.collection('system').doc('main_info'), {
+        'totalSystemCards': FieldValue.increment(-quantity)
+      });
+
+      DocumentReference txnRef = _db.collection('transactions').doc();
+      transaction.set(txnRef, {
+        'fromPhone': _activeUserPhone,
+        'toPhone': agentPhone,
+        'agentPhone': agentPhone,
+        'agentName': currentUserName,
+        'targetName': userData['name'] ?? 'زبون',
+        'networkName': networkName,
+        'categoryName': categoryName,
+        'capacity': capacity,
+        'time': time,
+        'quantity': quantity,
+        'unitPrice': unitPrice,
+        'totalDiscount': discountAmount + couponDiscount,
+        'amount': totalPrice,
+        'fee': 0.0,
+        'paymentMethod': 'خصم من المحفظة',
+        'type': 'sale',
+        'title': 'بيع $quantity كرت: $cardTitle',
+        'reference': 'BULK-${DateTime.now().millisecondsSinceEpoch}',
+        'timestamp': FieldValue.serverTimestamp()
+      });
+
+      if (appliedCouponId != null) {
+        transaction.update(_db.collection('coupons').doc(appliedCouponId), {
+          'currentUsage': FieldValue.increment(1),
+        });
+      }
+    });
+
+    return pins;
+  }
+
   Future<void> transferToUser({
     required String targetPhone,
     required double amount,
@@ -1049,10 +1311,12 @@ class SystemProvider extends ChangeNotifier {
       transaction.set(txnRef, {
         'fromPhone': _activeUserPhone,
         'toPhone': targetPhone,
+        'senderPhone': _activeUserPhone,
+        'senderName': currentUserName,
+        'receiverPhone': targetPhone,
+        'receiverName': targetData['name'] ?? 'مستخدم',
         'agentPhone': chosenAgent,
         'agentName': 'تحويل بين مستخدمين',
-        'targetName': targetData['name'] ?? 'مستخدم',
-        'networkName': targetData['networkName'] ?? 'غير محدد',
         'amount': amount,
         'fee': 0.0,
         'type': 'transfer',
@@ -1074,767 +1338,14 @@ class SystemProvider extends ChangeNotifier {
     });
   }
 
-  Stream<List<Map<String, dynamic>>> getMyPendingUserRecharges() {
-    if (_activeUserPhone == null) return Stream.value([]);
-    return _db
-        .collection('user_recharges')
-        .where('userPhone', isEqualTo: _activeUserPhone)
-        .where('status', isEqualTo: 'قيد الانتظار')
-        .snapshots()
-        .map((snap) => snap.docs.map((doc) {
-              final data = doc.data();
-              data['docId'] = doc.id;
-              return data;
-            }).toList());
-  }
-
-  // ------------------- دوال النظام -------------------
-  Future<void> updateGlobalAppName(String newName) async {
-    await _db
-        .collection('system')
-        .doc('main_info')
-        .update({'appName': newName});
-    _appName = newName;
-    notifyListeners();
-    logAction(
-        action: 'تغيير هوية النظام',
-        details: 'تم تغيير اسم النظام إلى: $newName',
-        severity: 'critical');
-  }
-
-  Future<void> updateAdvancedLoginSettings({
-    required String name,
-    required String logoUrl,
-    required int bgColor,
-    required List<String> images,
-    required String welcomeMsg,
-    required int intervalSeconds,
-    required String marqueeDir,
-    required int marqueeTextCol,
-    required int marqueeBgCol,
-    required String appNameAlign,
-    required String appNameFont,
-    required int appNameColor,
-  }) async {
-    _appName = name;
-    _appLogoUrl = logoUrl;
-    _loginBgColor = bgColor;
-    _loginCarouselImages = images;
-    _loginWelcomeMessage = welcomeMsg;
-    _carouselIntervalSeconds = intervalSeconds;
-    _marqueeDirection = marqueeDir;
-    _marqueeTextColor = marqueeTextCol;
-    _marqueeBgColor = marqueeBgCol;
-    _appNameAlign = appNameAlign;
-    _appNameFont = appNameFont;
-    _appNameColor = appNameColor;
-    notifyListeners();
-
-    await _db.collection('system').doc('main_info').update({
-      'appName': name,
-      'appLogoUrl': logoUrl,
-      'loginBgColor': bgColor,
-      'loginCarouselImages': images,
-      'loginWelcomeMessage': welcomeMsg,
-      'carouselIntervalSeconds': intervalSeconds,
-      'marqueeDirection': marqueeDir,
-      'marqueeTextColor': marqueeTextCol,
-      'marqueeBgColor': marqueeBgCol,
-      'appNameAlign': appNameAlign,
-      'appNameFont': appNameFont,
-      'appNameColor': appNameColor,
-    });
-    logAction(
-        action: 'تحديث بوابة الدخول',
-        details: 'تحديث المظهر واسم التطبيق',
-        severity: 'critical');
-  }
-
-  Future<void> updateAgentPortalSettings({
-    required bool hideProfit,
-    required bool leaderboard,
-    required bool forceTheme,
-    required List<String> universalHidden,
-  }) async {
-    _hideProfitEnabled = hideProfit;
-    _leaderboardEnabled = leaderboard;
-    _forceAgentTheme = forceTheme;
-    _agentUniversalHiddenSections = universalHidden;
-    notifyListeners();
-
-    await _db.collection('system').doc('main_info').update({
-      'hideProfitEnabled': hideProfit,
-      'leaderboardEnabled': leaderboard,
-      'forceAgentTheme': forceTheme,
-      'agentUniversalHiddenSections': universalHidden
-    });
-    logAction(
-        action: 'تحديث بوابة الوكلاء',
-        details: 'تم تعديل سياسات لوحة الوكلاء',
-        severity: 'medium');
-  }
-
-  Future<void> updateUserPortalSettings({
-    required bool guestMode,
-    required bool kyc,
-    required bool loyalty,
-    required List<String> universalHidden,
-    required Map<String, dynamic> social,
-  }) async {
-    _guestModeEnabled = guestMode;
-    _kycRequired = kyc;
-    _loyaltySystemEnabled = loyalty;
-    _userUniversalHiddenSections = universalHidden;
-    _socialLinks = social;
-    notifyListeners();
-
-    await _db.collection('system').doc('main_info').update({
-      'guestModeEnabled': guestMode,
-      'kycRequired': kyc,
-      'loyaltySystemEnabled': loyalty,
-      'userUniversalHiddenSections': universalHidden,
-      'socialLinks': social
-    });
-    logAction(
-        action: 'تحديث بوابة المستخدمين',
-        details: 'تم تعديل سياسات لوحة المستخدمين',
-        severity: 'medium');
-  }
-
-  Future<void> toggleSectionForSpecificUsers({
-    required String sectionId,
-    required List<String> targetPhones,
-    required bool hide,
-  }) async {
-    WriteBatch batch = _db.batch();
-    for (String phone in targetPhones) {
-      DocumentReference ref = _db.collection('users').doc(phone);
-      if (hide) {
-        batch.update(ref, {'hiddenSections': FieldValue.arrayUnion([sectionId])});
-      } else {
-        batch.update(ref, {'hiddenSections': FieldValue.arrayRemove([sectionId])});
-      }
-    }
-    await batch.commit();
-    logAction(
-        action: 'استهداف الأقسام',
-        details: 'تم ${hide ? "إخفاء" : "إظهار"} قسم $sectionId لعدد ${targetPhones.length} مستخدم',
-        severity: 'critical');
-  }
-
-  Future<void> postTargetedBanner({
-    required String imageUrl,
-    required String targetType,
-    required List<String> targetPhones,
-  }) async {
-    final newBanner = {
-      'id': DateTime.now().millisecondsSinceEpoch.toString(),
-      'imageUrl': imageUrl,
-      'targetType': targetType,
-      'targetPhones': targetPhones
-    };
-    await _db.collection('system').doc('main_info').update({
-      'agentBanners': FieldValue.arrayUnion([newBanner])
-    });
-    logAction(
-        action: 'إعلان موجه',
-        details: 'تم نشر بانر إعلاني بنظام الاستهداف: $targetType',
-        severity: 'normal');
-  }
-
-  Future<void> setEmergencyAlert({
-    required bool isActive,
-    required String text,
-    required String targetType,
-    required List<String> targetPhones,
-  }) async {
-    await _db.collection('system').doc('main_info').update({
-      'agentEmergencyAlert': {
-        'isActive': isActive,
-        'text': text,
-        'targetType': targetType,
-        'targetPhones': targetPhones
-      }
-    });
-    logAction(
-        action: 'تنبيه طوارئ',
-        details: 'حالة الطوارئ: $isActive | الاستهداف: $targetType',
-        severity: 'critical');
-  }
-
-  Future<void> updateSystemStatusSettings({
-    required bool maintenance,
-    required bool forcedUpdate,
-    required bool showNews,
-  }) async {
-    _isMaintenanceMode = maintenance;
-    _isForcedUpdate = forcedUpdate;
-    _showNewsBar = showNews;
-    notifyListeners();
-
-    await _db.collection('system').doc('main_info').update({
-      'isMaintenanceMode': maintenance,
-      'isForcedUpdate': forcedUpdate,
-      'showNewsBar': showNews
-    });
-  }
-
-  Future<void> updatePoliciesSettings({
-    required String terms,
-    required String support,
-    required String minCharge,
-    required bool autoRounding,
-  }) async {
-    _termsAndConditions = terms;
-    _supportNumbers = support;
-    _minimumChargeLimit = minCharge;
-    _isCurrencyAutoRounding = autoRounding;
-    notifyListeners();
-
-    await _db.collection('system').doc('main_info').update({
-      'termsAndConditions': terms,
-      'supportNumbers': support,
-      'minimumChargeLimit': minCharge,
-      'isCurrencyAutoRounding': autoRounding
-    });
-  }
-
-  Future<void> addTargetedNews({
-    required String text,
-    required String targetRole,
-  }) async {
-    final newNews = {
-      'id': DateTime.now().millisecondsSinceEpoch.toString(),
-      'text': text,
-      'target': targetRole
-    };
-    await _db.collection('system').doc('main_info').update({
-      'targetedNews': FieldValue.arrayUnion([newNews])
-    });
-  }
-
-  Future<void> removeTargetedNews(Map<String, dynamic> newsItem) async {
-    await _db.collection('system').doc('main_info').update({
-      'targetedNews': FieldValue.arrayRemove([newsItem])
-    });
-  }
-
-  Future<bool> changeUserName(String newName) async {
-    if (_activeUserPhone == null) return false;
-    try {
-      await _db
-          .collection('users')
-          .doc(_activeUserPhone)
-          .update({'name': newName});
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  Future<bool> changeUserPin(String oldPin, String newPin) async {
-    if (_activeUserPhone == null) return false;
-    if (currentUserPin == oldPin) {
-      await _db
-          .collection('users')
-          .doc(_activeUserPhone)
-          .update({'pin': newPin});
-      return true;
-    }
-    return false;
-  }
-
-  Future<void> updateNewsSpeed(double newSpeed) async {
-    _newsScrollSpeed = newSpeed;
-    notifyListeners();
-    await _db
-        .collection('system')
-        .doc('main_info')
-        .update({'newsScrollSpeed': newSpeed});
-  }
-
-  Future<bool> checkUserExists(String phone) async {
-    try {
-      final doc = await _db
-          .collection('users')
-          .doc(phone)
-          .get()
-          .timeout(const Duration(seconds: 5));
-      return doc.exists;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  Future<Map<String, dynamic>?> loginUser(String phone, String password) async {
-    clearAllData();
-
-    if (phone == '774578241' && password == '75486958aaa') {
-      final superAdminData = {
-        'id': 'SUPER_ADMIN_01',
-        'name': 'مالك النظام',
-        'phone': '774578241',
-        'password': '75486958aaa',
-        'role': 'super_admin',
-        'balance': 0.0,
-        'dangerLimit': 0.0,
-        'status': 'نشط',
-        'networkName': 'المركز الرئيسي',
-        'pin': '123456',
-        'purchasedCards': [],
-        'isBiometricEnabled': false,
-        'hiddenSections': [],
-      };
-      try {
-        _db
-            .collection('users')
-            .doc('774578241')
-            .set(superAdminData, SetOptions(merge: true));
-      } catch (e) {}
-      _activeUserPhone = phone;
-      _currentUserRole = 'super_admin';
-      _listenToUserNotifications();
-      notifyListeners();
-      await _ensureUserAccountNumber();
-      return superAdminData;
-    }
-    try {
-      final doc = await _db
-          .collection('users')
-          .doc(phone)
-          .get()
-          .timeout(const Duration(seconds: 7));
-      if (doc.exists) {
-        final userData = doc.data() as Map<String, dynamic>;
-        if (userData['password'] == password) {
-          _activeUserPhone = phone;
-          _currentUserRole = userData['role'] ?? 'user';
-
-          if (_currentUserRole == 'staff' && userData['permissions'] != null) {
-            _currentUserPermissions =
-                Map<String, bool>.from(userData['permissions']);
-          }
-
-          _listenToUserNotifications();
-          notifyListeners();
-          await _ensureUserAccountNumber();
-          logAction(
-              action: 'تسجيل دخول',
-              details: 'تم تسجيل الدخول بواسطة: ${userData['name']}',
-              severity: 'normal');
-          return userData;
-        }
-      }
-      return null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  Future<Map<String, dynamic>?> loginWithPin(String phone, String pin) async {
-    if (_activeUserPhone != null) clearAllData();
-
-    if (phone == '774578241' && pin == '123456') {
-      final superAdminData = {
-        'id': 'SUPER_ADMIN_01',
-        'name': 'مالك النظام',
-        'phone': '774578241',
-        'password': '75486958aaa',
-        'role': 'super_admin',
-        'balance': 0.0,
-        'dangerLimit': 0.0,
-        'status': 'نشط',
-        'networkName': 'المركز الرئيسي',
-        'pin': '123456',
-        'purchasedCards': [],
-        'isBiometricEnabled': false,
-        'hiddenSections': [],
-      };
-      _activeUserPhone = phone;
-      _currentUserRole = 'super_admin';
-      _listenToUserNotifications();
-      notifyListeners();
-      await _ensureUserAccountNumber();
-      return superAdminData;
-    }
-
-    try {
-      final doc = await _db.collection('users').doc(phone).get();
-      if (!doc.exists) return null;
-      final userData = doc.data() as Map<String, dynamic>;
-      final storedPin = userData['pin'] ?? '123456';
-      if (storedPin == pin) {
-        _activeUserPhone = phone;
-        _currentUserRole = userData['role'] ?? 'user';
-        if (_currentUserRole == 'staff' && userData['permissions'] != null) {
-          _currentUserPermissions = Map<String, bool>.from(userData['permissions']);
-        }
-        _listenToUserNotifications();
-        notifyListeners();
-        await _ensureUserAccountNumber();
-        logAction(
-            action: 'تسجيل دخول بـ PIN',
-            details: 'تم تسجيل الدخول بواسطة: ${userData['name']}',
-            severity: 'normal');
-        return userData;
-      }
-      return null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  Future<void> registerNewUser({
-    required String name,
-    required String phone,
-    required String password,
-    required String role,
-  }) async {
-    try {
-      await _db.collection('users').doc(phone).set({
-        'id': 'USER_${DateTime.now().millisecondsSinceEpoch}',
-        'name': name,
-        'phone': phone,
-        'password': password,
-        'role': role,
-        'balance': 0.0,
-        'wallets': {},
-        'networkName': 'غير محدد',
-        'dangerLimit': 0.0,
-        'status': 'نشط',
-        'purchasedCards': [],
-        'pin': '123456',
-        'isBiometricEnabled': false,
-        'createdAt': FieldValue.serverTimestamp(),
-        'hiddenSections': [],
-        'privacy_showPhone': true,
-      });
-      _activeUserPhone = phone;
-      _currentUserRole = role;
-      _listenToUserNotifications();
-      notifyListeners();
-    } catch (e) {
-      throw 'فشل تسجيل المستخدم: $e';
-    }
-  }
-
-    // داخل class SystemProvider … استبدل الدالة الحالية بهذه
-  Future<void> addAgent({
-    required String name,
-    required String phone,
-    required String password,
-    String? networkName,
-    String? profitMargin,
-    String? location,
-    double initialBalance = 0.0,   // ← المضافة حديثاً
-  }) async {
-    try {
-      bool exists = await checkUserExists(phone);
-      if (!exists) {
-        final DateTime nextMonth = DateTime.now().add(const Duration(days: 30));
-        final String expiryDate =
-            '${nextMonth.year}-${nextMonth.month.toString().padLeft(2, '0')}-${nextMonth.day.toString().padLeft(2, '0')}';
-
-        await _db.collection('users').doc(phone).set({
-          'id': 'AGENT_${DateTime.now().millisecondsSinceEpoch}',
-          'name': name,
-          'phone': phone,
-          'password': password,
-          'role': 'agent',
-          'networkName': networkName ?? 'غير محدد',
-          'profitMargin': profitMargin ?? 'غير محدد',
-          'location': location ?? 'غير محدد',
-          'balance': initialBalance,   // ← يُستخدم هنا مباشرة
-          'dangerLimit': 0.0,
-          'status': 'نشط',
-          'pin': '123456',
-          'subPlan': 'باقة افتراضية',
-          'subPrice': 0.0,
-          'subStatus': 'نشط',
-          'subExpiry': expiryDate,
-          'purchasedCards': [],
-          'isBiometricEnabled': false,
-          'createdAt': FieldValue.serverTimestamp(),
-          'hiddenSections': [],
-          'privacy_showPhone': true,
-        });
-        logAction(
-            action: 'إضافة وكيل جديد',
-            details: 'تم إضافة وكيل جديد باسم "$name" ورقم $phone',
-            severity: 'medium');
-
-        _sendNotification(
-            targetPhones: [phone],
-            title: 'أهلاً بك كوكيل جديد! 🎉',
-            body: 'تم تفعيل حسابك كوكيل معتمد في النظام.');
-      } else {
-        throw 'رقم الهاتف مسجل مسبقاً في النظام!';
-      }
-    } catch (e) {
-      throw 'حدث خطأ: $e';
-    }
-  }
-
-  Future<void> updateAgentDetails({
-    required String oldPhone,
-    required String newPhone,
-    required String newName,
-    required String newNetwork,
-    required String newLocation,
-    required String newProfit,
-    required String newPassword,
-  }) async {
-    try {
-      final doc = await _db.collection('users').doc(oldPhone).get();
-      if (doc.exists) {
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-        data.addAll({
-          'phone': newPhone,
-          'name': newName,
-          'networkName': newNetwork,
-          'location': newLocation,
-          'profitMargin': newProfit,
-          'password': newPassword
-        });
-        WriteBatch batch = _db.batch();
-        batch.set(_db.collection('users').doc(newPhone), data);
-        if (oldPhone != newPhone) batch.delete(_db.collection('users').doc(oldPhone));
-        await batch.commit();
-      }
-    } catch (e) {
-      throw 'فشل تعديل بيانات الوكيل: $e';
-    }
-  }
-
-  void toggleUserStatus(String phone, String currentStatus) {
-    try {
-      String newStatus = currentStatus == 'نشط' ? 'مجمد' : 'نشط';
-      _db.collection('users').doc(phone).update({'status': newStatus});
-    } catch (e) {}
-  }
-
-  void deleteAgent(String phone) {
-    try {
-      _db.collection('users').doc(phone).delete();
-    } catch (e) {}
-  }
-
-  Future<String> executeRealPurchase(
-    double price, String cardTitle, String agentPhone, String categoryId) async {
-  if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً لإتمام الشراء.';
-
-  final userRef = _db.collection('users').doc(_activeUserPhone);
-
-  final availableCardsQuery = await _db
-      .collection('cards')
-      .where('agentPhone', isEqualTo: agentPhone)
-      .where('categoryId', isEqualTo: categoryId)   // ✅ تغير هنا
-      .where('status', isEqualTo: 'متاح')
-      .limit(1)
-      .get();
-
-  if (availableCardsQuery.docs.isEmpty) {
-    throw 'عذراً، لقد نفدت الكمية الحقيقية من هذا الكرت! يرجى المحاولة لاحقاً.';
-  }
-
-  final cardDoc = availableCardsQuery.docs.first;
-  final cardData = cardDoc.data() as Map<String, dynamic>;
-  final String actualPin = cardData['pin'] ?? 'رقم غير معروف';
-  final String cardId = cardDoc.id;
-
-  await _db.runTransaction((transaction) async {
-    final userSnapshot = await transaction.get(userRef);
-    if (!userSnapshot.exists) throw 'حدث خطأ: حساب المستخدم غير موجود.';
-
-    final userData = userSnapshot.data() as Map<String, dynamic>;
-    Map<String, dynamic> wallets = userData['wallets'] ?? {};
-    double currentWalletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
-
-    double creditLimit = 0.0;
-    if (userData['role'] == 'pos') {
-      Map<String, dynamic> relations = userData['agent_relations'] ?? {};
-      Map<String, dynamic> myRel = relations[agentPhone] ?? {};
-      creditLimit = (myRel['creditLimit'] ?? 0.0).toDouble();
-    }
-
-    if ((currentWalletBalance + creditLimit) < price) {
-      throw 'الرصيد أو الحد الائتماني المسموح لا يكفي لإتمام العملية.';
-    }
-
-    transaction.update(userRef, {
-      'wallets.$agentPhone': FieldValue.increment(-price),
-    });
-
-    transaction.update(_db.collection('cards').doc(cardId), {
-      'status': 'مباع',
-      'buyerPhone': _activeUserPhone,
-      'soldAt': FieldValue.serverTimestamp(),
-    });
-
-    final Map<String, dynamic> purchaseInvoice = {
-      'title': cardTitle,
-      'pin': actualPin,
-      'price': price,
-      'agentPhone': agentPhone,
-      'date': DateTime.now().toIso8601String(),
-    };
-
-    transaction.update(userRef, {
-      'purchasedCards': FieldValue.arrayUnion([purchaseInvoice])
-    });
-
-    transaction.update(_db.collection('system').doc('main_info'), {
-      'totalSystemCards': FieldValue.increment(-1)
-    });
-
-    DocumentReference txnRef = _db.collection('transactions').doc();
-    transaction.set(txnRef, {
-      'fromPhone': _activeUserPhone,
-      'toPhone': agentPhone,
-      'agentPhone': agentPhone,
-      'agentName': currentUserName,
-      'targetName': userData['name'] ?? 'زبون',
-      'networkName': userData['networkName'] ?? 'غير محدد',
-      'amount': price,
-      'fee': 0.0,
-      'paymentMethod': 'خصم من المحفظة',
-      'type': 'sale',
-      'title': 'بيع كرت: $cardTitle لـ ${userData['name'] ?? 'زبون'}',
-      'reference': 'SAL-$cardId',
-      'timestamp': FieldValue.serverTimestamp()
-    });
-  });
-
-  return actualPin;
-}
-    // ========== دالة الشراء المتعدد (الجديدة) ==========
-  Future<List<String>> executeBulkPurchase({
-    required double totalPrice,
-    required double unitPrice,
-    required int quantity,
-    required double discountAmount,
-    required double couponDiscount,
-    required String cardTitle,
-    required String agentPhone,
-    required String categoryId,
-    String? appliedCouponId,
-  }) async {
-    if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً لإتمام الشراء.';
-
-    final userRef = _db.collection('users').doc(_activeUserPhone);
-
-    final availableCardsQuery = await _db
-        .collection('cards')
-        .where('agentPhone', isEqualTo: agentPhone)
-        .where('categoryId', isEqualTo: categoryId)
-        .where('status', isEqualTo: 'متاح')
-        .limit(quantity)
-        .get();
-
-    if (availableCardsQuery.docs.length < quantity) {
-      throw 'عذراً، لا توجد كروت كافية. المتاح: ${availableCardsQuery.docs.length}';
-    }
-
-    final List<String> pins = [];
-    final List<DocumentReference> cardRefs = [];
-
-    for (var doc in availableCardsQuery.docs) {
-      final cardData = doc.data() as Map<String, dynamic>;
-      pins.add(cardData['pin'] ?? 'غير معروف');
-      cardRefs.add(doc.reference);
-    }
-
-    await _db.runTransaction((transaction) async {
-      final userSnapshot = await transaction.get(userRef);
-      if (!userSnapshot.exists) throw 'حساب المستخدم غير موجود.';
-
-      final userData = userSnapshot.data() as Map<String, dynamic>;
-      Map<String, dynamic> wallets = userData['wallets'] ?? {};
-      double currentWalletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
-
-      double creditLimit = 0.0;
-      if (userData['role'] == 'pos') {
-        Map<String, dynamic> relations = userData['agent_relations'] ?? {};
-        Map<String, dynamic> myRel = relations[agentPhone] ?? {};
-        creditLimit = (myRel['creditLimit'] ?? 0.0).toDouble();
-      }
-
-      if ((currentWalletBalance + creditLimit) < totalPrice) {
-        throw 'الرصيد أو الحد الائتماني غير كافٍ.';
-      }
-
-      // خصم المبلغ الإجمالي مرة واحدة فقط
-      transaction.update(userRef, {
-        'wallets.$agentPhone': FieldValue.increment(-totalPrice),
-      });
-
-      // تحديث حالة الكروت إلى مباع
-      for (var ref in cardRefs) {
-        transaction.update(ref, {
-          'status': 'مباع',
-          'buyerPhone': _activeUserPhone,
-          'soldAt': FieldValue.serverTimestamp(),
-          'soldPrice': unitPrice,
-          'discountAmount': discountAmount + couponDiscount,
-        });
-      }
-
-      // إضافة الكروت إلى سجل مشتريات المستخدم
-      for (var pin in pins) {
-        final purchaseInvoice = {
-          'title': cardTitle,
-          'pin': pin,
-          'price': unitPrice,
-          'agentPhone': agentPhone,
-          'date': DateTime.now().toIso8601String(),
-        };
-        transaction.update(userRef, {
-          'purchasedCards': FieldValue.arrayUnion([purchaseInvoice])
-        });
-      }
-
-      // تحديث إحصائيات النظام
-      transaction.update(_db.collection('system').doc('main_info'), {
-        'totalSystemCards': FieldValue.increment(-quantity)
-      });
-
-      // تسجيل الحركة المالية
-      DocumentReference txnRef = _db.collection('transactions').doc();
-      transaction.set(txnRef, {
-        'fromPhone': _activeUserPhone,
-        'toPhone': agentPhone,
-        'agentPhone': agentPhone,
-        'agentName': currentUserName,
-        'targetName': userData['name'] ?? 'زبون',
-        'networkName': userData['networkName'] ?? 'غير محدد',
-        'amount': totalPrice,
-        'fee': 0.0,
-        'paymentMethod': 'خصم من المحفظة',
-        'type': 'sale',
-        'title': 'بيع $quantity كرت: $cardTitle',
-        'reference': 'BULK-${DateTime.now().millisecondsSinceEpoch}',
-        'discount': discountAmount + couponDiscount,
-        'timestamp': FieldValue.serverTimestamp()
-      });
-
-      if (appliedCouponId != null) {
-        transaction.update(_db.collection('coupons').doc(appliedCouponId), {
-          'currentUsage': FieldValue.increment(1),
-        });
-      }
-    });
-
-    return pins;
-  }
-
-    Future<void> upgradeUserToPos({
+  Future<void> upgradeUserToPos({
     required String posPhone,
     required String storeName,
     required String location,
     required double creditLimit,
     required String commission,
     required List<String> allowedCategories,
-    required double creditDeduction, // 🆕 المبلغ المخصوم من رصيد الوكيل
+    required double creditDeduction,
   }) async {
     if (_activeUserPhone == null) return;
     try {
@@ -1872,18 +1383,16 @@ class SystemProvider extends ChangeNotifier {
           },
           SetOptions(merge: true));
 
-      // 🆕 خصم الرصيد الانتمائي من الوكيل
       final agentRef = _db.collection('users').doc(_activeUserPhone);
       batch.update(agentRef, {'balance': FieldValue.increment(-creditDeduction)});
 
-      // 🆕 تسجيل عملية الخصم في المعاملات
       DocumentReference txnRef = _db.collection('transactions').doc();
       batch.set(txnRef, {
         'fromPhone': _activeUserPhone,
         'toPhone': posPhone,
         'agentPhone': _activeUserPhone,
         'agentName': currentUserName,
-        'targetName': userData['name'] ?? 'مستخدم',
+        'targetName': storeName,
         'networkName': userData['networkName'] ?? 'غير محدد',
         'amount': creditDeduction,
         'type': 'credit_deduction',
@@ -1907,14 +1416,14 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-    Future<void> updatePosDetails({
+  Future<void> updatePosDetails({
     required String posPhone,
     required String storeName,
     required String location,
     required double creditLimit,
     required String commission,
     required List<String> allowedCategories,
-    required double oldCreditLimit, // 🆕 الحد القديم للمقارنة
+    required double oldCreditLimit,
   }) async {
     if (_activeUserPhone == null) return;
     try {
@@ -1933,21 +1442,18 @@ class SystemProvider extends ChangeNotifier {
         'location': location,
       });
 
-      // 🆕 معالجة فرق الحد الائتماني
       double difference = creditLimit - oldCreditLimit;
       if (difference > 0) {
-        // زاد الحد → نخصم من الوكيل
         final agentRef = _db.collection('users').doc(_activeUserPhone);
         batch.update(agentRef, {'balance': FieldValue.increment(-difference)});
         
-        // تسجيل
         DocumentReference txnRef = _db.collection('transactions').doc();
         batch.set(txnRef, {
           'fromPhone': _activeUserPhone,
           'toPhone': posPhone,
           'agentPhone': _activeUserPhone,
           'agentName': currentUserName,
-          'targetName': 'نقطة بيع: $storeName',
+          'targetName': storeName,
           'networkName': 'النظام',
           'amount': difference,
           'type': 'credit_deduction',
@@ -1956,7 +1462,6 @@ class SystemProvider extends ChangeNotifier {
           'timestamp': FieldValue.serverTimestamp()
         });
       } else if (difference < 0) {
-        // قل الحد → نُعيد للوكيل (فقط إذا لم تستهلكه البقالة)
         double refund = (-difference);
         final agentRef = _db.collection('users').doc(_activeUserPhone);
         batch.update(agentRef, {'balance': FieldValue.increment(refund)});
@@ -1967,7 +1472,7 @@ class SystemProvider extends ChangeNotifier {
           'toPhone': _activeUserPhone,
           'agentPhone': _activeUserPhone,
           'agentName': currentUserName,
-          'targetName': 'نقطة بيع: $storeName',
+          'targetName': storeName,
           'networkName': 'النظام',
           'amount': refund,
           'type': 'credit_refund',
@@ -1983,7 +1488,7 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-    Future<void> receivePosPayment(
+  Future<void> receivePosPayment(
       String posPhone, double amount, String note) async {
     if (_activeUserPhone == null) return;
     try {
@@ -1992,11 +1497,9 @@ class SystemProvider extends ChangeNotifier {
 
       WriteBatch batch = _db.batch();
 
-      // زيادة رصيد البقالة في محفظتها مع هذا الوكيل
       batch.update(_db.collection('users').doc(posPhone),
           {'wallets.$_activeUserPhone': FieldValue.increment(amount)});
 
-      // 🆕 زيادة رصيد الوكيل (استرداد جزء من الدين المحجوز)
       final agentRef = _db.collection('users').doc(_activeUserPhone);
       batch.update(agentRef, {'balance': FieldValue.increment(amount)});
 
@@ -2022,7 +1525,8 @@ class SystemProvider extends ChangeNotifier {
       throw e.toString();
     }
   }
-    Future<void> fundSubAgent(String posPhone, double amount) async {
+
+  Future<void> fundSubAgent(String posPhone, double amount) async {
     if (_activeUserPhone == null) return;
 
     final agentDoc = await _db.collection('users').doc(_activeUserPhone).get();
@@ -2043,6 +1547,10 @@ class SystemProvider extends ChangeNotifier {
     batch.set(_db.collection('transactions').doc(), {
       'fromPhone': _activeUserPhone,
       'toPhone': posPhone,
+      'senderPhone': _activeUserPhone,
+      'senderName': currentUserName,
+      'receiverPhone': posPhone,
+      'receiverName': posData['name'] ?? 'نقطة بيع',
       'agentPhone': _activeUserPhone,
       'agentName': currentUserName,
       'targetName': posData['name'] ?? 'نقطة بيع',
@@ -2066,7 +1574,11 @@ class SystemProvider extends ChangeNotifier {
     });
 
     await batch.commit();
-    }
+  }
+
+  // ====================================================================
+  // باقي الدوال (بدون تغيير عن النسخة الأصلية الكاملة)
+  // ====================================================================
 
   Future<void> requestWalletRecharge(String targetPhone, double amount) async {
     await submitSaaSRechargeRequest(
