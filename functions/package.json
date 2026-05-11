@@ -9,8 +9,7 @@
     "cors": "^2.8.5",
     "node-routeros": "^1.6.1",
     "node-cron": "^3.0.3",
-    "firebase-admin": "^11.11.0",
-    "firebase-functions": "^4.3.1",
-    "googleapis": "^126.0.0"
+    "firebase": "^10.7.0",
+    "firebase-functions": "^4.3.1"
   }
 }
