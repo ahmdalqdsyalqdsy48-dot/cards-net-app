@@ -12,7 +12,6 @@ class ThemeProvider extends ChangeNotifier {
   static const String _defaultFontFamily = 'Cairo';
   static const double _defaultFontSizeScale = 1.0;
 
-  // اللون الافتراضي (أزرق مادي) لضمان تباين ممتاز في الحالة الأولية
   static const Color _defaultAppColor = Color(0xFF2196F3);
 
   bool _isDark = false;
@@ -97,7 +96,7 @@ class ThemeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---------- دوال التوافق مع الملفات القديمة (لا تحذف) ----------
+  // ---------- دوال التوافق ----------
   Color get adaptiveTextColor {
     final colors = _buildTheme(_isDark ? Brightness.dark : Brightness.light).colorScheme;
     return colors.onSurface;
@@ -114,39 +113,58 @@ class ThemeProvider extends ChangeNotifier {
     toggleTheme(false);
   }
 
-  // ---------- بناء الثيمات (Light & Dark) ----------
+  // ---------- بناء الثيمات ----------
   ThemeData get lightTheme => _buildTheme(Brightness.light);
   ThemeData get darkTheme => _buildTheme(Brightness.dark);
 
   ThemeData _buildTheme(Brightness brightness) {
-    // نبدأ من ThemeData الأساسي مع Material 3
-    final base = ThemeData(
-      useMaterial3: true,
-      brightness: brightness,
-    );
+    final Color activeColor = primaryColor;
+    final bool isDark = brightness == Brightness.dark;
 
-    // نولّد نظام الألوان الكامل حول اللون الأساسي
+    // --- بناء ColorScheme مخصص بقوة ---
+    // خلفية التطبيق: ندمج اللون الأساسي بقوة مع الأبيض/الأسود
+    final Color scaffoldBg = Color.alphaBlend(
+      activeColor.withOpacity(isDark ? 0.35 : 0.25),
+      isDark ? const Color(0xFF121212) : const Color(0xFFFAFAFA),
+    );
+    // سطح البطاقات والقوائم: أفتح قليلاً
+    final Color surface = Color.alphaBlend(
+      activeColor.withOpacity(isDark ? 0.25 : 0.15),
+      isDark ? const Color(0xFF1E1E1E) : Colors.white,
+    );
+    // الحاوية الأساسية
+    final Color primaryContainer = isDark
+        ? Color.alphaBlend(activeColor.withOpacity(0.5), const Color(0xFF2C2C2C))
+        : Color.alphaBlend(activeColor.withOpacity(0.3), Colors.white);
+
     final ColorScheme colorScheme = ColorScheme.fromSeed(
-      seedColor: primaryColor,
+      seedColor: activeColor,
       brightness: brightness,
+    ).copyWith(
+      surface: surface,
+      surfaceContainerLowest: scaffoldBg,
+      surfaceContainer: surface,
+      primaryContainer: primaryContainer,
+      onPrimaryContainer: isDark ? Colors.white : (activeColor.computeLuminance() > 0.5 ? Colors.black87 : Colors.white),
+      onSurface: isDark ? Colors.white : Colors.black87,
+      onSurfaceVariant: isDark ? Colors.white70 : Colors.black54,
+      outlineVariant: isDark ? Colors.white24 : Colors.black12,
     );
 
-    // نضبط الخطوط
+    final base = ThemeData(useMaterial3: true, brightness: brightness);
     TextTheme textTheme = _applyFont(base.textTheme, colorScheme.onSurface);
 
     return base.copyWith(
       colorScheme: colorScheme,
       textTheme: textTheme,
-      scaffoldBackgroundColor: colorScheme.surfaceContainerLowest,
-      cardColor: colorScheme.surface,
+      scaffoldBackgroundColor: scaffoldBg,
+      cardColor: surface,
       appBarTheme: AppBarTheme(
-        backgroundColor: colorScheme.primaryContainer,
+        backgroundColor: primaryContainer,
         foregroundColor: colorScheme.onPrimaryContainer,
         elevation: 0,
       ),
-      drawerTheme: DrawerThemeData(
-        backgroundColor: colorScheme.surface,
-      ),
+      drawerTheme: DrawerThemeData(backgroundColor: surface),
       iconTheme: IconThemeData(color: colorScheme.onSurface),
       listTileTheme: ListTileThemeData(
         iconColor: colorScheme.primary,
@@ -174,26 +192,15 @@ class ThemeProvider extends ChangeNotifier {
         secondaryLabelStyle: TextStyle(color: colorScheme.onPrimaryContainer),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: colorScheme.surface,
+        backgroundColor: surface,
         titleTextStyle: textTheme.titleLarge?.copyWith(color: colorScheme.onSurface),
         contentTextStyle: textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
       ),
-      bottomSheetTheme: BottomSheetThemeData(
-        backgroundColor: colorScheme.surface,
-      ),
+      bottomSheetTheme: BottomSheetThemeData(backgroundColor: surface),
       inputDecorationTheme: InputDecorationTheme(
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: colorScheme.outline),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: colorScheme.outline),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: colorScheme.primary, width: 2),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: colorScheme.outline)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: colorScheme.outline)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: colorScheme.primary, width: 2)),
         filled: true,
         fillColor: colorScheme.surfaceContainerHighest.withOpacity(0.3),
         labelStyle: TextStyle(color: colorScheme.onSurfaceVariant),
