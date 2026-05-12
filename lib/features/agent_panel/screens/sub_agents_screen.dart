@@ -1344,15 +1344,20 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                 return bal < 0; // مدينة فقط
               }).toList();
 
-              // فرز الديون حسب الأكبر (الأعلى ديناً أولاً)
+                            // دالة صغيرة لقراءة رصيد المستند داخل هذا السياق
+              double docBalance(doc) {
+                final data = doc.data() as Map<String, dynamic>?
+                    ?? {};
+                final wallets = data['wallets'] as Map<String, dynamic>?;
+                return wallets != null
+                    ? (wallets[sys.currentUserPhone] ?? 0.0).toDouble()
+                    : 0.0;
+              }
+
               docs.sort((a, b) {
-                final balA = ((a.data() as Map<String, dynamic>)['wallets']
-                        as Map<String, dynamic>?)[sys.currentUserPhone]
-                    .toDouble();
-                final balB = ((b.data() as Map<String, dynamic>)['wallets']
-                        as Map<String, dynamic>?)[sys.currentUserPhone]
-                    .toDouble();
-                return balB.compareTo(balA); // من الأعلى ديناً للأقل
+                final balA = docBalance(a);
+                final balB = docBalance(b);
+                return balB.compareTo(balA); // الأعلى ديناً أولاً
               });
 
               if (docs.isEmpty) {
