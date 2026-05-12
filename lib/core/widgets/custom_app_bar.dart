@@ -1,3 +1,4 @@
+// lib/core/widgets/custom_app_bar.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:marquee/marquee.dart';
@@ -8,11 +9,7 @@ import '../providers/ui_provider.dart';
 
 class CustomAppBar extends StatefulWidget implements PreferredSizeWidget {
   final String? title;
-
-  const CustomAppBar({
-    super.key,
-    this.title,
-  });
+  const CustomAppBar({super.key, this.title});
 
   @override
   Size get preferredSize => const Size.fromHeight(125.0);
@@ -32,8 +29,8 @@ class _CustomAppBarState extends State<CustomAppBar>
     _pulseController = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 800))
       ..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
-        CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut));
+    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2)
+        .animate(CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut));
   }
 
   @override
@@ -52,8 +49,7 @@ class _CustomAppBarState extends State<CustomAppBar>
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           title: const Row(children: [
             Icon(Icons.notifications_active, color: Colors.orange),
             SizedBox(width: 10),
@@ -118,6 +114,7 @@ class _CustomAppBarState extends State<CustomAppBar>
     final themeProvider = Provider.of<ThemeProvider>(context);
     final systemProvider = Provider.of<SystemProvider>(context);
     final uiProvider = Provider.of<UiProvider>(context);
+    final ColorScheme colors = Theme.of(context).colorScheme;
 
     final bool isDark = themeProvider.isDarkMode;
     final bool isOnline = uiProvider.isOnline;
@@ -126,27 +123,24 @@ class _CustomAppBarState extends State<CustomAppBar>
         ? systemProvider.announcements.join('   🔴   ')
         : 'مرحباً بك في نظام كروت نت...';
 
-    final Color bgColor = Theme.of(context).appBarTheme.backgroundColor ??
-        (isDark ? Colors.grey.shade900 : Colors.white);
-    // ✅ لون الأيقونات ثابت وواضح في جميع الأوضاع
-    final Color iconTextColor = isDark ? Colors.white : Colors.black87;
-    final Color titleColor = iconTextColor;
+    // استخدام ألوان متكيفة من الثيم
+    final Color headerColor = colors.primaryContainer;
+    final Color onHeaderColor = colors.onPrimaryContainer;
 
     final Color marqueeBg = Color(systemProvider.marqueeBgColor);
     final Color marqueeTextCol = Color(systemProvider.marqueeTextColor);
 
     return AppBar(
       elevation: 2,
-      backgroundColor: bgColor,
-      iconTheme: IconThemeData(color: iconTextColor),
-
+      backgroundColor: headerColor,
+      iconTheme: IconThemeData(color: onHeaderColor),
       title: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(widget.title ?? 'كروت نت',
               style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: titleColor,
+                  color: onHeaderColor,
                   fontSize: 18)),
           const SizedBox(width: 8),
           Container(
@@ -168,7 +162,6 @@ class _CustomAppBarState extends State<CustomAppBar>
         ],
       ),
       centerTitle: true,
-
       actions: [
         IconButton(
           icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode),
@@ -186,7 +179,7 @@ class _CustomAppBarState extends State<CustomAppBar>
               IconButton(
                 icon: const Icon(Icons.notifications_active),
                 tooltip: 'الإشعارات',
-                color: iconTextColor,
+                color: onHeaderColor,
                 onPressed: () => _showNotifications(context, uiProvider),
               ),
               if (notificationCount > 0)
@@ -200,7 +193,7 @@ class _CustomAppBarState extends State<CustomAppBar>
                       decoration: BoxDecoration(
                           color: Colors.red,
                           shape: BoxShape.circle,
-                          border: Border.all(color: bgColor, width: 1.5)),
+                          border: Border.all(color: headerColor, width: 1.5)),
                       child: Text('$notificationCount',
                           style: const TextStyle(
                               color: Colors.white,
@@ -213,7 +206,6 @@ class _CustomAppBarState extends State<CustomAppBar>
           ),
         ),
       ],
-
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(70),
         child: Column(
@@ -223,8 +215,7 @@ class _CustomAppBarState extends State<CustomAppBar>
                 width: double.infinity,
                 height: 25,
                 color: marqueeBg,
-                padding:
-                    const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+                padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
                 child: Row(
                   children: [
                     Icon(Icons.campaign, color: marqueeTextCol, size: 16),
@@ -250,10 +241,8 @@ class _CustomAppBarState extends State<CustomAppBar>
                   ],
                 ),
               ),
-
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
               child: InkWell(
                 onTap: () {
                   uiProvider.playSound('click');
@@ -265,21 +254,17 @@ class _CustomAppBarState extends State<CustomAppBar>
                 child: Container(
                   height: 35,
                   decoration: BoxDecoration(
-                      color: isDark
-                          ? Colors.grey.shade800
-                          : Colors.grey.shade100,
+                      color: colors.surfaceContainerHighest.withOpacity(0.8),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.grey.shade300)),
+                      border: Border.all(color: colors.outlineVariant)),
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   alignment: Alignment.centerRight,
                   child: Row(
                     children: [
-                      const Icon(Icons.search,
-                          size: 18, color: Colors.blueAccent),
+                      Icon(Icons.search, size: 18, color: colors.primary),
                       const SizedBox(width: 10),
                       Text('ابحث في هذا القسم...',
-                          style: TextStyle(
-                              fontSize: 13, color: Colors.grey.shade600)),
+                          style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant)),
                     ],
                   ),
                 ),
