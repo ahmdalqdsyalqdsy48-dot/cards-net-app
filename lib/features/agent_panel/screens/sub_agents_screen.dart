@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart' hide TextDirection;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -15,600 +18,90 @@ class SubAgentsScreen extends StatefulWidget {
   State<SubAgentsScreen> createState() => _SubAgentsScreenState();
 }
 
-class _SubAgentsScreenState extends State<SubAgentsScreen> with SingleTickerProviderStateMixin {
+class _SubAgentsScreenState extends State<SubAgentsScreen>
+    with SingleTickerProviderStateMixin {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   late TabController _tabController;
 
   String _searchQuery = '';
-  String _selectedFilter = 'الكل'; 
-  
-  // إعدادات الترقية الآلية (VIP)
-  double _vipThreshold = 50000.0;
-  String _autoVipCommission = '5%';
+  String _selectedFilter = 'الكل';
+
+  // إنذار مبكر عالمي (قيمة افتراضية 1000 ريال)
+  double _globalWarningThreshold = 1000.0;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _loadSettings();
   }
 
-  void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _globalWarningThreshold = prefs.getDouble('globalWarningThreshold') ?? 1000.0;
+    });
+  }
 
-  // ==========================================
-  // ⚙️ إعدادات الترقية التلقائية للزبائن
-  // ==========================================
-  void _showVipSettingsDialog() {
+  Future<void> _saveGlobalWarningThreshold(double value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('globalWarningThreshold', value);
+    setState(() => _globalWarningThreshold = value);
+  }
+
+  void _play(String type) =>
+      Provider.of<UiProvider>(context, listen: false).playSound(type);
+
+  // ---------- نافذة إعدادات الحد الأدنى للإنذار ----------
+  void _showGlobalThresholdDialog() {
     _play('click');
-    TextEditingController thresholdCtrl = TextEditingController(text: _vipThreshold.toString());
-    TextEditingController commissionCtrl = TextEditingController(text: _autoVipCommission.replaceAll('%', ''));
-
+    final controller =
+        TextEditingController(text: _globalWarningThreshold.toString());
     showDialog(
       context: context,
-      builder: (context) => Directionality(
+      builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          title: const Text('إعدادات الترقية التلقائية 🌟', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('إذا طلب زبون عادي شحناً بهذا المبلغ أو أكثر، سيتم ترقيته تلقائياً لبقالة واعتماد هذا الخصم له.', style: TextStyle(fontSize: 12, color: Colors.grey)),
-              const SizedBox(height: 15),
-              TextField(controller: thresholdCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'مبلغ الشحن المستهدف (ريال)', border: OutlineInputBorder())),
-              const SizedBox(height: 10),
-              TextField(controller: commissionCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'نسبة الخصم التلقائية (%)', border: OutlineInputBorder())),
-            ],
+          title: const Text('إعدادات الإنذار المبكر'),
+          content: TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+                labelText: 'الحد الأدنى للرصيد (ريال)',
+                border: OutlineInputBorder()),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('إلغاء')),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.purple),
               onPressed: () {
-                setState(() {
-                  _vipThreshold = double.tryParse(thresholdCtrl.text) ?? 50000.0;
-                  _autoVipCommission = '${commissionCtrl.text}%';
-                });
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ إعدادات الترقية التلقائية', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
-              },
-              child: const Text('حفظ', style: TextStyle(color: Colors.white)),
-            )
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ==========================================
-  // 💰 نافذة التغذية المباشرة للمحفظة
-  // ==========================================
-  void _showTransferModal(SystemProvider sys, String posPhone, String posName, double agentBalance) {
-    _play('click');
-    final TextEditingController amountController = TextEditingController();
-    bool isSubmitting = false;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) => Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-            title: Text('تغذية محفظة: $posName', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('رصيدك الحالي: $agentBalance ريال', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 15),
-                TextField(controller: amountController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'المبلغ المراد تحويله (ريال)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)))),
-              ],
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.purple),
-                onPressed: isSubmitting ? null : () async {
-                  double amount = double.tryParse(amountController.text) ?? 0;
-                  if (amount > 0 && amount <= agentBalance) {
-                    setStateDialog(() => isSubmitting = true);
-                    try {
-                      await sys.fundSubAgent(posPhone, amount);
-                      _play('success');
-                      if (mounted) {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم تحويل $amount ريال بنجاح! ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
-                      }
-                    } catch (e) {
-                      setStateDialog(() => isSubmitting = false);
-                      _play('error');
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString(), textDirection: TextDirection.rtl), backgroundColor: Colors.red));
-                    }
-                  } else {
-                    _play('error');
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرصيد غير كافٍ أو المبلغ غير صالح', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
-                  }
-                },
-                child: isSubmitting ? const CircularProgressIndicator(color: Colors.white) : const Text('تحويل', style: TextStyle(color: Colors.white)),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ==========================================
-  // ⚙️ نافذة الإضافة/التعديل (المطورة مع آلية الخصم)
-  // ==========================================
-  void _showAddOrEditPosModal(SystemProvider sys, {Map<String, dynamic>? existingPos, String? initialPhone}) async {
-    _play('click');
-    bool isEdit = existingPos != null;
-    String phone = initialPhone ?? existingPos?['phone'] ?? '';
-    String name = existingPos?['storeName'] ?? '';
-    String location = existingPos?['location'] ?? '';
-
-    Map<String, dynamic> relations = existingPos?['agent_relations'] ?? {};
-    Map<String, dynamic> myRelation = relations[sys.currentUserPhone] ?? {};
-
-    String commission = myRelation['commission']?.replaceAll('%', '') ?? '0';
-    double limit = (myRelation['creditLimit'] ?? 0.0).toDouble();
-    final double oldLimit = limit; // للرجوع إليه عند التعديل
-    List<String> allowedCats = List<String>.from(myRelation['allowedCategories'] ?? []);
-    bool isSubmitting = false;
-
-    var netSnap = await _db.collection('networks').where('agentPhone', isEqualTo: sys.currentUserPhone).get();
-    List<Map<String, dynamic>> allAvailableCats = [];
-    for (var doc in netSnap.docs) {
-      List cats = doc['categories'] ?? [];
-      for (var c in cats) { allAvailableCats.add({'id': c['id'], 'name': '${doc['name']} - ${c['name']}'}); }
-    }
-
-    if (!mounted) return;
-
-    showModalBottomSheet(
-      context: context, isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, top: 20, left: 16, right: 16),
-          child: Directionality(
-            textDirection: TextDirection.rtl,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(isEdit ? 'تعديل بيانات البقالة ⚙️' : 'ترقية زبون إلى بقالة 🏪', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 10),
-                  // 🆕 عرض الرصيد الحالي للوكيل
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.account_balance_wallet, color: Colors.green),
-                        const SizedBox(width: 8),
-                        Text('رصيدك: ${sys.currentUserBalance.toStringAsFixed(0)} ريال', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                  TextField(enabled: !isEdit && initialPhone == null, controller: TextEditingController(text: phone), onChanged: (v) => phone = v, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: 'رقم هاتف الزبون المسجل', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)))),
-                  const SizedBox(height: 12),
-                  TextField(controller: TextEditingController(text: name), onChanged: (v) => name = v, decoration: InputDecoration(labelText: 'اسم البقالة', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)))),
-                  const SizedBox(height: 12),
-                  TextField(controller: TextEditingController(text: location), onChanged: (v) => location = v, decoration: InputDecoration(labelText: 'الموقع/العنوان (إجباري)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)))),
-                  const SizedBox(height: 12),
-                  Row(children: [
-                    Expanded(child: TextField(
-                      controller: TextEditingController(text: limit.toString()),
-                      keyboardType: TextInputType.number,
-                      onChanged: (v) {
-                        setModalState(() => limit = double.tryParse(v) ?? 0);
-                      },
-                      decoration: InputDecoration(
-                        labelText: 'الحد الائتماني',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                        // 🆕 تحذير عند تجاوز الرصيد المتاح
-                        errorText: (limit > sys.currentUserBalance && !isEdit) ? 'أكبر من رصيدك!' : null,
-                      ),
-                    )),
-                    const SizedBox(width: 10),
-                    Expanded(child: TextField(controller: TextEditingController(text: commission), keyboardType: TextInputType.number, onChanged: (v) => commission = v, decoration: InputDecoration(labelText: 'العمولة %', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))))),
-                  ]),
-                  // 🆕 تنبيه الخصم عند الإضافة
-                  if (!isEdit && limit > 0)
-                    Container(
-                      margin: const EdgeInsets.only(top: 8),
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                      child: Text('سيتم خصم $limit ريال من رصيدك عند الترقية.', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
-                    ),
-                  const SizedBox(height: 15),
-                  const Align(alignment: Alignment.centerRight, child: Text('تحديد الفئات المسموح بيعها:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.purple))),
-                  if (allAvailableCats.isEmpty) const Text('لم تقم بإضافة فئات في قسم المايكروتيك بعد!', style: TextStyle(color: Colors.red, fontSize: 12)),
-                  ...allAvailableCats.map((cat) => CheckboxListTile(
-                    title: Text(cat['name'], style: const TextStyle(fontSize: 13)),
-                    value: allowedCats.contains(cat['id']),
-                    activeColor: Colors.purple,
-                    onChanged: (val) { setModalState(() { val! ? allowedCats.add(cat['id']) : allowedCats.remove(cat['id']); }); },
-                  )),
-                  const SizedBox(height: 20),
-                  SizedBox(width: double.infinity, height: 50, child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.purple),
-                    onPressed: (isSubmitting || (!isEdit && limit > sys.currentUserBalance)) ? null : () async {
-                      if (phone.isEmpty || name.isEmpty || location.isEmpty) {
-                        _play('error');
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الرقم والاسم والموقع حقول إجبارية!', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
-                        return;
-                      }
-                      setModalState(() => isSubmitting = true);
-                      try {
-                        if (isEdit) {
-                          await sys.updatePosDetails(
-                            posPhone: phone, storeName: name, location: location,
-                            creditLimit: limit, commission: '$commission%',
-                            allowedCategories: allowedCats,
-                            oldCreditLimit: oldLimit, // للدالة الجديدة
-                          );
-                        } else {
-                          await sys.upgradeUserToPos(
-                            posPhone: phone, storeName: name, location: location,
-                            creditLimit: limit, commission: '$commission%',
-                            allowedCategories: allowedCats,
-                            creditDeduction: limit, // يُخصم مباشرة
-                          );
-                        }
-                        _play('success'); Navigator.pop(context);
-                      } catch (e) {
-                        setModalState(() => isSubmitting = false);
-                        _play('error');
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString(), textDirection: TextDirection.rtl), backgroundColor: Colors.red));
-                      }
-                    },
-                    child: isSubmitting ? const CircularProgressIndicator(color: Colors.white) : Text(isEdit ? 'حفظ التعديلات' : 'اعتماد وترقية', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  )),
-                  const SizedBox(height: 20),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ==========================================
-  // 💵 نافذة استلام دفعة (سداد الديون)
-  // ==========================================
-  void _showRepaymentModal(SystemProvider sys, String posPhone, String posName) {
-    _play('click');
-    final TextEditingController amountController = TextEditingController();
-    final TextEditingController noteController = TextEditingController();
-    bool isSubmitting = false;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) => Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            title: Text('تسديد دين: $posName', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(controller: amountController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'المبلغ المستلم كاش (ريال)')),
-                const SizedBox(height: 10),
-                TextField(controller: noteController, decoration: const InputDecoration(labelText: 'ملاحظة (اختياري)')),
-              ],
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-                onPressed: isSubmitting ? null : () async {
-                  double amount = double.tryParse(amountController.text) ?? 0;
-                  if (amount > 0) {
-                    setStateDialog(() => isSubmitting = true);
-                    try {
-                      await sys.receivePosPayment(posPhone, amount, noteController.text);
-                      _play('success');
-                      if(mounted){
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تسجيل السداد بنجاح ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
-                      }
-                    } catch(e) {
-                      setStateDialog(() => isSubmitting = false);
-                      _play('error');
-                    }
-                  }
-                },
-                child: isSubmitting ? const CircularProgressIndicator(color: Colors.white) : const Text('تأكيد الاستلام', style: TextStyle(color: Colors.white)),
-              )
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Scaffold(
-      appBar: const CustomHeader(title: 'إدارة نقاط البيع الذكية'),
-      drawer: CustomAgentDrawer(agentName: sys.currentUserName, phoneNumber: sys.currentUserPhone, role: 'وكيل', currentBalance: sys.currentUserBalance),
-      body: Directionality(
-        textDirection: TextDirection.rtl,
-        child: Column(
-          children: [
-            Container(
-              color: isDark ? Colors.grey.shade900 : Colors.purple.shade800,
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(children: [
-                      Expanded(child: TextField(onChanged: (v) => setState(() => _searchQuery = v.trim().toLowerCase()), decoration: InputDecoration(hintText: 'بحث برقم أو اسم البقالة...', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none), contentPadding: const EdgeInsets.symmetric(horizontal: 15)))),
-                      const SizedBox(width: 8),
-                      Container(
-                        decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(8)),
-                        child: PopupMenuButton<String>(
-                          icon: const Icon(Icons.filter_list, color: Colors.white),
-                          onSelected: (v) => setState(() => _selectedFilter = v),
-                          itemBuilder: (c) => [const PopupMenuItem(value: 'الكل', child: Text('الكل')), const PopupMenuItem(value: 'نشط', child: Text('النشطة 🟢')), const PopupMenuItem(value: 'مجمّد', child: Text('المجمدة 🔴')), const PopupMenuItem(value: 'منخفض', child: Text('رصيد منخفض ⚠️'))],
-                        ),
-                      ),
-                    ]),
-                  ),
-                  TabBar(
-                    controller: _tabController,
-                    labelColor: Colors.white, 
-                    unselectedLabelColor: Colors.white70, 
-                    indicatorColor: Colors.orange, indicatorWeight: 4,
-                    labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), 
-                    tabs: const [Tab(text: 'البقالات 🏪'), Tab(text: 'طلبات الشحن 📥'), Tab(text: 'الديون (الآجل) 🧾')],
-                  ),
-                ],
-              ),
-            ),
-            Expanded(child: TabBarView(controller: _tabController, children: [
-              _buildActivePosTab(sys),
-              _buildRequestsTab(sys),
-              _buildDebtTab(sys),
-            ])),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddOrEditPosModal(sys),
-        backgroundColor: Colors.purple.shade800, icon: const Icon(Icons.add_business, color: Colors.white), label: const Text('إضافة بقالة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-      ),
-    );
-  }
-
-  // ==========================================
-  // التبويب 1: البقالات النشطة (مُطوَّر)
-  // ==========================================
-  Widget _buildActivePosTab(SystemProvider sys) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _db.collection('users').where('role', isEqualTo: 'pos').where('pos_agents', arrayContains: sys.currentUserPhone).snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        
-        var docs = snapshot.data!.docs.where((d) {
-          var data = d.data() as Map<String, dynamic>;
-          String sName = (data['storeName'] ?? '').toLowerCase();
-          String oName = (data['name'] ?? '').toLowerCase();
-          String phone = data['phone'] ?? '';
-          
-          Map<String, dynamic> wallets = data['wallets'] ?? {};
-          double posWalletBal = (wallets[sys.currentUserPhone] ?? 0.0).toDouble();
-
-          String status = data['status'] ?? 'نشط';
-
-          bool matchesSearch = _searchQuery.isEmpty || sName.contains(_searchQuery) || oName.contains(_searchQuery) || phone.contains(_searchQuery);
-          
-          bool matchesFilter = true;
-          if (_selectedFilter == 'منخفض') { matchesFilter = posWalletBal < 1000; } 
-          else if (_selectedFilter != 'الكل') { matchesFilter = status == _selectedFilter; }
-
-          return matchesSearch && matchesFilter;
-        }).toList();
-
-        if (docs.isEmpty) return const Center(child: Text('لا توجد بيانات مطابقة.'));
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: docs.length,
-          itemBuilder: (context, i) {
-            var pos = docs[i].data() as Map<String, dynamic>;
-            bool isFrozen = pos['status'] == 'مجمّد';
-            
-            Map<String, dynamic> wallets = pos['wallets'] ?? {};
-            double posWalletBal = (wallets[sys.currentUserPhone] ?? 0.0).toDouble();
-            bool isLow = posWalletBal < 1000;
-
-            Map<String, dynamic> relations = pos['agent_relations'] ?? {};
-            Map<String, dynamic> myRel = relations[sys.currentUserPhone] ?? {};
-            double creditLimit = (myRel['creditLimit'] ?? 0.0).toDouble();
-            String commission = myRel['commission'] ?? '0%';
-
-            // 🆕 تحديد ما إذا تجاوزت الدين المسموح
-            bool overLimit = posWalletBal < -creditLimit;
-
-            return Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-                side: BorderSide(color: overLimit ? Colors.red : (isFrozen ? Colors.red.shade300 : Colors.grey.shade200), width: overLimit ? 2 : 1),
-              ),
-              color: overLimit ? Colors.red.shade50 : null,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        CircleAvatar(backgroundColor: isFrozen ? Colors.red.shade100 : Colors.purple.shade100, radius: 25, child: Icon(Icons.store, color: isFrozen ? Colors.red : Colors.purple)),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(pos['storeName'] ?? '', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, decoration: isFrozen ? TextDecoration.lineThrough : null)),
-                              Text('📍 ${pos['location'] ?? 'بدون عنوان'}', style: const TextStyle(color: Colors.blueGrey, fontSize: 12, fontWeight: FontWeight.bold)),
-                              Text('المالك: ${pos['name']} | رقم: ${pos['phone']}', style: const TextStyle(color: Colors.grey, fontSize: 11)),
-                              if (overLimit) const Text('⚠️ تجاوزت الحد الائتماني!', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 11)),
-                            ],
-                          ),
-                        ),
-                        IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showAddOrEditPosModal(sys, existingPos: pos)),
-                      ],
-                    ),
-                    const Divider(),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          const Text('رصيد المحفظة:', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                          Text('$posWalletBal ريال', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: isLow ? Colors.red : Colors.black87)),
-                        ]),
-                        Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
-                          const Text('الحد الائتماني:', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                          Text('$creditLimit ريال', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue)),
-                        ]),
-                        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                          const Text('العمولة:', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                          Text(commission, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.purple)),
-                        ]),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(flex: 2, child: ElevatedButton.icon(onPressed: isFrozen ? null : () => _showTransferModal(sys, pos['phone'], pos['storeName'] ?? '', sys.currentUserBalance), icon: const Icon(Icons.add_card, size: 16, color: Colors.white), label: const Text('تغذية محفظتها', style: TextStyle(color: Colors.white, fontSize: 12)), style: ElevatedButton.styleFrom(backgroundColor: Colors.purple))),
-                        const SizedBox(width: 8),
-                        Expanded(flex: 1, child: OutlinedButton(
-                          onPressed: () => _showRepaymentModal(sys, pos['phone'], pos['storeName'] ?? ''),
-                          style: OutlinedButton.styleFrom(foregroundColor: Colors.blue),
-                          child: const Text('استلام دفعة', style: TextStyle(fontSize: 11)),
-                        )),
-                        const SizedBox(width: 8),
-                        Expanded(flex: 1, child: OutlinedButton(
-                          onPressed: () { _play('click'); _db.collection('users').doc(pos['phone']).update({'status': isFrozen ? 'نشط' : 'مجمّد'}); },
-                          style: OutlinedButton.styleFrom(foregroundColor: isFrozen ? Colors.green : Colors.red, side: BorderSide(color: isFrozen ? Colors.green : Colors.red)),
-                          child: Text(isFrozen ? 'تنشيط' : 'تجميد', style: const TextStyle(fontSize: 11)),
-                        )),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  // ==========================================
-  // التبويب 2: طلبات الشحن (مع تطوير VIP)
-  // ==========================================
-  Widget _buildRequestsTab(SystemProvider sys) {
-    return Column(
-      children: [
-        Container(
-          color: Colors.amber.shade50, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('🌟 نظام الترقية التلقائية:', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 12)),
-              TextButton.icon(
-                onPressed: _showVipSettingsDialog, icon: const Icon(Icons.settings, size: 16, color: Colors.orange),
-                label: Text('المستهدف: $_vipThreshold', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
-              )
-            ],
-          ),
-        ),
-        Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: _db.collection('user_recharges').where('targetPhone', isEqualTo: sys.currentUserPhone).where('status', isEqualTo: 'قيد الانتظار').snapshots(),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-              var requests = snapshot.data!.docs;
-              if (requests.isEmpty) return const Center(child: Text('لا توجد طلبات شحن معلقة.', style: TextStyle(color: Colors.grey)));
-
-              return ListView.builder(
-                padding: const EdgeInsets.all(12), itemCount: requests.length,
-                itemBuilder: (context, i) {
-                  var req = requests[i].data() as Map<String, dynamic>;
-                  String reqId = requests[i].id;
-                  double reqAmount = (req['amount'] ?? 0).toDouble();
-                  bool isVip = reqAmount >= _vipThreshold; 
-
-                  return Card(
-                    color: isVip ? Colors.amber.shade50 : Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: isVip ? Colors.amber : Colors.blue.shade200)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('${req['userName']} ${isVip ? "🌟" : ""}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                              Text(isVip ? 'يستحق الترقية!' : 'طلب عادي', style: TextStyle(color: isVip ? Colors.orange : Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                          const SizedBox(height: 5),
-                          Align(alignment: Alignment.centerRight, child: Text('المبلغ: $reqAmount ريال', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: isVip ? Colors.amber.shade800 : Colors.blue))),
-                          const Divider(),
-                          Row(
-                            children: [
-                              Expanded(child: OutlinedButton(onPressed: () { _play('click'); _db.collection('user_recharges').doc(reqId).update({'status': 'مرفوض'}); }, style: OutlinedButton.styleFrom(foregroundColor: Colors.red), child: const Text('رفض'))),
-                              const SizedBox(width: 10),
-                              Expanded(flex: 2, child: ElevatedButton(
-                                onPressed: () async {
-                                  _play('click');
-                                  if (isVip) {
-                                    // 🆕 فتح نافذة تأكيدية لتعديل بيانات الترقية
-                                    _confirmVipUpgrade(req);
-                                  } else {
-                                    try {
-                                      await sys.agentAcceptUserRecharge(reqId, req['userPhone'], reqAmount);
-                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت الموافقة بنجاح ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
-                                    } catch (e) {
-                                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString(), textDirection: TextDirection.rtl), backgroundColor: Colors.red));
-                                    }
-                                  }
-                                },
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.green), child: const Text('موافقة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                              )),
-                            ],
-                          )
-                        ],
-                      ),
-                    ),
+                final val = double.tryParse(controller.text);
+                if (val != null) {
+                  _saveGlobalWarningThreshold(val);
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('تم حفظ الحد الأدنى للإنذار'),
+                        backgroundColor: Colors.green),
                   );
-                },
-              );
-            }
-          ),
+                }
+              },
+              child: const Text('حفظ'),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
-  // 🆕 نافذة تأكيد الترقية التلقائية VIP
-  void _confirmVipUpgrade(Map<String, dynamic> req) {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    String storeName = 'محل ${req['userName']}';
-    String location = 'غير محدد';
-    double creditLimit = (req['amount'] ?? 0).toDouble(); // افتراضاً يساوي مبلغ الشحن
-    String commission = _autoVipCommission;
+  // ---------- نافذة استلام دفعة (يدوي) محسنة ----------
+  void _showRepaymentModal(
+      SystemProvider sys, String posPhone, String posName, double currentDebt) {
+    _play('click');
+    final amountController = TextEditingController();
+    final noteController = TextEditingController();
+    bool isSubmitting = false;
 
     showDialog(
       context: context,
@@ -616,63 +109,86 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> with SingleTickerProv
         builder: (ctx, setDialogState) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
-            title: const Text('تأكيد الترقية التلقائية 🌟'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('سيتم ترقية ${req['userName']} إلى بقالة بالبيانات التالية. يمكنك تعديلها قبل الحفظ.'),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: TextEditingController(text: storeName),
-                    onChanged: (v) => storeName = v,
-                    decoration: const InputDecoration(labelText: 'اسم البقالة', border: OutlineInputBorder()),
+            title: Text('استلام دفعة من $posName'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'الدين الحالي: ${NumberFormat('#,##0').format(currentDebt)} ريال',
+                  style: TextStyle(
+                      color: Colors.red, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: amountController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                      labelText: 'المبلغ المستلم (ريال)',
+                      border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: noteController,
+                  decoration: const InputDecoration(
+                      labelText: 'ملاحظة (اختياري)',
+                      border: OutlineInputBorder()),
+                ),
+                // عرض المبلغ المتبقي بعد السداد عند إدخال المبلغ
+                if (amountController.text.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      'المبلغ المتبقي بعد السداد: ${NumberFormat('#,##0').format(currentDebt - (double.tryParse(amountController.text) ?? 0))} ريال',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, color: Colors.blue),
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: TextEditingController(text: location),
-                    onChanged: (v) => location = v,
-                    decoration: const InputDecoration(labelText: 'الموقع', border: OutlineInputBorder()),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: TextEditingController(text: creditLimit.toString()),
-                    keyboardType: TextInputType.number,
-                    onChanged: (v) => creditLimit = double.tryParse(v) ?? 0,
-                    decoration: const InputDecoration(labelText: 'الحد الائتماني', border: OutlineInputBorder()),
-                  ),
-                ],
-              ),
+              ],
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('إلغاء')),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.purple),
-                onPressed: () async {
-                  Navigator.pop(ctx);
-                  try {
-                    await sys.agentAcceptUserRecharge(req['docId'] ?? '', req['userPhone'], (req['amount'] ?? 0).toDouble());
-                    await sys.upgradeUserToPos(
-                      posPhone: req['userPhone'],
-                      storeName: storeName,
-                      location: location,
-                      creditLimit: creditLimit,
-                      commission: commission,
-                      allowedCategories: [],
-                      creditDeduction: creditLimit, // يُخصم من الوكيل
-                    );
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text('تمت الموافقة والترقية بنجاح 🌟', textDirection: TextDirection.rtl),
-                      backgroundColor: Colors.green,
-                    ));
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text(e.toString(), textDirection: TextDirection.rtl),
-                      backgroundColor: Colors.red,
-                    ));
-                  }
-                },
-                child: const Text('ترقية وإعتماد', style: TextStyle(color: Colors.white)),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        final amount =
+                            double.tryParse(amountController.text) ?? 0;
+                        if (amount <= 0) return;
+                        setDialogState(() => isSubmitting = true);
+                        try {
+                          await sys.receivePosPayment(
+                              posPhone, amount, noteController.text);
+                          _play('success');
+                          if (mounted) {
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content: Text(
+                                      'تم استلام $amount ريال بنجاح ✅',
+                                      textDirection: TextDirection.rtl),
+                                  backgroundColor: Colors.green),
+                            );
+                          }
+                        } catch (e) {
+                          setDialogState(() => isSubmitting = false);
+                          _play('error');
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content: Text(e.toString(),
+                                      textDirection: TextDirection.rtl),
+                                  backgroundColor: Colors.red),
+                            );
+                          }
+                        }
+                      },
+                child: isSubmitting
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text('تأكيد الاستلام',
+                        style: TextStyle(color: Colors.white)),
               ),
             ],
           ),
@@ -681,85 +197,1530 @@ class _SubAgentsScreenState extends State<SubAgentsScreen> with SingleTickerProv
     );
   }
 
-  // ==========================================
-  // التبويب 3: سجل الديون (مُطوَّر)
-  // ==========================================
-  Widget _buildDebtTab(SystemProvider sys) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _db.collection('users').where('role', isEqualTo: 'pos').where('pos_agents', arrayContains: sys.currentUserPhone).snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        
-        var docs = snapshot.data!.docs.where((d) {
-          var data = d.data() as Map<String, dynamic>;
-          Map<String, dynamic> wallets = data['wallets'] ?? {};
-          double bal = (wallets[sys.currentUserPhone] ?? 0.0).toDouble();
-          return bal < 0; 
-        }).toList();
+  // ---------- تغذية المحفظة (مع تسوية الديون التلقائية) ----------
+  void _showFeedWalletModal(
+      SystemProvider sys, String posPhone, String posName) {
+    _play('click');
+    final amountController = TextEditingController();
+    bool isSubmitting = false;
 
-        if (docs.isEmpty) return const Center(child: Text('لا توجد ديون مسجلة. 👏', style: TextStyle(color: Colors.grey)));
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: Text('تغذية محفظة $posName'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'رصيدك الحالي: ${NumberFormat('#,##0').format(sys.currentUserBalance)} ريال',
+                  style: const TextStyle(
+                      color: Colors.green, fontWeight: FontWeight.bold),
+                ),
+                // عرض رصيد البقالة الحالي (إن أمكن)
+                FutureBuilder<DocumentSnapshot>(
+                  future: _db.collection('users').doc(posPhone).get(),
+                  builder: (context, snap) {
+                    if (!snap.hasData) return const SizedBox();
+                    final wallets =
+                        (snap.data!.data() as Map<String, dynamic>)['wallets']
+                            as Map<String, dynamic>?;
+                    final bal = (wallets?[sys.currentUserPhone] ?? 0.0)
+                        .toDouble();
+                    return Text(
+                      'رصيد البقالة الحالي: ${NumberFormat('#,##0').format(bal)} ريال',
+                      style: TextStyle(
+                          color: bal < 0 ? Colors.red : Colors.blueGrey,
+                          fontWeight: FontWeight.bold),
+                    );
+                  },
+                ),
+                const SizedBox(height: 15),
+                TextField(
+                  controller: amountController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'المبلغ المراد تحويله (ريال)',
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('إلغاء')),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.purple),
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        final amount =
+                            double.tryParse(amountController.text) ?? 0;
+                        if (amount <= 0) return;
+                        if (amount > sys.currentUserBalance) {
+                          _play('error');
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('رصيدك لا يكفي!',
+                                    textDirection: TextDirection.rtl),
+                                backgroundColor: Colors.red),
+                          );
+                          return;
+                        }
+                        setDialogState(() => isSubmitting = true);
+                        try {
+                          // جلب الرصيد الحالي للبقالة لتسجيل تسوية الدين
+                          final posDoc =
+                              await _db.collection('users').doc(posPhone).get();
+                          final wallets = (posDoc.data()
+                                  as Map<String, dynamic>)['wallets']
+                              as Map<String, dynamic>?;
+                          final oldBalance =
+                              (wallets?[sys.currentUserPhone] ?? 0.0)
+                                  .toDouble();
+                          final debt = oldBalance < 0 ? -oldBalance : 0.0;
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(12), itemCount: docs.length,
-          itemBuilder: (context, i) {
-            var pos = docs[i].data() as Map<String, dynamic>;
-            Map<String, dynamic> wallets = pos['wallets'] ?? {};
-            double debtAmount = (wallets[sys.currentUserPhone] ?? 0.0).toDouble().abs();
+                          // تغذية المحفظة (تقلل الدين تلقائياً)
+                          await sys.fundSubAgent(posPhone, amount);
 
-            return Card(
-              shape: const Border(right: BorderSide(color: Colors.red, width: 4)),
-              margin: const EdgeInsets.only(bottom: 8),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(child: Text(pos['storeName'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15))),
-                        Text('$debtAmount ريال', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
-                      ],
+                          // تسجيل معاملة تسوية الديون إن وجدت
+                          if (debt > 0 && amount >= debt) {
+                            // تم سداد كامل الدين
+                            _db.collection('transactions').add({
+                              'fromPhone': sys.currentUserPhone,
+                              'toPhone': posPhone,
+                              'agentPhone': sys.currentUserPhone,
+                              'agentName': sys.currentUserName,
+                              'targetName': posName,
+                              'amount': debt,
+                              'type': 'debt_settlement',
+                              'title': 'تسوية دين قديم تلقائياً',
+                              'timestamp': FieldValue.serverTimestamp(),
+                            });
+                          } else if (debt > 0 && amount < debt) {
+                            _db.collection('transactions').add({
+                              'fromPhone': sys.currentUserPhone,
+                              'toPhone': posPhone,
+                              'agentPhone': sys.currentUserPhone,
+                              'agentName': sys.currentUserName,
+                              'targetName': posName,
+                              'amount': amount,
+                              'type': 'debt_settlement_partial',
+                              'title': 'تسوية جزء من الدين تلقائياً',
+                              'timestamp': FieldValue.serverTimestamp(),
+                            });
+                          }
+
+                          _play('success');
+                          if (mounted) {
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content: Text(
+                                      'تم التحويل وتسوية الديون إن وجدت ✅',
+                                      textDirection: TextDirection.rtl),
+                                  backgroundColor: Colors.green),
+                            );
+                          }
+                        } catch (e) {
+                          setDialogState(() => isSubmitting = false);
+                          _play('error');
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content: Text(e.toString(),
+                                      textDirection: TextDirection.rtl),
+                                  backgroundColor: Colors.red),
+                            );
+                          }
+                        }
+                      },
+                child: isSubmitting
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text('تحويل',
+                        style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------- إضافة / تعديل البقالة (مع خريطة) ----------
+  void _showAddOrEditPosModal(SystemProvider sys,
+      {Map<String, dynamic>? existingPos, String? initialPhone}) async {
+    _play('click');
+    final isEdit = existingPos != null;
+    String phone = initialPhone ?? existingPos?['phone'] ?? '';
+    String name = existingPos?['storeName'] ?? '';
+    String location = existingPos?['location'] ?? '';
+    double? lat = existingPos?['latitude']?.toDouble();
+    double? lng = existingPos?['longitude']?.toDouble();
+
+    Map<String, dynamic> relations = existingPos?['agent_relations'] ?? {};
+    Map<String, dynamic> myRel = relations[sys.currentUserPhone] ?? {};
+    String commission =
+        myRel['commission']?.toString().replaceAll('%', '') ?? '0';
+    double limit = (myRel['creditLimit'] ?? 0.0).toDouble();
+    final double oldLimit = limit;
+    List<String> allowedCats =
+        List<String>.from(myRel['allowedCategories'] ?? []);
+    bool isSubmitting = false;
+
+    // جلب الفئات المتاحة
+    var netSnap = await _db
+        .collection('networks')
+        .where('agentPhone', isEqualTo: sys.currentUserPhone)
+        .get();
+    List<Map<String, dynamic>> allAvailableCats = [];
+    for (var doc in netSnap.docs) {
+      List cats = doc['categories'] ?? [];
+      for (var c in cats) {
+        allAvailableCats.add({
+          'id': c['id'],
+          'name': '${doc['name']} - ${c['name']}',
+        });
+      }
+    }
+
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Padding(
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              top: 20,
+              left: 16,
+              right: 16),
+          child: Directionality(
+            textDirection: TextDirection.rtl,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    isEdit ? 'تعديل بيانات البقالة ⚙️' : 'ترقية زبون إلى بقالة 🏪',
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 15),
+                  if (!isEdit)
+                    TextField(
+                      enabled: initialPhone == null,
+                      controller: TextEditingController(text: phone),
+                      onChanged: (v) => phone = v,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(
+                        labelText: 'رقم هاتف الزبون',
+                        border: OutlineInputBorder(),
+                      ),
                     ),
-                    const SizedBox(height: 4),
-                    Text('الموقع: ${pos['location'] ?? ''}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                    const SizedBox(height: 10),
-                    Row(
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: TextEditingController(text: name),
+                    onChanged: (v) => name = v,
+                    decoration: const InputDecoration(
+                      labelText: 'اسم البقالة',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: TextEditingController(text: location),
+                    onChanged: (v) => location = v,
+                    decoration: const InputDecoration(
+                      labelText: 'الموقع (نص)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final picked = await _pickLocationOnMap(
+                              lat: lat, lng: lng);
+                          if (picked != null) {
+                            setModalState(() {
+                              lat = picked['lat'];
+                              lng = picked['lng'];
+                              location = picked['address'] ?? location;
+                            });
+                          }
+                        },
+                        icon: const Icon(Icons.map),
+                        label: Text(
+                            (lat != null && lng != null)
+                                ? 'تم تحديد الموقع ✅'
+                                : 'اختيار من الخريطة'),
+                      ),
+                    ],
+                  ),
+                  if (lat != null && lng != null)
+                    Text(
+                      'الإحداثيات: ${lat!.toStringAsFixed(4)}, ${lng!.toStringAsFixed(4)}',
+                      style:
+                          const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller:
+                              TextEditingController(text: limit.toString()),
+                          keyboardType: TextInputType.number,
+                          onChanged: (v) {
+                            setModalState(
+                                () => limit = double.tryParse(v) ?? 0);
+                          },
+                          decoration: InputDecoration(
+                            labelText: 'الحد الائتماني',
+                            border: const OutlineInputBorder(),
+                            errorText: (limit > sys.currentUserBalance &&
+                                    !isEdit)
+                                ? 'أكبر من رصيدك!'
+                                : null,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller:
+                              TextEditingController(text: commission),
+                          keyboardType: TextInputType.number,
+                          onChanged: (v) => commission = v,
+                          decoration: const InputDecoration(
+                            labelText: 'العمولة %',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (!isEdit && limit > 0)
+                    Container(
+                      margin: const EdgeInsets.only(top: 8),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8)),
+                      child: Text(
+                        'سيتم خصم $limit ريال من رصيدك عند الترقية.',
+                        style: const TextStyle(
+                            color: Colors.orange,
+                            fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  const SizedBox(height: 15),
+                  const Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      'تحديد الفئات المسموح بيعها:',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.purple),
+                    ),
+                  ),
+                  if (allAvailableCats.isEmpty)
+                    const Text(
+                      'لم تقم بإضافة فئات في قسم المايكروتيك بعد!',
+                      style: TextStyle(color: Colors.red, fontSize: 12),
+                    ),
+                  ...allAvailableCats.map((cat) => CheckboxListTile(
+                        title: Text(cat['name'],
+                            style: const TextStyle(fontSize: 13)),
+                        value: allowedCats.contains(cat['id']),
+                        activeColor: Colors.purple,
+                        onChanged: (val) {
+                          setModalState(() {
+                            val!
+                                ? allowedCats.add(cat['id'])
+                                : allowedCats.remove(cat['id']);
+                          });
+                        },
+                      )),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.purple),
+                      onPressed: (isSubmitting ||
+                              (!isEdit && limit > sys.currentUserBalance))
+                          ? null
+                          : () async {
+                              if (phone.isEmpty ||
+                                  name.isEmpty ||
+                                  location.isEmpty) {
+                                _play('error');
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text(
+                                          'الرقم والاسم والموقع حقول إجبارية!',
+                                          textDirection:
+                                              TextDirection.rtl),
+                                      backgroundColor: Colors.red),
+                                );
+                                return;
+                              }
+                              setModalState(() => isSubmitting = true);
+                              try {
+                                if (isEdit) {
+                                  await sys.updatePosDetails(
+                                    posPhone: phone,
+                                    storeName: name,
+                                    location: location,
+                                    creditLimit: limit,
+                                    commission: '$commission%',
+                                    allowedCategories: allowedCats,
+                                    oldCreditLimit: oldLimit,
+                                  );
+                                } else {
+                                  await sys.upgradeUserToPos(
+                                    posPhone: phone,
+                                    storeName: name,
+                                    location: location,
+                                    creditLimit: limit,
+                                    commission: '$commission%',
+                                    allowedCategories: allowedCats,
+                                    creditDeduction: limit,
+                                  );
+                                }
+                                // تحديث الإحداثيات في وثيقة المستخدم
+                                if (lat != null && lng != null) {
+                                  await _db
+                                      .collection('users')
+                                      .doc(phone)
+                                      .update({
+                                    'latitude': lat,
+                                    'longitude': lng,
+                                  });
+                                }
+                                _play('success');
+                                Navigator.pop(ctx);
+                              } catch (e) {
+                                setModalState(() => isSubmitting = false);
+                                _play('error');
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                        content: Text(e.toString(),
+                                            textDirection:
+                                                TextDirection.rtl),
+                                        backgroundColor: Colors.red),
+                                  );
+                                }
+                              }
+                            },
+                      child: isSubmitting
+                          ? const CircularProgressIndicator(
+                              color: Colors.white)
+                          : Text(
+                              isEdit ? 'حفظ التعديلات' : 'اعتماد وترقية',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------- خريطة اختيار الموقع ----------
+  Future<Map<String, dynamic>?> _pickLocationOnMap(
+      {double? lat, double? lng}) async {
+    double selectedLat = lat ?? 15.3694;
+    double selectedLng = lng ?? 44.1910;
+    String selectedAddress = '';
+    final searchController = TextEditingController();
+    List<Map<String, dynamic>> searchResults = [];
+    bool isSearching = false;
+
+    Future<List<Map<String, dynamic>>> _search(String q) async {
+      try {
+        final url = Uri.parse(
+            'https://nominatim.openstreetmap.org/search?format=json&q=${Uri.encodeComponent(q)}&limit=5');
+        final res = await http.get(url);
+        if (res.statusCode == 200) {
+          final List<dynamic> data = jsonDecode(res.body);
+          return data.map((e) {
+            return {
+              'name': e['display_name'],
+              'lat': double.parse(e['lat']),
+              'lon': double.parse(e['lon']),
+            };
+          }).toList();
+        }
+      } catch (_) {}
+      return [];
+    }
+
+    Future<String> _reverse(double lat, double lon) async {
+      try {
+        final url = Uri.parse(
+            'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lon');
+        final res = await http.get(url);
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
+          return data['display_name'] ?? '';
+        }
+      } catch (_) {}
+      return '';
+    }
+
+    return await showDialog<Map<String, dynamic>?>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setMapState) => AlertDialog(
+          title: const Text('اختر الموقع على الخريطة'),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 500,
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: searchController,
+                        decoration: const InputDecoration(
+                          hintText: 'ابحث عن مكان...',
+                          prefixIcon: Icon(Icons.search),
+                        ),
+                        onChanged: (v) async {
+                          if (v.trim().length < 3) {
+                            setMapState(() => searchResults = []);
+                            return;
+                          }
+                          setMapState(() => isSearching = true);
+                          final results = await _search(v.trim());
+                          setMapState(() {
+                            searchResults = results;
+                            isSearching = false;
+                          });
+                        },
+                      ),
+                    ),
+                    if (isSearching)
+                      const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child:
+                            CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                  ],
+                ),
+                if (searchResults.isNotEmpty)
+                  SizedBox(
+                    height: 100,
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: searchResults.length,
+                      itemBuilder: (context, index) {
+                        final item = searchResults[index];
+                        return ListTile(
+                          title: Text(item['name'],
+                              style: const TextStyle(fontSize: 12)),
+                          onTap: () {
+                            setMapState(() {
+                              selectedLat = item['lat'];
+                              selectedLng = item['lon'];
+                              selectedAddress = item['name'];
+                              searchResults = [];
+                              searchController.text = item['name'];
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                Expanded(
+                  child: FlutterMap(
+                    options: MapOptions(
+                      initialCenter: LatLng(selectedLat, selectedLng),
+                      initialZoom: 13.0,
+                      onTap: (tapPosition, point) {
+                        setMapState(() {
+                          selectedLat = point.latitude;
+                          selectedLng = point.longitude;
+                        });
+                        _reverse(point.latitude, point.longitude)
+                            .then((addr) {
+                          if (addr.isNotEmpty) {
+                            setMapState(
+                                () => selectedAddress = addr);
+                          }
+                        });
+                      },
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate:
+                            'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      ),
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: LatLng(selectedLat, selectedLng),
+                            width: 40,
+                            height: 40,
+                            child: const Icon(Icons.location_pin,
+                                color: Colors.red, size: 40),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                if (selectedAddress.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Text('الموقع: $selectedAddress',
+                        style: const TextStyle(
+                            fontSize: 12, color: Colors.grey)),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx, {
+                  'lat': selectedLat,
+                  'lng': selectedLng,
+                  'address': selectedAddress,
+                });
+              },
+              child: const Text('تأكيد الموقع'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---------- إرسال تذكير مع خيار تخصيص الحد لكل بقالة ----------
+  void _showNotificationAndThresholdDialog(
+      SystemProvider sys, String posPhone, String posName) {
+    _play('click');
+    // قراءة القيمة المخصصة الحالية لهذه البقالة
+    _db.collection('users').doc(posPhone).get().then((doc) {
+      final relations =
+          (doc.data() as Map<String, dynamic>)['agent_relations']
+              as Map<String, dynamic>?;
+      final myRel = relations?[sys.currentUserPhone] as Map<String, dynamic>?;
+      final customThreshold =
+          myRel?['warningThreshold'] as double? ?? _globalWarningThreshold;
+
+      // ignore: use_build_context_synchronously
+      showDialog(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              title: Text('إعدادات $posName'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('حد الإنذار الخاص (ريال):'),
+                  TextField(
+                    keyboardType: TextInputType.number,
+                    controller: TextEditingController(
+                        text: customThreshold.toString()),
+                    onChanged: (v) {
+                      final val = double.tryParse(v);
+                      if (val != null) {
+                        // تحديث Firestore
+                        _db.collection('users').doc(posPhone).update({
+                          'agent_relations.${sys.currentUserPhone}.warningThreshold':
+                              val,
+                        });
+                      }
+                    },
+                    decoration: const InputDecoration(
+                        border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 15),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      _db.collection('notifications').add({
+                        'targetPhones': [posPhone],
+                        'title': 'تذكير بالسداد ⏰',
+                        'body':
+                            'الرجاء سداد المبلغ المستحق عليك إلى الوكيل ${sys.currentUserName}.',
+                        'timestamp': FieldValue.serverTimestamp(),
+                        'isRead': false,
+                        'readBy': [],
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('تم إرسال تذكير للبقالة.',
+                                textDirection: TextDirection.rtl)),
+                      );
+                      Navigator.pop(ctx);
+                    },
+                    icon: const Icon(Icons.notifications_active,
+                        color: Colors.orange),
+                    label: const Text('إرسال تذكير الآن'),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('إغلاق')),
+              ],
+            ),
+          ),
+        ),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sys = Provider.of<SystemProvider>(context);
+    final colors = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      appBar: const CustomHeader(title: 'إدارة نقاط البيع الذكية'),
+      drawer: CustomAgentDrawer(
+        agentName: sys.currentUserName,
+        phoneNumber: sys.currentUserPhone,
+        role: 'وكيل',
+        currentBalance: sys.currentUserBalance,
+      ),
+      body: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Column(
+          children: [
+            Container(
+              color: colors.primaryContainer,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
                       children: [
                         Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () => _showRepaymentModal(sys, pos['phone'], pos['storeName'] ?? ''),
-                            icon: const Icon(Icons.money, size: 16, color: Colors.white),
-                            label: const Text('استلام دفعة', style: TextStyle(color: Colors.white, fontSize: 12)),
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                          child: TextField(
+                            onChanged: (v) => setState(
+                                () => _searchQuery = v.trim().toLowerCase()),
+                            decoration: InputDecoration(
+                              hintText: 'بحث برقم أو اسم البقالة...',
+                              filled: true,
+                              fillColor: colors.onPrimary,
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide.none),
+                              contentPadding:
+                                  const EdgeInsets.symmetric(horizontal: 15),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
-                        // 🆕 زر إرسال تذكير (إشعار)
-                        IconButton(
-                          icon: const Icon(Icons.notifications_active, color: Colors.orange),
-                          tooltip: 'إرسال تذكير',
-                          onPressed: () {
-                            _db.collection('notifications').add({
-                              'targetPhones': [pos['phone']],
-                              'title': 'تذكير بالسداد ⏰',
-                              'body': 'الرجاء سداد المبلغ المستحق عليك ($debtAmount ريال) إلى الوكيل ${sys.currentUserName}.',
-                              'timestamp': FieldValue.serverTimestamp(),
-                              'isRead': false,
-                              'readBy': [],
-                            });
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال تذكير للبقالة.', textDirection: TextDirection.rtl)));
-                          },
+                        Container(
+                          decoration: BoxDecoration(
+                            color: colors.primary.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: PopupMenuButton<String>(
+                            icon: Icon(Icons.filter_list,
+                                color: colors.onPrimaryContainer),
+                            onSelected: (v) =>
+                                setState(() => _selectedFilter = v),
+                            itemBuilder: (c) => [
+                              const PopupMenuItem(
+                                  value: 'الكل', child: Text('الكل')),
+                              const PopupMenuItem(
+                                  value: 'نشط', child: Text('النشطة 🟢')),
+                              const PopupMenuItem(
+                                  value: 'مجمّد',
+                                  child: Text('المجمدة 🔴')),
+                              const PopupMenuItem(
+                                  value: 'منخفض',
+                                  child: Text('رصيد منخفض ⚠️')),
+                            ],
+                          ),
                         ),
                       ],
                     ),
+                  ),
+                  TabBar(
+                    controller: _tabController,
+                    labelColor: colors.onPrimaryContainer,
+                    unselectedLabelColor:
+                        colors.onSurface.withOpacity(0.6),
+                    indicatorColor: colors.primary,
+                    indicatorWeight: 4,
+                    labelStyle: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 14),
+                    tabs: const [
+                      Tab(
+                          icon: Icon(Icons.store_mall_directory),
+                          text: 'البقالات'),
+                      Tab(
+                          icon: Icon(Icons.warning_amber_rounded),
+                          text: 'الديون والإنذارات'),
+                      Tab(
+                          icon: Icon(Icons.dashboard_outlined),
+                          text: 'نظرة عامة'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildActivePosTab(sys, colors),
+                  _buildDebtTab(sys, colors),
+                  _buildOverviewTab(sys, colors),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showAddOrEditPosModal(sys),
+        backgroundColor: colors.primary,
+        icon: const Icon(Icons.add_business, color: Colors.white),
+        label: const Text('إضافة بقالة',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      ),
+    );
+  }
+
+  // ---------- التبويب الأول: البقالات النشطة ----------
+  Widget _buildActivePosTab(SystemProvider sys, ColorScheme colors) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _db
+          .collection('users')
+          .where('role', isEqualTo: 'pos')
+          .where('pos_agents', arrayContains: sys.currentUserPhone)
+          .limit(50)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return _buildErrorWidget('تعذر تحميل البقالات', colors);
+        }
+        var docs = snapshot.data!.docs.where((d) {
+          final data = d.data() as Map<String, dynamic>;
+          final sName = (data['storeName'] ?? '').toLowerCase();
+          final oName = (data['name'] ?? '').toLowerCase();
+          final phone = data['phone'] ?? '';
+          final wallets = data['wallets'] as Map<String, dynamic>? ?? {};
+          final posWalletBal =
+              (wallets[sys.currentUserPhone] ?? 0.0).toDouble();
+          final status = data['status'] ?? 'نشط';
+
+          final matchesSearch = _searchQuery.isEmpty ||
+              sName.contains(_searchQuery) ||
+              oName.contains(_searchQuery) ||
+              phone.contains(_searchQuery);
+
+          bool matchesFilter = true;
+          switch (_selectedFilter) {
+            case 'منخفض':
+              matchesFilter = posWalletBal < _globalWarningThreshold;
+              break;
+            case 'نشط':
+              matchesFilter = status == 'نشط';
+              break;
+            case 'مجمّد':
+              matchesFilter = status == 'مجمّد';
+              break;
+            default:
+              matchesFilter = true;
+          }
+          return matchesSearch && matchesFilter;
+        }).toList();
+
+        if (docs.isEmpty) {
+          return Center(
+            child: Text('لا توجد بقالات مطابقة.',
+                style: TextStyle(color: colors.onSurface.withOpacity(0.6))),
+          );
+        }
+
+        return RefreshIndicator(
+          onRefresh: () async => setState(() {}),
+          child: ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: docs.length,
+            itemBuilder: (context, i) {
+              final pos = docs[i].data() as Map<String, dynamic>;
+              final isFrozen = pos['status'] == 'مجمّد';
+              final wallets =
+                  pos['wallets'] as Map<String, dynamic>? ?? {};
+              final posWalletBal =
+                  (wallets[sys.currentUserPhone] ?? 0.0).toDouble();
+              final relations =
+                  pos['agent_relations'] as Map<String, dynamic>? ?? {};
+              final myRel =
+                  relations[sys.currentUserPhone] as Map<String, dynamic>? ?? {};
+              final creditLimit =
+                  (myRel['creditLimit'] ?? 0.0).toDouble();
+              final commission = myRel['commission'] ?? '0%';
+              final overLimit = posWalletBal < -creditLimit;
+
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                    side: BorderSide(
+                        color: overLimit
+                            ? Colors.red
+                            : (isFrozen
+                                ? Colors.red.shade300
+                                : Colors.grey.shade200),
+                        width: overLimit ? 2 : 1)),
+                color: overLimit ? Colors.red.shade50 : null,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          CircleAvatar(
+                            backgroundColor: isFrozen
+                                ? Colors.red.shade100
+                                : colors.primaryContainer,
+                            radius: 25,
+                            child: Icon(Icons.store,
+                                color: isFrozen
+                                    ? Colors.red
+                                    : colors.primary),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                Text(pos['storeName'] ?? '',
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                        decoration: isFrozen
+                                            ? TextDecoration.lineThrough
+                                            : null,
+                                        color: colors.onSurface)),
+                                Text(
+                                    '📍 ${pos['location'] ?? 'بدون عنوان'}',
+                                    style: const TextStyle(
+                                        color: Colors.blueGrey,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold)),
+                                Text(
+                                    'المالك: ${pos['name']} | رقم: ${pos['phone']}',
+                                    style: const TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 11)),
+                                if (overLimit)
+                                  const Text(
+                                      '⚠️ تجاوزت الحد الائتماني!',
+                                      style: TextStyle(
+                                          color: Colors.red,
+                                          fontWeight:
+                                              FontWeight.bold,
+                                          fontSize: 11)),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.edit,
+                                color: colors.primary),
+                            onPressed: () => _showAddOrEditPosModal(
+                                sys,
+                                existingPos: pos),
+                          ),
+                        ],
+                      ),
+                      const Divider(),
+                      Row(
+                        mainAxisAlignment:
+                            MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                const Text('رصيد المحفظة:',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.grey)),
+                                Text(
+                                    '${NumberFormat('#,##0').format(posWalletBal)} ريال',
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                        color: (posWalletBal <
+                                                _globalWarningThreshold)
+                                            ? Colors.red
+                                            : colors.onSurface)),
+                              ]),
+                          Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.center,
+                              children: [
+                                const Text('الحد الائتماني:',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.grey)),
+                                Text(
+                                    '${NumberFormat('#,##0').format(creditLimit)} ريال',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                        color: Colors.blue)),
+                              ]),
+                          Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.end,
+                              children: [
+                                const Text('العمولة:',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.grey)),
+                                Text(commission,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                        color: Colors.purple)),
+                              ]),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 2,
+                            child: ElevatedButton.icon(
+                              onPressed: isFrozen
+                                  ? null
+                                  : () => _showFeedWalletModal(
+                                      sys, pos['phone'],
+                                      pos['storeName'] ?? ''),
+                              icon: const Icon(Icons.add_card,
+                                  size: 16, color: Colors.white),
+                              label: const Text('تغذية محفظتها',
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12)),
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: colors.primary),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () =>
+                                  _showRepaymentModal(
+                                      sys,
+                                      pos['phone'],
+                                      pos['storeName'] ?? '',
+                                      -posWalletBal > 0
+                                          ? -posWalletBal
+                                          : 0),
+                              style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.blue),
+                              child: const Text('استلام دفعة',
+                                  style: TextStyle(fontSize: 11)),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () {
+                                _play('click');
+                                _db
+                                    .collection('users')
+                                    .doc(pos['phone'])
+                                    .update({
+                                  'status':
+                                      isFrozen ? 'نشط' : 'مجمّد'
+                                });
+                              },
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: isFrozen
+                                    ? Colors.green
+                                    : Colors.red,
+                                side: BorderSide(
+                                    color: isFrozen
+                                        ? Colors.green
+                                        : Colors.red),
+                              ),
+                              child: Text(
+                                  isFrozen ? 'تنشيط' : 'تجميد',
+                                  style:
+                                      const TextStyle(fontSize: 11)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  // ---------- التبويب الثاني: الديون والإنذارات ----------
+  Widget _buildDebtTab(SystemProvider sys, ColorScheme colors) {
+    return Column(
+      children: [
+        // شريط إعدادات الإنذار
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          color: Colors.orange.shade50,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('حد الإنذار المبكر (عالمي):',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 12)),
+              TextButton.icon(
+                onPressed: _showGlobalThresholdDialog,
+                icon: const Icon(Icons.settings, size: 16),
+                label: Text(
+                    'المستوى: ${NumberFormat('#,##0').format(_globalWarningThreshold)} ريال'),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: _db
+                .collection('users')
+                .where('role', isEqualTo: 'pos')
+                .where('pos_agents', arrayContains: sys.currentUserPhone)
+                .limit(50)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return _buildErrorWidget('تعذر تحميل الديون', colors);
+              }
+              var docs = snapshot.data!.docs.where((d) {
+                final data = d.data() as Map<String, dynamic>;
+                final wallets =
+                    data['wallets'] as Map<String, dynamic>? ?? {};
+                final bal =
+                    (wallets[sys.currentUserPhone] ?? 0.0).toDouble();
+                return bal < 0; // مدينة فقط
+              }).toList();
+
+              // فرز الديون حسب الأكبر (الأعلى ديناً أولاً)
+              docs.sort((a, b) {
+                final balA = ((a.data() as Map<String, dynamic>)['wallets']
+                        as Map<String, dynamic>?)[sys.currentUserPhone]
+                    .toDouble();
+                final balB = ((b.data() as Map<String, dynamic>)['wallets']
+                        as Map<String, dynamic>?)[sys.currentUserPhone]
+                    .toDouble();
+                return balB.compareTo(balA); // من الأعلى ديناً للأقل
+              });
+
+              if (docs.isEmpty) {
+                return Center(
+                  child: Text('لا توجد ديون حالياً. 👏',
+                      style: TextStyle(
+                          color: colors.onSurface.withOpacity(0.6))),
+                );
+              }
+
+              return RefreshIndicator(
+                onRefresh: () async => setState(() {}),
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: docs.length,
+                  itemBuilder: (context, i) {
+                    final pos =
+                        docs[i].data() as Map<String, dynamic>;
+                    final wallets =
+                        pos['wallets'] as Map<String, dynamic>? ?? {};
+                    final debtAmount =
+                        -(wallets[sys.currentUserPhone] ?? 0.0)
+                            .toDouble();
+                    final relations =
+                        pos['agent_relations'] as Map<
+                            String, dynamic>? ?? {};
+                    final myRel = relations[sys.currentUserPhone]
+                        as Map<String, dynamic>? ?? {};
+                    final customThreshold =
+                        myRel['warningThreshold'] as double? ??
+                            _globalWarningThreshold;
+                    // الإنذار إذا كان الدين > قيمة مخصصة (نقارن بالمبلغ الإيجابي)
+                    final isWarning = debtAmount > customThreshold;
+
+                    return Card(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(
+                          color: isWarning
+                              ? Colors.red
+                              : Colors.orange.shade300,
+                          width: 2,
+                        ),
+                      ),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment:
+                                  MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                      pos['storeName'] ?? '',
+                                      style: TextStyle(
+                                          fontWeight:
+                                              FontWeight.bold,
+                                          fontSize: 15,
+                                          color: colors
+                                              .onSurface)),
+                                ),
+                                if (isWarning)
+                                  const Icon(Icons.warning_amber,
+                                      color: Colors.red),
+                                Text(
+                                  '${NumberFormat('#,##0').format(debtAmount)} ريال',
+                                  style: const TextStyle(
+                                      color: Colors.red,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                                'الموقع: ${pos['location'] ?? ''}',
+                                style: const TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 12)),
+                            if (isWarning)
+                              const Text('⚠️ تجاوز حد الإنذار المبكر',
+                                  style: TextStyle(
+                                      color: Colors.red,
+                                      fontSize: 11)),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: () =>
+                                        _showRepaymentModal(
+                                            sys,
+                                            pos['phone'],
+                                            pos['storeName'] ??
+                                                '',
+                                            debtAmount),
+                                    icon: const Icon(Icons.money,
+                                        size: 16,
+                                        color: Colors.white),
+                                    label: const Text('استلام دفعة',
+                                        style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 12)),
+                                    style:
+                                        ElevatedButton.styleFrom(
+                                            backgroundColor:
+                                                Colors.blue),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: const Icon(
+                                      Icons.notifications_active,
+                                      color: Colors.orange),
+                                  tooltip:
+                                      'إرسال تذكير وتحديد الإنذار',
+                                  onPressed: () =>
+                                      _showNotificationAndThresholdDialog(
+                                          sys,
+                                          pos['phone'],
+                                          pos['storeName'] ?? ''),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---------- التبويب الثالث: نظرة عامة ----------
+  Widget _buildOverviewTab(SystemProvider sys, ColorScheme colors) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _db
+          .collection('users')
+          .where('role', isEqualTo: 'pos')
+          .where('pos_agents', arrayContains: sys.currentUserPhone)
+          .limit(50)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return _buildErrorWidget('تعذر تحميل البيانات', colors);
+        }
+        final docs = snapshot.data!.docs;
+        final List<Map<String, dynamic>> posList =
+            docs.map((d) => d.data() as Map<String, dynamic>).toList();
+
+        // حساب الإحصاءات
+        int totalPos = posList.length;
+        double totalBalance = 0;
+        double totalDebt = 0;
+        for (var pos in posList) {
+          final wallets =
+              pos['wallets'] as Map<String, dynamic>? ?? {};
+          final bal =
+              (wallets[sys.currentUserPhone] ?? 0.0).toDouble();
+          totalBalance += bal > 0 ? bal : 0;
+          totalDebt += bal < 0 ? -bal : 0;
+        }
+        double avgBalance = totalPos > 0 ? totalBalance / totalPos : 0;
+
+        // أفضل البقالات (أعلى رصيد) وأكثرها ديناً
+        final sortedByBalance = List<Map<String, dynamic>>.from(posList)
+          ..sort((a, b) {
+            final balA = ((a['wallets'] as Map<String, dynamic>?)?[
+                        sys.currentUserPhone] ??
+                    0.0)
+                .toDouble();
+            final balB = ((b['wallets'] as Map<String, dynamic>?)?[
+                        sys.currentUserPhone] ??
+                    0.0)
+                .toDouble();
+            return balB.compareTo(balA);
+          });
+        final sortedByDebt = List<Map<String, dynamic>>.from(posList)
+          ..sort((a, b) {
+            final balA = ((a['wallets'] as Map<String, dynamic>?)?[
+                        sys.currentUserPhone] ??
+                    0.0)
+                .toDouble();
+            final balB = ((b['wallets'] as Map<String, dynamic>?)?[
+                        sys.currentUserPhone] ??
+                    0.0)
+                .toDouble();
+            return balA.compareTo(balB); // الأكثر ديناً (الأقل)
+          });
+
+        final topBalance =
+            sortedByBalance.take(3).toList();
+        final topDebt =
+            sortedByDebt.where((p) {
+                  final bal = ((p['wallets'] as Map<String, dynamic>?)?[
+                              sys.currentUserPhone] ??
+                          0.0)
+                      .toDouble();
+                  return bal < 0;
+                }).take(3).toList();
+
+        return RefreshIndicator(
+          onRefresh: () async => setState(() {}),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // بطاقات الإحصاءات
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildStatCard(colors,
+                          title: 'عدد البقالات',
+                          value: totalPos.toString(),
+                          icon: Icons.store,
+                          color: colors.primary),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _buildStatCard(colors,
+                          title: 'إجمالي الأرصدة',
+                          value:
+                              '${NumberFormat('#,##0').format(totalBalance)} ريال',
+                          icon: Icons.account_balance_wallet,
+                          color: Colors.green),
+                    ),
                   ],
                 ),
-              ),
-            );
-          }
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildStatCard(colors,
+                          title: 'إجمالي الديون',
+                          value:
+                              '${NumberFormat('#,##0').format(totalDebt)} ريال',
+                          icon: Icons.warning_amber,
+                          color: Colors.red),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _buildStatCard(colors,
+                          title: 'متوسط الرصيد',
+                          value:
+                              '${NumberFormat('#,##0').format(avgBalance)} ريال',
+                          icon: Icons.analytics,
+                          color: Colors.blue),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                if (topBalance.isNotEmpty) ...[
+                  Text('أفضل 3 بقالات رصيداً',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: colors.onSurface)),
+                  const SizedBox(height: 8),
+                  ...topBalance.map((pos) => Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          leading: Icon(Icons.store,
+                              color: colors.primary),
+                          title: Text(pos['storeName'] ?? '',
+                              style: TextStyle(
+                                  color: colors.onSurface)),
+                          trailing: Text(
+                              '${NumberFormat('#,##0').format(((pos['wallets'] as Map<String, dynamic>?)?[sys.currentUserPhone] ?? 0.0).toDouble())} ريال',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green)),
+                        ),
+                      )),
+                ],
+                if (topDebt.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  Text('أكثر البقالات ديوناً',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: colors.onSurface)),
+                  const SizedBox(height: 8),
+                  ...topDebt.map((pos) {
+                    final debt = -(((pos['wallets']
+                                as Map<String, dynamic>?)?[
+                            sys.currentUserPhone] ??
+                        0.0)
+                        .toDouble());
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: Icon(Icons.store,
+                            color: Colors.red),
+                        title: Text(pos['storeName'] ?? '',
+                            style: TextStyle(
+                                color: colors.onSurface)),
+                        trailing: Text(
+                            '${NumberFormat('#,##0').format(debt)} ريال',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red)),
+                      ),
+                    );
+                  }),
+                ],
+              ],
+            ),
+          ),
         );
-      }
+      },
+    );
+  }
+
+  Widget _buildStatCard(ColorScheme colors,
+      {required String title,
+      required String value,
+      required IconData icon,
+      required Color color}) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 8),
+          Text(value,
+              style:
+                  TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: color)),
+          const SizedBox(height: 4),
+          Text(title, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorWidget(String message, ColorScheme colors) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.error_outline, size: 50, color: Colors.red.shade300),
+          const SizedBox(height: 10),
+          Text(message,
+              style: TextStyle(color: colors.onSurface.withOpacity(0.7))),
+        ],
+      ),
     );
   }
 }
