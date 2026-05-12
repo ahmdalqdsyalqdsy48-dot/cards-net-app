@@ -97,6 +97,23 @@ class ThemeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---------- دوال التوافق مع الملفات القديمة (لا تحذف) ----------
+  Color get adaptiveTextColor {
+    final colors = _buildTheme(_isDark ? Brightness.dark : Brightness.light).colorScheme;
+    return colors.onSurface;
+  }
+
+  void setUserCustomColor(Color color) {
+    changeColor(color);
+  }
+
+  void resetToDefault() {
+    resetToDefaultColor();
+    changeFontFamily(_defaultFontFamily);
+    changeFontSizeScale(_defaultFontSizeScale);
+    toggleTheme(false);
+  }
+
   // ---------- بناء الثيمات (Light & Dark) ----------
   ThemeData get lightTheme => _buildTheme(Brightness.light);
   ThemeData get darkTheme => _buildTheme(Brightness.dark);
@@ -145,7 +162,7 @@ class ThemeProvider extends ChangeNotifier {
         backgroundColor: colorScheme.primary,
         foregroundColor: colorScheme.onPrimary,
       ),
-      tabBarTheme: TabBarTheme(
+      tabBarTheme: TabBarThemeData(
         labelColor: colorScheme.onPrimaryContainer,
         unselectedLabelColor: colorScheme.onSurfaceVariant,
         indicatorColor: colorScheme.primary,
@@ -156,7 +173,7 @@ class ThemeProvider extends ChangeNotifier {
         labelStyle: TextStyle(color: colorScheme.onSurface),
         secondaryLabelStyle: TextStyle(color: colorScheme.onPrimaryContainer),
       ),
-      dialogTheme: DialogTheme(
+      dialogTheme: DialogThemeData(
         backgroundColor: colorScheme.surface,
         titleTextStyle: textTheme.titleLarge?.copyWith(color: colorScheme.onSurface),
         contentTextStyle: textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
