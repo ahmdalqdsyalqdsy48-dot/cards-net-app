@@ -106,6 +106,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
     final amountController = TextEditingController();
     final noteController = TextEditingController();
     bool isSubmitting = false;
+    final colors = Theme.of(context).colorScheme;
 
     showDialog(
       context: context,
@@ -120,7 +121,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                 Text(
                   'الدين الحالي: ${NumberFormat('#,##0').format(currentDebt)} ريال',
                   style: TextStyle(
-                      color: Colors.red, fontWeight: FontWeight.bold),
+                      color: colors.error, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 10),
                 TextField(
@@ -143,8 +144,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
                       'المبلغ المتبقي بعد السداد: ${NumberFormat('#,##0').format(currentDebt - (double.tryParse(amountController.text) ?? 0))} ريال',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, color: Colors.blue),
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, color: colors.primary),
                     ),
                   ),
               ],
@@ -154,7 +155,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                   onPressed: () => Navigator.pop(ctx),
                   child: const Text('إلغاء')),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: colors.primary),
                 onPressed: isSubmitting
                     ? null
                     : () async {
@@ -191,8 +193,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                       },
                 child: isSubmitting
                     ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text('تأكيد الاستلام',
-                        style: TextStyle(color: Colors.white)),
+                    : Text('تأكيد الاستلام',
+                        style: TextStyle(color: colors.onPrimary)),
               ),
             ],
           ),
@@ -207,6 +209,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
     _play('click');
     final amountController = TextEditingController();
     bool isSubmitting = false;
+    final colors = Theme.of(context).colorScheme;
 
     showDialog(
       context: context,
@@ -220,8 +223,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
               children: [
                 Text(
                   'رصيدك الحالي: ${NumberFormat('#,##0').format(sys.currentUserBalance)} ريال',
-                  style: const TextStyle(
-                      color: Colors.green, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                      color: colors.primary, fontWeight: FontWeight.bold),
                 ),
                 // عرض رصيد البقالة الحالي (إن أمكن)
                 FutureBuilder<DocumentSnapshot>(
@@ -236,7 +239,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                     return Text(
                       'رصيد البقالة الحالي: ${NumberFormat('#,##0').format(bal)} ريال',
                       style: TextStyle(
-                          color: bal < 0 ? Colors.red : Colors.blueGrey,
+                          color: bal < 0 ? colors.error : colors.onSurfaceVariant,
                           fontWeight: FontWeight.bold),
                     );
                   },
@@ -258,7 +261,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                   onPressed: () => Navigator.pop(ctx),
                   child: const Text('إلغاء')),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.purple),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: colors.primary),
                 onPressed: isSubmitting
                     ? null
                     : () async {
@@ -344,8 +348,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                       },
                 child: isSubmitting
                     ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text('تحويل',
-                        style: TextStyle(color: Colors.white)),
+                    : Text('تحويل',
+                        style: TextStyle(color: colors.onPrimary)),
               ),
             ],
           ),
@@ -374,6 +378,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
     List<String> allowedCats =
         List<String>.from(myRel['allowedCategories'] ?? []);
     bool isSubmitting = false;
+    final colors = Theme.of(context).colorScheme;
 
     // جلب الفئات المتاحة
     var netSnap = await _db
@@ -411,8 +416,10 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                 children: [
                   Text(
                     isEdit ? 'تعديل بيانات البقالة ⚙️' : 'ترقية زبون إلى بقالة 🏪',
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: colors.onSurface),
                   ),
                   const SizedBox(height: 15),
                   if (!isEdit)
@@ -469,7 +476,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                   if (lat != null && lng != null)
                     Text(
                       'الإحداثيات: ${lat!.toStringAsFixed(4)}, ${lng!.toStringAsFixed(4)}',
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
                     ),
                   const SizedBox(height: 12),
                   Row(
@@ -513,35 +520,35 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                       margin: const EdgeInsets.only(top: 8),
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                          color: Colors.orange.withOpacity(0.1),
+                          color: colors.errorContainer.withOpacity(0.3),
                           borderRadius: BorderRadius.circular(8)),
                       child: Text(
                         'سيتم خصم $limit ريال من رصيدك عند الترقية.',
-                        style: const TextStyle(
-                            color: Colors.orange,
+                        style: TextStyle(
+                            color: colors.error,
                             fontWeight: FontWeight.bold),
                       ),
                     ),
                   const SizedBox(height: 15),
-                  const Align(
+                  Align(
                     alignment: Alignment.centerRight,
                     child: Text(
                       'تحديد الفئات المسموح بيعها:',
                       style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          color: Colors.purple),
+                          color: colors.primary),
                     ),
                   ),
                   if (allAvailableCats.isEmpty)
-                    const Text(
+                    Text(
                       'لم تقم بإضافة فئات في قسم المايكروتيك بعد!',
-                      style: TextStyle(color: Colors.red, fontSize: 12),
+                      style: TextStyle(color: colors.error, fontSize: 12),
                     ),
                   ...allAvailableCats.map((cat) => CheckboxListTile(
                         title: Text(cat['name'],
-                            style: const TextStyle(fontSize: 13)),
+                            style: TextStyle(fontSize: 13, color: colors.onSurface)),
                         value: allowedCats.contains(cat['id']),
-                        activeColor: Colors.purple,
+                        activeColor: colors.primary,
                         onChanged: (val) {
                           setModalState(() {
                             val!
@@ -556,7 +563,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                     height: 50,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.purple),
+                          backgroundColor: colors.primary),
                       onPressed: (isSubmitting ||
                               (!isEdit && limit > sys.currentUserBalance))
                           ? null
@@ -629,8 +636,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                               color: Colors.white)
                           : Text(
                               isEdit ? 'حفظ التعديلات' : 'اعتماد وترقية',
-                              style: const TextStyle(
-                                  color: Colors.white,
+                              style: TextStyle(
+                                  color: colors.onPrimary,
                                   fontWeight: FontWeight.bold),
                             ),
                     ),
@@ -825,6 +832,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
   void _showNotificationAndThresholdDialog(
       SystemProvider sys, String posPhone, String posName) {
     _play('click');
+    final colors = Theme.of(context).colorScheme;
     // قراءة القيمة المخصصة الحالية لهذه البقالة
     _db.collection('users').doc(posPhone).get().then((doc) {
       final relations =
@@ -882,8 +890,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                       );
                       Navigator.pop(ctx);
                     },
-                    icon: const Icon(Icons.notifications_active,
-                        color: Colors.orange),
+                    icon: Icon(Icons.notifications_active,
+                        color: colors.primary),
                     label: const Text('إرسال تذكير الآن'),
                   ),
                 ],
@@ -900,6 +908,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
     });
   }
 
+  // ========== بناء الواجهة الرئيسية ==========
   @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
@@ -973,7 +982,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                     controller: _tabController,
                     labelColor: colors.onPrimaryContainer,
                     unselectedLabelColor:
-                        colors.onSurface.withOpacity(0.6),
+                        colors.onSurfaceVariant,
                     indicatorColor: colors.primary,
                     indicatorWeight: 4,
                     labelStyle: const TextStyle(
@@ -1010,8 +1019,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
         onPressed: () => _showAddOrEditPosModal(sys),
         backgroundColor: colors.primary,
         icon: const Icon(Icons.add_business, color: Colors.white),
-        label: const Text('إضافة بقالة',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        label: Text('إضافة بقالة',
+            style: TextStyle(color: colors.onPrimary, fontWeight: FontWeight.bold)),
       ),
     );
   }
@@ -1067,7 +1076,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
         if (docs.isEmpty) {
           return Center(
             child: Text('لا توجد بقالات مطابقة.',
-                style: TextStyle(color: colors.onSurface.withOpacity(0.6))),
+                style: TextStyle(color: colors.onSurfaceVariant)),
           );
         }
 
@@ -1098,12 +1107,12 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                     borderRadius: BorderRadius.circular(15),
                     side: BorderSide(
                         color: overLimit
-                            ? Colors.red
+                            ? colors.error
                             : (isFrozen
-                                ? Colors.red.shade300
-                                : Colors.grey.shade200),
+                                ? colors.errorContainer
+                                : colors.outlineVariant),
                         width: overLimit ? 2 : 1)),
-                color: overLimit ? Colors.red.shade50 : null,
+                color: overLimit ? colors.errorContainer.withOpacity(0.3) : null,
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
@@ -1113,12 +1122,13 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                         children: [
                           CircleAvatar(
                             backgroundColor: isFrozen
-                                ? Colors.red.shade100
+                                ? colors.errorContainer
                                 : colors.primaryContainer,
                             radius: 25,
                             child: Icon(Icons.store,
-                                color:
-                                    isFrozen ? Colors.red : colors.primary),
+                                color: isFrozen
+                                    ? colors.onErrorContainer
+                                    : colors.onPrimaryContainer),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -1136,20 +1146,20 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                                         color: colors.onSurface)),
                                 Text(
                                     '📍 ${pos['location'] ?? 'بدون عنوان'}',
-                                    style: const TextStyle(
-                                        color: Colors.blueGrey,
+                                    style: TextStyle(
+                                        color: colors.onSurfaceVariant,
                                         fontSize: 12,
                                         fontWeight: FontWeight.bold)),
                                 Text(
                                     'المالك: ${pos['name']} | رقم: ${pos['phone']}',
-                                    style: const TextStyle(
-                                        color: Colors.grey,
+                                    style: TextStyle(
+                                        color: colors.onSurfaceVariant,
                                         fontSize: 11)),
                                 if (overLimit)
-                                  const Text(
+                                  Text(
                                       '⚠️ تجاوزت الحد الائتماني!',
                                       style: TextStyle(
-                                          color: Colors.red,
+                                          color: colors.error,
                                           fontWeight:
                                               FontWeight.bold,
                                           fontSize: 11)),
@@ -1157,8 +1167,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                             ),
                           ),
                           IconButton(
-                            icon:
-                                Icon(Icons.edit, color: colors.primary),
+                            icon: Icon(Icons.edit,
+                                color: colors.primary),
                             onPressed: () => _showAddOrEditPosModal(sys,
                                 existingPos: pos),
                           ),
@@ -1173,10 +1183,10 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                               crossAxisAlignment:
                                   CrossAxisAlignment.start,
                               children: [
-                                const Text('رصيد المحفظة:',
+                                Text('رصيد المحفظة:',
                                     style: TextStyle(
                                         fontSize: 11,
-                                        color: Colors.grey)),
+                                        color: colors.onSurfaceVariant)),
                                 Text(
                                     '${NumberFormat('#,##0').format(posWalletBal)} ريال',
                                     style: TextStyle(
@@ -1184,37 +1194,37 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                                         fontSize: 15,
                                         color: (posWalletBal <
                                                 _globalWarningThreshold)
-                                            ? Colors.red
+                                            ? colors.error
                                             : colors.onSurface)),
                               ]),
                           Column(
                               crossAxisAlignment:
                                   CrossAxisAlignment.center,
                               children: [
-                                const Text('الحد الائتماني:',
+                                Text('الحد الائتماني:',
                                     style: TextStyle(
                                         fontSize: 11,
-                                        color: Colors.grey)),
+                                        color: colors.onSurfaceVariant)),
                                 Text(
                                     '${NumberFormat('#,##0').format(creditLimit)} ريال',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 13,
-                                        color: Colors.blue)),
+                                        color: colors.primary)),
                               ]),
                           Column(
                               crossAxisAlignment:
                                   CrossAxisAlignment.end,
                               children: [
-                                const Text('العمولة:',
+                                Text('العمولة:',
                                     style: TextStyle(
                                         fontSize: 11,
-                                        color: Colors.grey)),
+                                        color: colors.onSurfaceVariant)),
                                 Text(commission,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 13,
-                                        color: Colors.purple)),
+                                        color: colors.tertiary)),
                               ]),
                         ],
                       ),
@@ -1251,7 +1261,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                                       ? -posWalletBal
                                       : 0),
                               style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.blue),
+                                  foregroundColor: colors.primary),
                               child: const Text('استلام دفعة',
                                   style: TextStyle(fontSize: 11)),
                             ),
@@ -1271,12 +1281,12 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                               },
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: isFrozen
-                                    ? Colors.green
-                                    : Colors.red,
+                                    ? colors.primary
+                                    : colors.error,
                                 side: BorderSide(
                                     color: isFrozen
-                                        ? Colors.green
-                                        : Colors.red),
+                                        ? colors.primary
+                                        : colors.error),
                               ),
                               child: Text(
                                   isFrozen ? 'تنشيط' : 'تجميد',
@@ -1304,18 +1314,21 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
         // شريط إعدادات الإنذار
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          color: Colors.orange.shade50,
+          color: colors.primaryContainer,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('حد الإنذار المبكر (عالمي):',
+              Text('حد الإنذار المبكر (عالمي):',
                   style: TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 12)),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      color: colors.onPrimaryContainer)),
               TextButton.icon(
                 onPressed: _showGlobalThresholdDialog,
-                icon: const Icon(Icons.settings, size: 16),
+                icon: Icon(Icons.settings, size: 16, color: colors.onPrimaryContainer),
                 label: Text(
-                    'المستوى: ${NumberFormat('#,##0').format(_globalWarningThreshold)} ريال'),
+                    'المستوى: ${NumberFormat('#,##0').format(_globalWarningThreshold)} ريال',
+                    style: TextStyle(color: colors.onPrimaryContainer)),
               ),
             ],
           ),
@@ -1344,27 +1357,69 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                 return bal < 0; // مدينة فقط
               }).toList();
 
-                            // دالة صغيرة لقراءة رصيد المستند داخل هذا السياق
+              // دالة صغيرة لقراءة رصيد المستند داخل هذا السياق
               double docBalance(doc) {
-                final data = doc.data() as Map<String, dynamic>?
-                    ?? {};
+                final data = doc.data() as Map<String, dynamic>? ?? {};
                 final wallets = data['wallets'] as Map<String, dynamic>?;
                 return wallets != null
                     ? (wallets[sys.currentUserPhone] ?? 0.0).toDouble()
                     : 0.0;
               }
 
+              // فرز الديون حسب الأكبر (الأعلى ديناً أولاً)
               docs.sort((a, b) {
                 final balA = docBalance(a);
                 final balB = docBalance(b);
-                return balB.compareTo(balA); // الأعلى ديناً أولاً
+                return balB.compareTo(balA); // من الأعلى ديناً للأقل
               });
+
+              // ========== الإشعارات التلقائية ==========
+              // نتحقق من البقالات التي تجاوزت الحد ولم يتم إرسال تذكير حديث لها
+              for (var doc in docs) {
+                final data = doc.data() as Map<String, dynamic>? ?? {};
+                final wallets = data['wallets'] as Map<String, dynamic>?;
+                final balance = wallets != null
+                    ? (wallets[sys.currentUserPhone] ?? 0.0).toDouble()
+                    : 0.0;
+                final debtAmount = -balance;
+                final relations =
+                    data['agent_relations'] as Map<String, dynamic>? ?? {};
+                final myRel =
+                    relations[sys.currentUserPhone] as Map<String, dynamic>? ?? {};
+                final customThreshold =
+                    myRel['warningThreshold'] as double? ?? _globalWarningThreshold;
+                final lastWarning =
+                    myRel['lastWarningSent'] as Timestamp?;
+
+                // إذا تجاوز الدين ولم يتم إرسال تذكير خلال آخر 24 ساعة
+                if (debtAmount > customThreshold &&
+                    (lastWarning == null ||
+                        DateTime.now()
+                            .difference(lastWarning.toDate())
+                            .inHours >= 24)) {
+                  // إرسال إشعار
+                  _db.collection('notifications').add({
+                    'targetPhones': [data['phone']],
+                    'title': 'تذكير تلقائي بالسداد ⏰',
+                    'body':
+                        'لقد تجاوز دينك ($debtAmount ريال) حد الإنذار. يُرجى السداد.',
+                    'timestamp': FieldValue.serverTimestamp(),
+                    'isRead': false,
+                    'readBy': [],
+                  });
+                  // تحديث حقل lastWarningSent
+                  _db.collection('users').doc(data['phone']).update({
+                    'agent_relations.${sys.currentUserPhone}.lastWarningSent':
+                        FieldValue.serverTimestamp(),
+                  });
+                }
+              }
 
               if (docs.isEmpty) {
                 return Center(
                   child: Text('لا توجد ديون حالياً. 👏',
                       style: TextStyle(
-                          color: colors.onSurface.withOpacity(0.6))),
+                          color: colors.onSurfaceVariant)),
                 );
               }
 
@@ -1397,8 +1452,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                         borderRadius: BorderRadius.circular(12),
                         side: BorderSide(
                           color: isWarning
-                              ? Colors.red
-                              : Colors.orange.shade300,
+                              ? colors.error
+                              : colors.tertiary,
                           width: 2,
                         ),
                       ),
@@ -1424,12 +1479,12 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                                               .onSurface)),
                                 ),
                                 if (isWarning)
-                                  const Icon(Icons.warning_amber,
-                                      color: Colors.red),
+                                  Icon(Icons.warning_amber,
+                                      color: colors.error),
                                 Text(
                                   '${NumberFormat('#,##0').format(debtAmount)} ريال',
-                                  style: const TextStyle(
-                                      color: Colors.red,
+                                  style: TextStyle(
+                                      color: colors.error,
                                       fontWeight: FontWeight.bold,
                                       fontSize: 16),
                                 ),
@@ -1438,14 +1493,14 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                             const SizedBox(height: 4),
                             Text(
                                 'الموقع: ${pos['location'] ?? ''}',
-                                style: const TextStyle(
-                                    color: Colors.grey,
+                                style: TextStyle(
+                                    color: colors.onSurfaceVariant,
                                     fontSize: 12)),
                             if (isWarning)
-                              const Text(
+                              Text(
                                   '⚠️ تجاوز حد الإنذار المبكر',
                                   style: TextStyle(
-                                      color: Colors.red,
+                                      color: colors.error,
                                       fontSize: 11)),
                             const SizedBox(height: 10),
                             Row(
@@ -1462,21 +1517,21 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                                     icon: const Icon(Icons.money,
                                         size: 16,
                                         color: Colors.white),
-                                    label: const Text('استلام دفعة',
+                                    label: Text('استلام دفعة',
                                         style: TextStyle(
-                                            color: Colors.white,
+                                            color: colors.onPrimary,
                                             fontSize: 12)),
                                     style:
                                         ElevatedButton.styleFrom(
                                             backgroundColor:
-                                                Colors.blue),
+                                                colors.primary),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
                                 IconButton(
-                                  icon: const Icon(
+                                  icon: Icon(
                                       Icons.notifications_active,
-                                      color: Colors.orange),
+                                      color: colors.primary),
                                   tooltip:
                                       'إرسال تذكير وتحديد الإنذار',
                                   onPressed: () =>
@@ -1596,7 +1651,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                           value:
                               '${NumberFormat('#,##0').format(totalDebt)} ريال',
                           icon: Icons.warning_amber,
-                          color: Colors.red),
+                          color: colors.error),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -1605,7 +1660,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                           value:
                               '${NumberFormat('#,##0').format(avgBalance)} ريال',
                           icon: Icons.analytics,
-                          color: Colors.blue),
+                          color: colors.primary),
                     ),
                   ],
                 ),
@@ -1626,7 +1681,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                                   color: colors.onSurface)),
                           trailing: Text(
                               '${NumberFormat('#,##0').format(balanceOf(pos))} ريال',
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   color: Colors.green)),
                         ),
@@ -1644,15 +1699,15 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                     return Card(
                       margin: const EdgeInsets.only(bottom: 8),
                       child: ListTile(
-                        leading: Icon(Icons.store, color: Colors.red),
+                        leading: Icon(Icons.store, color: colors.error),
                         title: Text(pos['storeName'] ?? '',
                             style: TextStyle(
                                 color: colors.onSurface)),
                         trailing: Text(
                             '${NumberFormat('#,##0').format(debt)} ريال',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontWeight: FontWeight.bold,
-                                color: Colors.red)),
+                                color: colors.error)),
                       ),
                     );
                   }),
@@ -1689,7 +1744,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
               style: TextStyle(
                   fontWeight: FontWeight.bold, fontSize: 16, color: color)),
           const SizedBox(height: 4),
-          Text(title, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          Text(title, style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
         ],
       ),
     );
@@ -1700,10 +1755,10 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.error_outline, size: 50, color: Colors.red.shade300),
+          Icon(Icons.error_outline, size: 50, color: colors.error),
           const SizedBox(height: 10),
           Text(message,
-              style: TextStyle(color: colors.onSurface.withOpacity(0.7))),
+              style: TextStyle(color: colors.onSurfaceVariant)),
         ],
       ),
     );
