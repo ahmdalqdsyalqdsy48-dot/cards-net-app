@@ -1,3 +1,4 @@
+// lib/core/widgets/custom_header.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:marquee/marquee.dart';
@@ -10,7 +11,6 @@ import '../providers/ui_provider.dart';
 
 class CustomHeader extends StatefulWidget implements PreferredSizeWidget {
   final String title;
-
   const CustomHeader({super.key, required this.title});
 
   @override
@@ -31,8 +31,8 @@ class _CustomHeaderState extends State<CustomHeader>
     _pulseController = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 800))
       ..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
-        CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut));
+    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2)
+        .animate(CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut));
   }
 
   @override
@@ -46,43 +46,46 @@ class _CustomHeaderState extends State<CustomHeader>
     uiProvider.playSound('click');
     final List<Map<String, dynamic>> currentNotifications =
         List.from(systemProvider.notifications);
-    final adaptiveTextColor =
-        Provider.of<ThemeProvider>(context, listen: false).adaptiveTextColor;
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    final Color onSurface = colors.onSurface;
 
     showDialog(
       context: context,
-      builder: (context) => Directionality(
+      builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           backgroundColor: Theme.of(context).cardColor,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: const Row(children: [
-            Icon(Icons.notifications_active, color: Colors.amber),
-            SizedBox(width: 10),
+          title: Row(children: [
+            const Icon(Icons.notifications_active, color: Colors.amber),
+            const SizedBox(width: 10),
             Text('الإشعارات الحديثة',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: onSurface))
           ]),
           content: SizedBox(
             width: double.maxFinite,
             child: currentNotifications.isEmpty
-                ? const Center(
+                ? Center(
                     heightFactor: 3,
                     child: Text('لا توجد إشعارات جديدة 📭',
-                        style: TextStyle(color: Colors.grey)))
+                        style: TextStyle(color: colors.onSurfaceVariant)))
                 : ListView.separated(
                     shrinkWrap: true,
                     itemCount: currentNotifications.length,
                     separatorBuilder: (_, __) =>
-                        Divider(color: Colors.grey.shade300),
+                        Divider(color: colors.outlineVariant),
                     itemBuilder: (context, index) {
                       final notif = currentNotifications[index];
                       IconData icon = Icons.notifications;
-                      Color iconColor = Colors.blue;
+                      Color iconColor = colors.primary;
                       if (notif['title'].toString().contains('رفض') ||
                           notif['title'].toString().contains('طوارئ') ||
                           notif['title'].toString().contains('تحذير')) {
                         icon = Icons.warning;
-                        iconColor = Colors.red;
+                        iconColor = colors.error;
                       }
                       if (notif['title'].toString().contains('نجاح') ||
                           notif['title'].toString().contains('موافقة') ||
@@ -107,18 +110,19 @@ class _CustomHeaderState extends State<CustomHeader>
                                     ? FontWeight.normal
                                     : FontWeight.bold,
                                 fontSize: 14,
-                                color: adaptiveTextColor)),
+                                color: onSurface)),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(notif['body'] ?? '',
                                 style: TextStyle(
                                     fontSize: 12,
-                                    color: adaptiveTextColor.withOpacity(0.8))),
+                                    color: colors.onSurfaceVariant)),
                             const SizedBox(height: 4),
                             Text(timeStr,
-                                style: const TextStyle(
-                                    fontSize: 10, color: Colors.grey)),
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    color: colors.onSurfaceVariant)),
                           ],
                         ),
                       );
@@ -130,10 +134,11 @@ class _CustomHeaderState extends State<CustomHeader>
               onPressed: () {
                 uiProvider.playSound('click');
                 systemProvider.markNotificationsAsRead();
-                Navigator.pop(context);
+                Navigator.pop(ctx);
               },
-              child: const Text('مقروء وإغلاق',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              child: Text('مقروء وإغلاق',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, color: colors.primary)),
             )
           ],
         ),
@@ -146,9 +151,11 @@ class _CustomHeaderState extends State<CustomHeader>
     final themeProvider = Provider.of<ThemeProvider>(context);
     final systemProvider = Provider.of<SystemProvider>(context);
     final uiProvider = Provider.of<UiProvider>(context);
+    final ColorScheme colors = Theme.of(context).colorScheme;
 
     final bool isDark = themeProvider.isDarkMode;
-    final bool isOnline = uiProvider.isOnline && !systemProvider.isMaintenanceMode;
+    final bool isOnline =
+        uiProvider.isOnline && !systemProvider.isMaintenanceMode;
 
     final int unreadCount = systemProvider.unreadNotificationsCount;
     final bool hasNotifications = unreadCount > 0;
@@ -157,26 +164,24 @@ class _CustomHeaderState extends State<CustomHeader>
         ? systemProvider.announcements.join('   🔴   ')
         : 'مرحباً بك في نظام كروت نت...';
 
-    final Color headerColor =
-        Theme.of(context).appBarTheme.backgroundColor ??
-            themeProvider.primaryColor;
-    // ✅ لون الأيقونات ثابت وواضح في جميع الأوضاع
-    final Color iconTextColor = isDark ? Colors.white : Colors.black87;
+    // ألوان متكيفة بالكامل مع الثيم
+    final Color headerColor = colors.primaryContainer;
+    final Color onHeaderColor = colors.onPrimaryContainer;
+
     final Color marqueeBg = Color(systemProvider.marqueeBgColor);
     final Color marqueeTextCol = Color(systemProvider.marqueeTextColor);
 
     return AppBar(
       elevation: 0,
       backgroundColor: headerColor,
-      iconTheme: IconThemeData(color: iconTextColor),
-
+      iconTheme: IconThemeData(color: onHeaderColor),
       title: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(widget.title,
               style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: iconTextColor,
+                  color: onHeaderColor,
                   fontSize: 16)),
           const SizedBox(width: 8),
           Container(
@@ -184,9 +189,7 @@ class _CustomHeaderState extends State<CustomHeader>
               height: 10,
               decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isOnline
-                      ? Colors.greenAccent.shade400
-                      : Colors.redAccent,
+                  color: isOnline ? Colors.greenAccent.shade400 : Colors.redAccent,
                   boxShadow: [
                     BoxShadow(
                         color: isOnline
@@ -212,10 +215,11 @@ class _CustomHeaderState extends State<CustomHeader>
             alignment: Alignment.center,
             children: [
               IconButton(
-                  icon: const Icon(Icons.notifications_active, color: Colors.amber),
+                  icon: const Icon(Icons.notifications_active,
+                      color: Colors.amber),
                   tooltip: 'الإشعارات',
-                  onPressed: () => _showNotifications(
-                      context, uiProvider, systemProvider)),
+                  onPressed: () =>
+                      _showNotifications(context, uiProvider, systemProvider)),
               if (hasNotifications)
                 Positioned(
                   right: 8,
@@ -228,7 +232,8 @@ class _CustomHeaderState extends State<CustomHeader>
                           color: Colors.red,
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 1.5)),
-                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                      constraints:
+                          const BoxConstraints(minWidth: 16, minHeight: 16),
                       child: Text(
                         '$unreadCount',
                         style: const TextStyle(
@@ -253,7 +258,8 @@ class _CustomHeaderState extends State<CustomHeader>
                 width: double.infinity,
                 height: 25,
                 color: marqueeBg,
-                padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
                 child: Row(
                   children: [
                     Icon(Icons.campaign, color: marqueeTextCol, size: 18),
@@ -271,18 +277,18 @@ class _CustomHeaderState extends State<CustomHeader>
                         velocity: systemProvider.newsScrollSpeed,
                         pauseAfterRound: const Duration(milliseconds: 500),
                         startPadding: 10.0,
-                        textDirection: systemProvider.marqueeDirection == 'rtl'
-                            ? TextDirection.rtl
-                            : TextDirection.ltr,
+                        textDirection:
+                            systemProvider.marqueeDirection == 'rtl'
+                                ? TextDirection.rtl
+                                : TextDirection.ltr,
                       ),
                     ),
                   ],
                 ),
               ),
-
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16.0, vertical: 8.0),
               child: InkWell(
                 onTap: () {
                   uiProvider.playSound('click');
@@ -295,19 +301,18 @@ class _CustomHeaderState extends State<CustomHeader>
                 child: Container(
                   height: 35,
                   decoration: BoxDecoration(
-                      color: isDark
-                          ? Colors.grey.shade800
-                          : Colors.white.withOpacity(0.9),
+                      color: colors.surfaceContainerHighest.withOpacity(0.8),
                       borderRadius: BorderRadius.circular(8)),
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   alignment: Alignment.centerRight,
                   child: Row(
                     children: [
-                      const Icon(Icons.search, color: Colors.grey, size: 20),
+                      Icon(Icons.search,
+                          color: colors.onSurfaceVariant, size: 20),
                       const SizedBox(width: 10),
                       Text('ابحث في النظام...',
                           style: TextStyle(
-                              color: Colors.grey.shade600, fontSize: 13)),
+                              color: colors.onSurfaceVariant, fontSize: 13)),
                     ],
                   ),
                 ),
@@ -333,44 +338,137 @@ class SystemSearchDelegate extends SearchDelegate<String> {
     switch (userRole) {
       case 'super_admin':
         return {
-          'الرئيسية (غرفة العمليات)': {'desc': 'لوحة التحكم الرئيسية', 'route': '/super_admin_dashboard'},
-          'إدارة الوكلاء': {'desc': 'إضافة وتعديل وحذف الوكلاء', 'route': '/agent_management'},
-          'إدارة الاشتراكات': {'desc': 'باقات وصلاحيات الوكلاء', 'route': '/subscriptions'},
-          'المركز المالي والمحافظ': {'desc': 'إدارة الأرصدة والتسويات', 'route': '/financial_center'},
-          'الحسابات البنكية': {'desc': 'حسابات التحويل للنظام', 'route': '/bank_accounts'},
-          'التقارير الشاملة': {'desc': 'تقارير المبيعات والأرباح', 'route': '/reports'},
-          'إدارة بوابات النظام': {'desc': 'تخصيص مظهر التطبيق', 'route': '/portals_management'},
-          'إدارة الموظفين والدعم': {'desc': 'تذاكر الدعم والصلاحيات', 'route': '/staff_support'},
-          'الإعلانات والبنرات': {'desc': 'الحملات التسويقية', 'route': '/banners'},
-          'بوابة رسائل SMS': {'desc': 'إرسال الرسائل النصية', 'route': '/sms_gateway'},
-          'السجل الأسود للنشاط': {'desc': 'سجل تدقيق العمليات', 'route': '/audit_log'},
-          'الإعدادات العامة': {'desc': 'سياسات النظام والصيانة', 'route': '/settings'},
-          'النسخ الاحتياطي': {'desc': 'حفظ واستعادة البيانات', 'route': '/backup'},
+          'الرئيسية (غرفة العمليات)': {
+            'desc': 'لوحة التحكم الرئيسية',
+            'route': '/super_admin_dashboard'
+          },
+          'إدارة الوكلاء': {
+            'desc': 'إضافة وتعديل وحذف الوكلاء',
+            'route': '/agent_management'
+          },
+          'إدارة الاشتراكات': {
+            'desc': 'باقات وصلاحيات الوكلاء',
+            'route': '/subscriptions'
+          },
+          'المركز المالي والمحافظ': {
+            'desc': 'إدارة الأرصدة والتسويات',
+            'route': '/financial_center'
+          },
+          'الحسابات البنكية': {
+            'desc': 'حسابات التحويل للنظام',
+            'route': '/bank_accounts'
+          },
+          'التقارير الشاملة': {
+            'desc': 'تقارير المبيعات والأرباح',
+            'route': '/reports'
+          },
+          'إدارة بوابات النظام': {
+            'desc': 'تخصيص مظهر التطبيق',
+            'route': '/portals_management'
+          },
+          'إدارة الموظفين والدعم': {
+            'desc': 'تذاكر الدعم والصلاحيات',
+            'route': '/staff_support'
+          },
+          'الإعلانات والبنرات': {
+            'desc': 'الحملات التسويقية',
+            'route': '/banners'
+          },
+          'بوابة رسائل SMS': {
+            'desc': 'إرسال الرسائل النصية',
+            'route': '/sms_gateway'
+          },
+          'السجل الأسود للنشاط': {
+            'desc': 'سجل تدقيق العمليات',
+            'route': '/audit_log'
+          },
+          'الإعدادات العامة': {
+            'desc': 'سياسات النظام والصيانة',
+            'route': '/settings'
+          },
+          'النسخ الاحتياطي': {
+            'desc': 'حفظ واستعادة البيانات',
+            'route': '/backup'
+          },
         };
       case 'agent':
         return {
-          'الرئيسية (غرفة القيادة)': {'desc': 'لوحة التحكم', 'route': '/agent_dashboard'},
-          'المتجر السريع (الكاشير)': {'desc': 'نقطة البيع السريعة', 'route': '/quick_pos'},
-          'إدارة الفئات والميكروتك': {'desc': 'فئات وباقات الشبكات', 'route': '/mikrotik_categories'},
-          'إدارة نقاط البيع (البقالات)': {'desc': 'إدارة البقالات التابعة', 'route': '/sub_agents'},
-          'التسويق والعروض': {'desc': 'العروض والكوبونات', 'route': '/marketing_offers'},
-          'محفظة الوكيل': {'desc': 'إدارة الحصة والتحويلات', 'route': '/agent_wallet'},
-          'كشف الحساب المتقدم': {'desc': 'البيانات المالية', 'route': '/advanced_statement'},
-          'التقارير التحليلية': {'desc': 'تحليلات المبيعات', 'route': '/analytics_reports'},
-          'الدعم الفني الموحد': {'desc': 'تذاكر الدعم', 'route': '/agent_support'},
-          'إعدادات النظام الموسعة': {'desc': 'إعدادات الحساب', 'route': '/agent_settings'},
+          'الرئيسية (غرفة القيادة)': {
+            'desc': 'لوحة التحكم',
+            'route': '/agent_dashboard'
+          },
+          'المتجر السريع (الكاشير)': {
+            'desc': 'نقطة البيع السريعة',
+            'route': '/quick_pos'
+          },
+          'إدارة الفئات والميكروتك': {
+            'desc': 'فئات وباقات الشبكات',
+            'route': '/mikrotik_categories'
+          },
+          'إدارة نقاط البيع (البقالات)': {
+            'desc': 'إدارة البقالات التابعة',
+            'route': '/sub_agents'
+          },
+          'التسويق والعروض': {
+            'desc': 'العروض والكوبونات',
+            'route': '/marketing_offers'
+          },
+          'محفظة الوكيل': {
+            'desc': 'إدارة الحصة والتحويلات',
+            'route': '/agent_wallet'
+          },
+          'كشف الحساب المتقدم': {
+            'desc': 'البيانات المالية',
+            'route': '/advanced_statement'
+          },
+          'التقارير التحليلية': {
+            'desc': 'تحليلات المبيعات',
+            'route': '/analytics_reports'
+          },
+          'الدعم الفني الموحد': {
+            'desc': 'تذاكر الدعم',
+            'route': '/agent_support'
+          },
+          'إعدادات النظام الموسعة': {
+            'desc': 'إعدادات الحساب',
+            'route': '/agent_settings'
+          },
         };
       case 'user':
       default:
         return {
-          'الرئيسية': {'desc': 'لوحة المستخدم', 'route': '/user_dashboard'},
-          'المحفظة الذكية والتحويلات': {'desc': 'إدارة المحفظة والتحويلات', 'route': '/user_wallet'},
-          'سوق الشبكات ونقاط البيع': {'desc': 'شراء كروت الشحن', 'route': '/network_store'},
-          'كروتي ومشترياتي': {'desc': 'سجل الكروت المشتراة', 'route': '/my_cards'},
-          'برنامج الولاء والمكافآت': {'desc': 'المكافآت والنقاط', 'route': '/rewards'},
-          'سجل العمليات المالية': {'desc': 'سجل الحركات المالية', 'route': '/user_transactions'},
-          'الدعم الفني والشكاوى': {'desc': 'تذاكر الدعم', 'route': '/user_support'},
-          'الملف الشخصي والإعدادات': {'desc': 'الإعدادات والمظهر', 'route': '/user_settings'},
+          'الرئيسية': {
+            'desc': 'لوحة المستخدم',
+            'route': '/user_dashboard'
+          },
+          'المحفظة الذكية والتحويلات': {
+            'desc': 'إدارة المحفظة والتحويلات',
+            'route': '/user_wallet'
+          },
+          'سوق الشبكات ونقاط البيع': {
+            'desc': 'شراء كروت الشحن',
+            'route': '/network_store'
+          },
+          'كروتي ومشترياتي': {
+            'desc': 'سجل الكروت المشتراة',
+            'route': '/my_cards'
+          },
+          'برنامج الولاء والمكافآت': {
+            'desc': 'المكافآت والنقاط',
+            'route': '/rewards'
+          },
+          'سجل العمليات المالية': {
+            'desc': 'سجل الحركات المالية',
+            'route': '/user_transactions'
+          },
+          'الدعم الفني والشكاوى': {
+            'desc': 'تذاكر الدعم',
+            'route': '/user_support'
+          },
+          'الملف الشخصي والإعدادات': {
+            'desc': 'الإعدادات والمظهر',
+            'route': '/user_settings'
+          },
         };
     }
   }
@@ -429,7 +527,8 @@ class SystemSearchDelegate extends SearchDelegate<String> {
           String key = results[index];
           final item = searchMap[key]!;
           return ListTile(
-            leading: const Icon(Icons.screen_search_desktop, color: Colors.blueAccent),
+            leading: const Icon(Icons.screen_search_desktop,
+                color: Colors.blueAccent),
             title: Text(key, style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text(item['desc']!),
             onTap: () {
