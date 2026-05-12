@@ -5,12 +5,11 @@ import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 
-// استدعاء جميع الشاشات الخاصة بالوكيل
 import '../screens/agent_dashboard_screen.dart';
 import '../screens/quick_pos_screen.dart';
 import '../screens/mikrotik_categories_screen.dart';
-import '../screens/print_screen.dart';               // 🆕 شاشة الطباعة
-import '../screens/discount_screen.dart';            // 🆕 شاشة الخصومات
+import '../screens/print_screen.dart';
+import '../screens/discount_screen.dart';
 import '../screens/archive_screen.dart';
 import '../screens/sub_agents_screen.dart';
 import '../screens/marketing_offers_screen.dart';
@@ -63,7 +62,6 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     );
   }
 
-  // التنقل مع push للعودة (للقائمة المنسدلة)
   void _navigateToPush(BuildContext context, Widget screen) {
     _play('click');
     Navigator.pop(context);
@@ -222,9 +220,13 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
-    final isDark = themeProvider.isDarkMode;
-    final primaryColor = themeProvider.primaryColor;
-    final textColor = isDark ? Colors.white : Colors.black87;
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    final bool isDark = themeProvider.isDarkMode;
+    final Color primaryColor = themeProvider.primaryColor;
+
+    // نصوص واضحة تماماً من colorScheme
+    final Color onSurfaceColor = colors.onSurface;
+    final Color onSurfaceVariant = colors.onSurfaceVariant;
 
     final myData = sys.agentsList.firstWhere(
         (a) => a['phone'] == sys.currentUserPhone,
@@ -235,18 +237,13 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     final String? base64Image = myData['profileImageBase64'];
     bool hasImage = base64Image != null && base64Image.isNotEmpty;
 
-    final nameColors = isDark
-        ? _generateGradientColors(primaryColor)
-        : [Colors.blue.shade800, Colors.blue.shade500];
-    final phoneColors = isDark
-        ? _generateGradientColors(primaryColor)
-        : [Colors.teal.shade800, Colors.teal.shade500];
-    final balanceColors = isDark
-        ? _generateGradientColors(primaryColor)
-        : [Colors.purple.shade800, Colors.purple.shade500];
+    // كل التدرجات تستخدم primaryColor الآن في كلا الوضعين
+    final nameColors = _generateGradientColors(primaryColor);
+    final phoneColors = _generateGradientColors(primaryColor);
+    final balanceColors = _generateGradientColors(primaryColor);
 
     return Drawer(
-      backgroundColor: Theme.of(context).cardColor,
+      backgroundColor: colors.surface,
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
@@ -323,11 +320,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                             ),
                           ),
                           const SizedBox(height: 10),
-                          Divider(
-                              height: 1,
-                              color: isDark
-                                  ? Colors.grey.shade800
-                                  : Colors.grey.shade300),
+                          Divider(color: colors.outlineVariant),
                         ],
                       ),
                     ),
@@ -338,7 +331,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                           horizontal: 16, vertical: 6),
                       child: Text('عمليات البيع والشبكة',
                           style: TextStyle(
-                              color: textColor.withOpacity(0.8),
+                              color: onSurfaceVariant,
                               fontSize: 11,
                               fontWeight: FontWeight.bold))),
                   _buildDrawerItem(
@@ -347,23 +340,25 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                       Icons.dashboard,
                       Colors.blue,
                       const AgentDashboardScreen(),
-                      textColor),
+                      onSurfaceColor),
                   _buildDrawerItem(
                       context,
                       'المتجر السريع (الكاشير)',
                       Icons.point_of_sale,
                       Colors.green,
                       const QuickPosScreen(),
-                      textColor),
+                      onSurfaceColor),
 
-                  // 🆕 القائمة المنسدلة: الميكروتك والطباعة
+                  // القائمة المنسدلة: الميكروتك والطباعة
                   ExpansionTile(
                     leading: const Icon(Icons.router, color: Colors.orange),
                     title: Text("الميكروتك والطباعة",
                         style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 13,
-                            color: textColor)),
+                            color: onSurfaceColor)),
+                    iconColor: colors.primary,
+                    collapsedIconColor: colors.onSurfaceVariant,
                     initiallyExpanded: false,
                     children: [
                       _buildSubItem(
@@ -372,7 +367,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                         icon: Icons.dns,
                         iconColor: Colors.orange,
                         screen: const MikrotikCategoriesScreen(),
-                        textColor: textColor,
+                        textColor: onSurfaceColor,
                       ),
                       _buildSubItem(
                         context: context,
@@ -380,39 +375,36 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                         icon: Icons.print,
                         iconColor: Colors.teal,
                         screen: const PrintScreen(),
-                        textColor: textColor,
+                        textColor: onSurfaceColor,
                       ),
                     ],
                   ),
 
-                  // 🆕 الخصومات (شاشة مستقلة)
+                  // الخصومات
                   _buildDrawerItem(
                       context,
                       'الخصومات 🏆',
                       Icons.local_offer,
                       Colors.amber,
                       const DiscountScreen(),
-                      textColor),
+                      onSurfaceColor),
 
-                  // 🆕 قسم الأرشيف المتقدم
+                  // الأرشيف
                   _buildDrawerItem(
                       context,
                       'الأرشيف المتقدم',
                       Icons.archive,
                       Colors.teal,
                       const ArchiveScreen(),
-                      textColor),
+                      onSurfaceColor),
 
-                  Divider(
-                      color: isDark
-                          ? Colors.grey.shade800
-                          : Colors.grey.shade200),
+                  Divider(color: colors.outlineVariant),
                   Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 6),
                       child: Text('الإدارة والتسويق',
                           style: TextStyle(
-                              color: textColor.withOpacity(0.8),
+                              color: onSurfaceVariant,
                               fontSize: 11,
                               fontWeight: FontWeight.bold))),
                   _buildDrawerItem(
@@ -421,32 +413,29 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                       Icons.storefront,
                       Colors.purple,
                       const SubAgentsScreen(),
-                      textColor),
+                      onSurfaceColor),
                   _buildDrawerItem(
                       context,
                       'عملائي (المستخدمين والبقالات)',
                       Icons.people,
                       Colors.indigo,
                       const AgentClientListScreen(),
-                      textColor),
+                      onSurfaceColor),
                   _buildDrawerItem(
                       context,
                       'التسويق والعروض',
                       Icons.campaign,
                       Colors.pinkAccent,
                       const MarketingOffersScreen(),
-                      textColor),
+                      onSurfaceColor),
 
-                  Divider(
-                      color: isDark
-                          ? Colors.grey.shade800
-                          : Colors.grey.shade200),
+                  Divider(color: colors.outlineVariant),
                   Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 6),
                       child: Text('المالية والمحاسبة',
                           style: TextStyle(
-                              color: textColor.withOpacity(0.8),
+                              color: onSurfaceVariant,
                               fontSize: 11,
                               fontWeight: FontWeight.bold))),
                   _buildDrawerItem(
@@ -455,39 +444,36 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                       Icons.account_balance_wallet,
                       Colors.teal,
                       const AgentWalletScreen(),
-                      textColor),
+                      onSurfaceColor),
                   _buildDrawerItem(
                       context,
                       'حساباتي البنكية 🏦',
                       Icons.account_balance,
                       Colors.deepPurple,
                       const AgentBankAccountsScreen(),
-                      textColor),
+                      onSurfaceColor),
                   _buildDrawerItem(
                       context,
                       'كشف الحساب المتقدم',
                       Icons.receipt_long,
                       Colors.cyan,
                       const AdvancedStatementScreen(),
-                      textColor),
+                      onSurfaceColor),
                   _buildDrawerItem(
                       context,
                       'التقارير التحليلية',
                       Icons.analytics,
                       Colors.redAccent,
                       const AnalyticsReportsScreen(),
-                      textColor),
+                      onSurfaceColor),
 
-                  Divider(
-                      color: isDark
-                          ? Colors.grey.shade800
-                          : Colors.grey.shade200),
+                  Divider(color: colors.outlineVariant),
                   Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 6),
                       child: Text('الإعدادات والدعم',
                           style: TextStyle(
-                              color: textColor.withOpacity(0.8),
+                              color: onSurfaceVariant,
                               fontSize: 11,
                               fontWeight: FontWeight.bold))),
                   _buildDrawerItem(
@@ -496,31 +482,32 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                       Icons.support_agent,
                       Colors.indigo,
                       const AgentSupportScreen(),
-                      textColor),
+                      onSurfaceColor),
                   _buildDrawerItem(
                       context,
                       'إعدادات النظام الموسعة',
                       Icons.settings,
                       Colors.blueGrey,
                       const AgentSettingsScreen(),
-                      textColor),
+                      onSurfaceColor),
                 ],
               ),
             ),
 
-            Divider(
-                height: 1,
-                color: isDark ? Colors.grey.shade800 : Colors.grey.shade300),
+            Divider(color: colors.outlineVariant),
             ListTile(
               dense: true,
               leading: const Icon(Icons.logout, color: Colors.red, size: 20),
               title: Text('تسجيل الخروج',
-                  style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
+                  style: TextStyle(
+                      color: onSurfaceColor,
+                      fontWeight: FontWeight.bold)),
               onTap: () {
                 _play('click');
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (context) => const SSOLoginScreen()),
+                  MaterialPageRoute(
+                      builder: (context) => const SSOLoginScreen()),
                   (route) => false,
                 );
               },
@@ -532,20 +519,26 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     );
   }
 
-  Widget _buildGradientCard(
-      {required String text,
-      required IconData icon,
-      required List<Color> colors,
-      IconData? trailingIcon}) {
+  Widget _buildGradientCard({
+    required String text,
+    required IconData icon,
+    required List<Color> colors,
+    IconData? trailingIcon,
+  }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-            colors: colors, begin: Alignment.topRight, end: Alignment.bottomLeft),
+            colors: colors,
+            begin: Alignment.topRight,
+            end: Alignment.bottomLeft),
         borderRadius: BorderRadius.circular(10),
         boxShadow: const [
-          BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))
+          BoxShadow(
+              color: Colors.black12,
+              blurRadius: 4,
+              offset: Offset(0, 2))
         ],
       ),
       child: Row(
@@ -578,7 +571,9 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
       leading: Icon(icon, color: iconColor, size: 20),
       title: Text(title,
           style: TextStyle(
-              fontWeight: FontWeight.bold, fontSize: 13, color: textColor)),
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: textColor)),
       trailing: Icon(Icons.arrow_forward_ios,
           size: 11, color: textColor.withOpacity(0.5)),
       onTap: () => _navigateTo(context, targetScreen),
@@ -599,7 +594,9 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
       leading: Icon(icon, color: iconColor, size: 20),
       title: Text(title,
           style: TextStyle(
-              fontWeight: FontWeight.bold, fontSize: 13, color: textColor)),
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: textColor)),
       trailing: Icon(Icons.arrow_forward_ios,
           size: 11, color: textColor.withOpacity(0.5)),
       onTap: () => _navigateToPush(context, screen),
