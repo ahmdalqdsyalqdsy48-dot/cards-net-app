@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -5,6 +7,7 @@ import 'package:intl/intl.dart' hide TextDirection;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:http/http.dart' as http;
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -39,7 +42,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _globalWarningThreshold = prefs.getDouble('globalWarningThreshold') ?? 1000.0;
+      _globalWarningThreshold =
+          prefs.getDouble('globalWarningThreshold') ?? 1000.0;
     });
   }
 
@@ -96,8 +100,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
   }
 
   // ---------- نافذة استلام دفعة (يدوي) محسنة ----------
-  void _showRepaymentModal(
-      SystemProvider sys, String posPhone, String posName, double currentDebt) {
+  void _showRepaymentModal(SystemProvider sys, String posPhone, String posName,
+      double currentDebt) {
     _play('click');
     final amountController = TextEditingController();
     final noteController = TextEditingController();
@@ -227,8 +231,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                     final wallets =
                         (snap.data!.data() as Map<String, dynamic>)['wallets']
                             as Map<String, dynamic>?;
-                    final bal = (wallets?[sys.currentUserPhone] ?? 0.0)
-                        .toDouble();
+                    final bal =
+                        (wallets?[sys.currentUserPhone] ?? 0.0).toDouble();
                     return Text(
                       'رصيد البقالة الحالي: ${NumberFormat('#,##0').format(bal)} ريال',
                       style: TextStyle(
@@ -276,9 +280,9 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                           // جلب الرصيد الحالي للبقالة لتسجيل تسوية الدين
                           final posDoc =
                               await _db.collection('users').doc(posPhone).get();
-                          final wallets = (posDoc.data()
-                                  as Map<String, dynamic>)['wallets']
-                              as Map<String, dynamic>?;
+                          final wallets =
+                              (posDoc.data() as Map<String, dynamic>)['wallets']
+                                  as Map<String, dynamic>?;
                           final oldBalance =
                               (wallets?[sys.currentUserPhone] ?? 0.0)
                                   .toDouble();
@@ -289,7 +293,6 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
 
                           // تسجيل معاملة تسوية الديون إن وجدت
                           if (debt > 0 && amount >= debt) {
-                            // تم سداد كامل الدين
                             _db.collection('transactions').add({
                               'fromPhone': sys.currentUserPhone,
                               'toPhone': posPhone,
@@ -381,10 +384,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
     for (var doc in netSnap.docs) {
       List cats = doc['categories'] ?? [];
       for (var c in cats) {
-        allAvailableCats.add({
-          'id': c['id'],
-          'name': '${doc['name']} - ${c['name']}',
-        });
+        allAvailableCats
+            .add({'id': c['id'], 'name': '${doc['name']} - ${c['name']}'});
       }
     }
 
@@ -448,8 +449,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                     children: [
                       OutlinedButton.icon(
                         onPressed: () async {
-                          final picked = await _pickLocationOnMap(
-                              lat: lat, lng: lng);
+                          final picked =
+                              await _pickLocationOnMap(lat: lat, lng: lng);
                           if (picked != null) {
                             setModalState(() {
                               lat = picked['lat'];
@@ -459,18 +460,16 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                           }
                         },
                         icon: const Icon(Icons.map),
-                        label: Text(
-                            (lat != null && lng != null)
-                                ? 'تم تحديد الموقع ✅'
-                                : 'اختيار من الخريطة'),
+                        label: Text((lat != null && lng != null)
+                            ? 'تم تحديد الموقع ✅'
+                            : 'اختيار من الخريطة'),
                       ),
                     ],
                   ),
                   if (lat != null && lng != null)
                     Text(
                       'الإحداثيات: ${lat!.toStringAsFixed(4)}, ${lng!.toStringAsFixed(4)}',
-                      style:
-                          const TextStyle(fontSize: 12, color: Colors.grey),
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                   const SizedBox(height: 12),
                   Row(
@@ -663,13 +662,13 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
         final res = await http.get(url);
         if (res.statusCode == 200) {
           final List<dynamic> data = jsonDecode(res.body);
-          return data.map((e) {
-            return {
-              'name': e['display_name'],
-              'lat': double.parse(e['lat']),
-              'lon': double.parse(e['lon']),
-            };
-          }).toList();
+          return data
+              .map((e) => {
+                    'name': e['display_name'],
+                    'lat': double.parse(e['lat']),
+                    'lon': double.parse(e['lon']),
+                  })
+              .toList();
         }
       } catch (_) {}
       return [];
@@ -1086,8 +1085,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                   (wallets[sys.currentUserPhone] ?? 0.0).toDouble();
               final relations =
                   pos['agent_relations'] as Map<String, dynamic>? ?? {};
-              final myRel =
-                  relations[sys.currentUserPhone] as Map<String, dynamic>? ?? {};
+              final myRel = relations[sys.currentUserPhone]
+                  as Map<String, dynamic>? ?? {};
               final creditLimit =
                   (myRel['creditLimit'] ?? 0.0).toDouble();
               final commission = myRel['commission'] ?? '0%';
@@ -1118,9 +1117,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                                 : colors.primaryContainer,
                             radius: 25,
                             child: Icon(Icons.store,
-                                color: isFrozen
-                                    ? Colors.red
-                                    : colors.primary),
+                                color:
+                                    isFrozen ? Colors.red : colors.primary),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -1159,10 +1157,9 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                             ),
                           ),
                           IconButton(
-                            icon: Icon(Icons.edit,
-                                color: colors.primary),
-                            onPressed: () => _showAddOrEditPosModal(
-                                sys,
+                            icon:
+                                Icon(Icons.edit, color: colors.primary),
+                            onPressed: () => _showAddOrEditPosModal(sys,
                                 existingPos: pos),
                           ),
                         ],
@@ -1230,7 +1227,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                               onPressed: isFrozen
                                   ? null
                                   : () => _showFeedWalletModal(
-                                      sys, pos['phone'],
+                                      sys,
+                                      pos['phone'],
                                       pos['storeName'] ?? ''),
                               icon: const Icon(Icons.add_card,
                                   size: 16, color: Colors.white),
@@ -1245,14 +1243,13 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                           const SizedBox(width: 8),
                           Expanded(
                             child: OutlinedButton(
-                              onPressed: () =>
-                                  _showRepaymentModal(
-                                      sys,
-                                      pos['phone'],
-                                      pos['storeName'] ?? '',
-                                      -posWalletBal > 0
-                                          ? -posWalletBal
-                                          : 0),
+                              onPressed: () => _showRepaymentModal(
+                                  sys,
+                                  pos['phone'],
+                                  pos['storeName'] ?? '',
+                                  -posWalletBal > 0
+                                      ? -posWalletBal
+                                      : 0),
                               style: OutlinedButton.styleFrom(
                                   foregroundColor: Colors.blue),
                               child: const Text('استلام دفعة',
@@ -1380,8 +1377,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                         -(wallets[sys.currentUserPhone] ?? 0.0)
                             .toDouble();
                     final relations =
-                        pos['agent_relations'] as Map<
-                            String, dynamic>? ?? {};
+                        pos['agent_relations']
+                            as Map<String, dynamic>? ?? {};
                     final myRel = relations[sys.currentUserPhone]
                         as Map<String, dynamic>? ?? {};
                     final customThreshold =
@@ -1440,7 +1437,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                                     color: Colors.grey,
                                     fontSize: 12)),
                             if (isWarning)
-                              const Text('⚠️ تجاوز حد الإنذار المبكر',
+                              const Text(
+                                  '⚠️ تجاوز حد الإنذار المبكر',
                                   style: TextStyle(
                                       color: Colors.red,
                                       fontSize: 11)),
@@ -1532,42 +1530,29 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
         }
         double avgBalance = totalPos > 0 ? totalBalance / totalPos : 0;
 
+        // دالة مساعدة لحساب الرصيد
+        double balanceOf(Map<String, dynamic> pos) {
+          final wallets = pos['wallets'] as Map<String, dynamic>?;
+          return wallets != null
+              ? (wallets[sys.currentUserPhone] ?? 0.0).toDouble()
+              : 0.0;
+        }
+
         // أفضل البقالات (أعلى رصيد) وأكثرها ديناً
         final sortedByBalance = List<Map<String, dynamic>>.from(posList)
           ..sort((a, b) {
-            final balA = ((a['wallets'] as Map<String, dynamic>?)?[
-                        sys.currentUserPhone] ??
-                    0.0)
-                .toDouble();
-            final balB = ((b['wallets'] as Map<String, dynamic>?)?[
-                        sys.currentUserPhone] ??
-                    0.0)
-                .toDouble();
-            return balB.compareTo(balA);
+            return balanceOf(b).compareTo(balanceOf(a));
           });
         final sortedByDebt = List<Map<String, dynamic>>.from(posList)
           ..sort((a, b) {
-            final balA = ((a['wallets'] as Map<String, dynamic>?)?[
-                        sys.currentUserPhone] ??
-                    0.0)
-                .toDouble();
-            final balB = ((b['wallets'] as Map<String, dynamic>?)?[
-                        sys.currentUserPhone] ??
-                    0.0)
-                .toDouble();
-            return balA.compareTo(balB); // الأكثر ديناً (الأقل)
+            return balanceOf(a).compareTo(balanceOf(b));
           });
 
-        final topBalance =
-            sortedByBalance.take(3).toList();
-        final topDebt =
-            sortedByDebt.where((p) {
-                  final bal = ((p['wallets'] as Map<String, dynamic>?)?[
-                              sys.currentUserPhone] ??
-                          0.0)
-                      .toDouble();
-                  return bal < 0;
-                }).take(3).toList();
+        final topBalance = sortedByBalance.take(3).toList();
+        final topDebt = sortedByDebt
+            .where((p) => balanceOf(p) < 0)
+            .take(3)
+            .toList();
 
         return RefreshIndicator(
           onRefresh: () async => setState(() {}),
@@ -1635,7 +1620,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                               style: TextStyle(
                                   color: colors.onSurface)),
                           trailing: Text(
-                              '${NumberFormat('#,##0').format(((pos['wallets'] as Map<String, dynamic>?)?[sys.currentUserPhone] ?? 0.0).toDouble())} ريال',
+                              '${NumberFormat('#,##0').format(balanceOf(pos))} ريال',
                               style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                   color: Colors.green)),
@@ -1650,16 +1635,11 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                           color: colors.onSurface)),
                   const SizedBox(height: 8),
                   ...topDebt.map((pos) {
-                    final debt = -(((pos['wallets']
-                                as Map<String, dynamic>?)?[
-                            sys.currentUserPhone] ??
-                        0.0)
-                        .toDouble());
+                    final debt = -balanceOf(pos);
                     return Card(
                       margin: const EdgeInsets.only(bottom: 8),
                       child: ListTile(
-                        leading: Icon(Icons.store,
-                            color: Colors.red),
+                        leading: Icon(Icons.store, color: Colors.red),
                         title: Text(pos['storeName'] ?? '',
                             style: TextStyle(
                                 color: colors.onSurface)),
@@ -1701,8 +1681,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
           Icon(icon, color: color, size: 24),
           const SizedBox(height: 8),
           Text(value,
-              style:
-                  TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: color)),
+              style: TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 16, color: color)),
           const SizedBox(height: 4),
           Text(title, style: const TextStyle(fontSize: 11, color: Colors.grey)),
         ],
