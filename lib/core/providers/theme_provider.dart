@@ -9,33 +9,14 @@ class ThemeProvider extends ChangeNotifier {
   late SharedPreferences _prefs;
   bool _isInitialized = false;
 
-  static const Color _defaultAppColor = Color(0xFFFFFFFF);
   static const String _defaultFontFamily = 'Cairo';
   static const double _defaultFontSizeScale = 1.0;
 
-  final Map<String, Map<String, dynamic>> _roleThemes = {
-    'super_admin': {
-      'isDark': false,
-      'color': _defaultAppColor,
-      'fontFamily': _defaultFontFamily,
-      'fontSizeScale': _defaultFontSizeScale
-    },
-    'agent': {
-      'isDark': false,
-      'color': _defaultAppColor,
-      'fontFamily': _defaultFontFamily,
-      'fontSizeScale': _defaultFontSizeScale
-    },
-    'user': {
-      'isDark': false,
-      'color': _defaultAppColor,
-      'fontFamily': _defaultFontFamily,
-      'fontSizeScale': _defaultFontSizeScale
-    },
-  };
+  // اللون الافتراضي (أزرق مادي) لضمان تباين ممتاز في الحالة الأولية
+  static const Color _defaultAppColor = Color(0xFF2196F3);
 
   bool _isDark = false;
-  Color _color = _defaultAppColor;
+  Color _primaryColor = _defaultAppColor;
   Color? _userCustomColor;
   String _fontFamily = _defaultFontFamily;
   double _fontSizeScale = _defaultFontSizeScale;
@@ -53,50 +34,31 @@ class ThemeProvider extends ChangeNotifier {
   void _loadPreferences() {
     if (!_isInitialized) return;
 
-    for (String role in _roleThemes.keys) {
-      _roleThemes[role]!['isDark'] = _prefs.getBool('${role}_isDark') ?? false;
-      int? savedCol = _prefs.getInt('${role}_color');
-      if (savedCol != null) _roleThemes[role]!['color'] = Color(savedCol);
-    }
-
-    _isDark = _prefs.getBool('${_currentUserPhone}_isDark') ??
-        (_roleThemes[_currentRole]?['isDark'] ?? false);
+    _isDark = _prefs.getBool('${_currentUserPhone}_isDark') ?? false;
 
     int? savedBaseColor = _prefs.getInt('${_currentUserPhone}_baseColor');
-    _color = savedBaseColor != null
-        ? Color(savedBaseColor)
-        : (_roleThemes[_currentRole]?['color'] ?? _defaultAppColor);
+    _primaryColor = savedBaseColor != null ? Color(savedBaseColor) : _defaultAppColor;
 
     int? savedCustomColor = _prefs.getInt('${_currentUserPhone}_customColor');
     _userCustomColor = savedCustomColor != null ? Color(savedCustomColor) : null;
 
-    _fontFamily = _prefs.getString('${_currentUserPhone}_fontFamily') ??
-        (_roleThemes[_currentRole]?['fontFamily'] ?? _defaultFontFamily);
-    _fontSizeScale = _prefs.getDouble('${_currentUserPhone}_fontSizeScale') ??
-        (_roleThemes[_currentRole]?['fontSizeScale'] ?? _defaultFontSizeScale);
+    _fontFamily = _prefs.getString('${_currentUserPhone}_fontFamily') ?? _defaultFontFamily;
+    _fontSizeScale = _prefs.getDouble('${_currentUserPhone}_fontSizeScale') ?? _defaultFontSizeScale;
 
     notifyListeners();
   }
 
+  // ---------- Getters ----------
   bool get isDarkMode => _isDark;
-
-  Color get primaryColor => _userCustomColor ?? _color;
-  Color get activePrimaryColor => primaryColor;
-
+  Color get primaryColor => _userCustomColor ?? _primaryColor;
   String get fontFamily => _fontFamily;
   double get fontSizeScale => _fontSizeScale;
-  String get currentRole => _currentRole;
   bool get isInitialized => _isInitialized;
 
-  Color get adaptiveTextColor {
-    return primaryColor.computeLuminance() > 0.5 ? Colors.black87 : Colors.white;
-  }
-
+  // ---------- Setters ----------
   void setRole(String role) {
-    if (_roleThemes.containsKey(role)) {
-      _currentRole = role;
-      _loadPreferences();
-    }
+    _currentRole = role;
+    _loadPreferences();
   }
 
   void setUser(String role, String phone) {
@@ -108,19 +70,12 @@ class ThemeProvider extends ChangeNotifier {
   void toggleTheme(bool isDark) {
     _isDark = isDark;
     _prefs.setBool('${_currentUserPhone}_isDark', isDark);
-    if (!isDark) {
-      resetToDefaultColor();
-    }
     notifyListeners();
   }
 
   void changeColor(Color color) {
-    setUserCustomColor(color);
-  }
-
-  void setUserCustomColor(Color color) async {
     _userCustomColor = color;
-    await _prefs.setInt('${_currentUserPhone}_customColor', color.value);
+    _prefs.setInt('${_currentUserPhone}_customColor', color.value);
     notifyListeners();
   }
 
@@ -128,11 +83,6 @@ class ThemeProvider extends ChangeNotifier {
     _userCustomColor = null;
     await _prefs.remove('${_currentUserPhone}_customColor');
     notifyListeners();
-  }
-
-  Future<void> loadUserCustomColor() async {
-    if (!_isInitialized) await _initPrefs();
-    _loadPreferences();
   }
 
   void changeFontFamily(String font) {
@@ -147,11 +97,97 @@ class ThemeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void resetToDefault() {
-    resetToDefaultColor();
-    changeFontFamily(_defaultFontFamily);
-    changeFontSizeScale(_defaultFontSizeScale);
-    toggleTheme(false);
+  // ---------- بناء الثيمات (Light & Dark) ----------
+  ThemeData get lightTheme => _buildTheme(Brightness.light);
+  ThemeData get darkTheme => _buildTheme(Brightness.dark);
+
+  ThemeData _buildTheme(Brightness brightness) {
+    // نبدأ من ThemeData الأساسي مع Material 3
+    final base = ThemeData(
+      useMaterial3: true,
+      brightness: brightness,
+    );
+
+    // نولّد نظام الألوان الكامل حول اللون الأساسي
+    final ColorScheme colorScheme = ColorScheme.fromSeed(
+      seedColor: primaryColor,
+      brightness: brightness,
+    );
+
+    // نضبط الخطوط
+    TextTheme textTheme = _applyFont(base.textTheme, colorScheme.onSurface);
+
+    return base.copyWith(
+      colorScheme: colorScheme,
+      textTheme: textTheme,
+      scaffoldBackgroundColor: colorScheme.surfaceContainerLowest,
+      cardColor: colorScheme.surface,
+      appBarTheme: AppBarTheme(
+        backgroundColor: colorScheme.primaryContainer,
+        foregroundColor: colorScheme.onPrimaryContainer,
+        elevation: 0,
+      ),
+      drawerTheme: DrawerThemeData(
+        backgroundColor: colorScheme.surface,
+      ),
+      iconTheme: IconThemeData(color: colorScheme.onSurface),
+      listTileTheme: ListTileThemeData(
+        iconColor: colorScheme.primary,
+        textColor: colorScheme.onSurface,
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
+        ),
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: colorScheme.primary,
+        foregroundColor: colorScheme.onPrimary,
+      ),
+      tabBarTheme: TabBarTheme(
+        labelColor: colorScheme.onPrimaryContainer,
+        unselectedLabelColor: colorScheme.onSurfaceVariant,
+        indicatorColor: colorScheme.primary,
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: colorScheme.surfaceVariant,
+        selectedColor: colorScheme.primaryContainer,
+        labelStyle: TextStyle(color: colorScheme.onSurface),
+        secondaryLabelStyle: TextStyle(color: colorScheme.onPrimaryContainer),
+      ),
+      dialogTheme: DialogTheme(
+        backgroundColor: colorScheme.surface,
+        titleTextStyle: textTheme.titleLarge?.copyWith(color: colorScheme.onSurface),
+        contentTextStyle: textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: colorScheme.surface,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: colorScheme.outline),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: colorScheme.outline),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: colorScheme.primary, width: 2),
+        ),
+        filled: true,
+        fillColor: colorScheme.surfaceContainerHighest.withOpacity(0.3),
+        labelStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+        hintStyle: TextStyle(color: colorScheme.onSurfaceVariant.withOpacity(0.6)),
+      ),
+      dividerColor: colorScheme.outlineVariant,
+      expansionTileTheme: ExpansionTileThemeData(
+        iconColor: colorScheme.primary,
+        collapsedIconColor: colorScheme.onSurfaceVariant,
+      ),
+    );
   }
 
   TextTheme _applyFont(TextTheme base, Color textColor) {
@@ -165,94 +201,5 @@ class ThemeProvider extends ChangeNotifier {
       return GoogleFonts.cairoTextTheme(base)
           .apply(bodyColor: textColor, displayColor: textColor);
     }
-  }
-
-  ThemeData get lightTheme {
-    final base = ThemeData.light();
-    final Color activeColor = primaryColor;
-    final Color textColor = adaptiveTextColor;
-
-    return base.copyWith(
-      primaryColor: activeColor,
-      scaffoldBackgroundColor: activeColor.withOpacity(0.05),
-      cardColor: Colors.white,
-      colorScheme: ColorScheme.light(
-        primary: activeColor,
-        secondary: activeColor,
-        surface: Colors.white,
-        background: activeColor.withOpacity(0.05),
-      ),
-      appBarTheme: AppBarTheme(
-        backgroundColor: activeColor,
-        foregroundColor: textColor,
-        elevation: 0,
-      ),
-      drawerTheme: DrawerThemeData(
-        backgroundColor: Colors.white,
-      ),
-      textTheme: _applyFont(base.textTheme, textColor),
-      iconTheme: IconThemeData(color: textColor),
-      listTileTheme: ListTileThemeData(
-        iconColor: activeColor,
-        textColor: textColor,
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: activeColor,
-          foregroundColor: textColor,
-        ),
-      ),
-    );
-  }
-
-  ThemeData get darkTheme {
-    final base = ThemeData.dark();
-    final Color activeColor = primaryColor;
-
-    return base.copyWith(
-      primaryColor: activeColor,
-      scaffoldBackgroundColor: Color.alphaBlend(
-        activeColor.withOpacity(0.6),
-        const Color(0xFF121212),
-      ),
-      // ✅ لون البطاقات الديناميكي يعكس اللون المخصص في الوضع الليلي
-      cardColor: Color.alphaBlend(
-        activeColor.withOpacity(0.4),
-        const Color(0xFF1E1E1E),
-      ),
-      colorScheme: ColorScheme.dark(
-        primary: activeColor,
-        secondary: activeColor,
-        surface: Color.alphaBlend(
-          activeColor.withOpacity(0.4),
-          const Color(0xFF1E1E1E),
-        ),
-        background: Color.alphaBlend(
-            activeColor.withOpacity(0.6), const Color(0xFF121212)),
-      ),
-      appBarTheme: AppBarTheme(
-        backgroundColor: Color.alphaBlend(
-          activeColor.withOpacity(0.6),
-          const Color(0xFF121212),
-        ),
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      drawerTheme: DrawerThemeData(
-        backgroundColor: Colors.grey.shade900,
-      ),
-      textTheme: _applyFont(base.textTheme, Colors.white),
-      iconTheme: const IconThemeData(color: Colors.white),
-      listTileTheme: ListTileThemeData(
-        iconColor: activeColor,
-        textColor: Colors.white,
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: activeColor,
-          foregroundColor: Colors.white,
-        ),
-      ),
-    );
   }
 }
