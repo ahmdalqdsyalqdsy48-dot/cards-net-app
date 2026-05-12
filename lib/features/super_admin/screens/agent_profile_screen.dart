@@ -771,8 +771,8 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
         pageFormat: PdfPageFormat.a4,
         build: (context) => [
           pw.Header(level: 0, child: pw.Text('تقرير مبيعات الوكيل', textDirection: pw.TextDirection.rtl)),
-          pw.Paragraph(text: 'الوكيل: ${agent['name']}', textDirection: pw.TextDirection.rtl),
-          pw.Paragraph(text: 'الفترة: ${DateFormat('yyyy/MM/dd').format(range.start)} - ${DateFormat('yyyy/MM/dd').format(range.end)}', textDirection: pw.TextDirection.rtl),
+          pw.Text('الوكيل: ${agent['name']}', textDirection: pw.TextDirection.rtl),
+pw.Text('الفترة: ${DateFormat('yyyy/MM/dd').format(range.start)} - ${DateFormat('yyyy/MM/dd').format(range.end)}', textDirection: pw.TextDirection.rtl),
           pw.Divider(),
           pw.Table(border: pw.TableBorder.all(), children: [
             pw.TableRow(children: [pw.Text('الإحصاء'), pw.Text('القيمة')]),
