@@ -181,9 +181,10 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final systemProvider = Provider.of<SystemProvider>(context);
-    final isDark = themeProvider.isDarkMode;
-    final primaryColor = themeProvider.primaryColor;
-    final textColor = isDark ? Colors.white : Colors.black87;  // لون واضح لجميع النصوص
+    final ColorScheme colors = Theme.of(context).colorScheme;
+
+    final bool isDark = themeProvider.isDarkMode;
+    final Color primaryColor = themeProvider.primaryColor;
 
     final String dynamicUserName = systemProvider.currentUserName;
     final String dynamicUserPhone = systemProvider.currentUserPhone;
@@ -202,10 +203,11 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
     }
     bool hasImage = _currentLocalImageUrl != null && _currentLocalImageUrl!.isNotEmpty;
 
-    final nameColors = isDark ? _generateGradientColors(primaryColor) : [Colors.blue.shade800, Colors.blue.shade500];
-    final phoneColors = isDark ? _generateGradientColors(primaryColor) : [Colors.teal.shade800, Colors.teal.shade500];
-    final tierColors = isDark ? _generateGradientColors(primaryColor) : [Colors.orange.shade800, Colors.orange.shade500];
-    final balanceColors = isDark ? _generateGradientColors(primaryColor) : [Colors.purple.shade800, Colors.purple.shade500];
+    // جميع التدرجات تستخدم primaryColor دائمًا (الأزرق افتراضيًا أو اللون المخصص)
+    final nameColors = _generateGradientColors(primaryColor);
+    final phoneColors = _generateGradientColors(primaryColor);
+    final tierColors = _generateGradientColors(primaryColor);
+    final balanceColors = _generateGradientColors(primaryColor);
 
     String tierText;
     if (isPos) {
@@ -217,7 +219,7 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
     }
 
     return Drawer(
-      backgroundColor: Theme.of(context).cardColor,  // خلفية معتمة
+      backgroundColor: colors.surface, // خلفية معتمة ومتكيفة
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
@@ -278,43 +280,43 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                             ),
                           ),
                           const SizedBox(height: 10),
-                          Divider(height: 1, color: textColor.withOpacity(0.2)),
+                          Divider(height: 1, color: colors.outlineVariant),
                         ],
                       ),
                     ),
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Text('المالية والمشتريات', style: TextStyle(color: textColor, fontSize: 12, fontWeight: FontWeight.bold)),
+                    child: Text('المالية والمشتريات', style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.bold)),
                   ),
                   _buildDrawerItem(context, 'الرئيسية', Icons.dashboard, Colors.blue, const UserDashboardScreen()),
                   if (!isPos)
                     _buildDrawerItem(context, 'المحفظة الذكية والتحويلات', Icons.account_balance_wallet, Colors.teal, const UserWalletScreen()),
                   _buildDrawerItem(context, isPos ? 'سوق الجملة للشبكات' : 'سوق الشبكات ونقاط البيع', Icons.storefront, Colors.orange, const NetworkStoreScreen()),
                   _buildDrawerItem(context, isPos ? 'سجل المبيعات والكروت' : 'كروتي ومشترياتي', Icons.receipt_long, isPos ? Colors.purple : Colors.green, const MyCardsScreen()),
-                  Divider(height: 1, color: textColor.withOpacity(0.2)),
+                  Divider(height: 1, color: colors.outlineVariant),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Text('الامتيازات والسجلات', style: TextStyle(color: textColor, fontSize: 12, fontWeight: FontWeight.bold)),
+                    child: Text('الامتيازات والسجلات', style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.bold)),
                   ),
                   if (!isPos)
                     _buildDrawerItem(context, 'برنامج الولاء والمكافآت', Icons.stars, Colors.amber.shade700, const RewardsScreen()),
                   _buildDrawerItem(context, 'سجل العمليات المالية', Icons.history, Colors.indigo, const UserTransactionsScreen()),
-                  Divider(height: 1, color: textColor.withOpacity(0.2)),
+                  Divider(height: 1, color: colors.outlineVariant),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Text('الإعدادات والدعم', style: TextStyle(color: textColor, fontSize: 12, fontWeight: FontWeight.bold)),
+                    child: Text('الإعدادات والدعم', style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.bold)),
                   ),
                   _buildDrawerItem(context, 'الدعم الفني والشكاوى', Icons.support_agent, Colors.redAccent, const UserSupportScreen()),
                   _buildDrawerItem(context, 'الملف الشخصي والإعدادات', Icons.settings, Colors.blueGrey, const UserSettingsScreen()),
                 ],
               ),
             ),
-            Divider(height: 1, color: textColor.withOpacity(0.2)),
+            Divider(height: 1, color: colors.outlineVariant),
             ListTile(
               dense: true,
               leading: const Icon(Icons.logout, color: Colors.red, size: 20),
-              title: Text('تسجيل الخروج', style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
+              title: Text('تسجيل الخروج', style: TextStyle(color: colors.onSurface, fontWeight: FontWeight.bold)),
               onTap: () {
                 _playSound();
                 final sys = Provider.of<SystemProvider>(context, listen: false);
@@ -350,13 +352,13 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
   }
 
   Widget _buildDrawerItem(BuildContext context, String title, IconData icon, Color iconColor, Widget targetScreen) {
-    final textColor = Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
+    final ColorScheme colors = Theme.of(context).colorScheme;
     return ListTile(
       dense: true,
       visualDensity: VisualDensity.compact,
       leading: Icon(icon, color: iconColor, size: 20),
-      title: Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: textColor)),
-      trailing: Icon(Icons.arrow_forward_ios, size: 11, color: textColor.withOpacity(0.5)),
+      title: Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: colors.onSurface)),
+      trailing: Icon(Icons.arrow_forward_ios, size: 11, color: colors.onSurface.withOpacity(0.5)),
       onTap: () => _navigateTo(context, targetScreen),
     );
   }
