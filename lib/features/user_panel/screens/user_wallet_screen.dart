@@ -1,5 +1,3 @@
-// lib/features/user_panel/screens/user_wallet_screen.dart
-
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -11,6 +9,7 @@ import 'package:intl/intl.dart' as intl;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -42,13 +41,11 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   final _transferAmountController = TextEditingController();
   Map<String, dynamic>? _transferTarget;
   bool _isSearching = false;
-  double? _transferFee = null; // للعمولة
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    // استمع لأي طلبات مكتملة أو مرفوضة لإظهار إشعار
   }
 
   @override
@@ -189,26 +186,26 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     }
   }
 
-  // حفظ/إزالة وكيل مفضل
   Future<void> _toggleFavoriteAgent(String agentPhone) async {
+    final systemProvider = Provider.of<SystemProvider>(context, listen: false);
     final prefs = await SharedPreferences.getInstance();
-    String key = 'fav_agent_${sys.currentUserPhone}';
+    String key = 'fav_agent_${systemProvider.currentUserPhone}';
     String? fav = prefs.getString(key);
     if (fav == agentPhone) {
       await prefs.remove(key);
     } else {
       await prefs.setString(key, agentPhone);
     }
-    setState(() {}); // لإعادة بناء القائمة
+    setState(() {});
   }
 
   Future<String?> _getFavoriteAgent() async {
+    final systemProvider = Provider.of<SystemProvider>(context, listen: false);
     final prefs = await SharedPreferences.getInstance();
-    String key = 'fav_agent_${sys.currentUserPhone}';
+    String key = 'fav_agent_${systemProvider.currentUserPhone}';
     return prefs.getString(key);
   }
 
-  // البحث عن مستخدم للتحويل
   Future<void> _searchForTransfer() async {
     final sys = Provider.of<SystemProvider>(context, listen: false);
     final query = _searchController.text.trim();
@@ -228,7 +225,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     }
   }
 
-  // تنفيذ التحويل مع تأكيد
   Future<void> _executeTransfer() async {
     final sys = Provider.of<SystemProvider>(context, listen: false);
     if (_transferTarget == null) return;
@@ -242,7 +238,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       _showSnack('لا يمكن التحويل لأن الرقم مخفي', error: true);
       return;
     }
-    // تأكيد
     bool? confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => Directionality(
@@ -251,8 +246,12 @@ class _UserWalletScreenState extends State<UserWalletScreen>
           title: const Text('تأكيد التحويل'),
           content: Text('تحويل $amount ريال إلى ${_transferTarget!['name']}؟'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('تراجع')),
-            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تأكيد')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('تراجع')),
+            ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('تأكيد')),
           ],
         ),
       ),
@@ -270,7 +269,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     }
   }
 
-  // مسح QR حقيقي
   void _startQRScan() async {
     final result = await Navigator.push(
       context,
@@ -284,7 +282,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
         if (data['acc'] != null) {
           _searchController.text = data['acc'];
           _searchForTransfer();
-          _tabController.animateTo(1); // انتقل لتبويب التحويل
+          _tabController.animateTo(1);
         } else {
           _showSnack('الكود لا يحتوي على رقم حساب صحيح', error: true);
         }
@@ -355,13 +353,15 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                               children: [
                                 IconButton(
                                   icon: Icon(Icons.qr_code_2,
-                                      color: colors.onPrimaryContainer, size: 22),
+                                      color: colors.onPrimaryContainer,
+                                      size: 22),
                                   tooltip: 'رمز QR',
                                   onPressed: () => _tabController.animateTo(2),
                                 ),
                                 IconButton(
                                   icon: Icon(Icons.settings,
-                                      color: colors.onPrimaryContainer, size: 20),
+                                      color: colors.onPrimaryContainer,
+                                      size: 20),
                                   onPressed: () {
                                     Navigator.pushNamed(
                                         context, '/user_settings');
@@ -420,8 +420,12 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                     labelStyle: const TextStyle(
                         fontWeight: FontWeight.bold, fontSize: 13),
                     tabs: const [
-                      Tab(icon: Icon(Icons.account_balance_wallet, size: 20), text: 'شحن'),
-                      Tab(icon: Icon(Icons.send_to_mobile, size: 20), text: 'تحويل'),
+                      Tab(
+                          icon: Icon(Icons.account_balance_wallet, size: 20),
+                          text: 'شحن'),
+                      Tab(
+                          icon: Icon(Icons.send_to_mobile, size: 20),
+                          text: 'تحويل'),
                       Tab(icon: Icon(Icons.qr_code_2, size: 20), text: 'QR'),
                     ],
                   ),
@@ -442,7 +446,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     );
   }
 
-  // ==================== تبويب الشحن ====================
   Widget _buildRechargeTab(ColorScheme colors, SystemProvider sys) {
     return RefreshIndicator(
       onRefresh: () async => setState(() {}),
@@ -452,38 +455,41 @@ class _UserWalletScreenState extends State<UserWalletScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // إحصاءات سريعة
-            FutureBuilder<QuerySnapshot>(
-              future: FirebaseFirestore.instance
+            // إحصاءات سريعة (عدد الطلبات المعلقة)
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
                   .collection('user_recharges')
                   .where('userPhone', isEqualTo: sys.currentUserPhone)
                   .where('status', isEqualTo: 'قيد الانتظار')
-                  .count()
-                  .get(),
+                  .snapshots(),
               builder: (context, snap) {
-                final pending = snap.data?.count ?? 0;
+                final pending = snap.data?.docs.length ?? 0;
                 return Text('📊 طلبات معلقة: $pending',
                     style: TextStyle(color: colors.onSurfaceVariant));
               },
             ),
             const SizedBox(height: 12),
             // القائمة المنسدلة للوكلاء مع مفضلة
-            FutureBuilder<List<Map<String, dynamic>>>(
-              future: sys.getRealAgentsForRecharge().then((agents) async {
+            FutureBuilder<(List<Map<String, dynamic>>, String?)>(
+              future: () async {
+                final agents = await sys.getRealAgentsForRecharge();
                 final fav = await _getFavoriteAgent();
-                // ترتيب: المفضل أولاً
                 if (fav != null && agents.any((a) => a['phone'] == fav)) {
-                  final favAgent = agents.firstWhere((a) => a['phone'] == fav);
+                  final favAgent =
+                      agents.firstWhere((a) => a['phone'] == fav);
                   agents.remove(favAgent);
                   agents.insert(0, favAgent);
                 }
-                return agents;
-              }),
+                return (agents, fav);
+              }(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                final agents = snapshot.data ?? [];
+                final data = snapshot.data;
+                final agents = data?.$1 ?? [];
+                final favoritePhone = data?.$2;
+
                 if (agents.isEmpty) {
                   return Text('لا يوجد وكلاء نشطين حالياً.',
                       style: TextStyle(color: colors.onSurfaceVariant));
@@ -500,18 +506,22 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                         prefixIcon: const Icon(Icons.person),
                       ),
                       items: agents.map((agent) {
-                        final isFav = _favoriteAgentPhone == agent['phone'];
+                        final isFav = agent['phone'] == favoritePhone;
                         return DropdownMenuItem<Map<String, dynamic>>(
                           value: agent,
                           child: Row(
                             children: [
                               if (isFav)
-                                Icon(Icons.star, size: 16, color: Colors.amber),
-                              const SizedBox(width: isFav ? 8 : 0),
+                                const Padding(
+                                  padding: EdgeInsets.only(left: 8),
+                                  child: Icon(Icons.star,
+                                      size: 16, color: Colors.amber),
+                                ),
                               Expanded(
                                 child: Text(
                                   '${agent['name'] ?? agent['phone']}',
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold),
                                 ),
                               ),
                             ],
@@ -531,15 +541,16 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                       Align(
                         alignment: Alignment.centerLeft,
                         child: TextButton.icon(
-                          onPressed: () => _toggleFavoriteAgent(_selectedAgent!['phone']),
+                          onPressed: () =>
+                              _toggleFavoriteAgent(_selectedAgent!['phone']),
                           icon: Icon(
-                            _favoriteAgentPhone == _selectedAgent!['phone']
+                            _selectedAgent!['phone'] == favoritePhone
                                 ? Icons.star
                                 : Icons.star_border,
                             color: Colors.amber,
                           ),
                           label: Text(
-                            _favoriteAgentPhone == _selectedAgent!['phone']
+                            _selectedAgent!['phone'] == favoritePhone
                                 ? 'إزالة من المفضلة'
                                 : 'إضافة للمفضلة',
                           ),
@@ -553,7 +564,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
             // حسابات الوكيل البنكية
             if (_selectedAgent != null) ...[
               if (_agentBankAccounts.isNotEmpty) ...[
-                Text('حسابات ${_selectedAgent!['name'] ?? _selectedAgent!['phone']}:',
+                Text(
+                    'حسابات ${_selectedAgent!['name'] ?? _selectedAgent!['phone']}:',
                     style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: colors.onSurface)),
@@ -601,14 +613,13 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                 ),
             ],
             const SizedBox(height: 15),
-            // حقول المبلغ والمرجع
             TextField(
               controller: _amountController,
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
                   labelText: 'المبلغ (ريال)',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10)),
+                  border:
+                      OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   prefixIcon: const Icon(Icons.attach_money)),
             ),
             const SizedBox(height: 12),
@@ -616,8 +627,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
               controller: _refController,
               decoration: InputDecoration(
                   labelText: 'رقم الحوالة / المرجع',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10)),
+                  border:
+                      OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   prefixIcon: const Icon(Icons.receipt)),
             ),
             const SizedBox(height: 15),
@@ -655,7 +666,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
               ),
             ),
             const SizedBox(height: 25),
-            // سجل العمليات الكامل
+            // سجل الشحنات الكامل
             Text('📋 سجل الشحنات',
                 style: TextStyle(
                     fontSize: 14,
@@ -713,8 +724,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                     }
                     return ListTile(
                       dense: true,
-                      title: Text(
-                          '$amount ريال من الوكيل $agent'),
+                      title: Text('$amount ريال من الوكيل $agent'),
                       subtitle: Text('$dateStr ($statusText)'),
                       leading: Icon(icon, color: iconColor, size: 20),
                       trailing: status == 'قيد الانتظار'
@@ -753,7 +763,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     );
   }
 
-  // ==================== تبويب التحويل ====================
   Widget _buildTransferTab(ColorScheme colors) {
     return RefreshIndicator(
       onRefresh: () async => setState(() {}),
@@ -864,7 +873,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     );
   }
 
-  // ==================== تبويب QR ====================
   Widget _buildQRTab(
       ColorScheme colors, String accountNumber, String userName) {
     final qrData = '{"acc":"$accountNumber","name":"$userName"}';
@@ -936,9 +944,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       ),
     );
   }
-
-  // متغير للوكيل المفضل الحالي
-  String? _favoriteAgentPhone;
 }
 
 // ==============================
