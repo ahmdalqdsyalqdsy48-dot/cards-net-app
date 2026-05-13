@@ -939,9 +939,9 @@ class SystemProvider extends ChangeNotifier {
     return user['accountNumber']?.toString();
   }
 
-  // ------------------- الحسابات البنكية للوكيل (مُعدّلة) -------------------
+    // ------------------- الحسابات البنكية للوكيل (مُعدّلة) -------------------
   Future<void> addAgentBankAccount(String networkName, String agentName,
-      String bankName, String accNumber, String note) async {
+      String bankName, String accNumber, String note, [List<String>? networkIds]) async {
     if (_activeUserPhone == null) return;
     try {
       int newOrder = _myAgentBankAccounts.length;
@@ -954,7 +954,8 @@ class SystemProvider extends ChangeNotifier {
         'note': note.isNotEmpty ? note : 'لا توجد ملاحظات',
         'status': 'نشط',
         'order': newOrder,
-        'createdAt': FieldValue.serverTimestamp()
+        'createdAt': FieldValue.serverTimestamp(),
+        'networkIds': networkIds ?? [],
       });
       notifyListeners();
     } catch (e) {
@@ -963,14 +964,18 @@ class SystemProvider extends ChangeNotifier {
   }
 
   Future<void> updateAgentBankAccount(String docId, String networkName,
-      String agentName, String bankName, String accNumber, String note) async {
-    await _db.collection('agent_bank_accounts').doc(docId).update({
+      String agentName, String bankName, String accNumber, String note, [List<String>? networkIds]) async {
+    final updateData = <String, dynamic>{
       'networkName': networkName,
       'agentName': agentName,
       'bankName': bankName,
       'accountNumber': accNumber,
-      'note': note
-    });
+      'note': note,
+    };
+    if (networkIds != null) {
+      updateData['networkIds'] = networkIds;
+    }
+    await _db.collection('agent_bank_accounts').doc(docId).update(updateData);
     notifyListeners();
   }
 
