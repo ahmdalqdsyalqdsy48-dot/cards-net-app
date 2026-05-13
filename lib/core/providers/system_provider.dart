@@ -1056,6 +1056,55 @@ class SystemProvider extends ChangeNotifier {
       return [];
     }
   }
+    // ========== جلب الشبكات النشطة التي تملك حسابات بنكية (لشحن المحفظة) ==========
+  Future<List<Map<String, dynamic>>> getActiveNetworksForRecharge() async {
+    try {
+      // 1. جلب جميع الوكلاء النشطين
+      final agentsSnap = await _db
+          .collection('users')
+          .where('role', isEqualTo: 'agent')
+          .where('status', isEqualTo: 'نشط')
+          .get();
+
+      List<Map<String, dynamic>> activeNetworks = [];
+
+      for (var agentDoc in agentsSnap.docs) {
+        final agentPhone = agentDoc.id;
+        final agentData = agentDoc.data();
+
+        // 2. التأكد من أن الوكيل لديه حساب بنكي نشط واحد على الأقل
+        final banksSnap = await _db
+            .collection('agent_bank_accounts')
+            .where('agentPhone', isEqualTo: agentPhone)
+            .where('status', isEqualTo: 'نشط')
+            .limit(1)
+            .get();
+
+        if (banksSnap.docs.isEmpty) continue; // لا يوجد حساب بنكي نشط
+
+        // 3. جلب شبكات الوكيل النشطة
+        final networksSnap = await _db
+            .collection('networks')
+            .where('agentPhone', isEqualTo: agentPhone)
+            .where('isActive', isEqualTo: true)
+            .get();
+
+        for (var netDoc in networksSnap.docs) {
+          final netData = netDoc.data();
+          activeNetworks.add({
+            'networkId': netDoc.id,
+            'networkName': netData['name'] ?? 'بدون اسم',
+            'agentPhone': agentPhone,
+            'agentName': agentData['name'] ?? agentPhone,
+          });
+        }
+      }
+
+      return activeNetworks;
+    } catch (e) {
+      return [];
+    }
+  }
 
   // ------------------- دوال المستخدم والمحفظة (جديدة) -------------------
   Future<List<Map<String, dynamic>>> getAgentBankAccountsForUser(String agentPhone) async {
