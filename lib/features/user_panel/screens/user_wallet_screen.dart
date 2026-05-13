@@ -225,6 +225,30 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     }
   }
 
+  Future<String?> _showPinDialog() async {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('رمز PIN'),
+          content: TextField(
+            controller: controller,
+            obscureText: true,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            decoration: const InputDecoration(labelText: 'أدخل رمز PIN المكون من 6 أرقام'),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('تأكيد')),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _executeTransfer() async {
     final sys = Provider.of<SystemProvider>(context, listen: false);
     if (_transferTarget == null) return;
@@ -234,8 +258,20 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       return;
     }
     final targetPhone = _transferTarget!['phone'];
+    // منع التحويل للنفس
+    if (targetPhone == sys.currentUserPhone) {
+      _showSnack('لا يمكنك تحويل الرصيد لنفسك!', error: true);
+      return;
+    }
     if (targetPhone == 'مخفي') {
       _showSnack('لا يمكن التحويل لأن الرقم مخفي', error: true);
+      return;
+    }
+    // طلب PIN
+    final pin = await _showPinDialog();
+    if (pin == null || !mounted) return;
+    if (!sys.validatePin(pin)) {
+      _showSnack('رمز PIN غير صحيح', error: true);
       return;
     }
     bool? confirm = await showDialog<bool>(
@@ -246,12 +282,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
           title: const Text('تأكيد التحويل'),
           content: Text('تحويل $amount ريال إلى ${_transferTarget!['name']}؟'),
           actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('تراجع')),
-            ElevatedButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('تأكيد')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('تراجع')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تأكيد')),
           ],
         ),
       ),
@@ -313,8 +345,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
           headerSliverBuilder: (context, innerBoxIsScrolled) => [
             SliverAppBar(
               expandedHeight: 145.0,
-              floating: false,
-              pinned: true,
+              floating: true,
+              pinned: false,
               backgroundColor: colors.primaryContainer,
               flexibleSpace: FlexibleSpaceBar(
                 background: Padding(
@@ -353,15 +385,13 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                               children: [
                                 IconButton(
                                   icon: Icon(Icons.qr_code_2,
-                                      color: colors.onPrimaryContainer,
-                                      size: 22),
+                                      color: colors.onPrimaryContainer, size: 22),
                                   tooltip: 'رمز QR',
                                   onPressed: () => _tabController.animateTo(2),
                                 ),
                                 IconButton(
                                   icon: Icon(Icons.settings,
-                                      color: colors.onPrimaryContainer,
-                                      size: 20),
+                                      color: colors.onPrimaryContainer, size: 20),
                                   onPressed: () {
                                     Navigator.pushNamed(
                                         context, '/user_settings');
@@ -420,12 +450,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                     labelStyle: const TextStyle(
                         fontWeight: FontWeight.bold, fontSize: 13),
                     tabs: const [
-                      Tab(
-                          icon: Icon(Icons.account_balance_wallet, size: 20),
-                          text: 'شحن'),
-                      Tab(
-                          icon: Icon(Icons.send_to_mobile, size: 20),
-                          text: 'تحويل'),
+                      Tab(icon: Icon(Icons.account_balance_wallet, size: 20), text: 'شحن'),
+                      Tab(icon: Icon(Icons.send_to_mobile, size: 20), text: 'تحويل'),
                       Tab(icon: Icon(Icons.qr_code_2, size: 20), text: 'QR'),
                     ],
                   ),
@@ -475,8 +501,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                 final agents = await sys.getRealAgentsForRecharge();
                 final fav = await _getFavoriteAgent();
                 if (fav != null && agents.any((a) => a['phone'] == fav)) {
-                  final favAgent =
-                      agents.firstWhere((a) => a['phone'] == fav);
+                  final favAgent = agents.firstWhere((a) => a['phone'] == fav);
                   agents.remove(favAgent);
                   agents.insert(0, favAgent);
                 }
@@ -564,8 +589,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
             // حسابات الوكيل البنكية
             if (_selectedAgent != null) ...[
               if (_agentBankAccounts.isNotEmpty) ...[
-                Text(
-                    'حسابات ${_selectedAgent!['name'] ?? _selectedAgent!['phone']}:',
+                Text('حسابات ${_selectedAgent!['name'] ?? _selectedAgent!['phone']}:',
                     style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: colors.onSurface)),
@@ -618,8 +642,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
                   labelText: 'المبلغ (ريال)',
-                  border:
-                      OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10)),
                   prefixIcon: const Icon(Icons.attach_money)),
             ),
             const SizedBox(height: 12),
@@ -627,8 +651,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
               controller: _refController,
               decoration: InputDecoration(
                   labelText: 'رقم الحوالة / المرجع',
-                  border:
-                      OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10)),
                   prefixIcon: const Icon(Icons.receipt)),
             ),
             const SizedBox(height: 15),
