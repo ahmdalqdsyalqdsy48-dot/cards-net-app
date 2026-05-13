@@ -20,9 +20,6 @@ class AgentBankAccountsScreen extends StatefulWidget {
 }
 
 class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
-  // لإجراء تحديث محلي فوري بعد الإضافة
-  final List<Map<String, dynamic>> _localAccounts = [];
-
   void _play(BuildContext context, String type) =>
       Provider.of<UiProvider>(context, listen: false).playSound(type);
 
@@ -38,7 +35,7 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
     );
   }
 
-  // ==================== 1. نافذة إضافة حساب جديد (مطوّرة) ====================
+  // ==================== 1. نافذة إضافة حساب جديد (مطورة) ====================
   void _showAddAccountDialog(SystemProvider provider) {
     _play(context, 'click');
     final networkDescController = TextEditingController(); // حقل اسم الشبكة (وصف)
@@ -47,7 +44,7 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
     final beneficiaryController = TextEditingController();
     final noteController = TextEditingController();
 
-    // شبكات الوكيل (لاختيار المتعدد)
+    // جلب شبكات الوكيل لاختيار المتعدد
     final List<Map<String, dynamic>> agentNetworks = _getAgentNetworks(provider);
     List<String> selectedNetworkIds = [];
     List<String> selectedNetworkNames = [];
@@ -150,25 +147,11 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                       accountNumberController.text.isNotEmpty) {
                     Navigator.pop(ctx);
                     _play(context, 'click');
-                    // تحديث محلي فوري: إضافة بطاقة مؤقتة
                     final networkName = networkDescController.text.isNotEmpty
                         ? networkDescController.text.trim()
                         : (selectedNetworkNames.isNotEmpty
                             ? selectedNetworkNames.join("، ")
                             : provider.currentUserNetwork);
-                    _localAccounts.add({
-                      'docId': 'temp_${DateTime.now().millisecondsSinceEpoch}',
-                      'networkName': networkName,
-                      'agentName': provider.currentUserName,
-                      'bankName': bankNameController.text.trim(),
-                      'accountNumber': accountNumberController.text.trim(),
-                      'note': noteController.text.trim(),
-                      'status': 'نشط',
-                      'order': _localAccounts.length,
-                      'networkIds': selectedNetworkIds,
-                      'beneficiary': beneficiaryController.text.trim(),
-                    });
-                    setState(() {});
                     provider
                         .addAgentBankAccount(
                       networkName,
@@ -180,17 +163,8 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                     )
                         .then((_) {
                       _showSnack('تم حفظ الحساب بنجاح ✅');
-                      // إزالة البطاقة المؤقتة بعد الإضافة الحقيقية
-                      setState(() {
-                        _localAccounts.removeWhere(
-                            (acc) => acc['docId'].toString().startsWith('temp_'));
-                      });
                     }).catchError((e) {
                       _showSnack('فشل الحفظ: $e', error: true);
-                      setState(() {
-                        _localAccounts.removeWhere(
-                            (acc) => acc['docId'].toString().startsWith('temp_'));
-                      });
                     });
                   } else {
                     _showSnack('يرجى إدخال اسم البنك ورقم الحساب', error: true);
@@ -222,8 +196,10 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
     final noteController =
         TextEditingController(text: account['note'] ?? '');
 
+    // الشبكات الحالية
     List<String> currentNetworkIds =
         List<String>.from(account['networkIds'] ?? []);
+    // جلب شبكات الوكيل
     final List<Map<String, dynamic>> agentNetworks = _getAgentNetworks(provider);
     List<String> selectedNetworkIds = List.from(currentNetworkIds);
 
@@ -246,8 +222,10 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // حقل اسم الشبكة (وصف)
                   _buildTextField('اسم الشبكة (وصف)', Icons.wifi,
                       controller: networkDescController),
+                  // اختيار الشبكات المرتبطة (متعدد)
                   if (agentNetworks.isNotEmpty) ...[
                     const SizedBox(height: 10),
                     const Align(
@@ -415,7 +393,6 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
 
   // جلب شبكات الوكيل الحقيقية
   List<Map<String, dynamic>> _getAgentNetworks(SystemProvider provider) {
-    // استخدام networks من agentsList إذا كانت متاحة
     final agent = provider.agentsList.firstWhere(
         (a) => a['phone'] == provider.currentUserPhone,
         orElse: () => {});
@@ -506,10 +483,7 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                           }).toList() ??
                           [];
 
-                  // دمج الحسابات المحلية المؤقتة
-                  final allAccounts = [..._localAccounts, ...accounts];
-
-                  if (allAccounts.isEmpty) {
+                  if (accounts.isEmpty) {
                     return Center(
                         child: Text(
                             'لا توجد حسابات مضافة حالياً.\nاضغط على الزر أعلاه لإضافة حساب.',
@@ -519,10 +493,10 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                   }
 
                   // عدد الحسابات النشطة
-                  final activeCount = allAccounts
+                  final activeCount = accounts
                       .where((a) => a['status'] == 'نشط')
                       .length;
-                  final totalCount = allAccounts.length;
+                  final totalCount = accounts.length;
 
                   return Column(
                     children: [
@@ -539,28 +513,15 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                       Expanded(
                         child: ReorderableListView.builder(
                           padding: const EdgeInsets.all(16),
-                          itemCount: allAccounts.length,
+                          itemCount: accounts.length,
                           onReorder: (oldIndex, newIndex) {
-                            // فقط للحسابات غير المؤقتة
-                            final realAccounts = allAccounts
-                                .where((a) =>
-                                    !a['docId']
-                                        .toString()
-                                        .startsWith('temp_'))
-                                .toList();
-                            if (oldIndex < realAccounts.length &&
-                                newIndex <= realAccounts.length) {
-                              sys.reorderAgentBankAccounts(
-                                  oldIndex, newIndex);
-                            }
+                            sys.reorderAgentBankAccounts(
+                                oldIndex, newIndex);
                           },
                           itemBuilder: (context, index) {
-                            final account = allAccounts[index];
+                            final account = accounts[index];
                             final bool isActive =
                                 (account['status'] ?? '') == 'نشط';
-                            final bool isTemp = account['docId']
-                                .toString()
-                                .startsWith('temp_');
 
                             return Card(
                               key: ValueKey(account['docId']),
@@ -578,8 +539,6 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                                 padding: const EdgeInsets.all(12.0),
                                 child: Column(
                                   children: [
-                                    if (isTemp)
-                                      const LinearProgressIndicator(),
                                     Row(
                                       mainAxisAlignment:
                                           MainAxisAlignment.spaceBetween,
