@@ -1007,6 +1007,55 @@ class SystemProvider extends ChangeNotifier {
     }
     await batch.commit();
   }
+    // ========== جلب الوكلاء الحقيقيين (لشحن المحفظة) ==========
+  Future<List<Map<String, dynamic>>> getRealAgentsForRecharge() async {
+    try {
+      // 1. جلب جميع الوكلاء النشطين
+      final agentsSnap = await _db
+          .collection('users')
+          .where('role', isEqualTo: 'agent')
+          .where('status', isEqualTo: 'نشط')
+          .get();
+
+      List<Map<String, dynamic>> realAgents = [];
+
+      for (var doc in agentsSnap.docs) {
+        final agent = doc.data();
+        final phone = doc.id;
+
+        // 2. التحقق من أن الوكيل لديه شبكة ميكروتك واحدة على الأقل نشطة
+        final networksSnap = await _db
+            .collection('networks')
+            .where('agentPhone', isEqualTo: phone)
+            .where('isActive', isEqualTo: true)
+            .limit(1)
+            .get();
+
+        if (networksSnap.docs.isEmpty) continue; // ليس لديه شبكة نشطة
+
+        // 3. التحقق من أن الوكيل لديه حساب بنكي واحد على الأقل نشط
+        final banksSnap = await _db
+            .collection('agent_bank_accounts')
+            .where('agentPhone', isEqualTo: phone)
+            .where('status', isEqualTo: 'نشط')
+            .limit(1)
+            .get();
+
+        if (banksSnap.docs.isEmpty) continue; // ليس لديه حساب بنكي نشط
+
+        // 4. الوكيل يستوفي الشروط → أضفه للقائمة
+        realAgents.add({
+          'phone': phone,
+          'name': agent['name'] ?? '',
+          'networkName': agent['networkName'] ?? '',
+        });
+      }
+
+      return realAgents;
+    } catch (e) {
+      return [];
+    }
+  }
 
   // ------------------- دوال المستخدم والمحفظة (جديدة) -------------------
   Future<List<Map<String, dynamic>>> getAgentBankAccountsForUser(String agentPhone) async {
