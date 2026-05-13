@@ -1,3 +1,5 @@
+// lib/features/user_panel/screens/user_wallet_screen.dart
+
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -8,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart' as intl;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -39,11 +42,13 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   final _transferAmountController = TextEditingController();
   Map<String, dynamic>? _transferTarget;
   bool _isSearching = false;
+  double? _transferFee = null; // للعمولة
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    // استمع لأي طلبات مكتملة أو مرفوضة لإظهار إشعار
   }
 
   @override
@@ -184,6 +189,26 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     }
   }
 
+  // حفظ/إزالة وكيل مفضل
+  Future<void> _toggleFavoriteAgent(String agentPhone) async {
+    final prefs = await SharedPreferences.getInstance();
+    String key = 'fav_agent_${sys.currentUserPhone}';
+    String? fav = prefs.getString(key);
+    if (fav == agentPhone) {
+      await prefs.remove(key);
+    } else {
+      await prefs.setString(key, agentPhone);
+    }
+    setState(() {}); // لإعادة بناء القائمة
+  }
+
+  Future<String?> _getFavoriteAgent() async {
+    final prefs = await SharedPreferences.getInstance();
+    String key = 'fav_agent_${sys.currentUserPhone}';
+    return prefs.getString(key);
+  }
+
+  // البحث عن مستخدم للتحويل
   Future<void> _searchForTransfer() async {
     final sys = Provider.of<SystemProvider>(context, listen: false);
     final query = _searchController.text.trim();
@@ -203,6 +228,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     }
   }
 
+  // تنفيذ التحويل مع تأكيد
   Future<void> _executeTransfer() async {
     final sys = Provider.of<SystemProvider>(context, listen: false);
     if (_transferTarget == null) return;
@@ -216,6 +242,22 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       _showSnack('لا يمكن التحويل لأن الرقم مخفي', error: true);
       return;
     }
+    // تأكيد
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('تأكيد التحويل'),
+          content: Text('تحويل $amount ريال إلى ${_transferTarget!['name']}؟'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('تراجع')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تأكيد')),
+          ],
+        ),
+      ),
+    );
+    if (confirm != true) return;
     try {
       await sys.transferToUser(targetPhone: targetPhone, amount: amount);
       _play('success');
@@ -242,6 +284,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
         if (data['acc'] != null) {
           _searchController.text = data['acc'];
           _searchForTransfer();
+          _tabController.animateTo(1); // انتقل لتبويب التحويل
         } else {
           _showSnack('الكود لا يحتوي على رقم حساب صحيح', error: true);
         }
@@ -271,7 +314,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
         child: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) => [
             SliverAppBar(
-              expandedHeight: 130.0,
+              expandedHeight: 145.0,
               floating: false,
               pinned: true,
               backgroundColor: colors.primaryContainer,
@@ -300,18 +343,31 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(userName,
-                                style: TextStyle(
-                                    color: colors.onPrimaryContainer,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold)),
-                            IconButton(
-                              icon: Icon(Icons.settings,
-                                  color: colors.onPrimaryContainer, size: 20),
-                              onPressed: () {
-                                Navigator.pushNamed(
-                                    context, '/user_settings');
-                              },
+                            Expanded(
+                              child: Text(userName,
+                                  style: TextStyle(
+                                      color: colors.onPrimaryContainer,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold)),
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(Icons.qr_code_2,
+                                      color: colors.onPrimaryContainer, size: 22),
+                                  tooltip: 'رمز QR',
+                                  onPressed: () => _tabController.animateTo(2),
+                                ),
+                                IconButton(
+                                  icon: Icon(Icons.settings,
+                                      color: colors.onPrimaryContainer, size: 20),
+                                  onPressed: () {
+                                    Navigator.pushNamed(
+                                        context, '/user_settings');
+                                  },
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -376,7 +432,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
           body: TabBarView(
             controller: _tabController,
             children: [
-              _buildRechargeTab(colors),
+              _buildRechargeTab(colors, sys),
               _buildTransferTab(colors),
               _buildQRTab(colors, accountNumber, userName),
             ],
@@ -386,8 +442,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     );
   }
 
-  Widget _buildRechargeTab(ColorScheme colors) {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+  // ==================== تبويب الشحن ====================
+  Widget _buildRechargeTab(ColorScheme colors, SystemProvider sys) {
     return RefreshIndicator(
       onRefresh: () async => setState(() {}),
       child: SingleChildScrollView(
@@ -396,15 +452,33 @@ class _UserWalletScreenState extends State<UserWalletScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('📥 طلب شحن رصيد',
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: colors.onSurface)),
+            // إحصاءات سريعة
+            FutureBuilder<QuerySnapshot>(
+              future: FirebaseFirestore.instance
+                  .collection('user_recharges')
+                  .where('userPhone', isEqualTo: sys.currentUserPhone)
+                  .where('status', isEqualTo: 'قيد الانتظار')
+                  .count()
+                  .get(),
+              builder: (context, snap) {
+                final pending = snap.data?.count ?? 0;
+                return Text('📊 طلبات معلقة: $pending',
+                    style: TextStyle(color: colors.onSurfaceVariant));
+              },
+            ),
             const SizedBox(height: 12),
-            // القائمة المنسدلة للوكلاء
+            // القائمة المنسدلة للوكلاء مع مفضلة
             FutureBuilder<List<Map<String, dynamic>>>(
-              future: sys.getRealAgentsForRecharge(),
+              future: sys.getRealAgentsForRecharge().then((agents) async {
+                final fav = await _getFavoriteAgent();
+                // ترتيب: المفضل أولاً
+                if (fav != null && agents.any((a) => a['phone'] == fav)) {
+                  final favAgent = agents.firstWhere((a) => a['phone'] == fav);
+                  agents.remove(favAgent);
+                  agents.insert(0, favAgent);
+                }
+                return agents;
+              }),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
@@ -426,11 +500,21 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                         prefixIcon: const Icon(Icons.person),
                       ),
                       items: agents.map((agent) {
+                        final isFav = _favoriteAgentPhone == agent['phone'];
                         return DropdownMenuItem<Map<String, dynamic>>(
                           value: agent,
-                          child: Text(
-                            '${agent['name'] ?? agent['phone']}',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          child: Row(
+                            children: [
+                              if (isFav)
+                                Icon(Icons.star, size: 16, color: Colors.amber),
+                              const SizedBox(width: isFav ? 8 : 0),
+                              Expanded(
+                                child: Text(
+                                  '${agent['name'] ?? agent['phone']}',
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
                           ),
                         );
                       }).toList(),
@@ -442,6 +526,25 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                         if (val != null) _loadAgentBanks(val['phone']);
                       },
                     ),
+                    // زر مفضلة
+                    if (_selectedAgent != null)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: () => _toggleFavoriteAgent(_selectedAgent!['phone']),
+                          icon: Icon(
+                            _favoriteAgentPhone == _selectedAgent!['phone']
+                                ? Icons.star
+                                : Icons.star_border,
+                            color: Colors.amber,
+                          ),
+                          label: Text(
+                            _favoriteAgentPhone == _selectedAgent!['phone']
+                                ? 'إزالة من المفضلة'
+                                : 'إضافة للمفضلة',
+                          ),
+                        ),
+                      ),
                     const SizedBox(height: 12),
                   ],
                 );
@@ -464,14 +567,29 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                         title: Text(bank['bankName'] ?? ''),
                         subtitle: Text(
                             'رقم الحساب: ${bank['accountNumber']}\nالمستفيد: ${bank['beneficiary'] ?? ""}'),
-                        trailing: IconButton(
-                          icon: Icon(Icons.copy, color: colors.primary),
-                          onPressed: () {
-                            final data =
-                                '🏦 ${bank['bankName']}\n🔢 الحساب: ${bank['accountNumber']}\n👤 باسم: ${bank['beneficiary'] ?? ""}';
-                            Clipboard.setData(ClipboardData(text: data));
-                            _showSnack('تم النسخ');
-                          },
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(Icons.copy, color: colors.primary),
+                              tooltip: 'نسخ',
+                              onPressed: () {
+                                final data =
+                                    '🏦 ${bank['bankName']}\n🔢 الحساب: ${bank['accountNumber']}\n👤 باسم: ${bank['beneficiary'] ?? ""}';
+                                Clipboard.setData(ClipboardData(text: data));
+                                _showSnack('تم النسخ');
+                              },
+                            ),
+                            IconButton(
+                              icon: Icon(Icons.share, color: colors.primary),
+                              tooltip: 'مشاركة',
+                              onPressed: () {
+                                final data =
+                                    '🏦 ${bank['bankName']}\n🔢 الحساب: ${bank['accountNumber']}\n👤 باسم: ${bank['beneficiary'] ?? ""}';
+                                Share.share(data);
+                              },
+                            ),
+                          ],
                         ),
                       ),
                     )),
@@ -537,8 +655,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
               ),
             ),
             const SizedBox(height: 25),
-            // آخر 3 عمليات شحن ناجحة
-            Text('✅ آخر عمليات الشحن الناجحة',
+            // سجل العمليات الكامل
+            Text('📋 سجل الشحنات',
                 style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
@@ -548,21 +666,20 @@ class _UserWalletScreenState extends State<UserWalletScreen>
               stream: FirebaseFirestore.instance
                   .collection('user_recharges')
                   .where('userPhone', isEqualTo: sys.currentUserPhone)
-                  .where('status', isEqualTo: 'مقبول')
                   .orderBy('timestamp', descending: true)
-                  .limit(3)
+                  .limit(10)
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
-                  return Text('خطأ في تحميل البيانات',
+                  return Text('خطأ في تحميل السجل',
                       style: TextStyle(color: colors.error));
                 }
                 final items = snapshot.data?.docs ?? [];
                 if (items.isEmpty) {
-                  return Text('لا توجد عمليات شحن ناجحة بعد.',
+                  return Text('لا توجد عمليات شحن بعد.',
                       style: TextStyle(color: colors.onSurfaceVariant));
                 }
                 return Column(
@@ -570,86 +687,61 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                     final req = doc.data() as Map<String, dynamic>;
                     final amount = (req['amount'] ?? 0.0).toDouble();
                     final agent = req['targetPhone'] ?? '';
+                    final status = req['status'] ?? 'قيد الانتظار';
                     final time = (req['timestamp'] as Timestamp?)?.toDate();
                     final dateStr = time != null
                         ? intl.DateFormat('yyyy/MM/dd - hh:mm a').format(time)
                         : '';
+                    IconData icon;
+                    Color iconColor;
+                    String statusText;
+                    switch (status) {
+                      case 'مقبول':
+                        icon = Icons.check_circle;
+                        iconColor = Colors.green;
+                        statusText = 'ناجح';
+                        break;
+                      case 'مرفوض':
+                        icon = Icons.cancel;
+                        iconColor = Colors.red;
+                        statusText = 'مرفوض';
+                        break;
+                      default:
+                        icon = Icons.hourglass_bottom;
+                        iconColor = Colors.orange;
+                        statusText = 'معلق';
+                    }
                     return ListTile(
                       dense: true,
-                      title: Text('$amount ريال من الوكيل $agent'),
-                      subtitle: Text(dateStr),
-                      leading: Icon(Icons.check_circle,
-                          color: Colors.green, size: 20),
-                    );
-                  }).toList(),
-                );
-              },
-            ),
-            const SizedBox(height: 15),
-            // طلباتي المعلقة
-            Text('📋 طلباتي المعلقة',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: colors.onSurface)),
-            const SizedBox(height: 10),
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('user_recharges')
-                  .where('userPhone', isEqualTo: sys.currentUserPhone)
-                  .where('status', isEqualTo: 'قيد الانتظار')
-                  .orderBy('timestamp', descending: true)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Text('خطأ في تحميل الطلبات',
-                      style: TextStyle(color: colors.error));
-                }
-                final requests = snapshot.data?.docs ?? [];
-                if (requests.isEmpty) {
-                  return Text('لا توجد طلبات معلقة حالياً.',
-                      style: TextStyle(color: colors.onSurfaceVariant));
-                }
-                return Column(
-                  children: requests.map((doc) {
-                    final req = doc.data() as Map<String, dynamic>;
-                    final DateTime? ts =
-                        (req['timestamp'] as Timestamp?)?.toDate();
-                    final String timeStr = ts != null
-                        ? intl.DateFormat('yyyy/MM/dd - hh:mm a').format(ts)
-                        : '';
-                    final double amount =
-                        (req['amount'] ?? 0.0).toDouble();
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      color: colors.surface,
-                      child: ListTile(
-                        title: Text('مبلغ: ${amount.toStringAsFixed(0)} ريال'),
-                        subtitle:
-                            Text('الوكيل: ${req['targetPhone']} - $timeStr'),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: Icon(Icons.edit, color: colors.primary),
-                              onPressed: () => _editRechargeRequest({
-                                'targetPhone': req['targetPhone'],
-                                'amount': amount,
-                                'reference': req['reference'] ?? '',
-                                'receiptBase64': req['receiptBase64'] ?? '',
-                              }),
-                            ),
-                            IconButton(
-                              icon: Icon(Icons.delete, color: colors.error),
-                              onPressed: () =>
-                                  _cancelRechargeRequest(doc.id),
-                            ),
-                          ],
-                        ),
-                      ),
+                      title: Text(
+                          '$amount ريال من الوكيل $agent'),
+                      subtitle: Text('$dateStr ($statusText)'),
+                      leading: Icon(icon, color: iconColor, size: 20),
+                      trailing: status == 'قيد الانتظار'
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(Icons.edit,
+                                      color: colors.primary, size: 18),
+                                  onPressed: () => _editRechargeRequest({
+                                    'targetPhone': agent,
+                                    'amount': amount,
+                                    'reference':
+                                        req['reference'] ?? '',
+                                    'receiptBase64':
+                                        req['receiptBase64'] ?? '',
+                                  }),
+                                ),
+                                IconButton(
+                                  icon: Icon(Icons.delete,
+                                      color: colors.error, size: 18),
+                                  onPressed: () =>
+                                      _cancelRechargeRequest(doc.id),
+                                ),
+                              ],
+                            )
+                          : null,
                     );
                   }).toList(),
                 );
@@ -661,6 +753,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     );
   }
 
+  // ==================== تبويب التحويل ====================
   Widget _buildTransferTab(ColorScheme colors) {
     return RefreshIndicator(
       onRefresh: () async => setState(() {}),
@@ -729,6 +822,9 @@ class _UserWalletScreenState extends State<UserWalletScreen>
               TextField(
                 controller: _transferAmountController,
                 keyboardType: TextInputType.number,
+                onChanged: (v) {
+                  setState(() {});
+                },
                 decoration: InputDecoration(
                   labelText: 'المبلغ (ريال)',
                   border: OutlineInputBorder(
@@ -736,6 +832,14 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                   prefixIcon: const Icon(Icons.money),
                 ),
               ),
+              if (_transferAmountController.text.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    'سيصل: ${(double.tryParse(_transferAmountController.text) ?? 0).toStringAsFixed(0)} ريال (بدون خصم)',
+                    style: TextStyle(color: colors.primary, fontSize: 12),
+                  ),
+                ),
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
@@ -760,6 +864,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     );
   }
 
+  // ==================== تبويب QR ====================
   Widget _buildQRTab(
       ColorScheme colors, String accountNumber, String userName) {
     final qrData = '{"acc":"$accountNumber","name":"$userName"}';
@@ -831,6 +936,9 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       ),
     );
   }
+
+  // متغير للوكيل المفضل الحالي
+  String? _favoriteAgentPhone;
 }
 
 // ==============================
@@ -883,7 +991,6 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                     return;
                   }
                 }
-                // إذا لم يتم العثور على شيء، اسمح بإعادة المسح
                 _hasScanned = false;
               }
             },
