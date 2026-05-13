@@ -1,3 +1,5 @@
+// lib/features/user_panel/screens/user_wallet_screen.dart
+
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -7,9 +9,6 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart' as intl;
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -29,7 +28,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   bool _isBalanceVisible = false;
 
   // شحن
-  Map<String, dynamic>? _selectedAgent;
+  Map<String, dynamic>? _selectedNetwork; // الشبكة المختارة
+  String? _selectedAgentPhone;
   List<Map<String, dynamic>> _agentBankAccounts = [];
   final _amountController = TextEditingController();
   final _refController = TextEditingController();
@@ -98,8 +98,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
 
   Future<void> _submitRecharge() async {
     final sys = Provider.of<SystemProvider>(context, listen: false);
-    if (_selectedAgent == null) {
-      _showSnack('اختر وكيلاً', error: true);
+    if (_selectedAgentPhone == null) {
+      _showSnack('اختر شبكة أولاً', error: true);
       return;
     }
     final amount = double.tryParse(_amountController.text);
@@ -113,13 +113,14 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     }
     try {
       await sys.requestRechargeFromAgent(
-        agentPhone: _selectedAgent!['phone'],
+        agentPhone: _selectedAgentPhone!,
         amount: amount,
         paymentMethod: 'حوالة بنكية',
         reference: _refController.text,
         base64Image: _receiptBase64,
       );
       _play('success');
+      setState(() {}); // ✅ تحديث فوري للشاشة
       _showSnack('تم إرسال طلب الشحن للوكيل');
       _clearRechargeForm();
     } catch (e) {
@@ -132,27 +133,20 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     _refController.clear();
     setState(() {
       _receiptBase64 = null;
-      _selectedAgent = null;
+      _selectedNetwork = null;
+      _selectedAgentPhone = null;
       _agentBankAccounts = [];
     });
   }
 
   void _editRechargeRequest(Map<String, dynamic> request) {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    sys.getRealAgentsForRecharge().then((agents) {
-      final agent = agents.firstWhere(
-          (a) => a['phone'] == request['targetPhone'],
-          orElse: () => {});
-      if (agent.isNotEmpty) {
-        setState(() {
-          _selectedAgent = agent;
-          _amountController.text = request['amount']?.toString() ?? '';
-          _refController.text = request['reference'] ?? '';
-          _receiptBase64 = request['receiptBase64'];
-        });
-        _loadAgentBanks(request['targetPhone']);
-      }
+    setState(() {
+      _selectedAgentPhone = request['targetPhone'];
+      _amountController.text = request['amount']?.toString() ?? '';
+      _refController.text = request['reference'] ?? '';
+      _receiptBase64 = request['receiptBase64'];
     });
+    _loadAgentBanks(request['targetPhone']);
   }
 
   Future<void> _cancelRechargeRequest(String docId) async {
@@ -182,28 +176,9 @@ class _UserWalletScreenState extends State<UserWalletScreen>
           .doc(docId)
           .delete();
       _play('success');
+      setState(() {}); // تحديث فوري
       _showSnack('تم إلغاء الطلب بنجاح');
     }
-  }
-
-  Future<void> _toggleFavoriteAgent(String agentPhone) async {
-    final systemProvider = Provider.of<SystemProvider>(context, listen: false);
-    final prefs = await SharedPreferences.getInstance();
-    String key = 'fav_agent_${systemProvider.currentUserPhone}';
-    String? fav = prefs.getString(key);
-    if (fav == agentPhone) {
-      await prefs.remove(key);
-    } else {
-      await prefs.setString(key, agentPhone);
-    }
-    setState(() {});
-  }
-
-  Future<String?> _getFavoriteAgent() async {
-    final systemProvider = Provider.of<SystemProvider>(context, listen: false);
-    final prefs = await SharedPreferences.getInstance();
-    String key = 'fav_agent_${systemProvider.currentUserPhone}';
-    return prefs.getString(key);
   }
 
   Future<void> _searchForTransfer() async {
@@ -225,30 +200,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     }
   }
 
-  Future<String?> _showPinDialog() async {
-    final controller = TextEditingController();
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: const Text('رمز PIN'),
-          content: TextField(
-            controller: controller,
-            obscureText: true,
-            keyboardType: TextInputType.number,
-            maxLength: 6,
-            decoration: const InputDecoration(labelText: 'أدخل رمز PIN المكون من 6 أرقام'),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
-            ElevatedButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('تأكيد')),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> _executeTransfer() async {
     final sys = Provider.of<SystemProvider>(context, listen: false);
     if (_transferTarget == null) return;
@@ -258,37 +209,10 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       return;
     }
     final targetPhone = _transferTarget!['phone'];
-    // منع التحويل للنفس
-    if (targetPhone == sys.currentUserPhone) {
-      _showSnack('لا يمكنك تحويل الرصيد لنفسك!', error: true);
-      return;
-    }
     if (targetPhone == 'مخفي') {
       _showSnack('لا يمكن التحويل لأن الرقم مخفي', error: true);
       return;
     }
-    // طلب PIN
-    final pin = await _showPinDialog();
-    if (pin == null || !mounted) return;
-    if (!sys.validatePin(pin)) {
-      _showSnack('رمز PIN غير صحيح', error: true);
-      return;
-    }
-    bool? confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: const Text('تأكيد التحويل'),
-          content: Text('تحويل $amount ريال إلى ${_transferTarget!['name']}؟'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('تراجع')),
-            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تأكيد')),
-          ],
-        ),
-      ),
-    );
-    if (confirm != true) return;
     try {
       await sys.transferToUser(targetPhone: targetPhone, amount: amount);
       _play('success');
@@ -301,32 +225,10 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     }
   }
 
-  void _startQRScan() async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const QRScannerScreen(),
-      ),
-    );
-    if (result != null && result is String) {
-      try {
-        final data = jsonDecode(result);
-        if (data['acc'] != null) {
-          _searchController.text = data['acc'];
-          _searchForTransfer();
-          _tabController.animateTo(1);
-        } else {
-          _showSnack('الكود لا يحتوي على رقم حساب صحيح', error: true);
-        }
-      } catch (e) {
-        _showSnack('الكود غير صالح', error: true);
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final colors = Theme.of(context).colorScheme;
     final userBalance = sys.currentUserBalance;
     final accountNumber = sys.currentUserAccountNumber ?? 'غير متوفر';
@@ -336,135 +238,114 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       backgroundColor: colors.surfaceContainerLowest,
       appBar: const CustomHeader(title: 'محفظتي'),
       drawer: CustomUserDrawer(
-        userName: userName,
+        userName: sys.currentUserName,
         phoneNumber: sys.currentUserPhone,
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) => [
-            SliverAppBar(
-              expandedHeight: 145.0,
-              floating: true,
-              pinned: false,
-              backgroundColor: colors.primaryContainer,
-              flexibleSpace: FlexibleSpaceBar(
-                background: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [colors.primary, colors.primaryContainer],
-                        begin: Alignment.topRight,
-                        end: Alignment.bottomLeft,
-                      ),
-                      borderRadius: BorderRadius.circular(15),
-                      boxShadow: const [
-                        BoxShadow(
-                            color: Colors.black26,
-                            blurRadius: 8,
-                            offset: Offset(0, 2))
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(userName,
-                                  style: TextStyle(
-                                      color: colors.onPrimaryContainer,
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold)),
-                            ),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: Icon(Icons.qr_code_2,
-                                      color: colors.onPrimaryContainer, size: 22),
-                                  tooltip: 'رمز QR',
-                                  onPressed: () => _tabController.animateTo(2),
-                                ),
-                                IconButton(
-                                  icon: Icon(Icons.settings,
-                                      color: colors.onPrimaryContainer, size: 20),
-                                  onPressed: () {
-                                    Navigator.pushNamed(
-                                        context, '/user_settings');
-                                  },
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        GestureDetector(
-                          onTap: () {
-                            setState(
-                                () => _isBalanceVisible = !_isBalanceVisible);
-                          },
-                          child: Row(
-                            children: [
-                              Icon(Icons.account_balance_wallet,
-                                  color: colors.onPrimaryContainer, size: 18),
-                              const SizedBox(width: 8),
-                              Text(
-                                _isBalanceVisible
-                                    ? '${intl.NumberFormat('#,###.##').format(userBalance)} ريال'
-                                    : '**** ريال',
-                                style: TextStyle(
-                                    color: colors.onPrimaryContainer,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16),
-                              ),
-                              const SizedBox(width: 8),
-                              Icon(
-                                _isBalanceVisible
-                                    ? Icons.visibility_off
-                                    : Icons.visibility,
-                                color: colors.onPrimaryContainer,
-                                size: 18,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+            SliverToBoxAdapter(
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      colors.primary,
+                      colors.primaryContainer
+                    ],
+                    begin: Alignment.topRight,
+                    end: Alignment.bottomLeft,
                   ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: const [
+                    BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 10,
+                        offset: Offset(0, 4))
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(userName,
+                            style: TextStyle(
+                                color: colors.onPrimaryContainer,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold)),
+                        IconButton(
+                          icon: Icon(Icons.settings,
+                              color: colors.onPrimaryContainer),
+                          onPressed: () {
+                            Navigator.pushNamed(context, '/user_settings');
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _buildInfoRow(Icons.credit_card, 'رقم الحساب',
+                        accountNumber, onTap: () {
+                      Clipboard.setData(ClipboardData(text: accountNumber));
+                      _showSnack('تم نسخ رقم الحساب');
+                    }, color: colors.onPrimaryContainer),
+                    const SizedBox(height: 12),
+                    GestureDetector(
+                      onTap: () {
+                        setState(
+                            () => _isBalanceVisible = !_isBalanceVisible);
+                      },
+                      child: _buildInfoRow(
+                        Icons.account_balance_wallet,
+                        'الرصيد',
+                        _isBalanceVisible
+                            ? '${intl.NumberFormat('#,###.##').format(userBalance)} ريال'
+                            : '**** ريال',
+                        trailing: Icon(
+                          _isBalanceVisible
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                          color: colors.onPrimaryContainer,
+                          size: 20,
+                        ),
+                        color: colors.onPrimaryContainer,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(40),
-                child: Container(
-                  color: colors.surface,
-                  child: TabBar(
-                    controller: _tabController,
-                    labelColor: colors.primary,
-                    unselectedLabelColor: colors.onSurfaceVariant,
-                    indicatorColor: colors.primary,
-                    indicatorWeight: 3,
-                    labelStyle: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 13),
-                    tabs: const [
-                      Tab(icon: Icon(Icons.account_balance_wallet, size: 20), text: 'شحن'),
-                      Tab(icon: Icon(Icons.send_to_mobile, size: 20), text: 'تحويل'),
-                      Tab(icon: Icon(Icons.qr_code_2, size: 20), text: 'QR'),
-                    ],
-                  ),
+            ),
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _SliverAppBarDelegate(
+                TabBar(
+                  controller: _tabController,
+                  labelColor: colors.primary,
+                  unselectedLabelColor: colors.onSurfaceVariant,
+                  indicatorColor: colors.primary,
+                  indicatorWeight: 4,
+                  labelStyle: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 13),
+                  tabs: const [
+                    Tab(
+                        icon: Icon(Icons.account_balance_wallet),
+                        text: 'شحن'),
+                    Tab(icon: Icon(Icons.send_to_mobile), text: 'تحويل'),
+                    Tab(icon: Icon(Icons.qr_code_2), text: 'QR'),
+                  ],
                 ),
+                color: colors.surface,
               ),
             ),
           ],
           body: TabBarView(
             controller: _tabController,
             children: [
-              _buildRechargeTab(colors, sys),
+              _buildRechargeTab(colors),
               _buildTransferTab(colors),
-              _buildQRTab(colors, accountNumber, userName),
+              _buildQRTab(accountNumber, userName, colors),
             ],
           ),
         ),
@@ -472,7 +353,32 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     );
   }
 
-  Widget _buildRechargeTab(ColorScheme colors, SystemProvider sys) {
+  Widget _buildInfoRow(IconData icon, String label, String value,
+      {VoidCallback? onTap, Widget? trailing, Color? color}) {
+    return InkWell(
+      onTap: onTap,
+      child: Row(
+        children: [
+          Icon(icon, color: color ?? Colors.white, size: 18),
+          const SizedBox(width: 10),
+          Text('$label: ',
+              style: TextStyle(
+                  color: color?.withOpacity(0.8) ?? Colors.white70,
+                  fontSize: 13)),
+          Expanded(
+              child: Text(value,
+                  style: TextStyle(
+                      color: color ?? Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15))),
+          if (trailing != null) trailing,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRechargeTab(ColorScheme colors) {
+    final sys = Provider.of<SystemProvider>(context, listen: false);
     return RefreshIndicator(
       onRefresh: () async => setState(() {}),
       child: SingleChildScrollView(
@@ -481,161 +387,102 @@ class _UserWalletScreenState extends State<UserWalletScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // إحصاءات سريعة (عدد الطلبات المعلقة)
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('user_recharges')
-                  .where('userPhone', isEqualTo: sys.currentUserPhone)
-                  .where('status', isEqualTo: 'قيد الانتظار')
-                  .snapshots(),
-              builder: (context, snap) {
-                final pending = snap.data?.docs.length ?? 0;
-                return Text('📊 طلبات معلقة: $pending',
-                    style: TextStyle(color: colors.onSurfaceVariant));
-              },
-            ),
+            Text('📥 طلب شحن رصيد',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: colors.onSurface)),
             const SizedBox(height: 12),
-            // القائمة المنسدلة للوكلاء مع مفضلة
-            FutureBuilder<(List<Map<String, dynamic>>, String?)>(
-              future: () async {
-                final agents = await sys.getRealAgentsForRecharge();
-                final fav = await _getFavoriteAgent();
-                if (fav != null && agents.any((a) => a['phone'] == fav)) {
-                  final favAgent = agents.firstWhere((a) => a['phone'] == fav);
-                  agents.remove(favAgent);
-                  agents.insert(0, favAgent);
-                }
-                return (agents, fav);
-              }(),
+            // القائمة المنسدلة للشبكات
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: sys.getActiveNetworksForRecharge(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                final data = snapshot.data;
-                final agents = data?.$1 ?? [];
-                final favoritePhone = data?.$2;
-
-                if (agents.isEmpty) {
-                  return Text('لا يوجد وكلاء نشطين حالياً.',
+                final networks = snapshot.data ?? [];
+                if (networks.isEmpty) {
+                  return Text('لا توجد شبكات متاحة حالياً.',
                       style: TextStyle(color: colors.onSurfaceVariant));
                 }
                 return Column(
                   children: [
                     DropdownButtonFormField<Map<String, dynamic>>(
-                      value: _selectedAgent,
+                      value: _selectedNetwork,
                       isExpanded: true,
                       decoration: InputDecoration(
-                        labelText: 'اختر الوكيل',
+                        labelText: 'اختر الشبكة',
                         border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10)),
-                        prefixIcon: const Icon(Icons.person),
+                        prefixIcon: const Icon(Icons.wifi),
                       ),
-                      items: agents.map((agent) {
-                        final isFav = agent['phone'] == favoritePhone;
+                      items: networks.map((network) {
                         return DropdownMenuItem<Map<String, dynamic>>(
-                          value: agent,
-                          child: Row(
-                            children: [
-                              if (isFav)
-                                const Padding(
-                                  padding: EdgeInsets.only(left: 8),
-                                  child: Icon(Icons.star,
-                                      size: 16, color: Colors.amber),
-                                ),
-                              Expanded(
-                                child: Text(
-                                  '${agent['name'] ?? agent['phone']}',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            ],
+                          value: network,
+                          child: Text(
+                            network['networkName'] ?? '',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                         );
                       }).toList(),
                       onChanged: (val) {
                         setState(() {
-                          _selectedAgent = val;
+                          _selectedNetwork = val;
+                          _selectedAgentPhone = val?['agentPhone'];
                           _agentBankAccounts = [];
                         });
-                        if (val != null) _loadAgentBanks(val['phone']);
+                        if (val != null) _loadAgentBanks(val['agentPhone']);
                       },
                     ),
-                    // زر مفضلة
-                    if (_selectedAgent != null)
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          onPressed: () =>
-                              _toggleFavoriteAgent(_selectedAgent!['phone']),
-                          icon: Icon(
-                            _selectedAgent!['phone'] == favoritePhone
-                                ? Icons.star
-                                : Icons.star_border,
-                            color: Colors.amber,
-                          ),
-                          label: Text(
-                            _selectedAgent!['phone'] == favoritePhone
-                                ? 'إزالة من المفضلة'
-                                : 'إضافة للمفضلة',
-                          ),
-                        ),
+                    if (_selectedNetwork != null &&
+                        _selectedNetwork!['agentName'] != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                            'الوكيل: ${_selectedNetwork!['agentName']}',
+                            style: TextStyle(
+                                color: colors.onSurfaceVariant,
+                                fontSize: 12)),
                       ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 15),
                   ],
                 );
               },
             ),
             // حسابات الوكيل البنكية
-            if (_selectedAgent != null) ...[
-              if (_agentBankAccounts.isNotEmpty) ...[
-                Text('حسابات ${_selectedAgent!['name'] ?? _selectedAgent!['phone']}:',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colors.onSurface)),
-                const SizedBox(height: 8),
-                ..._agentBankAccounts.map((bank) => Card(
-                      elevation: 1,
-                      color: colors.surface,
-                      child: ListTile(
-                        leading:
-                            Icon(Icons.account_balance, color: colors.primary),
-                        title: Text(bank['bankName'] ?? ''),
-                        subtitle: Text(
-                            'رقم الحساب: ${bank['accountNumber']}\nالمستفيد: ${bank['beneficiary'] ?? ""}'),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: Icon(Icons.copy, color: colors.primary),
-                              tooltip: 'نسخ',
-                              onPressed: () {
-                                final data =
-                                    '🏦 ${bank['bankName']}\n🔢 الحساب: ${bank['accountNumber']}\n👤 باسم: ${bank['beneficiary'] ?? ""}';
-                                Clipboard.setData(ClipboardData(text: data));
-                                _showSnack('تم النسخ');
-                              },
-                            ),
-                            IconButton(
-                              icon: Icon(Icons.share, color: colors.primary),
-                              tooltip: 'مشاركة',
-                              onPressed: () {
-                                final data =
-                                    '🏦 ${bank['bankName']}\n🔢 الحساب: ${bank['accountNumber']}\n👤 باسم: ${bank['beneficiary'] ?? ""}';
-                                Share.share(data);
-                              },
-                            ),
-                          ],
-                        ),
+            if (_selectedAgentPhone != null &&
+                _agentBankAccounts.isNotEmpty) ...[
+              Text('حسابات الوكيل:',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: colors.onSurface)),
+              const SizedBox(height: 10),
+              ..._agentBankAccounts.map((bank) => Card(
+                    elevation: 1,
+                    color: colors.surface,
+                    child: ListTile(
+                      leading: Icon(Icons.account_balance,
+                          color: colors.primary),
+                      title: Text(bank['bankName'] ?? ''),
+                      subtitle: Text(
+                          'رقم الحساب: ${bank['accountNumber']}\nالمستفيد: ${bank['beneficiary'] ?? ""}'),
+                      trailing: IconButton(
+                        icon: Icon(Icons.copy, color: colors.primary),
+                        onPressed: () {
+                          final data =
+                              '🏦 ${bank['bankName']}\n🔢 الحساب: ${bank['accountNumber']}\n👤 باسم: ${bank['beneficiary'] ?? ""}';
+                          Clipboard.setData(ClipboardData(text: data));
+                          _showSnack('تم النسخ');
+                        },
                       ),
-                    )),
-              ] else
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Text('لا توجد حسابات بنكية نشطة لهذا الوكيل',
-                      style: TextStyle(color: colors.onSurfaceVariant)),
-                ),
-            ],
+                    ),
+                  )),
+            ] else if (_selectedAgentPhone != null)
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Text('لا توجد حسابات بنكية نشطة لهذا الوكيل',
+                    style: TextStyle(color: colors.onSurfaceVariant)),
+              ),
             const SizedBox(height: 15),
             TextField(
               controller: _amountController,
@@ -660,10 +507,12 @@ class _UserWalletScreenState extends State<UserWalletScreen>
               onPressed: _pickReceipt,
               icon: Icon(
                   _receiptBase64 == null ? Icons.image : Icons.check_circle,
-                  color:
-                      _receiptBase64 == null ? colors.primary : Colors.green),
-              label: Text(
-                  _receiptBase64 == null ? 'إرفاق صورة السند' : 'تم الإرفاق'),
+                  color: _receiptBase64 == null
+                      ? colors.primary
+                      : Colors.green),
+              label: Text(_receiptBase64 == null
+                  ? 'إرفاق صورة السند'
+                  : 'تم الإرفاق'),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 45),
                 side: BorderSide(
@@ -672,7 +521,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                         : Colors.green),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 25),
             SizedBox(
               width: double.infinity,
               height: 50,
@@ -690,10 +539,10 @@ class _UserWalletScreenState extends State<UserWalletScreen>
               ),
             ),
             const SizedBox(height: 25),
-            // سجل الشحنات الكامل
-            Text('📋 سجل الشحنات',
+            // طلباتي المعلقة
+            Text('📋 طلباتي المعلقة',
                 style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: colors.onSurface)),
             const SizedBox(height: 10),
@@ -701,81 +550,59 @@ class _UserWalletScreenState extends State<UserWalletScreen>
               stream: FirebaseFirestore.instance
                   .collection('user_recharges')
                   .where('userPhone', isEqualTo: sys.currentUserPhone)
+                  .where('status', isEqualTo: 'قيد الانتظار')
                   .orderBy('timestamp', descending: true)
-                  .limit(10)
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                if (snapshot.hasError) {
-                  return Text('خطأ في تحميل السجل',
-                      style: TextStyle(color: colors.error));
-                }
-                final items = snapshot.data?.docs ?? [];
-                if (items.isEmpty) {
-                  return Text('لا توجد عمليات شحن بعد.',
+                final requests = snapshot.data?.docs ?? [];
+                if (requests.isEmpty) {
+                  return Text('لا توجد طلبات معلقة حالياً.',
                       style: TextStyle(color: colors.onSurfaceVariant));
                 }
                 return Column(
-                  children: items.map((doc) {
+                  children: requests.map((doc) {
                     final req = doc.data() as Map<String, dynamic>;
-                    final amount = (req['amount'] ?? 0.0).toDouble();
-                    final agent = req['targetPhone'] ?? '';
-                    final status = req['status'] ?? 'قيد الانتظار';
-                    final time = (req['timestamp'] as Timestamp?)?.toDate();
-                    final dateStr = time != null
-                        ? intl.DateFormat('yyyy/MM/dd - hh:mm a').format(time)
+                    final DateTime? ts =
+                        (req['timestamp'] as Timestamp?)?.toDate();
+                    final String timeStr = ts != null
+                        ? intl.DateFormat('yyyy/MM/dd - hh:mm a').format(ts)
                         : '';
-                    IconData icon;
-                    Color iconColor;
-                    String statusText;
-                    switch (status) {
-                      case 'مقبول':
-                        icon = Icons.check_circle;
-                        iconColor = Colors.green;
-                        statusText = 'ناجح';
-                        break;
-                      case 'مرفوض':
-                        icon = Icons.cancel;
-                        iconColor = Colors.red;
-                        statusText = 'مرفوض';
-                        break;
-                      default:
-                        icon = Icons.hourglass_bottom;
-                        iconColor = Colors.orange;
-                        statusText = 'معلق';
-                    }
-                    return ListTile(
-                      dense: true,
-                      title: Text('$amount ريال من الوكيل $agent'),
-                      subtitle: Text('$dateStr ($statusText)'),
-                      leading: Icon(icon, color: iconColor, size: 20),
-                      trailing: status == 'قيد الانتظار'
-                          ? Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: Icon(Icons.edit,
-                                      color: colors.primary, size: 18),
-                                  onPressed: () => _editRechargeRequest({
-                                    'targetPhone': agent,
-                                    'amount': amount,
-                                    'reference':
-                                        req['reference'] ?? '',
-                                    'receiptBase64':
-                                        req['receiptBase64'] ?? '',
-                                  }),
-                                ),
-                                IconButton(
-                                  icon: Icon(Icons.delete,
-                                      color: colors.error, size: 18),
-                                  onPressed: () =>
-                                      _cancelRechargeRequest(doc.id),
-                                ),
-                              ],
-                            )
-                          : null,
+                    final double amount =
+                        (req['amount'] ?? 0.0).toDouble();
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      color: colors.surface,
+                      child: ListTile(
+                        title: Text(
+                            'مبلغ: ${amount.toStringAsFixed(0)} ريال'),
+                        subtitle: Text(
+                            'الوكيل: ${req['targetPhone']} - $timeStr'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(Icons.edit,
+                                  color: colors.primary),
+                              onPressed: () => _editRechargeRequest({
+                                'targetPhone': req['targetPhone'],
+                                'amount': amount,
+                                'reference': req['reference'] ?? '',
+                                'receiptBase64':
+                                    req['receiptBase64'] ?? '',
+                              }),
+                            ),
+                            IconButton(
+                              icon: Icon(Icons.delete,
+                                  color: colors.error),
+                              onPressed: () =>
+                                  _cancelRechargeRequest(doc.id),
+                            ),
+                          ],
+                        ),
+                      ),
                     );
                   }).toList(),
                 );
@@ -790,9 +617,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   Widget _buildTransferTab(ColorScheme colors) {
     return RefreshIndicator(
       onRefresh: () async => setState(() {}),
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -855,9 +681,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
               TextField(
                 controller: _transferAmountController,
                 keyboardType: TextInputType.number,
-                onChanged: (v) {
-                  setState(() {});
-                },
                 decoration: InputDecoration(
                   labelText: 'المبلغ (ريال)',
                   border: OutlineInputBorder(
@@ -865,14 +688,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                   prefixIcon: const Icon(Icons.money),
                 ),
               ),
-              if (_transferAmountController.text.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    'سيصل: ${(double.tryParse(_transferAmountController.text) ?? 0).toStringAsFixed(0)} ريال (بدون خصم)',
-                    style: TextStyle(color: colors.primary, fontSize: 12),
-                  ),
-                ),
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
@@ -890,7 +705,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                           borderRadius: BorderRadius.circular(10))),
                 ),
               ),
-            ],
+            ]
           ],
         ),
       ),
@@ -898,146 +713,95 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   }
 
   Widget _buildQRTab(
-      ColorScheme colors, String accountNumber, String userName) {
+      String accountNumber, String userName, ColorScheme colors) {
     final qrData = '{"acc":"$accountNumber","name":"$userName"}';
     return RefreshIndicator(
       onRefresh: () async => setState(() {}),
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('استقبال رصيد',
-                style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: colors.onSurface)),
-            const SizedBox(height: 5),
-            Text('امسح هذا الكود لتحويل الرصيد إليك',
-                style: TextStyle(color: colors.onSurfaceVariant)),
-            const SizedBox(height: 25),
-            RepaintBoundary(
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                        color: Colors.black12,
-                        blurRadius: 8,
-                        offset: Offset(0, 4))
-                  ],
-                ),
-                child: QrImageView(
-                  data: qrData,
-                  version: QrVersions.auto,
-                  size: 200,
-                  backgroundColor: Colors.white,
+      child: Center(
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('استقبال رصيد',
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: colors.onSurface)),
+              const SizedBox(height: 5),
+              Text('امسح هذا الكود لتحويل الرصيد إليك',
+                  style: TextStyle(color: colors.onSurfaceVariant)),
+              const SizedBox(height: 25),
+              RepaintBoundary(
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 8,
+                          offset: Offset(0, 4))
+                    ],
+                  ),
+                  child: QrImageView(
+                    data: qrData,
+                    version: QrVersions.auto,
+                    size: 200,
+                    backgroundColor: Colors.white,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: accountNumber));
-                    _showSnack('تم نسخ رقم الحساب');
-                  },
-                  icon: Icon(Icons.copy, color: colors.onPrimary),
-                  label: const Text('نسخ الحساب'),
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: colors.primary),
-                ),
-                const SizedBox(width: 10),
-                OutlinedButton.icon(
-                  onPressed: _startQRScan,
-                  icon: Icon(Icons.camera_alt, color: colors.primary),
-                  label: const Text('مسح QR'),
-                  style: OutlinedButton.styleFrom(
-                      foregroundColor: colors.primary,
-                      side: BorderSide(color: colors.primary)),
-                ),
-              ],
-            ),
-          ],
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(
+                          ClipboardData(text: accountNumber));
+                      _showSnack('تم نسخ رقم الحساب');
+                    },
+                    icon: Icon(Icons.copy, color: colors.onPrimary),
+                    label: const Text('نسخ الحساب'),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: colors.primary),
+                  ),
+                  const SizedBox(width: 10),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      _showSnack('ميزة مسح QR قيد التطوير');
+                    },
+                    icon: Icon(Icons.camera_alt, color: colors.primary),
+                    label: const Text('مسح QR'),
+                    style: OutlinedButton.styleFrom(
+                        foregroundColor: colors.primary,
+                        side: BorderSide(color: colors.primary)),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-// ==============================
-// شاشة مسح QR مستقلة
-// ==============================
-class QRScannerScreen extends StatefulWidget {
-  const QRScannerScreen({super.key});
-
+class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
+  final TabBar _tabBar;
+  final Color color;
+  _SliverAppBarDelegate(this._tabBar, {required this.color});
   @override
-  State<QRScannerScreen> createState() => _QRScannerScreenState();
-}
-
-class _QRScannerScreenState extends State<QRScannerScreen> {
-  final MobileScannerController controller = MobileScannerController();
-  bool _hasScanned = false;
-
+  double get minExtent => _tabBar.preferredSize.height;
   @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
-  }
-
+  double get maxExtent => _tabBar.preferredSize.height;
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('مسح QR'),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.flashlight_on),
-            onPressed: () => controller.toggleTorch(),
-          ),
-          IconButton(
-            icon: Icon(Icons.flip_camera_ios),
-            onPressed: () => controller.switchCamera(),
-          ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          MobileScanner(
-            controller: controller,
-            onDetect: (capture) {
-              if (!_hasScanned) {
-                _hasScanned = true;
-                final List<Barcode> barcodes = capture.barcodes;
-                for (final barcode in barcodes) {
-                  if (barcode.rawValue != null) {
-                    Navigator.pop(context, barcode.rawValue);
-                    return;
-                  }
-                }
-                _hasScanned = false;
-              }
-            },
-          ),
-          Align(
-            alignment: Alignment.topCenter,
-            child: Container(
-              margin: const EdgeInsets.only(top: 20),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(10)),
-              child: const Text('وجّه الكاميرا نحو رمز QR',
-                  style: TextStyle(color: Colors.white)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(
+          BuildContext context, double shrinkOffset, bool overlapsContent) =>
+      Container(color: color, child: _tabBar);
+  @override
+  bool shouldRebuild(_SliverAppBarDelegate oldDelegate) => false;
 }
