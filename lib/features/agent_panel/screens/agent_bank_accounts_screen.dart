@@ -1,12 +1,13 @@
+// lib/features/agent_panel/screens/agent_bank_accounts_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
-import '../../../core/providers/theme_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart';
 
@@ -19,6 +20,9 @@ class AgentBankAccountsScreen extends StatefulWidget {
 }
 
 class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
+  // لإجراء تحديث محلي فوري بعد الإضافة
+  final List<Map<String, dynamic>> _localAccounts = [];
+
   void _play(BuildContext context, String type) =>
       Provider.of<UiProvider>(context, listen: false).playSound(type);
 
@@ -34,20 +38,17 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
     );
   }
 
-  // ==================== 1. نافذة إضافة حساب جديد (مطورة) ====================
+  // ==================== 1. نافذة إضافة حساب جديد (مطوّرة) ====================
   void _showAddAccountDialog(SystemProvider provider) {
     _play(context, 'click');
-    final networkNameController = TextEditingController();
+    final networkDescController = TextEditingController(); // حقل اسم الشبكة (وصف)
     final bankNameController = TextEditingController();
     final accountNumberController = TextEditingController();
     final beneficiaryController = TextEditingController();
     final noteController = TextEditingController();
 
-    // جلب شبكات الوكيل
-    final List<Map<String, dynamic>> agentNetworks = provider
-        .agentsList
-        .firstWhere((a) => a['phone'] == provider.currentUserPhone,
-            orElse: () => {})['networks'] as List<Map<String, dynamic>>? ?? [];
+    // شبكات الوكيل (لاختيار المتعدد)
+    final List<Map<String, dynamic>> agentNetworks = _getAgentNetworks(provider);
     List<String> selectedNetworkIds = [];
     List<String> selectedNetworkNames = [];
 
@@ -71,11 +72,15 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // حقل اختيار الشبكات (متعدد)
+                  // حقل اسم الشبكة (النصي)
+                  _buildTextField('اسم الشبكة (وصف)', Icons.wifi,
+                      controller: networkDescController),
+                  // اختيار الشبكات المرتبطة (متعدد)
                   if (agentNetworks.isNotEmpty) ...[
+                    const SizedBox(height: 10),
                     const Align(
                       alignment: Alignment.centerRight,
-                      child: Text('اختر الشبكات المرتبطة بهذا الحساب:',
+                      child: Text('اختر الشبكات المرتبطة (اختياري):',
                           style: TextStyle(
                               fontWeight: FontWeight.bold, fontSize: 13)),
                     ),
@@ -145,13 +150,28 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                       accountNumberController.text.isNotEmpty) {
                     Navigator.pop(ctx);
                     _play(context, 'click');
+                    // تحديث محلي فوري: إضافة بطاقة مؤقتة
+                    final networkName = networkDescController.text.isNotEmpty
+                        ? networkDescController.text.trim()
+                        : (selectedNetworkNames.isNotEmpty
+                            ? selectedNetworkNames.join("، ")
+                            : provider.currentUserNetwork);
+                    _localAccounts.add({
+                      'docId': 'temp_${DateTime.now().millisecondsSinceEpoch}',
+                      'networkName': networkName,
+                      'agentName': provider.currentUserName,
+                      'bankName': bankNameController.text.trim(),
+                      'accountNumber': accountNumberController.text.trim(),
+                      'note': noteController.text.trim(),
+                      'status': 'نشط',
+                      'order': _localAccounts.length,
+                      'networkIds': selectedNetworkIds,
+                      'beneficiary': beneficiaryController.text.trim(),
+                    });
+                    setState(() {});
                     provider
                         .addAgentBankAccount(
-                      selectedNetworkNames.isNotEmpty
-                          ? selectedNetworkNames.join("، ")
-                          : (networkNameController.text.isNotEmpty
-                              ? networkNameController.text.trim()
-                              : provider.currentUserNetwork),
+                      networkName,
                       provider.currentUserName,
                       bankNameController.text.trim(),
                       accountNumberController.text.trim(),
@@ -160,8 +180,17 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                     )
                         .then((_) {
                       _showSnack('تم حفظ الحساب بنجاح ✅');
+                      // إزالة البطاقة المؤقتة بعد الإضافة الحقيقية
+                      setState(() {
+                        _localAccounts.removeWhere(
+                            (acc) => acc['docId'].toString().startsWith('temp_'));
+                      });
                     }).catchError((e) {
                       _showSnack('فشل الحفظ: $e', error: true);
+                      setState(() {
+                        _localAccounts.removeWhere(
+                            (acc) => acc['docId'].toString().startsWith('temp_'));
+                      });
                     });
                   } else {
                     _showSnack('يرجى إدخال اسم البنك ورقم الحساب', error: true);
@@ -182,7 +211,7 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
   void _showEditAccountDialog(
       SystemProvider provider, Map<String, dynamic> account) {
     _play(context, 'click');
-    final networkNameController =
+    final networkDescController =
         TextEditingController(text: account['networkName'] ?? '');
     final bankNameController =
         TextEditingController(text: account['bankName']);
@@ -193,15 +222,9 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
     final noteController =
         TextEditingController(text: account['note'] ?? '');
 
-    // الشبكات الحالية
     List<String> currentNetworkIds =
         List<String>.from(account['networkIds'] ?? []);
-    // جلب شبكات الوكيل
-    final List<Map<String, dynamic>> agentNetworks = provider
-        .agentsList
-        .firstWhere((a) => a['phone'] == provider.currentUserPhone,
-            orElse: () => {})['networks'] as List<Map<String, dynamic>>? ?? [];
-
+    final List<Map<String, dynamic>> agentNetworks = _getAgentNetworks(provider);
     List<String> selectedNetworkIds = List.from(currentNetworkIds);
 
     showDialog(
@@ -223,11 +246,13 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // حقل اختيار الشبكات (متعدد)
+                  _buildTextField('اسم الشبكة (وصف)', Icons.wifi,
+                      controller: networkDescController),
                   if (agentNetworks.isNotEmpty) ...[
+                    const SizedBox(height: 10),
                     const Align(
                       alignment: Alignment.centerRight,
-                      child: Text('اختر الشبكات المرتبطة بهذا الحساب:',
+                      child: Text('اختر الشبكات المرتبطة:',
                           style: TextStyle(
                               fontWeight: FontWeight.bold, fontSize: 13)),
                     ),
@@ -260,8 +285,6 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                     ),
                     const SizedBox(height: 15),
                   ],
-                  _buildTextField('اسم الشبكة (وصف)', Icons.wifi,
-                      controller: networkNameController),
                   _buildTextField('اسم البنك / المحفظة',
                       Icons.account_balance_wallet,
                       controller: bankNameController),
@@ -290,7 +313,7 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                   provider
                       .updateAgentBankAccount(
                     account['docId'],
-                    networkNameController.text.trim(),
+                    networkDescController.text.trim(),
                     provider.currentUserName,
                     bankNameController.text.trim(),
                     accountNumberController.text.trim(),
@@ -314,7 +337,7 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
     );
   }
 
-  // ==================== 3. دوال التحكم (حالة / حذف / نسخ) ====================
+  // ==================== 3. دوال التحكم (حالة / حذف / نسخ / مشاركة) ====================
   void _toggleAccountStatus(
       SystemProvider provider, Map<String, dynamic> account) {
     _play(context, 'click');
@@ -377,6 +400,27 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
 ''';
     Clipboard.setData(ClipboardData(text: data));
     _showSnack('تم نسخ بيانات الحساب بنجاح، جاهزة للإرسال! 📋');
+  }
+
+  void _shareAccountDetails(Map<String, dynamic> account) {
+    _play(context, 'click');
+    String data = '''
+🏦 ${account['bankName']}
+🔢 الحساب: ${account['accountNumber']}
+👤 باسم: ${account['beneficiary'] ?? ''}
+📝 الشبكة: ${account['networkName'] ?? ''}
+''';
+    Share.share(data, subject: 'بيانات الحساب البنكي');
+  }
+
+  // جلب شبكات الوكيل الحقيقية
+  List<Map<String, dynamic>> _getAgentNetworks(SystemProvider provider) {
+    // استخدام networks من agentsList إذا كانت متاحة
+    final agent = provider.agentsList.firstWhere(
+        (a) => a['phone'] == provider.currentUserPhone,
+        orElse: () => {});
+    final networks = agent['networks'] as List<dynamic>? ?? [];
+    return networks.map((n) => Map<String, dynamic>.from(n)).toList();
   }
 
   @override
@@ -462,7 +506,10 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                           }).toList() ??
                           [];
 
-                  if (accounts.isEmpty) {
+                  // دمج الحسابات المحلية المؤقتة
+                  final allAccounts = [..._localAccounts, ...accounts];
+
+                  if (allAccounts.isEmpty) {
                     return Center(
                         child: Text(
                             'لا توجد حسابات مضافة حالياً.\nاضغط على الزر أعلاه لإضافة حساب.',
@@ -471,154 +518,214 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                                 color: colors.onSurfaceVariant)));
                   }
 
-                  return ReorderableListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: accounts.length,
-                    onReorder: (oldIndex, newIndex) {
-                      sys.reorderAgentBankAccounts(oldIndex, newIndex);
-                    },
-                    itemBuilder: (context, index) {
-                      final Map<String, dynamic> account = accounts[index];
-                      final bool isActive =
-                          (account['status'] ?? '') == 'نشط';
+                  // عدد الحسابات النشطة
+                  final activeCount = allAccounts
+                      .where((a) => a['status'] == 'نشط')
+                      .length;
+                  final totalCount = allAccounts.length;
 
-                      return Card(
-                        key: ValueKey(account['docId']),
-                        elevation: 2,
-                        margin: const EdgeInsets.only(bottom: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                          side: BorderSide(
-                              color: isActive
-                                  ? colors.outlineVariant
-                                  : colors.error.withOpacity(0.5),
-                              width: 2),
+                  return Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 4),
+                        child: Text(
+                          'الإجمالي: $totalCount | النشطة: $activeCount',
+                          style: TextStyle(
+                              color: colors.onSurfaceVariant,
+                              fontSize: 12),
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12.0),
-                          child: Column(
-                            children: [
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Row(
+                      ),
+                      Expanded(
+                        child: ReorderableListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: allAccounts.length,
+                          onReorder: (oldIndex, newIndex) {
+                            // فقط للحسابات غير المؤقتة
+                            final realAccounts = allAccounts
+                                .where((a) =>
+                                    !a['docId']
+                                        .toString()
+                                        .startsWith('temp_'))
+                                .toList();
+                            if (oldIndex < realAccounts.length &&
+                                newIndex <= realAccounts.length) {
+                              sys.reorderAgentBankAccounts(
+                                  oldIndex, newIndex);
+                            }
+                          },
+                          itemBuilder: (context, index) {
+                            final account = allAccounts[index];
+                            final bool isActive =
+                                (account['status'] ?? '') == 'نشط';
+                            final bool isTemp = account['docId']
+                                .toString()
+                                .startsWith('temp_');
+
+                            return Card(
+                              key: ValueKey(account['docId']),
+                              elevation: 2,
+                              margin: const EdgeInsets.only(bottom: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                                side: BorderSide(
+                                    color: isActive
+                                        ? colors.outlineVariant
+                                        : colors.error.withOpacity(0.5),
+                                    width: 2),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: Column(
+                                  children: [
+                                    if (isTemp)
+                                      const LinearProgressIndicator(),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
                                       children: [
-                                        const Icon(Icons.drag_indicator,
-                                            color: Colors.grey),
-                                        const SizedBox(width: 10),
                                         Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
+                                          child: Row(
                                             children: [
-                                              if ((account['networkName'] ??
-                                                          '')
-                                                      .toString()
-                                                      .isNotEmpty)
-                                                Text(
-                                                    'شبكة: ${account['networkName']}',
-                                                    style: TextStyle(
-                                                        fontSize: 11,
-                                                        color: colors
-                                                            .primary)),
-                                              Text(
-                                                  account['bankName'] ?? '',
-                                                  style: TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      fontSize: 16,
-                                                      color: colors
-                                                          .primary)),
-                                              Text(
-                                                  account['accountNumber'] ??
-                                                      '',
-                                                  style: TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      fontSize: 18,
-                                                      color: colors
-                                                          .onSurface),
-                                                  textDirection:
-                                                      TextDirection.ltr),
+                                              const Icon(Icons.drag_indicator,
+                                                  color: Colors.grey),
+                                              const SizedBox(width: 10),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    if ((account['networkName'] ??
+                                                                '')
+                                                            .toString()
+                                                            .isNotEmpty)
+                                                      Text(
+                                                          'شبكة: ${account['networkName']}',
+                                                          style: TextStyle(
+                                                              fontSize: 11,
+                                                              color: colors
+                                                                  .primary)),
+                                                    Text(
+                                                        account['bankName'] ??
+                                                            '',
+                                                        style: TextStyle(
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            fontSize: 16,
+                                                            color: colors
+                                                                .primary)),
+                                                    Text(
+                                                        account['accountNumber'] ??
+                                                            '',
+                                                        style: TextStyle(
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            fontSize: 18,
+                                                            color: colors
+                                                                .onSurface),
+                                                        textDirection:
+                                                            TextDirection.ltr),
+                                                  ],
+                                                ),
+                                              ),
                                             ],
                                           ),
                                         ),
+                                        Chip(
+                                          label: Text(
+                                              account['status'] ?? '',
+                                              style: TextStyle(
+                                                  color: isActive
+                                                      ? colors.onPrimary
+                                                      : colors.onError,
+                                                  fontSize: 11)),
+                                          backgroundColor: isActive
+                                              ? Colors.green
+                                              : colors.errorContainer,
+                                          padding: EdgeInsets.zero,
+                                        ),
                                       ],
                                     ),
-                                  ),
-                                  Chip(
-                                    label: Text(
-                                        account['status'] ?? '',
-                                        style: TextStyle(
-                                            color: isActive
-                                                ? colors.onPrimary
-                                                : colors.onError,
-                                            fontSize: 11)),
-                                    backgroundColor: isActive
-                                        ? Colors.green
-                                        : colors.errorContainer,
-                                    padding: EdgeInsets.zero,
-                                  ),
-                                ],
+                                    Divider(color: colors.outlineVariant),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                            child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                                'المستفيد: ${account['beneficiary'] ?? ''}',
+                                                style: TextStyle(
+                                                    color: colors
+                                                        .onSurfaceVariant,
+                                                    fontSize: 12)),
+                                            if (account['createdAt'] != null)
+                                              Text(
+                                                'تاريخ الإضافة: ${_formatTimestamp(account['createdAt'])}',
+                                                style: TextStyle(
+                                                    fontSize: 10,
+                                                    color: colors
+                                                        .onSurfaceVariant),
+                                              ),
+                                          ],
+                                        )),
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            _buildSmallButton(
+                                              Icons.copy,
+                                              'نسخ البيانات',
+                                              colors.primary,
+                                              () => _copyAccountDetails(
+                                                  account),
+                                            ),
+                                            _buildSmallButton(
+                                              Icons.share,
+                                              'مشاركة',
+                                              colors.primary,
+                                              () => _shareAccountDetails(
+                                                  account),
+                                            ),
+                                            _buildSmallButton(
+                                              Icons.edit,
+                                              'تعديل',
+                                              colors.primary,
+                                              () => _showEditAccountDialog(
+                                                  sys, account),
+                                            ),
+                                            _buildSmallButton(
+                                              isActive
+                                                  ? Icons.visibility_off
+                                                  : Icons.visibility,
+                                              isActive ? 'إيقاف' : 'تفعيل',
+                                              isActive
+                                                  ? colors.error
+                                                  : Colors.green,
+                                              () => _toggleAccountStatus(
+                                                  sys, account),
+                                            ),
+                                            _buildSmallButton(
+                                              Icons.delete,
+                                              'حذف',
+                                              colors.error,
+                                              () => _deleteAccount(
+                                                  sys, account['docId']),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
-                              Divider(color: colors.outlineVariant),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                      child: Text(
-                                          'المستفيد: ${account['beneficiary'] ?? ''}',
-                                          style: TextStyle(
-                                              color:
-                                                  colors.onSurfaceVariant,
-                                              fontSize: 12),
-                                          overflow: TextOverflow.ellipsis)),
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      _buildSmallButton(
-                                        Icons.copy,
-                                        'نسخ البيانات',
-                                        colors.primary,
-                                        () => _copyAccountDetails(account),
-                                      ),
-                                      _buildSmallButton(
-                                        Icons.edit,
-                                        'تعديل',
-                                        colors.primary,
-                                        () => _showEditAccountDialog(
-                                            sys, account),
-                                      ),
-                                      _buildSmallButton(
-                                        isActive
-                                            ? Icons.visibility_off
-                                            : Icons.visibility,
-                                        isActive ? 'إيقاف' : 'تفعيل',
-                                        isActive
-                                            ? colors.error
-                                            : Colors.green,
-                                        () => _toggleAccountStatus(
-                                            sys, account),
-                                      ),
-                                      _buildSmallButton(
-                                        Icons.delete,
-                                        'حذف',
-                                        colors.error,
-                                        () => _deleteAccount(
-                                            sys, account['docId']),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
+                            );
+                          },
                         ),
-                      );
-                    },
+                      ),
+                    ],
                   );
                 },
               ),
@@ -627,6 +734,15 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
         ),
       ),
     );
+  }
+
+  String _formatTimestamp(dynamic timestamp) {
+    if (timestamp == null) return '';
+    if (timestamp is Timestamp) {
+      final date = timestamp.toDate();
+      return '${date.year}/${date.month}/${date.day}';
+    }
+    return '';
   }
 
   Widget _buildTextField(String label, IconData icon,
