@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -173,8 +174,6 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                       selectedNetworkIds,
                     )
                         .then((_) {
-                      // ✅ تحديث فوري للشاشة
-                      if (mounted) setState(() {});
                       _showSnack('تم حفظ الحساب بنجاح ✅');
                     }).catchError((e) {
                       _showSnack('فشل الحفظ: $e', error: true);
@@ -312,7 +311,6 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                     selectedNetworkIds,
                   )
                       .then((_) {
-                    if (mounted) setState(() {});
                     _showSnack('تم التعديل بنجاح ✏️');
                   }).catchError((e) {
                     _showSnack('فشل التعديل: $e', error: true);
@@ -329,14 +327,13 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
     );
   }
 
-  // ==================== 3. دوال التحكم (حالة / حذف / نسخ) ====================
+  // ==================== 3. دوال التحكم (حالة / حذف / نسخ / مشاركة) ====================
   void _toggleAccountStatus(
       SystemProvider provider, Map<String, dynamic> account) {
     _play(context, 'click');
     provider
         .toggleAgentBankAccountStatus(account['docId'], account['status'])
         .then((_) {
-      if (mounted) setState(() {});
       _showSnack('تم تغيير الحالة');
     }).catchError((e) {
       _showSnack('فشل تغيير الحالة: $e', error: true);
@@ -370,7 +367,6 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                 Navigator.pop(ctx);
                 _play(context, 'click');
                 provider.deleteAgentBankAccount(docId).then((_) {
-                  if (mounted) setState(() {});
                   _showSnack('تم الحذف بنجاح 🗑️');
                 }).catchError((e) {
                   _showSnack('فشل الحذف: $e', error: true);
@@ -396,10 +392,23 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
     _showSnack('تم نسخ بيانات الحساب بنجاح، جاهزة للإرسال! 📋');
   }
 
+  void _shareAccountDetails(Map<String, dynamic> account) {
+    _play(context, 'click');
+    String data = '''
+🏦 ${account['bankName']}
+🔢 الحساب: ${account['accountNumber']}
+👤 باسم: ${account['beneficiary'] ?? ''}
+📝 الشبكة: ${account['networkName'] ?? ''}
+''';
+    Share.share(data, subject: 'بيانات الحساب البنكي');
+  }
+
   @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
     final colors = Theme.of(context).colorScheme;
+    // ✅ القائمة تأتي مباشرة من SystemProvider (مثل كود مالك النظام)
+    final accounts = sys.myAgentBankAccounts;
 
     return Scaffold(
       appBar: const CustomHeader(title: 'حساباتي البنكية'),
@@ -452,202 +461,213 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
               ),
             ),
             Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('agent_bank_accounts')
-                    .where('agentPhone', isEqualTo: sys.currentUserPhone)
-                    .orderBy('order')
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: Text('خطأ في تحميل البيانات',
-                          style: TextStyle(color: colors.error)),
-                    );
-                  }
+              child: accounts.isEmpty
+                  ? Center(
+                      child: Text(
+                          'لا توجد حسابات مضافة حالياً.\nاضغط على الزر أعلاه لإضافة حساب.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              color: colors.onSurfaceVariant)))
+                  : RefreshIndicator(
+                      onRefresh: () async {
+                        // إعادة تحميل بيانات الوكيل لتحديث القائمة
+                        await sys
+                            .loadUserData(sys.currentUserPhone);
+                        setState(() {});
+                      },
+                      child: ReorderableListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: accounts.length,
+                        onReorder: (oldIndex, newIndex) {
+                          sys.reorderAgentBankAccounts(
+                              oldIndex, newIndex);
+                        },
+                        itemBuilder: (context, index) {
+                          final account = accounts[index];
+                          final bool isActive =
+                              (account['status'] ?? '') == 'نشط';
 
-                  final List<Map<String, dynamic>> accounts =
-                      snapshot.data?.docs.map((doc) {
-                            final Map<String, dynamic> data =
-                                Map<String, dynamic>.from(
-                                    doc.data() as Map? ?? {});
-                            data['docId'] = doc.id;
-                            return data;
-                          }).toList() ??
-                          [];
-
-                  if (accounts.isEmpty) {
-                    return Center(
-                        child: Text(
-                            'لا توجد حسابات مضافة حالياً.\nاضغط على الزر أعلاه لإضافة حساب.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                                color: colors.onSurfaceVariant)));
-                  }
-
-                  return ReorderableListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: accounts.length,
-                    onReorder: (oldIndex, newIndex) {
-                      sys.reorderAgentBankAccounts(oldIndex, newIndex);
-                    },
-                    itemBuilder: (context, index) {
-                      final Map<String, dynamic> account =
-                          accounts[index];
-                      final bool isActive =
-                          (account['status'] ?? '') == 'نشط';
-
-                      return Card(
-                        key: ValueKey(account['docId']),
-                        elevation: 2,
-                        margin: const EdgeInsets.only(bottom: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                          side: BorderSide(
-                              color: isActive
-                                  ? colors.outlineVariant
-                                  : colors.error.withOpacity(0.5),
-                              width: 2),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12.0),
-                          child: Column(
-                            children: [
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
+                          return Card(
+                            key: ValueKey(account['docId']),
+                            elevation: 2,
+                            margin: const EdgeInsets.only(bottom: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              side: BorderSide(
+                                  color: isActive
+                                      ? colors.outlineVariant
+                                      : colors.error.withOpacity(0.5),
+                                  width: 2),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12.0),
+                              child: Column(
                                 children: [
-                                  Expanded(
-                                    child: Row(
-                                      children: [
-                                        const Icon(Icons.drag_indicator,
-                                            color: Colors.grey),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              if ((account['networkName'] ??
-                                                          '')
-                                                      .toString()
-                                                      .isNotEmpty)
-                                                Text(
-                                                    'شبكة: ${account['networkName']}',
-                                                    style: TextStyle(
-                                                        fontSize: 11,
-                                                        color: colors
-                                                            .primary)),
-                                              Text(
-                                                  account['bankName'] ??
-                                                      '',
-                                                  style: TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      fontSize: 16,
-                                                      color: colors
-                                                          .primary)),
-                                              Text(
-                                                  account['accountNumber'] ??
-                                                      '',
-                                                  style: TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      fontSize: 18,
-                                                      color: colors
-                                                          .onSurface),
-                                                  textDirection:
-                                                      TextDirection.ltr),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Chip(
-                                    label: Text(
-                                        account['status'] ?? '',
-                                        style: TextStyle(
-                                            color: isActive
-                                                ? colors.onPrimary
-                                                : colors.onError,
-                                            fontSize: 11)),
-                                    backgroundColor: isActive
-                                        ? Colors.green
-                                        : colors.errorContainer,
-                                    padding: EdgeInsets.zero,
-                                  ),
-                                ],
-                              ),
-                              Divider(color: colors.outlineVariant),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                      child: Text(
-                                          'المستفيد: ${account['beneficiary'] ?? ''}',
-                                          style: TextStyle(
-                                              color:
-                                                  colors.onSurfaceVariant,
-                                              fontSize: 12),
-                                          overflow:
-                                              TextOverflow.ellipsis)),
                                   Row(
-                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
                                     children: [
-                                      _buildSmallButton(
-                                        Icons.copy,
-                                        'نسخ البيانات',
-                                        colors.primary,
-                                        () => _copyAccountDetails(
-                                            account),
+                                      Expanded(
+                                        child: Row(
+                                          children: [
+                                            const Icon(Icons.drag_indicator,
+                                                color: Colors.grey),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment
+                                                        .start,
+                                                children: [
+                                                  if ((account['networkName'] ??
+                                                              '')
+                                                          .toString()
+                                                          .isNotEmpty)
+                                                    Text(
+                                                        'شبكة: ${account['networkName']}',
+                                                        style: TextStyle(
+                                                            fontSize: 11,
+                                                            color: colors
+                                                                .primary)),
+                                                  Text(
+                                                      account['bankName'] ??
+                                                          '',
+                                                      style: TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          fontSize: 16,
+                                                          color: colors
+                                                              .primary)),
+                                                  Text(
+                                                      account['accountNumber'] ??
+                                                          '',
+                                                      style: TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          fontSize: 18,
+                                                          color: colors
+                                                              .onSurface),
+                                                      textDirection:
+                                                          TextDirection.ltr),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                      _buildSmallButton(
-                                        Icons.edit,
-                                        'تعديل',
-                                        colors.primary,
-                                        () => _showEditAccountDialog(
-                                            sys, account),
+                                      Chip(
+                                        label: Text(
+                                            account['status'] ?? '',
+                                            style: TextStyle(
+                                                color: isActive
+                                                    ? colors.onPrimary
+                                                    : colors.onError,
+                                                fontSize: 11)),
+                                        backgroundColor: isActive
+                                            ? Colors.green
+                                            : colors.errorContainer,
+                                        padding: EdgeInsets.zero,
                                       ),
-                                      _buildSmallButton(
-                                        isActive
-                                            ? Icons.visibility_off
-                                            : Icons.visibility,
-                                        isActive ? 'إيقاف' : 'تفعيل',
-                                        isActive
-                                            ? colors.error
-                                            : Colors.green,
-                                        () => _toggleAccountStatus(
-                                            sys, account),
-                                      ),
-                                      _buildSmallButton(
-                                        Icons.delete,
-                                        'حذف',
-                                        colors.error,
-                                        () => _deleteAccount(
-                                            sys, account['docId']),
+                                    ],
+                                  ),
+                                  Divider(
+                                      color: colors.outlineVariant),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                          child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                              'المستفيد: ${account['beneficiary'] ?? ''}',
+                                              style: TextStyle(
+                                                  color: colors
+                                                      .onSurfaceVariant,
+                                                  fontSize: 12)),
+                                          if (account['createdAt'] !=
+                                              null)
+                                            Text(
+                                              'تاريخ الإضافة: ${_formatTimestamp(account['createdAt'])}',
+                                              style: TextStyle(
+                                                  fontSize: 10,
+                                                  color: colors
+                                                      .onSurfaceVariant),
+                                            ),
+                                        ],
+                                      )),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          _buildSmallButton(
+                                            Icons.copy,
+                                            'نسخ البيانات',
+                                            colors.primary,
+                                            () => _copyAccountDetails(
+                                                account),
+                                          ),
+                                          _buildSmallButton(
+                                            Icons.share,
+                                            'مشاركة',
+                                            colors.primary,
+                                            () => _shareAccountDetails(
+                                                account),
+                                          ),
+                                          _buildSmallButton(
+                                            Icons.edit,
+                                            'تعديل',
+                                            colors.primary,
+                                            () => _showEditAccountDialog(
+                                                sys, account),
+                                          ),
+                                          _buildSmallButton(
+                                            isActive
+                                                ? Icons.visibility_off
+                                                : Icons.visibility,
+                                            isActive
+                                                ? 'إيقاف'
+                                                : 'تفعيل',
+                                            isActive
+                                                ? colors.error
+                                                : Colors.green,
+                                            () => _toggleAccountStatus(
+                                                sys, account),
+                                          ),
+                                          _buildSmallButton(
+                                            Icons.delete,
+                                            'حذف',
+                                            colors.error,
+                                            () => _deleteAccount(
+                                                sys,
+                                                account['docId']),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
                                 ],
                               ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  String _formatTimestamp(dynamic timestamp) {
+    if (timestamp == null) return '';
+    if (timestamp is Timestamp) {
+      final date = timestamp.toDate();
+      return '${date.year}/${date.month}/${date.day}';
+    }
+    return '';
   }
 
   Widget _buildTextField(String label, IconData icon,
