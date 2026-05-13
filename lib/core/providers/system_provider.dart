@@ -1068,7 +1068,7 @@ class SystemProvider extends ChangeNotifier {
     return snap.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
   }
 
-  Future<void> requestRechargeFromAgent({
+    Future<void> requestRechargeFromAgent({
     required String agentPhone,
     required double amount,
     required String paymentMethod,
@@ -1084,7 +1084,7 @@ class SystemProvider extends ChangeNotifier {
       'paymentMethod': paymentMethod,
       'reference': reference,
       'receiptBase64': base64Image ?? '',
-      'status': 'قيد الانتظار',
+      'status': 'قيد الانتظار',   // <-- تم التأكيد هنا
       'type': 'user_to_agent',
       'timestamp': FieldValue.serverTimestamp(),
     });
