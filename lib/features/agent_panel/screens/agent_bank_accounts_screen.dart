@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // ✅ استيراد Timestamp
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -209,6 +209,16 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
     List<String> currentNetworkIds =
         List<String>.from(account['networkIds'] ?? []);
     List<String> selectedNetworkIds = List.from(currentNetworkIds);
+    // ✅ تعريف selectedNetworkNames
+    List<String> selectedNetworkNames = [];
+    // ملء الأسماء الحالية من الشبكات
+    provider.getAgentNetworkNames().then((nets) {
+      for (var net in nets) {
+        if (selectedNetworkIds.contains(net['networkId'])) {
+          selectedNetworkNames.add(net['networkName'] ?? '');
+        }
+      }
+    });
 
     showDialog(
       context: context,
@@ -261,8 +271,10 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                                     setDialogState(() {
                                       if (val) {
                                         selectedNetworkIds.add(netId);
+                                        selectedNetworkNames.add(netName);
                                       } else {
                                         selectedNetworkIds.remove(netId);
+                                        selectedNetworkNames.remove(netName);
                                       }
                                     });
                                   },
