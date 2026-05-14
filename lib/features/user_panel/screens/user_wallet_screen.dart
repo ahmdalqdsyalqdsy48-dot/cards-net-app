@@ -251,10 +251,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                 margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [
-                      colors.primary,
-                      colors.primaryContainer
-                    ],
+                    colors: [colors.primary, colors.primaryContainer],
                     begin: Alignment.topRight,
                     end: Alignment.bottomLeft,
                   ),
@@ -457,26 +454,61 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                       fontWeight: FontWeight.bold,
                       color: colors.onSurface)),
               const SizedBox(height: 10),
-              ..._agentBankAccounts.map((bank) => Card(
-                    elevation: 1,
-                    color: colors.surface,
-                    child: ListTile(
-                      leading: Icon(Icons.account_balance,
-                          color: colors.primary),
-                      title: Text(bank['bankName'] ?? ''),
-                      subtitle: Text(
-                          'رقم الحساب: ${bank['accountNumber']}\nالمستفيد: ${bank['beneficiary'] ?? ""}'),
-                      trailing: IconButton(
-                        icon: Icon(Icons.copy, color: colors.primary),
-                        onPressed: () {
-                          final data =
-                              '🏦 ${bank['bankName']}\n🔢 الحساب: ${bank['accountNumber']}\n👤 باسم: ${bank['beneficiary'] ?? ""}';
-                          Clipboard.setData(ClipboardData(text: data));
-                          _showSnack('تم النسخ');
-                        },
-                      ),
+              ..._agentBankAccounts.map((bank) {
+                // ✅ عرض اسم المستفيد الرباعي بدلاً من اسم الوكيل
+                final beneficiary = (bank['beneficiary'] ?? '').toString();
+                final note = (bank['note'] ?? '').toString();
+                final hasNote =
+                    note.isNotEmpty && note != 'لا توجد ملاحظات';
+                final networkName =
+                    (bank['networkName'] ?? '').toString();
+
+                return Card(
+                  elevation: 1,
+                  color: colors.surface,
+                  child: ListTile(
+                    leading: Icon(Icons.account_balance,
+                        color: colors.primary),
+                    title: Text(bank['bankName'] ?? ''),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (networkName.isNotEmpty)
+                          Text('🌐 $networkName',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: colors.primary)),
+                        Text('رقم الحساب: ${bank['accountNumber']}'),
+                        if (beneficiary.isNotEmpty)
+                          Text('👤 $beneficiary',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold)),
+                        if (hasNote) Text('📝 $note'),
+                      ],
                     ),
-                  )),
+                    trailing: IconButton(
+                      icon: Icon(Icons.copy, color: colors.primary),
+                      onPressed: () {
+                        final buffer = StringBuffer();
+                        buffer.writeln('🏦 ${bank['bankName']}');
+                        buffer.writeln('🔢 الحساب: ${bank['accountNumber']}');
+                        if (beneficiary.isNotEmpty) {
+                          buffer.writeln('👤 باسم: $beneficiary');
+                        }
+                        if (networkName.isNotEmpty) {
+                          buffer.writeln('🌐 الشبكة: $networkName');
+                        }
+                        if (hasNote) {
+                          buffer.writeln('📝 ملاحظة: $note');
+                        }
+                        Clipboard.setData(
+                            ClipboardData(text: buffer.toString()));
+                        _showSnack('تم النسخ');
+                      },
+                    ),
+                  ),
+                );
+              }),
             ] else if (_selectedAgentPhone != null)
               Padding(
                 padding: const EdgeInsets.all(8.0),
