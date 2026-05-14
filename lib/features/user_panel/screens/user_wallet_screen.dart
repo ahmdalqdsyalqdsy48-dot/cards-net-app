@@ -34,18 +34,22 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   List<Map<String, dynamic>> _agentBankAccounts = [];
   final _amountController = TextEditingController();
   final _refController = TextEditingController();
-  final _fullNameController = TextEditingController(); // حقل الاسم الرباعي
+  final _fullNameController = TextEditingController();
   String? _receiptBase64;
   final _picker = ImagePicker();
+  bool _isSubmittingRecharge = false;
 
   // طلبات معلقة – تخزين مؤقت لمعرف الطلب الجاري تعديله
   String? _editingRequestId;
+  // لتحديث القائمة محلياً بعد التعديل مباشرة
+  List<Map<String, dynamic>> _pendingRequests = [];
 
   // تحويل
   final _searchController = TextEditingController();
   final _transferAmountController = TextEditingController();
   Map<String, dynamic>? _transferTarget;
   bool _isSearching = false;
+  bool _isSubmittingTransfer = false;
 
   // قائمة الشبكات تُحمل مرة واحدة وتُحفظ هنا لتجنب البطء
   List<Map<String, dynamic>> _cachedNetworks = [];
@@ -57,6 +61,9 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _loadNetworks();
+    // تعبئة الاسم الرباعي تلقائياً
+    final sys = Provider.of<SystemProvider>(context, listen: false);
+    _fullNameController.text = sys.currentUserName;
   }
 
   @override
@@ -110,6 +117,10 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   }
 
   Future<void> _loadAgentBanks(String agentPhone, String? networkId) async {
+    if (agentPhone.isEmpty) {
+      setState(() => _agentBankAccounts = []);
+      return;
+    }
     final sys = Provider.of<SystemProvider>(context, listen: false);
     try {
       List<Map<String, dynamic>> banks = await sys.getAgentBankAccountsForUser(agentPhone);
@@ -138,7 +149,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
           source: ImageSource.gallery, imageQuality: 40, maxWidth: 600);
       if (image != null) {
         final bytes = await image.readAsBytes();
-        // التأكد من عدم تجاوز الحجم (حوالي 700 كيلوبايت آمن)
         if (bytes.length > 700000) {
           _showSnack('حجم الصورة كبير جداً، اختر صورة أصغر', error: true);
           return;
@@ -152,6 +162,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   }
 
   Future<void> _submitRecharge() async {
+    if (_isSubmittingRecharge) return; // منع الضغط المتكرر
     final sys = Provider.of<SystemProvider>(context, listen: false);
     if (_selectedAgentPhone == null) {
       _showSnack('اختر شبكة أولاً', error: true);
@@ -171,6 +182,25 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       _showSnack('أدخل رقم الحوالة / المرجع', error: true);
       return;
     }
+
+    // تأكيد العملية
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('تأكيد الطلب'),
+          content: Text('إرسال طلب شحن بمبلغ $amount ريال إلى الوكيل؟'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('تراجع')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تأكيد')),
+          ],
+        ),
+      ),
+    );
+    if (confirm != true) return;
+
+    setState(() => _isSubmittingRecharge = true);
     try {
       // إذا كنا في حالة تعديل، نحذف الطلب القديم أولاً
       if (_editingRequestId != null) {
@@ -178,6 +208,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
             .collection('user_recharges')
             .doc(_editingRequestId)
             .delete();
+        // إزالة الطلب القديم من القائمة المحلية فوراً
+        _pendingRequests.removeWhere((r) => r['docId'] == _editingRequestId);
       }
       await sys.requestRechargeFromAgent(
         agentPhone: _selectedAgentPhone!,
@@ -185,19 +217,23 @@ class _UserWalletScreenState extends State<UserWalletScreen>
         paymentMethod: 'حوالة بنكية',
         reference: _refController.text.trim(),
         base64Image: _receiptBase64,
+        fullName: fullName,
       );
       _play('success');
       _clearRechargeForm();
       _showSnack('تم إرسال طلب الشحن للوكيل');
     } catch (e) {
       _showSnack('فشل: $e', error: true);
+    } finally {
+      if (mounted) setState(() => _isSubmittingRecharge = false);
     }
   }
 
   void _clearRechargeForm() {
     _amountController.clear();
     _refController.clear();
-    _fullNameController.clear();
+    _fullNameController.text =
+        Provider.of<SystemProvider>(context, listen: false).currentUserName;
     setState(() {
       _receiptBase64 = null;
       _selectedNetwork = null;
@@ -216,7 +252,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       _fullNameController.text = request['fullName'] ?? '';
       _editingRequestId = request['docId'] ?? null;
     });
-    // حفظ الشبكة المختارة؟ يمكن محاولة إعادة اختيار الشبكة من البيانات
   }
 
   void _cancelEdit() {
@@ -250,9 +285,35 @@ class _UserWalletScreenState extends State<UserWalletScreen>
           .doc(docId)
           .delete();
       _play('success');
-      setState(() {});
+      setState(() {
+        _pendingRequests.removeWhere((r) => r['docId'] == docId);
+      });
       _showSnack('تم إلغاء الطلب بنجاح');
     }
+  }
+
+  Future<String?> _showPinDialog() async {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('رمز PIN'),
+          content: TextField(
+            controller: controller,
+            obscureText: true,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            decoration: const InputDecoration(labelText: 'أدخل رمز PIN المكون من 6 أرقام'),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('تأكيد')),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _searchForTransfer() async {
@@ -275,6 +336,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   }
 
   Future<void> _executeTransfer() async {
+    if (_isSubmittingTransfer) return;
     final sys = Provider.of<SystemProvider>(context, listen: false);
     if (_transferTarget == null) return;
     final amount = double.tryParse(_transferAmountController.text);
@@ -283,10 +345,28 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       return;
     }
     final targetPhone = _transferTarget!['phone'];
+    if (targetPhone == sys.currentUserPhone) {
+      _showSnack('لا يمكنك تحويل الرصيد لنفسك', error: true);
+      return;
+    }
     if (targetPhone == 'مخفي') {
       _showSnack('لا يمكن التحويل لأن الرقم مخفي', error: true);
       return;
     }
+    if (amount > sys.currentUserBalance) {
+      _showSnack('رصيدك لا يكفي', error: true);
+      return;
+    }
+
+    // طلب PIN
+    final pin = await _showPinDialog();
+    if (pin == null || !mounted) return;
+    if (!sys.validatePin(pin)) {
+      _showSnack('رمز PIN غير صحيح', error: true);
+      return;
+    }
+
+    setState(() => _isSubmittingTransfer = true);
     try {
       await sys.transferToUser(targetPhone: targetPhone, amount: amount);
       _play('success');
@@ -296,6 +376,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       _searchController.clear();
     } catch (e) {
       _showSnack('فشل التحويل: $e', error: true);
+    } finally {
+      if (mounted) setState(() => _isSubmittingTransfer = false);
     }
   }
 
@@ -541,7 +623,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                   }
                 },
               ),
-            // عند اختيار شبكة، لا نظهر اسم الوكيل
             const SizedBox(height: 12),
             // حسابات الوكيل البنكية
             if (_selectedAgentPhone != null &&
@@ -660,13 +741,27 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                         : Colors.green),
               ),
             ),
+            // معاينة الصورة المرفقة
+            if (_receiptBase64 != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.memory(
+                    base64Decode(_receiptBase64!),
+                    height: 120,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
             const SizedBox(height: 25),
             // زر الإرسال
             SizedBox(
               width: double.infinity,
               height: 50,
               child: ElevatedButton.icon(
-                onPressed: _submitRecharge,
+                onPressed: _isSubmittingRecharge ? null : _submitRecharge,
                 icon: Icon(Icons.send, color: colors.onPrimary),
                 label: Text(
                     _editingRequestId != null ? 'تحديث الطلب' : 'إرسال طلب الشحن',
@@ -709,22 +804,27 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                   return Text('خطأ في تحميل الطلبات',
                       style: TextStyle(color: colors.error));
                 }
-                final requests = snapshot.data?.docs ?? [];
-                if (requests.isEmpty) {
+                final requests = snapshot.data?.docs.map((doc) {
+                      final data = Map<String, dynamic>.from(doc.data() as Map? ?? {});
+                      data['docId'] = doc.id;
+                      return data;
+                    }).toList() ??
+                    [];
+                // دمج مع الطلبات المحذوفة محلياً
+                _pendingRequests = requests;
+                if (_pendingRequests.isEmpty) {
                   return Text('لا توجد طلبات معلقة حالياً.',
                       style: TextStyle(color: colors.onSurfaceVariant));
                 }
                 return Column(
-                  children: requests.map((doc) {
-                    final req = doc.data() as Map<String, dynamic>;
+                  children: _pendingRequests.map((req) {
+                    final double amount =
+                        (req['amount'] ?? 0.0).toDouble();
                     final DateTime? ts =
                         (req['timestamp'] as Timestamp?)?.toDate();
                     final String timeStr = ts != null
                         ? intl.DateFormat('yyyy/MM/dd - hh:mm a').format(ts)
                         : '';
-                    final double amount =
-                        (req['amount'] ?? 0.0).toDouble();
-                    // الحصول على اسم الوكيل من رقم هاتفه (مخزن محلياً)
                     final agentName = _getAgentNameFromCache(req['targetPhone']);
 
                     return Card(
@@ -755,14 +855,14 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                                 'receiptBase64':
                                     req['receiptBase64'] ?? '',
                                 'fullName': req['fullName'] ?? '',
-                                'docId': doc.id,
+                                'docId': req['docId'],
                               }),
                             ),
                             IconButton(
                               icon: Icon(Icons.delete,
                                   color: colors.error),
                               onPressed: () =>
-                                  _cancelRechargeRequest(doc.id),
+                                  _cancelRechargeRequest(req['docId']),
                             ),
                           ],
                         ),
@@ -778,7 +878,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     );
   }
 
-  // دالة مساعدة لجلب اسم الوكيل من الذاكرة المؤقتة (agentsList)
   String _getAgentNameFromCache(String phone) {
     final sys = Provider.of<SystemProvider>(context, listen: false);
     final agent = sys.agentsList.firstWhere(
@@ -867,7 +966,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton.icon(
-                  onPressed: _executeTransfer,
+                  onPressed: _isSubmittingTransfer ? null : _executeTransfer,
                   icon: Icon(Icons.send, color: colors.onPrimary),
                   label: Text('تنفيذ التحويل',
                       style: TextStyle(
