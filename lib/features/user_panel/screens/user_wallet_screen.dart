@@ -344,7 +344,7 @@ class _UserWalletScreenState extends State<UserWalletScreen> {
         userName: sys.currentUserName,
         phoneNumber: sys.currentUserPhone,
         
-        currentBalance: balance,
+        
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
