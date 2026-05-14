@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/providers/system_provider.dart';
@@ -20,6 +19,8 @@ class AgentBankAccountsScreen extends StatefulWidget {
 }
 
 class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
+  String _searchQuery = '';
+
   void _play(BuildContext context, String type) =>
       Provider.of<UiProvider>(context, listen: false).playSound(type);
 
@@ -35,27 +36,14 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
     );
   }
 
-  // جلب شبكات الوكيل الحقيقية (لاختيار الشبكات المرتبطة)
-  List<Map<String, dynamic>> _getAgentNetworks(SystemProvider provider) {
-    final agent = provider.agentsList.firstWhere(
-        (a) => a['phone'] == provider.currentUserPhone,
-        orElse: () => {});
-    final networks = agent['networks'] as List<dynamic>? ?? [];
-    return networks.map((n) => Map<String, dynamic>.from(n)).toList();
-  }
-
-  // ==================== 1. نافذة إضافة حساب جديد (مطورة) ====================
+  // ==================== 1. نافذة إضافة حساب جديد ====================
   void _showAddAccountDialog(SystemProvider provider) {
     _play(context, 'click');
-    final networkDescController = TextEditingController(
-        text: provider.currentUserNetwork);
     final bankNameController = TextEditingController();
     final accountNumberController = TextEditingController();
     final beneficiaryController = TextEditingController();
     final noteController = TextEditingController();
 
-    final List<Map<String, dynamic>> agentNetworks =
-        _getAgentNetworks(provider);
     List<String> selectedNetworkIds = [];
     List<String> selectedNetworkNames = [];
 
@@ -79,63 +67,76 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // حقل اسم الشبكة (وصف)
-                  _buildTextField('اسم الشبكة (وصف)', Icons.wifi,
-                      controller: networkDescController),
-                  // اختيار الشبكات المرتبطة (متعدد) - اختياري
-                  if (agentNetworks.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    const Align(
-                      alignment: Alignment.centerRight,
-                      child: Text('اختر الشبكات المرتبطة (اختياري):',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 13)),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: agentNetworks.map((net) {
-                        final netId = net['id'] ?? '';
-                        final netName = net['name'] ?? 'بدون اسم';
-                        final isSelected =
-                            selectedNetworkIds.contains(netId);
-                        return FilterChip(
-                          label: Text(netName),
-                          selected: isSelected,
-                          onSelected: (val) {
-                            setDialogState(() {
-                              if (val) {
-                                selectedNetworkIds.add(netId);
-                                selectedNetworkNames.add(netName);
-                              } else {
-                                selectedNetworkIds.remove(netId);
-                                selectedNetworkNames.remove(netName);
-                              }
-                            });
-                          },
-                          selectedColor:
-                              Theme.of(ctx).colorScheme.primaryContainer,
-                          checkmarkColor:
-                              Theme.of(ctx).colorScheme.primary,
-                        );
-                      }).toList(),
-                    ),
-                    if (selectedNetworkNames.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                            'الشبكات المختارة: ${selectedNetworkNames.join("، ")}',
-                            style: const TextStyle(
-                                fontSize: 12, color: Colors.teal)),
-                      ),
-                    const SizedBox(height: 15),
-                  ],
+                  // اختيار الشبكات المرتبطة (قائمة أزرار متعددة)
+                  FutureBuilder<List<Map<String, dynamic>>>(
+                    future: provider.getAgentNetworkNames(),
+                    builder: (context, snapshot) {
+                      final networks = snapshot.data ?? [];
+                      if (networks.isEmpty) {
+                        return const Text(
+                            'ليس لديك أي شبكة ميكروتك نشطة. أضف شبكة أولاً.',
+                            style: TextStyle(color: Colors.red, fontSize: 12));
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Align(
+                            alignment: Alignment.centerRight,
+                            child: Text('اختر الشبكات المرتبطة بهذا الحساب:',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13)),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            children: networks.map((net) {
+                              final netId = net['networkId'] ?? '';
+                              final netName = net['networkName'] ?? '';
+                              final isSelected =
+                                  selectedNetworkIds.contains(netId);
+                              return FilterChip(
+                                label: Text(netName),
+                                selected: isSelected,
+                                onSelected: (val) {
+                                  setDialogState(() {
+                                    if (val) {
+                                      selectedNetworkIds.add(netId);
+                                      selectedNetworkNames.add(netName);
+                                    } else {
+                                      selectedNetworkIds.remove(netId);
+                                      selectedNetworkNames.remove(netName);
+                                    }
+                                  });
+                                },
+                                selectedColor: Theme.of(ctx)
+                                    .colorScheme
+                                    .primaryContainer,
+                                checkmarkColor:
+                                    Theme.of(ctx).colorScheme.primary,
+                              );
+                            }).toList(),
+                          ),
+                          if (selectedNetworkNames.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                  'المختارة: ${selectedNetworkNames.join("، ")}',
+                                  style: const TextStyle(
+                                      fontSize: 12, color: Colors.teal)),
+                            ),
+                          const SizedBox(height: 15),
+                        ],
+                      );
+                    },
+                  ),
                   _buildTextField('اسم البنك / المحفظة',
                       Icons.account_balance_wallet,
                       controller: bankNameController),
                   _buildTextField('رقم الحساب / المحفظة', Icons.numbers,
-                      controller: accountNumberController, isNumber: true),
+                      controller: accountNumberController,
+                      isAccountNumber: true),
                   _buildTextField('الاسم الرباعي للمستفيد', Icons.person,
                       controller: beneficiaryController),
                   _buildTextField('ملاحظات (اختياري)', Icons.notes,
@@ -158,12 +159,9 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                       accountNumberController.text.isNotEmpty) {
                     Navigator.pop(ctx);
                     _play(context, 'click');
-                    final networkName =
-                        networkDescController.text.isNotEmpty
-                            ? networkDescController.text.trim()
-                            : (selectedNetworkNames.isNotEmpty
-                                ? selectedNetworkNames.join("، ")
-                                : provider.currentUserNetwork);
+                    final networkName = selectedNetworkNames.isNotEmpty
+                        ? selectedNetworkNames.join("، ")
+                        : provider.currentUserNetwork;
                     provider
                         .addAgentBankAccount(
                       networkName,
@@ -198,8 +196,6 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
   void _showEditAccountDialog(
       SystemProvider provider, Map<String, dynamic> account) {
     _play(context, 'click');
-    final networkDescController =
-        TextEditingController(text: account['networkName'] ?? '');
     final bankNameController =
         TextEditingController(text: account['bankName']);
     final accountNumberController =
@@ -211,8 +207,6 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
 
     List<String> currentNetworkIds =
         List<String>.from(account['networkIds'] ?? []);
-    final List<Map<String, dynamic>> agentNetworks =
-        _getAgentNetworks(provider);
     List<String> selectedNetworkIds = List.from(currentNetworkIds);
 
     showDialog(
@@ -234,52 +228,64 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildTextField('اسم الشبكة (وصف)', Icons.wifi,
-                      controller: networkDescController),
-                  if (agentNetworks.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    const Align(
-                      alignment: Alignment.centerRight,
-                      child: Text('اختر الشبكات المرتبطة:',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 13)),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: agentNetworks.map((net) {
-                        final netId = net['id'] ?? '';
-                        final netName = net['name'] ?? 'بدون اسم';
-                        final isSelected =
-                            selectedNetworkIds.contains(netId);
-                        return FilterChip(
-                          label: Text(netName),
-                          selected: isSelected,
-                          onSelected: (val) {
-                            setDialogState(() {
-                              if (val) {
-                                selectedNetworkIds.add(netId);
-                              } else {
-                                selectedNetworkIds.remove(netId);
-                              }
-                            });
-                          },
-                          selectedColor:
-                              Theme.of(ctx).colorScheme.primaryContainer,
-                          checkmarkColor:
-                              Theme.of(ctx).colorScheme.primary,
+                  // اختيار الشبكات المرتبطة
+                  FutureBuilder<List<Map<String, dynamic>>>(
+                    future: provider.getAgentNetworkNames(),
+                    builder: (context, snapshot) {
+                      final networks = snapshot.data ?? [];
+                      if (networks.isNotEmpty) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Align(
+                              alignment: Alignment.centerRight,
+                              child: Text('اختر الشبكات المرتبطة:',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13)),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 4,
+                              children: networks.map((net) {
+                                final netId = net['networkId'] ?? '';
+                                final netName = net['networkName'] ?? '';
+                                final isSelected =
+                                    selectedNetworkIds.contains(netId);
+                                return FilterChip(
+                                  label: Text(netName),
+                                  selected: isSelected,
+                                  onSelected: (val) {
+                                    setDialogState(() {
+                                      if (val) {
+                                        selectedNetworkIds.add(netId);
+                                      } else {
+                                        selectedNetworkIds.remove(netId);
+                                      }
+                                    });
+                                  },
+                                  selectedColor: Theme.of(ctx)
+                                      .colorScheme
+                                      .primaryContainer,
+                                  checkmarkColor:
+                                      Theme.of(ctx).colorScheme.primary,
+                                );
+                              }).toList(),
+                            ),
+                            const SizedBox(height: 15),
+                          ],
                         );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 15),
-                  ],
+                      }
+                      return const SizedBox();
+                    },
+                  ),
                   _buildTextField('اسم البنك / المحفظة',
                       Icons.account_balance_wallet,
                       controller: bankNameController),
                   _buildTextField('رقم الحساب', Icons.numbers,
                       controller: accountNumberController,
-                      isNumber: true),
+                      isAccountNumber: true),
                   _buildTextField('اسم المستفيد', Icons.person,
                       controller: beneficiaryController),
                   _buildTextField('ملاحظات', Icons.notes,
@@ -303,7 +309,9 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                   provider
                       .updateAgentBankAccount(
                     account['docId'],
-                    networkDescController.text.trim(),
+                    selectedNetworkNames.isNotEmpty
+                        ? selectedNetworkNames.join("، ")
+                        : (account['networkName'] ?? ''),
                     provider.currentUserName,
                     bankNameController.text.trim(),
                     accountNumberController.text.trim(),
@@ -383,32 +391,55 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
 
   void _copyAccountDetails(Map<String, dynamic> account) {
     _play(context, 'success');
-    String data = '''
-🏦 ${account['bankName']}
-🔢 الحساب: ${account['accountNumber']}
-👤 باسم: ${account['beneficiary'] ?? ''}
-''';
-    Clipboard.setData(ClipboardData(text: data));
+    final buffer = StringBuffer();
+    buffer.writeln('🏦 ${account['bankName']}');
+    buffer.writeln('🔢 الحساب: ${account['accountNumber']}');
+    buffer.writeln('👤 باسم: ${account['beneficiary'] ?? ''}');
+    if ((account['networkName'] ?? '').toString().isNotEmpty) {
+      buffer.writeln('🌐 الشبكة: ${account['networkName']}');
+    }
+    if ((account['note'] ?? '').toString().isNotEmpty &&
+        account['note'] != 'لا توجد ملاحظات') {
+      buffer.writeln('📝 ملاحظة: ${account['note']}');
+    }
+    Clipboard.setData(ClipboardData(text: buffer.toString()));
     _showSnack('تم نسخ بيانات الحساب بنجاح، جاهزة للإرسال! 📋');
   }
 
   void _shareAccountDetails(Map<String, dynamic> account) {
     _play(context, 'click');
-    String data = '''
-🏦 ${account['bankName']}
-🔢 الحساب: ${account['accountNumber']}
-👤 باسم: ${account['beneficiary'] ?? ''}
-📝 الشبكة: ${account['networkName'] ?? ''}
-''';
-    Share.share(data, subject: 'بيانات الحساب البنكي');
+    final buffer = StringBuffer();
+    buffer.writeln('🏦 ${account['bankName']}');
+    buffer.writeln('🔢 الحساب: ${account['accountNumber']}');
+    buffer.writeln('👤 باسم: ${account['beneficiary'] ?? ''}');
+    if ((account['networkName'] ?? '').toString().isNotEmpty) {
+      buffer.writeln('🌐 الشبكة: ${account['networkName']}');
+    }
+    if ((account['note'] ?? '').toString().isNotEmpty &&
+        account['note'] != 'لا توجد ملاحظات') {
+      buffer.writeln('📝 ملاحظة: ${account['note']}');
+    }
+    Share.share(buffer.toString(), subject: 'بيانات الحساب البنكي');
   }
 
   @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
     final colors = Theme.of(context).colorScheme;
+
     // ✅ القائمة تأتي مباشرة من SystemProvider (مثل كود مالك النظام)
-    final accounts = sys.myAgentBankAccounts;
+    List<Map<String, dynamic>> accounts = sys.myAgentBankAccounts;
+
+    // تصفية حسب البحث
+    if (_searchQuery.isNotEmpty) {
+      accounts = accounts.where((a) {
+        return (a['bankName'] ?? '').toString().contains(_searchQuery) ||
+            (a['accountNumber'] ?? '').toString().contains(_searchQuery) ||
+            (a['beneficiary'] ?? '').toString().contains(_searchQuery) ||
+            (a['networkName'] ?? '').toString().contains(_searchQuery) ||
+            (a['note'] ?? '').toString().contains(_searchQuery);
+      }).toList();
+    }
 
     return Scaffold(
       appBar: const CustomHeader(title: 'حساباتي البنكية'),
@@ -443,6 +474,20 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                 ),
               ),
             ),
+            // حقل البحث
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: TextField(
+                onChanged: (v) => setState(() => _searchQuery = v.trim()),
+                decoration: InputDecoration(
+                  hintText: 'بحث عن حساب...',
+                  prefixIcon: Icon(Icons.search, color: colors.primary),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                ),
+              ),
+            ),
             Container(
               padding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -470,9 +515,7 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                               color: colors.onSurfaceVariant)))
                   : RefreshIndicator(
                       onRefresh: () async {
-                        // إعادة تحميل بيانات الوكيل لتحديث القائمة
-                        await sys
-                            .loadUserData(sys.currentUserPhone);
+                        await sys.loadUserData(sys.currentUserPhone);
                         setState(() {});
                       },
                       child: ReorderableListView.builder(
@@ -587,8 +630,20 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                                                   color: colors
                                                       .onSurfaceVariant,
                                                   fontSize: 12)),
-                                          if (account['createdAt'] !=
-                                              null)
+                                          if (account['note'] != null &&
+                                              account['note']
+                                                  .toString()
+                                                  .isNotEmpty &&
+                                              account['note'] !=
+                                                  'لا توجد ملاحظات')
+                                            Text(
+                                              'ملاحظة: ${account['note']}',
+                                              style: TextStyle(
+                                                  fontSize: 10,
+                                                  color: colors
+                                                      .onSurfaceVariant),
+                                            ),
+                                          if (account['createdAt'] != null)
                                             Text(
                                               'تاريخ الإضافة: ${_formatTimestamp(account['createdAt'])}',
                                               style: TextStyle(
@@ -671,13 +726,14 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
   }
 
   Widget _buildTextField(String label, IconData icon,
-      {TextEditingController? controller, bool isNumber = false}) {
+      {TextEditingController? controller, bool isAccountNumber = false}) {
     final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: TextField(
         controller: controller,
-        keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+        keyboardType:
+            isAccountNumber ? TextInputType.text : TextInputType.text,
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(icon, color: colors.primary),
