@@ -18,7 +18,7 @@ dependencies:
   firebase_core: ^3.6.0 
   cloud_firestore: ^5.4.4 
   firebase_auth: ^5.3.1
-  firebase_storage: ^11.6.0    # ✅ أُضيفت لدعم رفع صور الإيصالات
+  firebase_storage: ^12.4.10   # ✅ متوافق مع firebase_core 3.x
   pdf: ^3.11.0          
   printing: ^5.12.0     
   intl: ^0.20.2
