@@ -9,6 +9,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart' as intl;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -28,13 +29,17 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   bool _isBalanceVisible = false;
 
   // شحن
-  Map<String, dynamic>? _selectedNetwork; // الشبكة المختارة
+  Map<String, dynamic>? _selectedNetwork;
   String? _selectedAgentPhone;
   List<Map<String, dynamic>> _agentBankAccounts = [];
   final _amountController = TextEditingController();
   final _refController = TextEditingController();
+  final _fullNameController = TextEditingController(); // حقل الاسم الرباعي
   String? _receiptBase64;
   final _picker = ImagePicker();
+
+  // طلبات معلقة – تخزين مؤقت لمعرف الطلب الجاري تعديله
+  String? _editingRequestId;
 
   // تحويل
   final _searchController = TextEditingController();
@@ -42,10 +47,16 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   Map<String, dynamic>? _transferTarget;
   bool _isSearching = false;
 
+  // قائمة الشبكات تُحمل مرة واحدة وتُحفظ هنا لتجنب البطء
+  List<Map<String, dynamic>> _cachedNetworks = [];
+  bool _isLoadingNetworks = false;
+  String? _networkError;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _loadNetworks();
   }
 
   @override
@@ -53,6 +64,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     _tabController.dispose();
     _amountController.dispose();
     _refController.dispose();
+    _fullNameController.dispose();
     _searchController.dispose();
     _transferAmountController.dispose();
     super.dispose();
@@ -73,12 +85,50 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     );
   }
 
-  Future<void> _loadAgentBanks(String agentPhone) async {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    final banks = await sys.getAgentBankAccountsForUser(agentPhone);
+  Future<void> _loadNetworks() async {
     setState(() {
-      _agentBankAccounts = banks;
+      _isLoadingNetworks = true;
+      _networkError = null;
     });
+    try {
+      final sys = Provider.of<SystemProvider>(context, listen: false);
+      final networks = await sys.getActiveNetworksForRecharge();
+      if (mounted) {
+        setState(() {
+          _cachedNetworks = networks;
+          _isLoadingNetworks = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _networkError = 'فشل تحميل الشبكات';
+          _isLoadingNetworks = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadAgentBanks(String agentPhone, String? networkId) async {
+    final sys = Provider.of<SystemProvider>(context, listen: false);
+    try {
+      List<Map<String, dynamic>> banks = await sys.getAgentBankAccountsForUser(agentPhone);
+      // تصفية حسب الشبكة المختارة إن أمكن
+      if (networkId != null && networkId.isNotEmpty) {
+        banks = banks.where((b) {
+          final ids = List<String>.from(b['networkIds'] ?? []);
+          return ids.isEmpty || ids.contains(networkId);
+        }).toList();
+      }
+      setState(() {
+        _agentBankAccounts = banks;
+      });
+    } catch (e) {
+      setState(() {
+        _agentBankAccounts = [];
+      });
+      _showSnack('تعذر تحميل حسابات الوكيل', error: true);
+    }
   }
 
   Future<void> _pickReceipt() async {
@@ -88,6 +138,11 @@ class _UserWalletScreenState extends State<UserWalletScreen>
           source: ImageSource.gallery, imageQuality: 40, maxWidth: 600);
       if (image != null) {
         final bytes = await image.readAsBytes();
+        // التأكد من عدم تجاوز الحجم (حوالي 700 كيلوبايت آمن)
+        if (bytes.length > 700000) {
+          _showSnack('حجم الصورة كبير جداً، اختر صورة أصغر', error: true);
+          return;
+        }
         setState(() => _receiptBase64 = base64Encode(bytes));
         _play('success');
       }
@@ -102,27 +157,38 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       _showSnack('اختر شبكة أولاً', error: true);
       return;
     }
+    final fullName = _fullNameController.text.trim();
+    if (fullName.isEmpty) {
+      _showSnack('أدخل اسمك الرباعي', error: true);
+      return;
+    }
     final amount = double.tryParse(_amountController.text);
     if (amount == null || amount <= 0) {
       _showSnack('أدخل مبلغاً صحيحاً', error: true);
       return;
     }
-    if (_refController.text.isEmpty) {
-      _showSnack('أدخل رقم الحوالة', error: true);
+    if (_refController.text.trim().isEmpty) {
+      _showSnack('أدخل رقم الحوالة / المرجع', error: true);
       return;
     }
     try {
+      // إذا كنا في حالة تعديل، نحذف الطلب القديم أولاً
+      if (_editingRequestId != null) {
+        await FirebaseFirestore.instance
+            .collection('user_recharges')
+            .doc(_editingRequestId)
+            .delete();
+      }
       await sys.requestRechargeFromAgent(
         agentPhone: _selectedAgentPhone!,
         amount: amount,
         paymentMethod: 'حوالة بنكية',
-        reference: _refController.text,
+        reference: _refController.text.trim(),
         base64Image: _receiptBase64,
       );
       _play('success');
-      setState(() {}); // ✅ تحديث فوري للشاشة
-      _showSnack('تم إرسال طلب الشحن للوكيل');
       _clearRechargeForm();
+      _showSnack('تم إرسال طلب الشحن للوكيل');
     } catch (e) {
       _showSnack('فشل: $e', error: true);
     }
@@ -131,11 +197,13 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   void _clearRechargeForm() {
     _amountController.clear();
     _refController.clear();
+    _fullNameController.clear();
     setState(() {
       _receiptBase64 = null;
       _selectedNetwork = null;
       _selectedAgentPhone = null;
       _agentBankAccounts = [];
+      _editingRequestId = null;
     });
   }
 
@@ -145,8 +213,14 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       _amountController.text = request['amount']?.toString() ?? '';
       _refController.text = request['reference'] ?? '';
       _receiptBase64 = request['receiptBase64'];
+      _fullNameController.text = request['fullName'] ?? '';
+      _editingRequestId = request['docId'] ?? null;
     });
-    _loadAgentBanks(request['targetPhone']);
+    // حفظ الشبكة المختارة؟ يمكن محاولة إعادة اختيار الشبكة من البيانات
+  }
+
+  void _cancelEdit() {
+    _clearRechargeForm();
   }
 
   Future<void> _cancelRechargeRequest(String docId) async {
@@ -176,7 +250,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
           .doc(docId)
           .delete();
       _play('success');
-      setState(() {}); // تحديث فوري
+      setState(() {});
       _showSnack('تم إلغاء الطلب بنجاح');
     }
   }
@@ -225,10 +299,32 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     }
   }
 
+  void _startQRScan() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const QRScannerScreen(),
+      ),
+    );
+    if (result != null && result is String) {
+      try {
+        final data = jsonDecode(result);
+        if (data['acc'] != null) {
+          _searchController.text = data['acc'];
+          _searchForTransfer();
+          _tabController.animateTo(1);
+        } else {
+          _showSnack('الكود لا يحتوي على رقم حساب صحيح', error: true);
+        }
+      } catch (e) {
+        _showSnack('الكود غير صالح', error: true);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final sys = Provider.of<SystemProvider>(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final colors = Theme.of(context).colorScheme;
     final userBalance = sys.currentUserBalance;
     final accountNumber = sys.currentUserAccountNumber ?? 'غير متوفر';
@@ -377,7 +473,13 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   Widget _buildRechargeTab(ColorScheme colors) {
     final sys = Provider.of<SystemProvider>(context, listen: false);
     return RefreshIndicator(
-      onRefresh: () async => setState(() {}),
+      onRefresh: () async {
+        await _loadNetworks();
+        if (_selectedAgentPhone != null && _selectedNetwork != null) {
+          await _loadAgentBanks(
+              _selectedAgentPhone!, _selectedNetwork!['networkId']);
+        }
+      },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
@@ -391,71 +493,65 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                     color: colors.onSurface)),
             const SizedBox(height: 12),
             // القائمة المنسدلة للشبكات
-            FutureBuilder<List<Map<String, dynamic>>>(
-              future: sys.getActiveNetworksForRecharge(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final networks = snapshot.data ?? [];
-                if (networks.isEmpty) {
-                  return Text('لا توجد شبكات متاحة حالياً.',
-                      style: TextStyle(color: colors.onSurfaceVariant));
-                }
-                return Column(
+            if (_isLoadingNetworks)
+              const Center(child: CircularProgressIndicator())
+            else if (_networkError != null)
+              Center(
+                child: Column(
                   children: [
-                    DropdownButtonFormField<Map<String, dynamic>>(
-                      value: _selectedNetwork,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        labelText: 'اختر الشبكة',
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                        prefixIcon: const Icon(Icons.wifi),
-                      ),
-                      items: networks.map((network) {
-                        return DropdownMenuItem<Map<String, dynamic>>(
-                          value: network,
-                          child: Text(
-                            network['networkName'] ?? '',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        setState(() {
-                          _selectedNetwork = val;
-                          _selectedAgentPhone = val?['agentPhone'];
-                          _agentBankAccounts = [];
-                        });
-                        if (val != null) _loadAgentBanks(val['agentPhone']);
-                      },
+                    Text(_networkError!,
+                        style: TextStyle(color: colors.error)),
+                    TextButton(
+                      onPressed: _loadNetworks,
+                      child: const Text('إعادة المحاولة'),
                     ),
-                    if (_selectedNetwork != null &&
-                        _selectedNetwork!['agentName'] != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                            'الوكيل: ${_selectedNetwork!['agentName']}',
-                            style: TextStyle(
-                                color: colors.onSurfaceVariant,
-                                fontSize: 12)),
-                      ),
-                    const SizedBox(height: 15),
                   ],
-                );
-              },
-            ),
+                ),
+              )
+            else if (_cachedNetworks.isEmpty)
+              Text('لا توجد شبكات متاحة حالياً.',
+                  style: TextStyle(color: colors.onSurfaceVariant))
+            else
+              DropdownButtonFormField<Map<String, dynamic>>(
+                value: _selectedNetwork,
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: 'اختر الشبكة',
+                  border:
+                      OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  prefixIcon: const Icon(Icons.wifi),
+                ),
+                items: _cachedNetworks.map((network) {
+                  return DropdownMenuItem<Map<String, dynamic>>(
+                    value: network,
+                    child: Text(
+                      network['networkName'] ?? '',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  );
+                }).toList(),
+                onChanged: (val) {
+                  setState(() {
+                    _selectedNetwork = val;
+                    _selectedAgentPhone = val?['agentPhone'];
+                    _agentBankAccounts = [];
+                  });
+                  if (val != null) {
+                    _loadAgentBanks(val['agentPhone'], val['networkId']);
+                  }
+                },
+              ),
+            // عند اختيار شبكة، لا نظهر اسم الوكيل
+            const SizedBox(height: 12),
             // حسابات الوكيل البنكية
             if (_selectedAgentPhone != null &&
                 _agentBankAccounts.isNotEmpty) ...[
-              Text('حسابات الوكيل:',
+              Text('حسابات المستفيد:',
                   style: TextStyle(
                       fontWeight: FontWeight.bold,
                       color: colors.onSurface)),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               ..._agentBankAccounts.map((bank) {
-                // ✅ عرض اسم المستفيد الرباعي بدلاً من اسم الوكيل
                 final beneficiary = (bank['beneficiary'] ?? '').toString();
                 final note = (bank['note'] ?? '').toString();
                 final hasNote =
@@ -509,13 +605,24 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                   ),
                 );
               }),
+              const SizedBox(height: 12),
             ] else if (_selectedAgentPhone != null)
               Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: Text('لا توجد حسابات بنكية نشطة لهذا الوكيل',
                     style: TextStyle(color: colors.onSurfaceVariant)),
               ),
-            const SizedBox(height: 15),
+            // حقول الإدخال
+            TextField(
+              controller: _fullNameController,
+              decoration: InputDecoration(
+                labelText: 'اسمك الرباعي (حسب البطاقة)',
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                prefixIcon: const Icon(Icons.person),
+              ),
+            ),
+            const SizedBox(height: 12),
             TextField(
               controller: _amountController,
               keyboardType: TextInputType.number,
@@ -554,13 +661,15 @@ class _UserWalletScreenState extends State<UserWalletScreen>
               ),
             ),
             const SizedBox(height: 25),
+            // زر الإرسال
             SizedBox(
               width: double.infinity,
               height: 50,
               child: ElevatedButton.icon(
                 onPressed: _submitRecharge,
                 icon: Icon(Icons.send, color: colors.onPrimary),
-                label: Text('إرسال طلب الشحن',
+                label: Text(
+                    _editingRequestId != null ? 'تحديث الطلب' : 'إرسال طلب الشحن',
                     style: TextStyle(
                         color: colors.onPrimary,
                         fontWeight: FontWeight.bold)),
@@ -570,6 +679,13 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                         borderRadius: BorderRadius.circular(10))),
               ),
             ),
+            if (_editingRequestId != null)
+              TextButton.icon(
+                onPressed: _cancelEdit,
+                icon: const Icon(Icons.undo, size: 16),
+                label: const Text('تراجع عن التعديل'),
+                style: TextButton.styleFrom(foregroundColor: colors.error),
+              ),
             const SizedBox(height: 25),
             // طلباتي المعلقة
             Text('📋 طلباتي المعلقة',
@@ -589,6 +705,10 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
+                if (snapshot.hasError) {
+                  return Text('خطأ في تحميل الطلبات',
+                      style: TextStyle(color: colors.error));
+                }
                 final requests = snapshot.data?.docs ?? [];
                 if (requests.isEmpty) {
                   return Text('لا توجد طلبات معلقة حالياً.',
@@ -604,14 +724,24 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                         : '';
                     final double amount =
                         (req['amount'] ?? 0.0).toDouble();
+                    // الحصول على اسم الوكيل من رقم هاتفه (مخزن محلياً)
+                    final agentName = _getAgentNameFromCache(req['targetPhone']);
+
                     return Card(
                       margin: const EdgeInsets.only(bottom: 8),
                       color: colors.surface,
                       child: ListTile(
                         title: Text(
                             'مبلغ: ${amount.toStringAsFixed(0)} ريال'),
-                        subtitle: Text(
-                            'الوكيل: ${req['targetPhone']} - $timeStr'),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(agentName.isNotEmpty
+                                ? 'الوكيل: $agentName'
+                                : 'الوكيل: ${req['targetPhone']}'),
+                            Text(timeStr),
+                          ],
+                        ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -624,6 +754,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                                 'reference': req['reference'] ?? '',
                                 'receiptBase64':
                                     req['receiptBase64'] ?? '',
+                                'fullName': req['fullName'] ?? '',
+                                'docId': doc.id,
                               }),
                             ),
                             IconButton(
@@ -644,6 +776,16 @@ class _UserWalletScreenState extends State<UserWalletScreen>
         ),
       ),
     );
+  }
+
+  // دالة مساعدة لجلب اسم الوكيل من الذاكرة المؤقتة (agentsList)
+  String _getAgentNameFromCache(String phone) {
+    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final agent = sys.agentsList.firstWhere(
+      (a) => a['phone'] == phone,
+      orElse: () => {'name': ''},
+    );
+    return agent['name'] ?? '';
   }
 
   Widget _buildTransferTab(ColorScheme colors) {
@@ -803,9 +945,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                   ),
                   const SizedBox(width: 10),
                   OutlinedButton.icon(
-                    onPressed: () {
-                      _showSnack('ميزة مسح QR قيد التطوير');
-                    },
+                    onPressed: _startQRScan,
                     icon: Icon(Icons.camera_alt, color: colors.primary),
                     label: const Text('مسح QR'),
                     style: OutlinedButton.styleFrom(
@@ -836,4 +976,76 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
       Container(color: color, child: _tabBar);
   @override
   bool shouldRebuild(_SliverAppBarDelegate oldDelegate) => false;
+}
+
+// ==============================
+// شاشة مسح QR مستقلة
+// ==============================
+class QRScannerScreen extends StatefulWidget {
+  const QRScannerScreen({super.key});
+
+  @override
+  State<QRScannerScreen> createState() => _QRScannerScreenState();
+}
+
+class _QRScannerScreenState extends State<QRScannerScreen> {
+  final MobileScannerController controller = MobileScannerController();
+  bool _hasScanned = false;
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('مسح QR'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.flashlight_on),
+            onPressed: () => controller.toggleTorch(),
+          ),
+          IconButton(
+            icon: Icon(Icons.flip_camera_ios),
+            onPressed: () => controller.switchCamera(),
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          MobileScanner(
+            controller: controller,
+            onDetect: (capture) {
+              if (!_hasScanned) {
+                _hasScanned = true;
+                final List<Barcode> barcodes = capture.barcodes;
+                for (final barcode in barcodes) {
+                  if (barcode.rawValue != null) {
+                    Navigator.pop(context, barcode.rawValue);
+                    return;
+                  }
+                }
+                _hasScanned = false;
+              }
+            },
+          ),
+          Align(
+            alignment: Alignment.topCenter,
+            child: Container(
+              margin: const EdgeInsets.only(top: 20),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(10)),
+              child: const Text('وجّه الكاميرا نحو رمز QR',
+                  style: TextStyle(color: Colors.white)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
