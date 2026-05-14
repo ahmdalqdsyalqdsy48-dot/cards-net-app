@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io'; // ✅ مطلوب لرفع الصور
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart'; // ✅ مطلوب لرفع الإيصالات
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
@@ -637,6 +639,18 @@ class SystemProvider extends ChangeNotifier {
     return user['isBiometricEnabled'] ?? false;
   }
 
+  // ✅ خاصية معرف المستخدم الحالي
+  String get currentUserId => _activeUserPhone ?? '';
+
+  // ✅ قائمة معرفات الشبكات الخاصة بالمستخدم الحالي
+  List<String> get currentUserNetworkIds {
+    if (_activeUserPhone == null) return [];
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _activeUserPhone,
+        orElse: () => {'networkIds': <String>[]});
+    return List<String>.from(user['networkIds'] ?? []);
+  }
+
   Future<void> logAction(
       {required String action,
       required String details,
@@ -943,7 +957,6 @@ class SystemProvider extends ChangeNotifier {
     if (_activeUserPhone == null) return;
     try {
       int newOrder = _myAgentBankAccounts.length;
-      // حفظ في Firestore
       final docRef = await _db.collection('agent_bank_accounts').add({
         'agentPhone': _activeUserPhone,
         'networkName': networkName,
@@ -957,7 +970,6 @@ class SystemProvider extends ChangeNotifier {
         'networkIds': networkIds ?? [],
       });
 
-      // ✅ إضافة فورية للقائمة المحلية ليظهر الحساب فوراً
       _myAgentBankAccounts.add({
         'docId': docRef.id,
         'agentPhone': _activeUserPhone,
@@ -991,7 +1003,6 @@ class SystemProvider extends ChangeNotifier {
     }
     await _db.collection('agent_bank_accounts').doc(docId).update(updateData);
 
-    // ✅ تحديث فوري للقائمة المحلية
     final index = _myAgentBankAccounts.indexWhere((a) => a['docId'] == docId);
     if (index != -1) {
       _myAgentBankAccounts[index].addAll(updateData);
@@ -1007,7 +1018,6 @@ class SystemProvider extends ChangeNotifier {
         .doc(docId)
         .update({'status': newStatus});
 
-    // ✅ تحديث فوري للقائمة المحلية
     final index = _myAgentBankAccounts.indexWhere((a) => a['docId'] == docId);
     if (index != -1) {
       _myAgentBankAccounts[index]['status'] = newStatus;
@@ -1018,7 +1028,6 @@ class SystemProvider extends ChangeNotifier {
   Future<void> deleteAgentBankAccount(String docId) async {
     await _db.collection('agent_bank_accounts').doc(docId).delete();
 
-    // ✅ تحديث فوري للقائمة المحلية
     _myAgentBankAccounts.removeWhere((a) => a['docId'] == docId);
     notifyListeners();
   }
@@ -1037,7 +1046,6 @@ class SystemProvider extends ChangeNotifier {
     await batch.commit();
   }
 
-  // ========== جلب أسماء الشبكات للوكيل (للقائمة المنسدلة) ==========
   Future<List<Map<String, dynamic>>> getAgentNetworkNames() async {
     if (_activeUserPhone == null) return [];
     try {
@@ -1055,7 +1063,6 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  // ========== جلب الوكلاء الحقيقيين (لشحن المحفظة) ==========
   Future<List<Map<String, dynamic>>> getRealAgentsForRecharge() async {
     try {
       final agentsSnap = await _db
@@ -1101,7 +1108,6 @@ class SystemProvider extends ChangeNotifier {
     }
   }
 
-  // ========== جلب الشبكات النشطة التي تملك حسابات بنكية (لشحن المحفظة) ==========
   Future<List<Map<String, dynamic>>> getActiveNetworksForRecharge() async {
     try {
       final agentsSnap = await _db
@@ -1159,13 +1165,13 @@ class SystemProvider extends ChangeNotifier {
     return snap.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
   }
 
-    Future<void> requestRechargeFromAgent({
+  Future<void> requestRechargeFromAgent({
     required String agentPhone,
     required double amount,
     required String paymentMethod,
     required String reference,
     String? base64Image,
-    String? fullName, // <-- أضف هذا الوسيط الجديد
+    String? fullName,
   }) async {
     if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول.';
     final docData = <String, dynamic>{
@@ -1180,7 +1186,6 @@ class SystemProvider extends ChangeNotifier {
       'type': 'user_to_agent',
       'timestamp': FieldValue.serverTimestamp(),
     };
-    // أضف الاسم الرباعي للمرسل إن وُجد
     if (fullName != null && fullName.isNotEmpty) {
       docData['fullName'] = fullName;
     }
@@ -1189,6 +1194,128 @@ class SystemProvider extends ChangeNotifier {
         targetPhones: [agentPhone],
         title: 'طلب شحن جديد 💰',
         body: '${currentUserName} يطلب شحن مبلغ $amount ريال.');
+  }
+
+  // ✅ جلب الحسابات البنكية النشطة التي تطابق شبكات المستخدم الحالي
+  Future<List<Map<String, dynamic>>> getActiveBankAccountsForUserNetworks() async {
+    final userNetworkIds = currentUserNetworkIds;
+    if (userNetworkIds.isEmpty) return [];
+
+    final agentsSnap = await _db
+        .collection('users')
+        .where('role', isEqualTo: 'agent')
+        .where('networkIds', arrayContainsAny: userNetworkIds)
+        .get();
+
+    List<Map<String, dynamic>> accounts = [];
+
+    for (var agentDoc in agentsSnap.docs) {
+      final agentId = agentDoc.id;
+      final bankAccSnap = await _db
+          .collection('agent_bank_accounts')
+          .where('agentPhone', isEqualTo: agentId)
+          .where('status', isEqualTo: 'نشط')
+          .get();
+
+      for (var accDoc in bankAccSnap.docs) {
+        final data = accDoc.data();
+        final accNetworkIds = List<String>.from(data['networkIds'] ?? []);
+        if (accNetworkIds.any((id) => userNetworkIds.contains(id))) {
+          accounts.add({
+            'docId': accDoc.id,
+            'agentId': agentId,
+            ...data,
+          });
+        }
+      }
+    }
+    return accounts;
+  }
+
+  // ✅ رفع صورة الإيصال إلى Firebase Storage
+  Future<String> uploadReceiptImage(File file) async {
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final ref = FirebaseStorage.instance
+        .ref()
+        .child('receipts')
+        .child(currentUserId)
+        .child(fileName);
+    final uploadTask = ref.putFile(file);
+    final snapshot = await uploadTask.whenComplete(() => null);
+    return await snapshot.ref.getDownloadURL();
+  }
+
+  // ✅ تقديم طلب شحن جديد
+  Future<void> submitDepositRequest({
+    required String bankAccountId,
+    required double amount,
+    required String reference,
+    required String receiptImageUrl,
+  }) async {
+    String? agentId;
+    String? bankName;
+    String? accountNumber;
+
+    final agentsSnap = await _db
+        .collection('users')
+        .where('role', isEqualTo: 'agent')
+        .where('networkIds', arrayContainsAny: currentUserNetworkIds)
+        .get();
+
+    for (var agentDoc in agentsSnap.docs) {
+      final accDoc = await _db
+          .collection('agent_bank_accounts')
+          .doc(bankAccountId)
+          .get();
+      if (accDoc.exists) {
+        agentId = agentDoc.id;
+        bankName = accDoc.data()?['bankName'] ?? '';
+        accountNumber = accDoc.data()?['accountNumber'] ?? '';
+        break;
+      }
+    }
+
+    if (agentId == null) throw Exception('الحساب غير موجود');
+
+    await _db.collection('depositRequests').add({
+      'userId': currentUserId,
+      'userName': currentUserName,
+      'agentId': agentId,
+      'bankAccountId': bankAccountId,
+      'bankName': bankName,
+      'accountNumber': accountNumber,
+      'amount': amount,
+      'reference': reference,
+      'receiptImageUrl': receiptImageUrl,
+      'status': 'pending',
+      'rejectionReason': '',
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // ✅ إلغاء طلب شحن معلق
+  Future<void> cancelDepositRequest(String docId) async {
+    await _db.collection('depositRequests').doc(docId).update({
+      'status': 'cancelled',
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // ✅ بث طلبات الشحن للمستخدم الحالي
+  Stream<List<Map<String, dynamic>>> getPendingDepositRequestsStream() {
+    return _db
+        .collection('depositRequests')
+        .where('userId', isEqualTo: currentUserId)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) {
+              final data = doc.data();
+              return {
+                'docId': doc.id,
+                ...data,
+              };
+            }).toList());
   }
 
   // ------------------- تسجيل الدخول عبر API -------------------
@@ -1275,7 +1402,7 @@ class SystemProvider extends ChangeNotifier {
     return result['pin'] as String;
   }
 
-  // ========== دالة الشراء المتعدد (تبقى كما هي محلياً في الوقت الحالي) ==========
+  // ========== دالة الشراء المتعدد (تبقى كما هي محلياً) ==========
   Future<List<String>> executeBulkPurchase({
     required double totalPrice,
     required double unitPrice,
