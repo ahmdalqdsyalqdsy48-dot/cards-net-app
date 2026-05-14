@@ -1159,15 +1159,16 @@ class SystemProvider extends ChangeNotifier {
     return snap.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
   }
 
-  Future<void> requestRechargeFromAgent({
+    Future<void> requestRechargeFromAgent({
     required String agentPhone,
     required double amount,
     required String paymentMethod,
     required String reference,
     String? base64Image,
+    String? fullName, // <-- أضف هذا الوسيط الجديد
   }) async {
     if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول.';
-    await _db.collection('user_recharges').add({
+    final docData = <String, dynamic>{
       'userPhone': _activeUserPhone,
       'userName': currentUserName,
       'targetPhone': agentPhone,
@@ -1178,7 +1179,12 @@ class SystemProvider extends ChangeNotifier {
       'status': 'قيد الانتظار',
       'type': 'user_to_agent',
       'timestamp': FieldValue.serverTimestamp(),
-    });
+    };
+    // أضف الاسم الرباعي للمرسل إن وُجد
+    if (fullName != null && fullName.isNotEmpty) {
+      docData['fullName'] = fullName;
+    }
+    await _db.collection('user_recharges').add(docData);
     _sendNotification(
         targetPhones: [agentPhone],
         title: 'طلب شحن جديد 💰',
