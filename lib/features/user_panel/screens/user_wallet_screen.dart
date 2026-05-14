@@ -343,7 +343,7 @@ class _UserWalletScreenState extends State<UserWalletScreen> {
       drawer: CustomUserDrawer(
         userName: sys.currentUserName,
         phoneNumber: sys.currentUserPhone,
-        role: 'مستخدم',
+        
         currentBalance: balance,
       ),
       body: Directionality(
