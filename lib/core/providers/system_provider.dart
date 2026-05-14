@@ -9,10 +9,8 @@ import 'package:http/http.dart' as http;
 class SystemProvider extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // ---------- رابط الخادم السحابي (استبدل <project-id> بمعرف مشروعك) ----------
   static const String _serverUrl = 'https://mikrotik-server-qu6a.onrender.com';
 
-  // ---------- رمز الجلسة بعد تسجيل الدخول ----------
   String? _authToken;
 
   double _adminMainBalance = 0.0;
@@ -939,13 +937,14 @@ class SystemProvider extends ChangeNotifier {
     return user['accountNumber']?.toString();
   }
 
-    // ------------------- الحسابات البنكية للوكيل (مُعدّلة) -------------------
+  // ------------------- الحسابات البنكية للوكيل (مُعدّلة) -------------------
   Future<void> addAgentBankAccount(String networkName, String agentName,
       String bankName, String accNumber, String note, [List<String>? networkIds]) async {
     if (_activeUserPhone == null) return;
     try {
       int newOrder = _myAgentBankAccounts.length;
-      await _db.collection('agent_bank_accounts').add({
+      // حفظ في Firestore
+      final docRef = await _db.collection('agent_bank_accounts').add({
         'agentPhone': _activeUserPhone,
         'networkName': networkName,
         'agentName': agentName,
@@ -955,6 +954,21 @@ class SystemProvider extends ChangeNotifier {
         'status': 'نشط',
         'order': newOrder,
         'createdAt': FieldValue.serverTimestamp(),
+        'networkIds': networkIds ?? [],
+      });
+
+      // ✅ إضافة فورية للقائمة المحلية ليظهر الحساب فوراً
+      _myAgentBankAccounts.add({
+        'docId': docRef.id,
+        'agentPhone': _activeUserPhone,
+        'networkName': networkName,
+        'agentName': agentName,
+        'bankName': bankName,
+        'accountNumber': accNumber,
+        'note': note.isNotEmpty ? note : 'لا توجد ملاحظات',
+        'status': 'نشط',
+        'order': newOrder,
+        'createdAt': Timestamp.now(),
         'networkIds': networkIds ?? [],
       });
       notifyListeners();
@@ -976,7 +990,13 @@ class SystemProvider extends ChangeNotifier {
       updateData['networkIds'] = networkIds;
     }
     await _db.collection('agent_bank_accounts').doc(docId).update(updateData);
-    notifyListeners();
+
+    // ✅ تحديث فوري للقائمة المحلية
+    final index = _myAgentBankAccounts.indexWhere((a) => a['docId'] == docId);
+    if (index != -1) {
+      _myAgentBankAccounts[index].addAll(updateData);
+      notifyListeners();
+    }
   }
 
   Future<void> toggleAgentBankAccountStatus(
@@ -986,11 +1006,20 @@ class SystemProvider extends ChangeNotifier {
         .collection('agent_bank_accounts')
         .doc(docId)
         .update({'status': newStatus});
-    notifyListeners();
+
+    // ✅ تحديث فوري للقائمة المحلية
+    final index = _myAgentBankAccounts.indexWhere((a) => a['docId'] == docId);
+    if (index != -1) {
+      _myAgentBankAccounts[index]['status'] = newStatus;
+      notifyListeners();
+    }
   }
 
   Future<void> deleteAgentBankAccount(String docId) async {
     await _db.collection('agent_bank_accounts').doc(docId).delete();
+
+    // ✅ تحديث فوري للقائمة المحلية
+    _myAgentBankAccounts.removeWhere((a) => a['docId'] == docId);
     notifyListeners();
   }
 
@@ -1007,10 +1036,28 @@ class SystemProvider extends ChangeNotifier {
     }
     await batch.commit();
   }
-    // ========== جلب الوكلاء الحقيقيين (لشحن المحفظة) ==========
+
+  // ========== جلب أسماء الشبكات للوكيل (للقائمة المنسدلة) ==========
+  Future<List<Map<String, dynamic>>> getAgentNetworkNames() async {
+    if (_activeUserPhone == null) return [];
+    try {
+      final snap = await _db
+          .collection('networks')
+          .where('agentPhone', isEqualTo: _activeUserPhone)
+          .where('isActive', isEqualTo: true)
+          .get();
+      return snap.docs.map((doc) => {
+        'networkId': doc.id,
+        'networkName': doc['name'] ?? 'بدون اسم',
+      }).toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // ========== جلب الوكلاء الحقيقيين (لشحن المحفظة) ==========
   Future<List<Map<String, dynamic>>> getRealAgentsForRecharge() async {
     try {
-      // 1. جلب جميع الوكلاء النشطين
       final agentsSnap = await _db
           .collection('users')
           .where('role', isEqualTo: 'agent')
@@ -1023,7 +1070,6 @@ class SystemProvider extends ChangeNotifier {
         final agent = doc.data();
         final phone = doc.id;
 
-        // 2. التحقق من أن الوكيل لديه شبكة ميكروتك واحدة على الأقل نشطة
         final networksSnap = await _db
             .collection('networks')
             .where('agentPhone', isEqualTo: phone)
@@ -1031,9 +1077,8 @@ class SystemProvider extends ChangeNotifier {
             .limit(1)
             .get();
 
-        if (networksSnap.docs.isEmpty) continue; // ليس لديه شبكة نشطة
+        if (networksSnap.docs.isEmpty) continue;
 
-        // 3. التحقق من أن الوكيل لديه حساب بنكي واحد على الأقل نشط
         final banksSnap = await _db
             .collection('agent_bank_accounts')
             .where('agentPhone', isEqualTo: phone)
@@ -1041,9 +1086,8 @@ class SystemProvider extends ChangeNotifier {
             .limit(1)
             .get();
 
-        if (banksSnap.docs.isEmpty) continue; // ليس لديه حساب بنكي نشط
+        if (banksSnap.docs.isEmpty) continue;
 
-        // 4. الوكيل يستوفي الشروط → أضفه للقائمة
         realAgents.add({
           'phone': phone,
           'name': agent['name'] ?? '',
@@ -1056,10 +1100,10 @@ class SystemProvider extends ChangeNotifier {
       return [];
     }
   }
-    // ========== جلب الشبكات النشطة التي تملك حسابات بنكية (لشحن المحفظة) ==========
+
+  // ========== جلب الشبكات النشطة التي تملك حسابات بنكية (لشحن المحفظة) ==========
   Future<List<Map<String, dynamic>>> getActiveNetworksForRecharge() async {
     try {
-      // 1. جلب جميع الوكلاء النشطين
       final agentsSnap = await _db
           .collection('users')
           .where('role', isEqualTo: 'agent')
@@ -1072,7 +1116,6 @@ class SystemProvider extends ChangeNotifier {
         final agentPhone = agentDoc.id;
         final agentData = agentDoc.data();
 
-        // 2. التأكد من أن الوكيل لديه حساب بنكي نشط واحد على الأقل
         final banksSnap = await _db
             .collection('agent_bank_accounts')
             .where('agentPhone', isEqualTo: agentPhone)
@@ -1080,9 +1123,8 @@ class SystemProvider extends ChangeNotifier {
             .limit(1)
             .get();
 
-        if (banksSnap.docs.isEmpty) continue; // لا يوجد حساب بنكي نشط
+        if (banksSnap.docs.isEmpty) continue;
 
-        // 3. جلب شبكات الوكيل النشطة
         final networksSnap = await _db
             .collection('networks')
             .where('agentPhone', isEqualTo: agentPhone)
@@ -1117,7 +1159,7 @@ class SystemProvider extends ChangeNotifier {
     return snap.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
   }
 
-    Future<void> requestRechargeFromAgent({
+  Future<void> requestRechargeFromAgent({
     required String agentPhone,
     required double amount,
     required String paymentMethod,
@@ -1133,7 +1175,7 @@ class SystemProvider extends ChangeNotifier {
       'paymentMethod': paymentMethod,
       'reference': reference,
       'receiptBase64': base64Image ?? '',
-      'status': 'قيد الانتظار',   // <-- تم التأكيد هنا
+      'status': 'قيد الانتظار',
       'type': 'user_to_agent',
       'timestamp': FieldValue.serverTimestamp(),
     });
@@ -1187,7 +1229,6 @@ class SystemProvider extends ChangeNotifier {
       final userData = doc.data() as Map<String, dynamic>;
       final storedPin = userData['pin'] ?? '123456';
       if (storedPin == pin) {
-        // قراءة كلمة المرور ثم تسجيل الدخول عبر API
         return loginUser(phone, userData['password'] ?? '');
       }
       return null;
@@ -1284,12 +1325,10 @@ class SystemProvider extends ChangeNotifier {
         throw 'الرصيد أو الحد الائتماني غير كافٍ.';
       }
 
-      // خصم المبلغ الإجمالي مرة واحدة فقط
       transaction.update(userRef, {
         'wallets.$agentPhone': FieldValue.increment(-totalPrice),
       });
 
-      // تحديث حالة الكروت إلى مباع
       for (var ref in cardRefs) {
         transaction.update(ref, {
           'status': 'مباع',
@@ -1300,7 +1339,6 @@ class SystemProvider extends ChangeNotifier {
         });
       }
 
-      // إضافة الكروت إلى سجل مشتريات المستخدم
       for (var pin in pins) {
         final purchaseInvoice = {
           'title': cardTitle,
@@ -1314,12 +1352,10 @@ class SystemProvider extends ChangeNotifier {
         });
       }
 
-      // تحديث إحصائيات النظام
       transaction.update(_db.collection('system').doc('main_info'), {
         'totalSystemCards': FieldValue.increment(-quantity)
       });
 
-      // تسجيل الحركة المالية
       DocumentReference txnRef = _db.collection('transactions').doc();
       transaction.set(txnRef, {
         'fromPhone': _activeUserPhone,
@@ -2176,7 +2212,6 @@ class SystemProvider extends ChangeNotifier {
       throw 'كلمة المرور غير صحيحة ❌';
     }
 
-    // استخدم API للتحويل
     await _post('/api/transfer', {
       'targetPhone': targetPhone,
       'amount': amount,
