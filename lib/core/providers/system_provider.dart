@@ -856,16 +856,18 @@ class SystemProvider extends ChangeNotifier {
   }
 
   Map<String, dynamic> _buildSearchResult(
-      Map<String, dynamic> data, String phone) {
-    final bool showPhone = data['privacy_showPhone'] ?? true;
-    return {
-      'accountNumber': data['accountNumber'] ?? 'غير متوفر',
-      'name': data['name'] ?? 'مجهول',
-      'role': data['role'] ?? 'user',
-      'phone': showPhone ? phone : 'مخفي',
-      'balance': _getUserBalance(data, phone),
-    };
-  }
+    Map<String, dynamic> data, String phone) {
+  final bool showPhone = data['privacy_showPhone'] ?? true;
+  final bool hideBalance = data['privacy_hideBalance'] ?? false;
+  final bool showFullName = data['privacy_showFullName'] ?? true;
+  return {
+    'accountNumber': data['accountNumber'] ?? 'غير متوفر',
+    'name': showFullName ? (data['name'] ?? 'مجهول') : 'مخفي',
+    'role': data['role'] ?? 'user',
+    'phone': showPhone ? phone : 'مخفي',
+    'balance': hideBalance ? 0.0 : _getUserBalance(data, phone),
+  };
+}
 
   double _getUserBalance(Map<String, dynamic> data, String phone) {
     if (data['role'] == 'user' || data['role'] == 'pos') {
