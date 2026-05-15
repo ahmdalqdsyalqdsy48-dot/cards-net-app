@@ -35,6 +35,7 @@ dependencies:
   image_gallery_saver: ^1.7.1
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
+  expandable: ^5.0.1               # ✅ أضيفت للتجميع
   flutter_localizations:
     sdk: flutter
 
