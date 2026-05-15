@@ -2901,3 +2901,32 @@ class SystemProvider extends ChangeNotifier {
     notifyListeners();
   }
 }
+  // ========== نظام PIN المالي (6 أرقام) ==========
+
+  /// التحقق مما إذا كان المستخدم قد عيّن رمزاً سرياً من قبل
+  Future<bool> isFinancialPinSet() async {
+    if (_activeUserPhone == null) return false;
+    final doc = await _db.collection('users').doc(_activeUserPhone).get();
+    return (doc.data()?['financialPin'] ?? '').toString().length == 6;
+  }
+
+  /// تخزين رمز مالي جديد (6 أرقام)
+  Future<void> setFinancialPin(String newPin) async {
+    if (_activeUserPhone == null) return;
+    await _db.collection('users').doc(_activeUserPhone).update({'financialPin': newPin});
+  }
+
+  /// التحقق من صحة الرمز المالي المدخل
+  Future<bool> validateFinancialPin(String pin) async {
+    if (_activeUserPhone == null) return false;
+    final doc = await _db.collection('users').doc(_activeUserPhone).get();
+    return (doc.data()?['financialPin'] ?? '') == pin;
+  }
+
+  // تحديث آخر ظهور (يُستدعى عند الدخول)
+  Future<void> updateLastSeen() async {
+    if (_activeUserPhone == null) return;
+    await _db.collection('users').doc(_activeUserPhone).update({
+      'lastSeen': FieldValue.serverTimestamp(),
+    });
+  }
