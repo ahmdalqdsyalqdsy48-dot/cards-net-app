@@ -2900,7 +2900,6 @@ class SystemProvider extends ChangeNotifier {
     await _prefs!.setString('language', langCode);
     notifyListeners();
   }
-}
   // ========== نظام PIN المالي (6 أرقام) ==========
 
   /// التحقق مما إذا كان المستخدم قد عيّن رمزاً سرياً من قبل
@@ -2930,3 +2929,4 @@ class SystemProvider extends ChangeNotifier {
       'lastSeen': FieldValue.serverTimestamp(),
     });
   }
+}
