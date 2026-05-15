@@ -78,16 +78,17 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     final sys = Provider.of<SystemProvider>(context, listen: false);
     _fullNameController.text = sys.currentUserName;
     sys.updateLastSeen();
-    _checkPinStatus();
+    // PIN status سيتحقق منه عند الحاجة
+    _checkPinStatusSimple();
   }
 
-  Future<void> _checkPinStatus() async {
+  /// فحص بسيط للـ PIN بدون استدعاء دوال منفصلة
+  void _checkPinStatusSimple() {
     final sys = Provider.of<SystemProvider>(context, listen: false);
-    final hasPin = await sys.isFinancialPinSet();
-    setState(() => _isPinSet = hasPin);
-    if (!hasPin) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _showPinSetup());
-    }
+    final pin = sys.currentUserPin;
+    setState(() {
+      _isPinSet = pin.isNotEmpty && pin.length == 6;
+    });
   }
 
   @override
@@ -127,71 +128,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     );
   }
 
-  // ========== إعداد الـ PIN لأول مرة ==========
-  void _showPinSetup() {
-    _play('notification');
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: const Text('إعداد الرمز السري المالي', textAlign: TextAlign.center),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('يجب تعيين رمز مكون من 6 أرقام لحماية عملياتك المالية.'),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _pinController,
-                obscureText: !_pinVisible,
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-                decoration: InputDecoration(
-                  labelText: 'الرمز السري (6 أرقام)',
-                  prefixIcon: const Icon(Icons.lock),
-                  suffixIcon: IconButton(
-                    icon: Icon(_pinVisible ? Icons.visibility : Icons.visibility_off),
-                    onPressed: () {
-                      _play('click');
-                      setState(() => _pinVisible = !_pinVisible);
-                    },
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                _play('click');
-                Navigator.pop(ctx);
-                _checkPinStatus();
-              },
-              child: const Text('لاحقاً'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (_pinController.text.length != 6) {
-                  _showSnack('الرمز يجب أن يكون 6 أرقام', error: true);
-                  return;
-                }
-                _play('success');
-                final sys = Provider.of<SystemProvider>(context, listen: false);
-                await sys.setFinancialPin(_pinController.text);
-                setState(() => _isPinSet = true);
-                _pinController.clear();
-                Navigator.pop(ctx);
-                _showSnack('تم تعيين الرمز السري بنجاح');
-              },
-              child: const Text('حفظ'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
+  // ========== طلب PIN قبل العمليات الحساسة ==========
   Future<String?> _requestPinDialog() async {
     _pinController.clear();
     _pinVisible = false;
@@ -201,14 +138,14 @@ class _UserWalletScreenState extends State<UserWalletScreen>
         builder: (ctx, setDialogState) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
-            title: const Text('التحقق من الرمز المالي'),
+            title: const Text('التحقق من رمز PIN'),
             content: TextField(
               controller: _pinController,
               obscureText: !_pinVisible,
               keyboardType: TextInputType.number,
               maxLength: 6,
               decoration: InputDecoration(
-                labelText: 'أدخل الرمز السري (6 أرقام)',
+                labelText: 'أدخل رمز PIN (6 أرقام)',
                 prefixIcon: const Icon(Icons.lock),
                 suffixIcon: IconButton(
                   icon: Icon(_pinVisible ? Icons.visibility : Icons.visibility_off),
@@ -380,10 +317,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   Future<void> _submitRecharge() async {
     if (_isSubmittingRecharge) return;
     final sys = Provider.of<SystemProvider>(context, listen: false);
-    if (!_isPinSet) {
-      _showPinSetup();
-      return;
-    }
     if (_selectedBankAccount == null) {
       _showSnack('اختر حساباً بنكياً من القائمة', error: true);
       return;
@@ -403,12 +336,14 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       return;
     }
 
-    final pin = await _requestPinDialog();
-    if (pin == null) return;
-    final isValid = await sys.validateFinancialPin(pin);
-    if (!isValid) {
-      _showSnack('الرمز السري غير صحيح', error: true);
-      return;
+    // التحقق من PIN إذا كان مفعّلاً
+    if (sys.isPinEnabled) {
+      final pin = await _requestPinDialog();
+      if (pin == null) return;
+      if (!sys.validatePin(pin)) {
+        _showSnack('رمز PIN غير صحيح', error: true);
+        return;
+      }
     }
 
     setState(() => _isSubmittingRecharge = true);
@@ -532,10 +467,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   Future<void> _executeTransfer() async {
     if (_isSubmittingTransfer) return;
     final sys = Provider.of<SystemProvider>(context, listen: false);
-    if (!_isPinSet) {
-      _showPinSetup();
-      return;
-    }
     if (_transferTarget == null) return;
     final amount = double.tryParse(_transferAmountController.text);
     if (amount == null || amount <= 0) {
@@ -551,17 +482,19 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       _showSnack('لا يمكن التحويل لأن الرقم مخفي', error: true);
       return;
     }
-    if (amount > sys.currentUserBalance) {
-      _showSnack('رصيدك لا يكفي', error: true);
+    if (amount > sys.availableBalance) {
+      _showSnack('رصيدك المتاح لا يكفي (يوجد رصيد محجوز)', error: true);
       return;
     }
 
-    final pin = await _requestPinDialog();
-    if (pin == null) return;
-    final isValid = await sys.validateFinancialPin(pin);
-    if (!isValid) {
-      _showSnack('رمز PIN غير صحيح', error: true);
-      return;
+    // التحقق من PIN إذا كان مفعّلاً
+    if (sys.isPinEnabled) {
+      final pin = await _requestPinDialog();
+      if (pin == null) return;
+      if (!sys.validatePin(pin)) {
+        _showSnack('رمز PIN غير صحيح', error: true);
+        return;
+      }
     }
 
     setState(() => _isSubmittingTransfer = true);
@@ -643,13 +576,14 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                   _showSnack('المبلغ غير صحيح', error: true);
                   return;
                 }
-                // طلب PIN المالي
-                final pin = await _requestPinDialog();
-                if (pin == null) return;
-                final isValid = await sys.validateFinancialPin(pin);
-                if (!isValid) {
-                  _showSnack('رمز PIN غير صحيح', error: true);
-                  return;
+                // طلب PIN إذا كان مفعّلاً
+                if (sys.isPinEnabled) {
+                  final pin = await _requestPinDialog();
+                  if (pin == null) return;
+                  if (!sys.validatePin(pin)) {
+                    _showSnack('رمز PIN غير صحيح', error: true);
+                    return;
+                  }
                 }
                 await sys.setHoldAmount(amount);
                 Navigator.pop(ctx);
@@ -934,7 +868,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
 
   List<Widget> _buildNetworkGroupedAccounts(ColorScheme colors) {
     List<Widget> widgets = [];
-    // إعادة تجميع العناصر المفلترة حسب الشبكة
     Map<String, Map<String, List<Map<String, dynamic>>>> filteredGroups = {};
     for (var acc in _filteredAccounts) {
       final network = (acc['networkName'] ?? 'غير محدد').toString();
@@ -1426,7 +1359,7 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
 }
 
 // ==============================
-// شاشة مسح QR (بدون تغيير)
+// شاشة مسح QR
 // ==============================
 class QRScannerScreen extends StatefulWidget {
   const QRScannerScreen({super.key});
