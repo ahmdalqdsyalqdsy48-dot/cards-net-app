@@ -77991,16 +77991,20 @@ break
 case 6:case 1:return A.r(q,r)
 case 2:return A.q(o.at(-1),r)}})
 return A.t($async$Fm,r)},
-XU(a,b){var s,r,q,p=J.L(a),o=p.h(a,"privacy_showPhone")
-if(o==null)o=!0
-s=p.h(a,"accountNumber")
-if(s==null)s="\u063a\u064a\u0631 \u0645\u062a\u0648\u0641\u0631"
-r=p.h(a,"name")
-if(r==null)r="\u0645\u062c\u0647\u0648\u0644"
-p=p.h(a,"role")
-if(p==null)p="user"
-q=o?b:"\u0645\u062e\u0641\u064a"
-return A.d(["accountNumber",s,"name",r,"role",p,"phone",q,"balance",this.aOc(a,b)],t.N,t.z)},
+XU(a,b){var s,r,q,p,o,n=J.L(a),m=n.h(a,"privacy_showPhone")
+if(m==null)m=!0
+s=n.h(a,"privacy_hideBalance")
+if(s==null)s=!1
+r=n.h(a,"privacy_showFullName")
+if(r==null)r=!0
+q=n.h(a,"accountNumber")
+if(q==null)q="\u063a\u064a\u0631 \u0645\u062a\u0648\u0641\u0631"
+if(r){p=n.h(a,"name")
+if(p==null)p="\u0645\u062c\u0647\u0648\u0644"}else p="\u0645\u062e\u0641\u064a"
+n=n.h(a,"role")
+if(n==null)n="user"
+o=m?b:"\u0645\u062e\u0641\u064a"
+return A.d(["accountNumber",q,"name",p,"role",n,"phone",o,"balance",s?0:this.aOc(a,b)],t.N,t.z)},
 aOc(a,b){var s,r=J.L(a)
 if(J.h(r.h(a,"role"),"user")||J.h(r.h(a,"role"),"pos")){s=r.h(a,"wallets")
 return J.ch5(J.ch8(s==null?A.E(t.N,t.z):s),0,new A.bt0())}r=r.h(a,"balance")
