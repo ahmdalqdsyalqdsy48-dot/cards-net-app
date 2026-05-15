@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io'; // ✅ مطلوب لرفع الصور
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart'; // ✅ مطلوب لرفع الإيصالات
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
@@ -639,16 +639,36 @@ class SystemProvider extends ChangeNotifier {
     return user['isBiometricEnabled'] ?? false;
   }
 
-  // ✅ خاصية معرف المستخدم الحالي
   String get currentUserId => _activeUserPhone ?? '';
 
-  // ✅ قائمة معرفات الشبكات الخاصة بالمستخدم الحالي
   List<String> get currentUserNetworkIds {
     if (_activeUserPhone == null) return [];
     final user = _usersDatabase.firstWhere(
         (u) => u['phone'] == _activeUserPhone,
         orElse: () => {'networkIds': <String>[]});
     return List<String>.from(user['networkIds'] ?? []);
+  }
+
+  // ✅ التحكم في تفعيل PIN
+  bool get isPinEnabled {
+    if (_activeUserPhone == null) return false;
+    final user = _usersDatabase.firstWhere(
+      (u) => u['phone'] == _activeUserPhone,
+      orElse: () => {'pinEnabled': false},
+    );
+    return user['pinEnabled'] == true;
+  }
+
+  Future<void> togglePinEnabled(bool value) async {
+    if (_activeUserPhone == null) return;
+    await _db.collection('users').doc(_activeUserPhone).update({
+      'pinEnabled': value,
+    });
+    final index = _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
+    if (index != -1) {
+      _usersDatabase[index]['pinEnabled'] = value;
+      notifyListeners();
+    }
   }
 
   Future<void> logAction(
@@ -1198,40 +1218,36 @@ class SystemProvider extends ChangeNotifier {
         body: '${currentUserName} يطلب شحن مبلغ $amount ريال.');
   }
 
-  // ✅ جلب الحسابات البنكية النشطة التي تطابق شبكات المستخدم الحالي
   Future<List<Map<String, dynamic>>> getActiveBankAccountsForUserNetworks() async {
-  // جلب جميع الوكلاء
-  final agentsSnap = await _db
-      .collection('users')
-      .where('role', isEqualTo: 'agent')
-      .get();
-
-  List<Map<String, dynamic>> accounts = [];
-
-  // لكل وكيل، نجلب حساباته البنكية النشطة
-  for (var agentDoc in agentsSnap.docs) {
-    final agentId = agentDoc.id;
-    final bankAccSnap = await _db
-        .collection('agent_bank_accounts')
-        .where('agentPhone', isEqualTo: agentId)
-        .where('status', isEqualTo: 'نشط')
+    final agentsSnap = await _db
+        .collection('users')
+        .where('role', isEqualTo: 'agent')
         .get();
 
-    for (var accDoc in bankAccSnap.docs) {
-      final data = accDoc.data();
-      accounts.add({
-        'docId': accDoc.id,
-        'agentId': agentId,
-        'agentPhone': agentId,  // مهم لاستخراج اسم الوكيل
-        ...data,
-      });
+    List<Map<String, dynamic>> accounts = [];
+
+    for (var agentDoc in agentsSnap.docs) {
+      final agentId = agentDoc.id;
+      final bankAccSnap = await _db
+          .collection('agent_bank_accounts')
+          .where('agentPhone', isEqualTo: agentId)
+          .where('status', isEqualTo: 'نشط')
+          .get();
+
+      for (var accDoc in bankAccSnap.docs) {
+        final data = accDoc.data();
+        accounts.add({
+          'docId': accDoc.id,
+          'agentId': agentId,
+          'agentPhone': agentId,
+          ...data,
+        });
+      }
     }
+
+    return accounts;
   }
 
-  return accounts;
-}
-
-  // ✅ رفع صورة الإيصال إلى Firebase Storage
   Future<String> uploadReceiptImage(File file) async {
     final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
     final ref = FirebaseStorage.instance
@@ -1244,7 +1260,6 @@ class SystemProvider extends ChangeNotifier {
     return await snapshot.ref.getDownloadURL();
   }
 
-  // ✅ تقديم طلب شحن جديد
   Future<void> submitDepositRequest({
     required String bankAccountId,
     required double amount,
@@ -1293,7 +1308,6 @@ class SystemProvider extends ChangeNotifier {
     });
   }
 
-  // ✅ إلغاء طلب شحن معلق
   Future<void> cancelDepositRequest(String docId) async {
     await _db.collection('depositRequests').doc(docId).update({
       'status': 'cancelled',
@@ -1301,7 +1315,6 @@ class SystemProvider extends ChangeNotifier {
     });
   }
 
-  // ✅ بث طلبات الشحن للمستخدم الحالي
   Stream<List<Map<String, dynamic>>> getPendingDepositRequestsStream() {
     return _db
         .collection('depositRequests')
@@ -1392,6 +1405,7 @@ class SystemProvider extends ChangeNotifier {
   Future<String> executeRealPurchase(
     double price, String cardTitle, String agentPhone, String categoryId) async {
     if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً.';
+    if (availableBalance < price) throw 'الرصيد المتاح غير كافٍ (يوجد رصيد محجوز).';
     final result = await _post('/api/purchase', {
       'agentPhone': agentPhone,
       'categoryId': categoryId,
@@ -1401,7 +1415,7 @@ class SystemProvider extends ChangeNotifier {
     return result['pin'] as String;
   }
 
-  // ========== دالة الشراء المتعدد (تبقى كما هي محلياً) ==========
+  // ========== دالة الشراء المتعدد ==========
   Future<List<String>> executeBulkPurchase({
     required double totalPrice,
     required double unitPrice,
@@ -1414,6 +1428,7 @@ class SystemProvider extends ChangeNotifier {
     String? appliedCouponId,
   }) async {
     if (_activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً لإتمام الشراء.';
+    if (availableBalance < totalPrice) throw 'الرصيد المتاح غير كافٍ (يوجد رصيد محجوز).';
 
     final userRef = _db.collection('users').doc(_activeUserPhone);
 
@@ -1521,6 +1536,7 @@ class SystemProvider extends ChangeNotifier {
     required String targetPhone,
     required double amount,
   }) async {
+    if (availableBalance < amount) throw 'الرصيد المتاح غير كافٍ (يوجد رصيد محجوز).';
     await _post('/api/transfer', {
       'targetPhone': targetPhone,
       'amount': amount,
@@ -2902,36 +2918,8 @@ class SystemProvider extends ChangeNotifier {
     await _prefs!.setString('language', langCode);
     notifyListeners();
   }
-  // ========== نظام PIN المالي (6 أرقام) ==========
 
-  /// التحقق مما إذا كان المستخدم قد عيّن رمزاً سرياً من قبل
-  Future<bool> isFinancialPinSet() async {
-    if (_activeUserPhone == null) return false;
-    final doc = await _db.collection('users').doc(_activeUserPhone).get();
-    return (doc.data()?['financialPin'] ?? '').toString().length == 6;
-  }
-
-  /// تخزين رمز مالي جديد (6 أرقام)
-  Future<void> setFinancialPin(String newPin) async {
-    if (_activeUserPhone == null) return;
-    await _db.collection('users').doc(_activeUserPhone).update({'financialPin': newPin});
-  }
-
-  /// التحقق من صحة الرمز المالي المدخل
-  Future<bool> validateFinancialPin(String pin) async {
-    if (_activeUserPhone == null) return false;
-    final doc = await _db.collection('users').doc(_activeUserPhone).get();
-    return (doc.data()?['financialPin'] ?? '') == pin;
-  }
-
-  // تحديث آخر ظهور (يُستدعى عند الدخول)
-  Future<void> updateLastSeen() async {
-    if (_activeUserPhone == null) return;
-    await _db.collection('users').doc(_activeUserPhone).update({
-      'lastSeen': FieldValue.serverTimestamp(),
-    });
-  }
-    // ========== الحجز المالي ==========
+  // ========== الحجز المالي ==========
   Future<void> setHoldAmount(double amount) async {
     if (_activeUserPhone == null) return;
     await _db.collection('users').doc(_activeUserPhone).update({'heldBalance': amount});
@@ -2949,5 +2937,34 @@ class SystemProvider extends ChangeNotifier {
   double get availableBalance {
     if (_activeUserPhone == null) return 0.0;
     return currentUserBalance - heldBalance;
+  }
+
+  // ========== إعدادات تفعيل PIN (مضافة حديثاً) ==========
+  bool get isPinEnabled {
+    if (_activeUserPhone == null) return false;
+    final user = _usersDatabase.firstWhere(
+      (u) => u['phone'] == _activeUserPhone,
+      orElse: () => {'pinEnabled': false},
+    );
+    return user['pinEnabled'] == true;
+  }
+
+  Future<void> togglePinEnabled(bool value) async {
+    if (_activeUserPhone == null) return;
+    await _db.collection('users').doc(_activeUserPhone).update({
+      'pinEnabled': value,
+    });
+    final index = _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
+    if (index != -1) {
+      _usersDatabase[index]['pinEnabled'] = value;
+      notifyListeners();
+    }
+  }
+
+  Future<void> updateLastSeen() async {
+    if (_activeUserPhone == null) return;
+    await _db.collection('users').doc(_activeUserPhone).update({
+      'lastSeen': FieldValue.serverTimestamp(),
+    });
   }
 }
