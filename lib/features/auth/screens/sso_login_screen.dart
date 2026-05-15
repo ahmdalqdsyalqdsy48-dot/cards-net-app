@@ -37,7 +37,11 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   Timer? _carouselTimer;
   int _currentPage = 0;
 
-  final List<Color> _fallbackAdColors = [Colors.blue.shade800, Colors.deepPurple, Colors.teal];
+  final List<Color> _fallbackAdColors = [
+    Colors.blue.shade800,
+    Colors.deepPurple,
+    Colors.teal
+  ];
   final LocalAuthentication auth = LocalAuthentication();
 
   @override
@@ -50,7 +54,9 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
 
   void _startDynamicCarousel() {
     final systemProvider = Provider.of<SystemProvider>(context, listen: false);
-    int interval = systemProvider.carouselIntervalSeconds > 0 ? systemProvider.carouselIntervalSeconds : 5;
+    int interval = systemProvider.carouselIntervalSeconds > 0
+        ? systemProvider.carouselIntervalSeconds
+        : 5;
 
     _carouselTimer = Timer.periodic(Duration(seconds: interval), (Timer timer) {
       int itemCount = systemProvider.loginCarouselImages.isNotEmpty
@@ -64,7 +70,9 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
           _currentPage = 0;
         }
         if (_pageController.hasClients) {
-          _pageController.animateToPage(_currentPage, duration: const Duration(milliseconds: 500), curve: Curves.easeInOut);
+          _pageController.animateToPage(_currentPage,
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeInOut);
         }
       }
     });
@@ -82,32 +90,34 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   }
 
   // ==========================================
-  // ✅ نافذة إعداد PIN لأول مرة (بعد تسجيل الدخول)
+  // ✅ نافذة إعداد PIN لأول مرة (تُعيد String?)
   // ==========================================
-  Future<bool> _showPinSetupIfNeeded() async {
+  Future<String?> _showPinSetupIfNeeded() async {
     final sys = Provider.of<SystemProvider>(context, listen: false);
     final currentPin = sys.currentUserPin;
-    
+
     // إذا كان PIN موجوداً وطوله 6 أرقام، لا حاجة للإعداد
-    if (currentPin.isNotEmpty && currentPin.length == 6) return true;
+    if (currentPin.isNotEmpty && currentPin.length == 6) return currentPin;
 
     final pinCtrl = TextEditingController();
     final confirmCtrl = TextEditingController();
     bool visible = false;
     bool confirmVisible = false;
 
-    final result = await showDialog<bool>(
+    final result = await showDialog<String>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
-            title: const Text('إعداد رمز PIN الشامل', textAlign: TextAlign.center),
+            title:
+                const Text('إعداد رمز PIN الشامل', textAlign: TextAlign.center),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('يجب تعيين رمز مكون من 6 أرقام لتأمين حسابك وجميع العمليات.'),
+                const Text(
+                    'يجب تعيين رمز مكون من 6 أرقام لتأمين حسابك وجميع العمليات.'),
                 const SizedBox(height: 16),
                 TextField(
                   controller: pinCtrl,
@@ -118,8 +128,11 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                     labelText: 'الرمز السري (6 أرقام)',
                     prefixIcon: const Icon(Icons.lock),
                     suffixIcon: IconButton(
-                      icon: Icon(visible ? Icons.visibility : Icons.visibility_off),
-                      onPressed: () => setDialogState(() => visible = !visible),
+                      icon: Icon(visible
+                          ? Icons.visibility
+                          : Icons.visibility_off),
+                      onPressed: () =>
+                          setDialogState(() => visible = !visible),
                     ),
                     border: const OutlineInputBorder(),
                   ),
@@ -134,8 +147,11 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                     labelText: 'تأكيد الرمز السري',
                     prefixIcon: const Icon(Icons.lock),
                     suffixIcon: IconButton(
-                      icon: Icon(confirmVisible ? Icons.visibility : Icons.visibility_off),
-                      onPressed: () => setDialogState(() => confirmVisible = !confirmVisible),
+                      icon: Icon(confirmVisible
+                          ? Icons.visibility
+                          : Icons.visibility_off),
+                      onPressed: () =>
+                          setDialogState(() => confirmVisible = !confirmVisible),
                     ),
                     border: const OutlineInputBorder(),
                   ),
@@ -144,20 +160,24 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
+                onPressed: () => Navigator.pop(ctx),
                 child: const Text('تخطي'),
               ),
               ElevatedButton(
                 onPressed: () {
                   if (pinCtrl.text.length != 6) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('يجب أن يكون الرمز 6 أرقام', textDirection: TextDirection.rtl)),
+                      const SnackBar(
+                          content: Text('يجب أن يكون الرمز 6 أرقام',
+                              textDirection: TextDirection.rtl)),
                     );
                     return;
                   }
                   if (pinCtrl.text != confirmCtrl.text) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('الرمز غير متطابق', textDirection: TextDirection.rtl)),
+                      const SnackBar(
+                          content: Text('الرمز غير متطابق',
+                              textDirection: TextDirection.rtl)),
                     );
                     return;
                   }
@@ -171,11 +191,11 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       ),
     );
 
-    if (result is String) {
+    if (result != null) {
       await sys.updateUserPin(result);
-      return true;
+      return result;
     }
-    return false; // المستخدم ضغط "تخطي"
+    return null;
   }
 
   // ==========================================
@@ -222,9 +242,11 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
 
     Map<String, dynamic>? userData;
     if (usePinLogin) {
-      userData = await systemProvider.loginWithPin(phone, pinController.text.trim());
+      userData = await systemProvider.loginWithPin(
+          phone, pinController.text.trim());
     } else {
-      userData = await systemProvider.loginUser(phone, passwordController.text.trim());
+      userData = await systemProvider.loginUser(
+          phone, passwordController.text.trim());
     }
 
     if (!mounted) return;
@@ -233,28 +255,40 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     if (userData != null) {
       String userRole = userData['role'];
 
-      // ✅ التحقق من إعداد PIN لأول مرة (للمستخدمين الجدد)
+      // ✅ إجبار المستخدمين الجدد على تعيين PIN
       if (userRole == 'user' || userRole == 'pos') {
         final pinSet = await _showPinSetupIfNeeded();
-        if (!pinSet) {
+        if (pinSet == null) {
           _showErrorSnackBar('يجب تعيين رمز PIN للمتابعة.');
           return;
         }
       }
 
-      Provider.of<ThemeProvider>(context, listen: false).setUser(userRole, phone);
+      Provider.of<ThemeProvider>(context, listen: false)
+          .setUser(userRole, phone);
       uiProvider.playSound('success');
 
       if (userRole == 'super_admin' || userRole == 'staff') {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SuperAdminDashboard()));
+        Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+                builder: (context) => const SuperAdminDashboard()));
       } else if (userRole == 'agent') {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const AgentDashboardScreen()));
+        Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+                builder: (context) => const AgentDashboardScreen()));
       } else if (userRole == 'user' || userRole == 'pos') {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
+        Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+                builder: (context) => const UserDashboardScreen()));
       }
     } else {
       uiProvider.playSound('error');
-      _showErrorSnackBar(usePinLogin ? 'رقم الهاتف أو رمز PIN غير صحيح!' : 'رقم الهاتف غير مسجل أو كلمة المرور خاطئة!');
+      _showErrorSnackBar(usePinLogin
+          ? 'رقم الهاتف أو رمز PIN غير صحيح!'
+          : 'رقم الهاتف غير مسجل أو كلمة المرور خاطئة!');
     }
   }
 
@@ -285,20 +319,25 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       _showErrorSnackBar('هذا الرقم مسجل مسبقاً! يرجى تسجيل الدخول.');
       setState(() => isLoginMode = true);
     } else {
-      await systemProvider.registerNewUser(name: name, phone: phone, password: password, role: 'user');
+      await systemProvider.registerNewUser(
+          name: name, phone: phone, password: password, role: 'user');
       if (!mounted) return;
       setState(() => isLoading = false);
 
-      // ✅ إجبار المستخدم الجديد على تعيين PIN فوراً
+      // ✅ إجبار المستخدم الجديد على تعيين PIN
       final pinSet = await _showPinSetupIfNeeded();
-      if (!pinSet) {
+      if (pinSet == null) {
         _showErrorSnackBar('يجب تعيين رمز PIN للمتابعة.');
         return;
       }
 
-      Provider.of<ThemeProvider>(context, listen: false).setUser('user', phone);
+      Provider.of<ThemeProvider>(context, listen: false)
+          .setUser('user', phone);
       uiProvider.playSound('success');
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
+      Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+              builder: (context) => const UserDashboardScreen()));
       _showSuccessSnackBar('تم التسجيل بنجاح! أهلاً بك.');
     }
   }
@@ -306,10 +345,12 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   Future<void> _authenticateWithBiometrics() async {
     Provider.of<UiProvider>(context, listen: false).playSound('click');
     if (kIsWeb) {
-      _showErrorSnackBar('عذراً، الدخول بالبصمة يعمل فقط على تطبيقات الهواتف (Android/iOS) وليس المتصفح.');
+      _showErrorSnackBar(
+          'عذراً، الدخول بالبصمة يعمل فقط على تطبيقات الهواتف (Android/iOS) وليس المتصفح.');
       return;
     }
-    _showErrorSnackBar('قم بتسجيل الدخول برقمك وكلمة المرور أولاً لتفعيل الجلسة.');
+    _showErrorSnackBar(
+        'قم بتسجيل الدخول برقمك وكلمة المرور أولاً لتفعيل الجلسة.');
   }
 
   void _showForgotPasswordDialog() {
@@ -317,26 +358,41 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('استعادة كلمة المرور', textDirection: TextDirection.rtl),
-        content: const TextField(keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: 'أدخل رقم هاتفك المسجل', prefixIcon: Icon(Icons.phone)), textDirection: TextDirection.rtl),
+        title: const Text('استعادة كلمة المرور',
+            textDirection: TextDirection.rtl),
+        content: const TextField(
+            keyboardType: TextInputType.phone,
+            decoration: InputDecoration(
+                labelText: 'أدخل رقم هاتفك المسجل',
+                prefixIcon: Icon(Icons.phone)),
+            textDirection: TextDirection.rtl),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-          ElevatedButton(onPressed: () {
-            Navigator.pop(context);
-            Provider.of<UiProvider>(context, listen: false).playSound('success');
-            _showSuccessSnackBar('تم إرسال رمز الاستعادة (OTP) إلى رقمك.');
-          }, child: const Text('إرسال الرمز')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إلغاء')),
+          ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Provider.of<UiProvider>(context, listen: false)
+                    .playSound('success');
+                _showSuccessSnackBar('تم إرسال رمز الاستعادة (OTP) إلى رقمك.');
+              },
+              child: const Text('إرسال الرمز')),
         ],
       ),
     );
   }
 
   void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message, textDirection: TextDirection.rtl), backgroundColor: Colors.red.shade800));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(message, textDirection: TextDirection.rtl),
+        backgroundColor: Colors.red.shade800));
   }
 
   void _showSuccessSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message, textDirection: TextDirection.rtl), backgroundColor: Colors.green.shade800));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(message, textDirection: TextDirection.rtl),
+        backgroundColor: Colors.green.shade800));
   }
 
   // ==========================================
@@ -358,9 +414,16 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
             children: [
               const Icon(Icons.build_circle, size: 100, color: Colors.redAccent),
               const SizedBox(height: 20),
-              Text('النظام تحت الصيانة', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: colors.onSurface)),
+              Text('النظام تحت الصيانة',
+                  style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: colors.onSurface)),
               const SizedBox(height: 10),
-              Text('نعمل على تحسين تجربتكم، سنعود قريباً.', style: TextStyle(fontSize: 16, color: colors.onSurface.withOpacity(0.7))),
+              Text('نعمل على تحسين تجربتكم، سنعود قريباً.',
+                  style: TextStyle(
+                      fontSize: 16,
+                      color: colors.onSurface.withOpacity(0.7))),
               const SizedBox(height: 40),
               TextButton.icon(
                 onPressed: () => _showEmergencyLoginDialog(),
@@ -382,15 +445,27 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
             children: [
               const Icon(Icons.system_update, size: 100, color: Colors.orange),
               const SizedBox(height: 20),
-              Text('تحديث هام متاح', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: colors.onSurface)),
+              Text('تحديث هام متاح',
+                  style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: colors.onSurface)),
               const SizedBox(height: 10),
-              Text('يرجى تحديث التطبيق إلى آخر إصدار لمتابعة الاستخدام.', textAlign: TextAlign.center, style: TextStyle(fontSize: 16, color: colors.onSurface.withOpacity(0.7))),
+              Text('يرجى تحديث التطبيق إلى آخر إصدار لمتابعة الاستخدام.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 16,
+                      color: colors.onSurface.withOpacity(0.7))),
               const SizedBox(height: 30),
               ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12)),
-                onPressed: () { },
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueAccent,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 30, vertical: 12)),
+                onPressed: () {},
                 icon: const Icon(Icons.download, color: Colors.white),
-                label: const Text('تحديث الآن', style: TextStyle(color: Colors.white, fontSize: 16)),
+                label: const Text('تحديث الآن',
+                    style: TextStyle(color: Colors.white, fontSize: 16)),
               )
             ],
           ),
@@ -399,11 +474,20 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     }
 
     final List<String> carouselImages = systemProvider.loginCarouselImages;
-    final String welcomeMessage = systemProvider.loginWelcomeMessage.isNotEmpty ? systemProvider.loginWelcomeMessage : 'أهلاً بك في نظام كروت نت';
-    final CrossAxisAlignment columnAlign = systemProvider.appNameAlign == 'right' ? CrossAxisAlignment.start : (systemProvider.appNameAlign == 'left' ? CrossAxisAlignment.end : CrossAxisAlignment.center);
+    final String welcomeMessage = systemProvider.loginWelcomeMessage.isNotEmpty
+        ? systemProvider.loginWelcomeMessage
+        : 'أهلاً بك في نظام كروت نت';
+    final CrossAxisAlignment columnAlign =
+        systemProvider.appNameAlign == 'right'
+            ? CrossAxisAlignment.start
+            : (systemProvider.appNameAlign == 'left'
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.center);
     final String customFont = systemProvider.appNameFont;
     final Color customColor = Color(systemProvider.appNameColor);
-    final String appName = systemProvider.appName.isNotEmpty ? systemProvider.appName : 'شبكة كروت نت';
+    final String appName = systemProvider.appName.isNotEmpty
+        ? systemProvider.appName
+        : 'شبكة كروت نت';
 
     return Scaffold(
       backgroundColor: Color(systemProvider.loginBgColor),
@@ -416,7 +500,9 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                   height: MediaQuery.of(context).size.height * 0.22,
                   child: PageView.builder(
                     controller: _pageController,
-                    itemCount: carouselImages.isNotEmpty ? carouselImages.length : _fallbackAdColors.length,
+                    itemCount: carouselImages.isNotEmpty
+                        ? carouselImages.length
+                        : _fallbackAdColors.length,
                     itemBuilder: (context, index) {
                       if (carouselImages.isNotEmpty) {
                         return Container(
@@ -424,16 +510,24 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                           child: Image.network(
                             carouselImages[index],
                             fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) => Container(
+                            errorBuilder: (context, error, stackTrace) =>
+                                Container(
                               color: Colors.grey.shade300,
-                              child: const Center(child: Icon(Icons.broken_image, color: Colors.grey, size: 50)),
+                              child: const Center(
+                                  child: Icon(Icons.broken_image,
+                                      color: Colors.grey, size: 50)),
                             ),
                           ),
                         );
                       } else {
                         return Container(
                           color: _fallbackAdColors[index],
-                          child: Center(child: Text('مساحة إعلانية ${index + 1}', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold))),
+                          child: Center(
+                              child: Text('مساحة إعلانية ${index + 1}',
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold))),
                         );
                       }
                     },
@@ -442,7 +536,8 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
 
                 if (systemProvider.showNewsBar)
                   Container(
-                    width: double.infinity, height: 35,
+                    width: double.infinity,
+                    height: 35,
                     color: Color(systemProvider.marqueeBgColor),
                     child: _CustomMarquee(
                       text: welcomeMessage,
@@ -467,19 +562,30 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                               systemProvider.appLogoUrl,
                               height: 100,
                               fit: BoxFit.contain,
-                              errorBuilder: (c, e, s) => const SizedBox.shrink()
+                              errorBuilder: (c, e, s) =>
+                                  const SizedBox.shrink(),
                             ),
                           ),
                           const SizedBox(height: 15),
                         ],
                         Text(
                           appName,
-                          textAlign: systemProvider.appNameAlign == 'right' ? TextAlign.right : (systemProvider.appNameAlign == 'left' ? TextAlign.left : TextAlign.center),
+                          textAlign: systemProvider.appNameAlign == 'right'
+                              ? TextAlign.right
+                              : (systemProvider.appNameAlign == 'left'
+                                  ? TextAlign.left
+                                  : TextAlign.center),
                           style: customFont == 'System' || customFont.isEmpty
-                              ? TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: customColor)
+                              ? TextStyle(
+                                  fontSize: 30,
+                                  fontWeight: FontWeight.bold,
+                                  color: customColor)
                               : GoogleFonts.getFont(
                                   customFont,
-                                  textStyle: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: customColor),
+                                  textStyle: TextStyle(
+                                      fontSize: 30,
+                                      fontWeight: FontWeight.bold,
+                                      color: customColor),
                                 ),
                         ),
                       ],
@@ -489,9 +595,16 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                 const SizedBox(height: 30),
               ] else ...[
                 const SizedBox(height: 50),
-                const Center(child: Icon(Icons.person_add, size: 60, color: Colors.blueAccent)),
+                const Center(
+                    child: Icon(Icons.person_add,
+                        size: 60, color: Colors.blueAccent)),
                 const SizedBox(height: 10),
-                const Text('إنشاء حساب جديد', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                const Text('إنشاء حساب جديد',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blueAccent)),
                 const SizedBox(height: 30),
               ],
 
@@ -505,7 +618,13 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                       if (!isLoginMode) ...[
                         TextField(
                           controller: nameController,
-                          decoration: InputDecoration(labelText: "الاسم الرباعي", prefixIcon: const Icon(Icons.person), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: theme.cardColor),
+                          decoration: InputDecoration(
+                              labelText: "الاسم الرباعي",
+                              prefixIcon: const Icon(Icons.person),
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              filled: true,
+                              fillColor: theme.cardColor),
                         ),
                         const SizedBox(height: 15),
                       ],
@@ -513,7 +632,13 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                       TextField(
                         controller: phoneController,
                         keyboardType: TextInputType.phone,
-                        decoration: InputDecoration(labelText: "رقم الهاتف", prefixIcon: const Icon(Icons.phone_android), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: theme.cardColor),
+                        decoration: InputDecoration(
+                            labelText: "رقم الهاتف",
+                            prefixIcon: const Icon(Icons.phone_android),
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            filled: true,
+                            fillColor: theme.cardColor),
                       ),
                       const SizedBox(height: 15),
 
@@ -527,14 +652,22 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                             labelText: "رمز PIN",
                             prefixIcon: const Icon(Icons.pin),
                             suffixIcon: IconButton(
-                              icon: Icon(obscurePin ? Icons.visibility_off : Icons.visibility, color: Colors.grey),
+                              icon: Icon(obscurePin
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                                  color: Colors.grey),
                               onPressed: () {
-                                Provider.of<UiProvider>(context, listen: false).playSound('click');
-                                setState(() { obscurePin = !obscurePin; });
+                                Provider.of<UiProvider>(context, listen: false)
+                                    .playSound('click');
+                                setState(() {
+                                  obscurePin = !obscurePin;
+                                });
                               },
                             ),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                            filled: true, fillColor: theme.cardColor,
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            filled: true,
+                            fillColor: theme.cardColor,
                           ),
                         )
                       else
@@ -545,14 +678,22 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                             labelText: "كلمة المرور",
                             prefixIcon: const Icon(Icons.lock_outline),
                             suffixIcon: IconButton(
-                              icon: Icon(obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.grey),
+                              icon: Icon(obscurePassword
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                                  color: Colors.grey),
                               onPressed: () {
-                                Provider.of<UiProvider>(context, listen: false).playSound('click');
-                                setState(() { obscurePassword = !obscurePassword; });
+                                Provider.of<UiProvider>(context, listen: false)
+                                    .playSound('click');
+                                setState(() {
+                                  obscurePassword = !obscurePassword;
+                                });
                               },
                             ),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                            filled: true, fillColor: theme.cardColor,
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            filled: true,
+                            fillColor: theme.cardColor,
                           ),
                         ),
 
@@ -562,21 +703,33 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                           children: [
                             Row(
                               children: [
-                                Checkbox(value: rememberMe, onChanged: (value) {
-                                  Provider.of<UiProvider>(context, listen: false).playSound('click');
-                                  setState(() => rememberMe = value!);
-                                }),
-                                const Text("تذكرني", style: TextStyle(fontSize: 14)),
+                                Checkbox(
+                                    value: rememberMe,
+                                    onChanged: (value) {
+                                      Provider.of<UiProvider>(context,
+                                              listen: false)
+                                          .playSound('click');
+                                      setState(() =>
+                                          rememberMe = value!);
+                                    }),
+                                const Text("تذكرني",
+                                    style: TextStyle(fontSize: 14)),
                               ],
                             ),
                             Row(
                               children: [
-                                Text(usePinLogin ? "PIN" : "كلمة المرور", style: const TextStyle(fontSize: 13, color: Colors.blueAccent)),
+                                Text(
+                                    usePinLogin ? "PIN" : "كلمة المرور",
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.blueAccent)),
                                 Switch(
                                   value: usePinLogin,
                                   activeColor: Colors.blueAccent,
                                   onChanged: (val) {
-                                    Provider.of<UiProvider>(context, listen: false).playSound('click');
+                                    Provider.of<UiProvider>(context,
+                                            listen: false)
+                                        .playSound('click');
                                     setState(() => usePinLogin = val);
                                   },
                                 ),
@@ -588,7 +741,10 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                       if (isLoginMode && !usePinLogin)
                         TextButton(
                           onPressed: _showForgotPasswordDialog,
-                          child: const Text("نسيت كلمة المرور؟", style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                          child: const Text("نسيت كلمة المرور؟",
+                              style: TextStyle(
+                                  color: Colors.blueAccent,
+                                  fontWeight: FontWeight.bold)),
                         ),
 
                       const SizedBox(height: 20),
@@ -596,11 +752,28 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                       SizedBox(
                         height: 55,
                         child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(backgroundColor: isLoginMode ? Colors.blueAccent : Colors.green, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                          onPressed: isLoading ? null : (isLoginMode ? _processLogin : _processRegistration),
+                          style: ElevatedButton.styleFrom(
+                              backgroundColor:
+                                  isLoginMode ? Colors.blueAccent : Colors.green,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12))),
+                          onPressed: isLoading
+                              ? null
+                              : (isLoginMode
+                                  ? _processLogin
+                                  : _processRegistration),
                           child: isLoading
-                              ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                              : Text(isLoginMode ? "تسجيل الدخول" : "تأكيد التسجيل", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                      color: Colors.white, strokeWidth: 2.5))
+                              : Text(
+                                  isLoginMode ? "تسجيل الدخول" : "تأكيد التسجيل",
+                                  style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold)),
                         ),
                       ),
 
@@ -610,10 +783,21 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                         SizedBox(
                           height: 55,
                           child: OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.blueAccent, width: 1.5), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                            icon: const Icon(Icons.fingerprint, size: 28, color: Colors.blueAccent),
-                            label: const Text("الدخول السريع بالبصمة", style: TextStyle(fontSize: 16, color: Colors.blueAccent, fontWeight: FontWeight.bold)),
-                            onPressed: isLoading ? null : _authenticateWithBiometrics,
+                            style: OutlinedButton.styleFrom(
+                                side: const BorderSide(
+                                    color: Colors.blueAccent, width: 1.5),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12))),
+                            icon: const Icon(Icons.fingerprint,
+                                size: 28, color: Colors.blueAccent),
+                            label: const Text("الدخول السريع بالبصمة",
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.blueAccent,
+                                    fontWeight: FontWeight.bold)),
+                            onPressed: isLoading
+                                ? null
+                                : _authenticateWithBiometrics,
                           ),
                         ),
 
@@ -622,10 +806,15 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(isLoginMode ? "ليس لديك حساب؟" : "لديك حساب بالفعل؟", style: const TextStyle(fontSize: 15)),
+                          Text(
+                              isLoginMode
+                                  ? "ليس لديك حساب؟"
+                                  : "لديك حساب بالفعل؟",
+                              style: const TextStyle(fontSize: 15)),
                           TextButton(
                             onPressed: () {
-                              Provider.of<UiProvider>(context, listen: false).playSound('click');
+                              Provider.of<UiProvider>(context, listen: false)
+                                  .playSound('click');
                               setState(() {
                                 isLoginMode = !isLoginMode;
                                 phoneController.clear();
@@ -633,7 +822,14 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                                 pinController.clear();
                               });
                             },
-                            child: Text(isLoginMode ? "إنشاء حساب جديد" : "تسجيل الدخول", style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+                            child: Text(
+                                isLoginMode
+                                    ? "إنشاء حساب جديد"
+                                    : "تسجيل الدخول",
+                                style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blueAccent)),
                           ),
                         ],
                       ),
@@ -655,23 +851,32 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          title: const Text('دخول الطوارئ', style: TextStyle(fontWeight: FontWeight.bold)),
+          title: const Text('دخول الطوارئ',
+              style: TextStyle(fontWeight: FontWeight.bold)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: phoneController, decoration: const InputDecoration(labelText: 'رقم الإدارة (774578241)')),
+              TextField(
+                  controller: phoneController,
+                  decoration: const InputDecoration(
+                      labelText: 'رقم الإدارة (774578241)')),
               const SizedBox(height: 10),
-              TextField(controller: passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'كلمة المرور')),
+              TextField(
+                  controller: passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'كلمة المرور')),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('إلغاء')),
             ElevatedButton(
               onPressed: () {
                 Navigator.pop(context);
                 _processLogin();
               },
-              child: const Text('دخول')
+              child: const Text('دخول'),
             ),
           ],
         ),
@@ -691,7 +896,7 @@ class _CustomMarquee extends StatefulWidget {
   const _CustomMarquee({
     required this.text,
     required this.textColor,
-    required this.direction
+    required this.direction,
   });
 
   @override
@@ -737,17 +942,21 @@ class _CustomMarqueeState extends State<_CustomMarquee> {
   @override
   Widget build(BuildContext context) {
     return Directionality(
-      textDirection: widget.direction == 'ltr' ? TextDirection.ltr : TextDirection.rtl,
+      textDirection: widget.direction == 'ltr'
+          ? TextDirection.ltr
+          : TextDirection.rtl,
       child: SingleChildScrollView(
         controller: _scrollController,
         scrollDirection: Axis.horizontal,
         physics: const NeverScrollableScrollPhysics(),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 400.0, vertical: 6.0),
-          child: Text(
-            widget.text,
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: widget.textColor)
-          ),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 400.0, vertical: 6.0),
+          child: Text(widget.text,
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: widget.textColor)),
         ),
       ),
     );
