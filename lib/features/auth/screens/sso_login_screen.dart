@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/providers/system_provider.dart';
@@ -90,7 +91,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   }
 
   // ==========================================
-  // ✅ نافذة إعداد PIN لأول مرة (تُعيد String?)
+  // نافذة إعداد PIN لأول مرة (تُعيد String?)
   // ==========================================
   Future<String?> _showPinSetupIfNeeded() async {
     final sys = Provider.of<SystemProvider>(context, listen: false);
@@ -186,7 +187,24 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   }
 
   // ==========================================
-  // 2. العمليات الأساسية
+  // حفظ بيانات الدخول للبصمة
+  // ==========================================
+  Future<void> _saveCredentialsForBiometrics(String phone) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('saved_phone', phone);
+    if (usePinLogin) {
+      await prefs.setString('saved_pin', pinController.text.trim());
+      await prefs.setBool('saved_usePin', true);
+      await prefs.remove('saved_password');
+    } else {
+      await prefs.setString('saved_password', passwordController.text.trim());
+      await prefs.setBool('saved_usePin', false);
+      await prefs.remove('saved_pin');
+    }
+  }
+
+  // ==========================================
+  // العمليات الأساسية
   // ==========================================
   Future<void> _processLogin() async {
     FocusScope.of(context).unfocus();
@@ -240,7 +258,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     if (userData != null) {
       String userRole = userData['role'];
 
-      // ✅ إجبار المستخدمين الجدد على تعيين PIN
+      // إجبار المستخدمين الجدد على تعيين PIN
       if (userRole == 'user' || userRole == 'pos') {
         final pinSet = await _showPinSetupIfNeeded();
         if (pinSet == null) {
@@ -248,6 +266,9 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
           return;
         }
       }
+
+      // حفظ بيانات الدخول للبصمة
+      await _saveCredentialsForBiometrics(phone);
 
       Provider.of<ThemeProvider>(context, listen: false).setUser(userRole, phone);
       uiProvider.playSound('success');
@@ -302,6 +323,9 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
         return;
       }
 
+      // حفظ بيانات الدخول للبصمة
+      await _saveCredentialsForBiometrics(phone);
+
       Provider.of<ThemeProvider>(context, listen: false).setUser('user', phone);
       uiProvider.playSound('success');
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
@@ -309,13 +333,72 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     }
   }
 
+  // ==========================================
+  // الدخول السريع بالبصمة (يعمل فعلياً)
+  // ==========================================
   Future<void> _authenticateWithBiometrics() async {
-    Provider.of<UiProvider>(context, listen: false).playSound('click');
+    final uiProvider = Provider.of<UiProvider>(context, listen: false);
+    uiProvider.playSound('click');
+
     if (kIsWeb) {
       _showErrorSnackBar('عذراً، الدخول بالبصمة يعمل فقط على تطبيقات الهواتف (Android/iOS) وليس المتصفح.');
       return;
     }
-    _showErrorSnackBar('قم بتسجيل الدخول برقمك وكلمة المرور أولاً لتفعيل الجلسة.');
+
+    try {
+      final bool canAuthenticate = await auth.authenticate(
+        localizedReason: 'الرجاء مسح بصمة الإصبع لتسجيل الدخول',
+        options: const AuthenticationOptions(biometricOnly: true, stickyAuth: true),
+      );
+
+      if (!canAuthenticate) {
+        _showErrorSnackBar('فشل التحقق بالبصمة');
+        return;
+      }
+
+      // جلب بيانات الدخول المخزنة
+      final prefs = await SharedPreferences.getInstance();
+      final phone = prefs.getString('saved_phone') ?? '';
+      final password = prefs.getString('saved_password') ?? '';
+      final usePin = prefs.getBool('saved_usePin') ?? false;
+      final pin = prefs.getString('saved_pin') ?? '';
+
+      if (phone.isEmpty) {
+        _showErrorSnackBar('لا توجد بيانات دخول محفوظة. الرجاء تسجيل الدخول بكلمة المرور أولاً.');
+        return;
+      }
+
+      setState(() => isLoading = true);
+      final systemProvider = Provider.of<SystemProvider>(context, listen: false);
+
+      Map<String, dynamic>? userData;
+      if (usePin && pin.length == 6) {
+        userData = await systemProvider.loginWithPin(phone, pin);
+      } else if (password.isNotEmpty) {
+        userData = await systemProvider.loginUser(phone, password);
+      }
+
+      if (!mounted) return;
+      setState(() => isLoading = false);
+
+      if (userData != null) {
+        String userRole = userData['role'];
+        Provider.of<ThemeProvider>(context, listen: false).setUser(userRole, phone);
+        uiProvider.playSound('success');
+
+        if (userRole == 'super_admin' || userRole == 'staff') {
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const SuperAdminDashboard()));
+        } else if (userRole == 'agent') {
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AgentDashboardScreen()));
+        } else {
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserDashboardScreen()));
+        }
+      } else {
+        _showErrorSnackBar('تعذر تسجيل الدخول. قد تكون كلمة المرور تغيرت.');
+      }
+    } catch (e) {
+      _showErrorSnackBar('فشل التحقق بالبصمة');
+    }
   }
 
   void _showForgotPasswordDialog() {
