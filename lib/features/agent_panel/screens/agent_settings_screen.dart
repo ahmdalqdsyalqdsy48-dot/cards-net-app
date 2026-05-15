@@ -1,8 +1,13 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -25,14 +30,14 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   // ========== تبويب الطباعة ==========
   bool _autoPrintEnabled = false;
   double _defaultQty = 1.0;
+  bool _isPrinterConnected = false;
   final TextEditingController _receiptFooterController = TextEditingController();
 
   // ========== تبويب الأمان ==========
-  bool _pinEnabled = false;          // تفعيل طلب PIN للعمليات
+  bool _pinEnabled = false;
   bool _biometricsEnabled = false;
   bool _autoLockEnabled = false;
 
-  // حقول تغيير كلمة المرور
   final TextEditingController _oldPasswordController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
@@ -69,11 +74,10 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
       _defaultQty = prefs.getDouble('agent_defaultQty') ?? 1.0;
       _receiptFooterController.text =
           prefs.getString('agent_receiptFooter') ?? 'شكراً لتعاملكم معنا';
-
-      _biometricsEnabled = prefs.getBool('agent_biometrics') ?? false;
+      _isPrinterConnected = prefs.getBool('agent_printer_connected') ?? false;
+      _biometricsEnabled = sys.isBiometricCurrentlyEnabled;
       _autoLockEnabled = prefs.getBool('agent_autoLock') ?? false;
       _pinEnabled = sys.isPinEnabled;
-
       _isLoading = false;
     });
   }
@@ -86,7 +90,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     if (value is int) await prefs.setInt(key, value);
   }
 
-  // ========== تغيير رمز PIN الشامل (6 أرقام - ثلاث حقول) ==========
+  // ========== تغيير رمز PIN الشامل ==========
   void _showPinChangeDialog(SystemProvider sys) {
     final oldPinController = TextEditingController();
     final newPinController = TextEditingController();
@@ -151,12 +155,8 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                   }
 
                   final result = await sys.changeUserPinWithOld(oldPin, newPin, confirmPin);
-                  if (result == 'تم تحديث رمز PIN بنجاح.') {
-                    Navigator.pop(ctx);
-                    _showToast(result);
-                  } else {
-                    _showToast(result);
-                  }
+                  Navigator.pop(ctx);
+                  _showToast(result);
                 },
                 child: const Text('حفظ'),
               ),
@@ -190,7 +190,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     );
   }
 
-  // ========== تغيير كلمة المرور (باستخدام SystemProvider) ==========
+  // ========== تغيير كلمة المرور ==========
   void _changePassword(SystemProvider sys) {
     final oldPass = _oldPasswordController.text.trim();
     final newPass = _newPasswordController.text.trim();
@@ -218,6 +218,30 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     } else {
       _showToast('كلمة المرور القديمة غير صحيحة');
     }
+  }
+
+  // ========== طباعة اختبار PDF ==========
+  Future<void> _printTestPage() async {
+    _play('click');
+    final pdf = pw.Document();
+    pdf.addPage(
+      pw.Page(
+        build: (context) => pw.Center(
+          child: pw.Text('صفحة اختبار الطباعة من تطبيق كروت نت',
+              style: pw.TextStyle(fontSize: 20)),
+        ),
+      ),
+    );
+
+    if (kIsWeb) {
+      await Printing.layoutPdf(onLayout: (format) async => pdf.save());
+    } else {
+      final output = await getTemporaryDirectory();
+      final file = File('${output.path}/test_print.pdf');
+      await file.writeAsBytes(await pdf.save());
+      await Printing.sharePdf(bytes: await pdf.save(), filename: 'اختبار_الطباعة.pdf');
+    }
+    _showToast('تم فتح نافذة الطباعة');
   }
 
   void _showToast(String msg) {
@@ -278,7 +302,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildPrinterTab(primaryColor, colorScheme),
+                  _buildPrinterTab(sys, primaryColor, colorScheme),
                   _buildSecurityTab(sys, primaryColor, colorScheme),
                   _buildAppearanceTab(theme, ui, primaryColor, colorScheme),
                   _buildSystemTab(sys, primaryColor, colorScheme),
@@ -292,11 +316,38 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   }
 
   // ========== تبويب الطباعة ==========
-  Widget _buildPrinterTab(Color primaryColor, ColorScheme colorScheme) {
+  Widget _buildPrinterTab(SystemProvider sys, Color primaryColor, ColorScheme colorScheme) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _sectionTitle('إعدادات الطباعة', colorScheme.onSurface),
+        _sectionTitle('حالة الطابعة', colorScheme.onSurface),
+        const SizedBox(height: 10),
+        Card(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          color: colorScheme.surface,
+          child: SwitchListTile(
+            secondary: Icon(
+                kIsWeb ? Icons.picture_as_pdf : Icons.bluetooth_connected,
+                color: _isPrinterConnected ? Colors.green : Colors.grey),
+            title: Text(
+                kIsWeb ? 'تفعيل الطباعة (PDF)' : 'الاتصال بالطابعة',
+                style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+            subtitle: Text(
+                _isPrinterConnected ? 'جاهز للطباعة' : 'غير مفعّل',
+                style: TextStyle(color: colorScheme.onSurfaceVariant)),
+            value: _isPrinterConnected,
+            activeColor: primaryColor,
+            onChanged: (val) async {
+              _play('click');
+              setState(() => _isPrinterConnected = val);
+              await _saveSetting('agent_printer_connected', val);
+              await sys.setPrinterConnected(val);
+              _showToast(val ? 'تم تفعيل الطباعة' : 'تم تعطيل الطباعة');
+            },
+          ),
+        ),
+        const SizedBox(height: 20),
+        _sectionTitle('تفضيلات الطباعة', colorScheme.onSurface),
         const SizedBox(height: 10),
         Card(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
@@ -305,9 +356,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
             children: [
               SwitchListTile(
                 title: Text('الطباعة التلقائية فور البيع',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                 subtitle: Text('تجاوز نافذة التأكيد',
                     style: TextStyle(color: colorScheme.onSurfaceVariant)),
                 activeColor: primaryColor,
@@ -320,20 +369,15 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
               ),
               const Divider(height: 1),
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('الكمية الافتراضية: ${_defaultQty.toInt()} كروت',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.onSurface)),
+                        style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                     Slider(
                       value: _defaultQty,
-                      min: 1,
-                      max: 10,
-                      divisions: 9,
+                      min: 1, max: 10, divisions: 9,
                       activeColor: primaryColor,
                       label: _defaultQty.toInt().toString(),
                       onChanged: (val) {
@@ -351,19 +395,21 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                   controller: _receiptFooterController,
                   decoration: InputDecoration(
                     labelText: 'تذييل الفاتورة',
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                     prefixIcon: const Icon(Icons.text_fields),
                   ),
-                  onChanged: (val) =>
-                      _saveSetting('agent_receiptFooter', val),
+                  onChanged: (val) => _saveSetting('agent_receiptFooter', val),
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.all(12),
-                child: Text(
-                  '⚠️ ميزة الاتصال بالطابعة قيد التطوير حالياً',
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _printTestPage,
+                    icon: const Icon(Icons.print),
+                    label: const Text('طباعة صفحة اختبار'),
+                  ),
                 ),
               ),
             ],
@@ -374,8 +420,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   }
 
   // ========== تبويب الأمان ==========
-  Widget _buildSecurityTab(
-      SystemProvider sys, Color primaryColor, ColorScheme colorScheme) {
+  Widget _buildSecurityTab(SystemProvider sys, Color primaryColor, ColorScheme colorScheme) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -386,30 +431,24 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
           color: colorScheme.surface,
           child: Column(
             children: [
-              // زر تغيير رمز PIN
               ListTile(
                 leading: Icon(Icons.lock_outline, color: primaryColor),
                 title: Text('تغيير رمز PIN',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
-                subtitle: Text('الرمز الحالي: ${sys.currentUserPin.isNotEmpty && sys.currentUserPin.length == 6 ? "******" : "غير معين"}',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text(
+                    'الرمز الحالي: ${sys.currentUserPin.isNotEmpty && sys.currentUserPin.length == 6 ? "******" : "غير معين"}',
                     style: TextStyle(color: colorScheme.onSurfaceVariant)),
-                trailing: Icon(Icons.arrow_forward_ios,
-                    size: 14, color: colorScheme.onSurfaceVariant),
+                trailing: Icon(Icons.arrow_forward_ios, size: 14, color: colorScheme.onSurfaceVariant),
                 onTap: () {
                   _play('click');
                   _showPinChangeDialog(sys);
                 },
               ),
               const Divider(height: 1),
-              // مفتاح تفعيل طلب PIN للعمليات
               SwitchListTile(
                 secondary: Icon(Icons.security, color: primaryColor),
                 title: Text('تفعيل رمز PIN للعمليات',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                 subtitle: Text('طلب الرمز عند الشحن والتحويل والبيع',
                     style: TextStyle(color: colorScheme.onSurfaceVariant)),
                 value: _pinEnabled,
@@ -418,9 +457,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                   _play('click');
                   await sys.togglePinEnabled(val);
                   setState(() => _pinEnabled = val);
-                  _showToast(val
-                      ? 'تم تفعيل طلب رمز PIN للعمليات'
-                      : 'تم تعطيل طلب رمز PIN للعمليات');
+                  _showToast(val ? 'تم تفعيل طلب رمز PIN للعمليات' : 'تم تعطيل طلب رمز PIN للعمليات');
                 },
               ),
             ],
@@ -437,45 +474,18 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                _buildPasswordField(
-                    controller: _oldPasswordController,
-                    hint: 'كلمة المرور الحالية',
-                    icon: Icons.lock_outline,
-                    obscure: _obsOldPass,
-                    onToggle: () =>
-                        setState(() => _obsOldPass = !_obsOldPass)),
+                _buildPasswordField(controller: _oldPasswordController, hint: 'كلمة المرور الحالية', icon: Icons.lock_outline, obscure: _obsOldPass, onToggle: () => setState(() => _obsOldPass = !_obsOldPass)),
                 const SizedBox(height: 10),
-                _buildPasswordField(
-                    controller: _newPasswordController,
-                    hint: 'كلمة المرور الجديدة',
-                    icon: Icons.lock,
-                    obscure: _obsNewPass,
-                    onToggle: () =>
-                        setState(() => _obsNewPass = !_obsNewPass)),
+                _buildPasswordField(controller: _newPasswordController, hint: 'كلمة المرور الجديدة', icon: Icons.lock, obscure: _obsNewPass, onToggle: () => setState(() => _obsNewPass = !_obsNewPass)),
                 const SizedBox(height: 10),
-                _buildPasswordField(
-                    controller: _confirmPasswordController,
-                    hint: 'تأكيد كلمة المرور الجديدة',
-                    icon: Icons.check_circle_outline,
-                    obscure: _obsConfPass,
-                    onToggle: () =>
-                        setState(() => _obsConfPass = !_obsConfPass)),
+                _buildPasswordField(controller: _confirmPasswordController, hint: 'تأكيد كلمة المرور الجديدة', icon: Icons.check_circle_outline, obscure: _obsConfPass, onToggle: () => setState(() => _obsConfPass = !_obsConfPass)),
                 const SizedBox(height: 15),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.redAccent,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10))),
-                    onPressed: () {
-                      _play('click');
-                      _changePassword(sys);
-                    },
-                    child: const Text('تغيير كلمة المرور',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                    onPressed: () { _play('click'); _changePassword(sys); },
+                    child: const Text('تغيير كلمة المرور', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                 ),
               ],
@@ -492,32 +502,34 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
           child: Column(
             children: [
               SwitchListTile(
+                secondary: Icon(Icons.lock_clock, color: primaryColor),
                 title: Text('القفل التلقائي للجلسة',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
-                subtitle: Text('قيد التطوير - غير مفعل حالياً',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text('قفل التطبيق بعد 3 دقائق من الخمول',
                     style: TextStyle(color: colorScheme.onSurfaceVariant)),
-                activeColor: primaryColor,
                 value: _autoLockEnabled,
-                onChanged: (_) {
+                activeColor: primaryColor,
+                onChanged: (val) async {
                   _play('click');
-                  _showToast('هذه الميزة قيد التطوير');
+                  setState(() => _autoLockEnabled = val);
+                  await sys.setAutoLockEnabled(val);
+                  _showToast(val ? 'تم تفعيل القفل التلقائي' : 'تم تعطيل القفل التلقائي');
                 },
               ),
               const Divider(height: 1),
               SwitchListTile(
+                secondary: Icon(Icons.fingerprint, color: primaryColor),
                 title: Text('تسجيل الدخول بالبصمة',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
-                subtitle: Text('قيد التطوير - غير مفعل حالياً',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text('استخدام بصمة الإصبع للدخول السريع',
                     style: TextStyle(color: colorScheme.onSurfaceVariant)),
-                activeColor: primaryColor,
                 value: _biometricsEnabled,
-                onChanged: (_) {
+                activeColor: primaryColor,
+                onChanged: (val) {
                   _play('click');
-                  _showToast('هذه الميزة قيد التطوير');
+                  sys.toggleBiometric(val);
+                  setState(() => _biometricsEnabled = val);
+                  _showToast(val ? 'تم تفعيل الدخول بالبصمة' : 'تم تعطيل الدخول بالبصمة');
                 },
               ),
             ],
@@ -541,8 +553,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
         labelText: hint,
         prefixIcon: Icon(icon, color: Colors.blueGrey),
         suffixIcon: IconButton(
-          icon: Icon(obscure ? Icons.visibility_off : Icons.visibility,
-              color: Colors.grey),
+          icon: Icon(obscure ? Icons.visibility_off : Icons.visibility, color: Colors.grey),
           onPressed: onToggle,
         ),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -552,8 +563,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   }
 
   // ========== تبويب المظهر ==========
-  Widget _buildAppearanceTab(ThemeProvider theme, UiProvider ui,
-      Color primaryColor, ColorScheme colorScheme) {
+  Widget _buildAppearanceTab(ThemeProvider theme, UiProvider ui, Color primaryColor, ColorScheme colorScheme) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -569,32 +579,18 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('لونك المفضل:',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.onSurface)),
-                    CircleAvatar(
-                        backgroundColor: primaryColor,
-                        radius: 20,
-                        child: primaryColor == Colors.white
-                            ? const Icon(Icons.palette, color: Colors.grey)
-                            : null),
+                    Text('لونك المفضل:', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                    CircleAvatar(backgroundColor: primaryColor, radius: 20, child: primaryColor == Colors.white ? const Icon(Icons.palette, color: Colors.grey) : null),
                   ],
                 ),
                 const SizedBox(height: 15),
                 Center(
                   child: Container(
                     padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border:
-                          Border.all(color: Colors.grey.shade200, width: 2),
-                    ),
+                    decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade200, width: 2)),
                     child: ColorPicker(
                       pickerColor: primaryColor,
-                      onColorChanged: (color) {
-                        theme.changeColor(color);
-                      },
+                      onColorChanged: (color) => theme.changeColor(color),
                       paletteType: PaletteType.hsvWithHue,
                       enableAlpha: false,
                       displayThumbColor: true,
@@ -605,15 +601,9 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                 ),
                 const Divider(height: 30),
                 TextButton.icon(
-                  onPressed: () {
-                    _play('click');
-                    theme.resetToDefault();
-                  },
+                  onPressed: () { _play('click'); theme.resetToDefault(); },
                   icon: const Icon(Icons.refresh, color: Colors.blueGrey),
-                  label: const Text('استعادة المظهر الافتراضي',
-                      style: TextStyle(
-                          color: Colors.blueGrey,
-                          fontWeight: FontWeight.bold)),
+                  label: const Text('استعادة المظهر الافتراضي', style: TextStyle(color: Colors.blueGrey, fontWeight: FontWeight.bold)),
                 ),
               ],
             ),
@@ -627,18 +617,11 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
           color: colorScheme.surface,
           child: SwitchListTile(
             secondary: const Icon(Icons.volume_up, color: Colors.purple),
-            title: Text('أصوات التطبيق',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurface)),
-            subtitle: Text('صوت نجاح العمليات والتنبيهات',
-                style: TextStyle(color: colorScheme.onSurfaceVariant)),
+            title: Text('أصوات التطبيق', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+            subtitle: Text('صوت نجاح العمليات والتنبيهات', style: TextStyle(color: colorScheme.onSurfaceVariant)),
             activeColor: primaryColor,
             value: ui.isSoundsEnabled,
-            onChanged: (val) {
-              _play('click');
-              ui.updateSoundSettings(val);
-            },
+            onChanged: (val) { _play('click'); ui.updateSoundSettings(val); },
           ),
         ),
       ],
@@ -646,8 +629,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   }
 
   // ========== تبويب النظام ==========
-  Widget _buildSystemTab(
-      SystemProvider sys, Color primaryColor, ColorScheme colorScheme) {
+  Widget _buildSystemTab(SystemProvider sys, Color primaryColor, ColorScheme colorScheme) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -660,15 +642,10 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
             children: [
               ListTile(
                 leading: const Icon(Icons.cleaning_services, color: Colors.orange),
-                title: Text('تنظيف الذاكرة المؤقتة',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
-                subtitle: Text('يساعد في تسريع التطبيق',
-                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
-                trailing: Icon(Icons.arrow_forward_ios,
-                    size: 14, color: colorScheme.onSurfaceVariant),
-                onTap: () async {
+                title: Text('تنظيف الذاكرة المؤقتة', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text('يساعد في تسريع التطبيق', style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                trailing: Icon(Icons.arrow_forward_ios, size: 14, color: colorScheme.onSurfaceVariant),
+                onTap: () {
                   _play('click');
                   imageCache.clear();
                   imageCache.clearLiveImages();
@@ -679,22 +656,12 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
               const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.cloud_sync, color: Colors.blue),
-                title: Text('فرض المزامنة',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
-                subtitle: Text('سحب أحدث بيانات من السيرفر',
-                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
-                trailing: Icon(Icons.arrow_forward_ios,
-                    size: 14, color: colorScheme.onSurfaceVariant),
+                title: Text('فرض المزامنة', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text('سحب أحدث بيانات من السيرفر', style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                trailing: Icon(Icons.arrow_forward_ios, size: 14, color: colorScheme.onSurfaceVariant),
                 onTap: () async {
                   _play('click');
-                  showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (c) =>
-                        const Center(child: CircularProgressIndicator()),
-                  );
+                  showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
                   await sys.loadUserData(sys.currentUserPhone);
                   if (mounted) Navigator.pop(context);
                   _showToast('تمت مزامنة البيانات بنجاح 🔄');
@@ -710,11 +677,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   Widget _sectionTitle(String title, Color color) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, right: 4),
-      child: Text(
-        title,
-        style: TextStyle(
-            fontSize: 15, fontWeight: FontWeight.bold, color: color),
-      ),
+      child: Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: color)),
     );
   }
 }
