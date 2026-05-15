@@ -2929,4 +2929,23 @@ class SystemProvider extends ChangeNotifier {
       'lastSeen': FieldValue.serverTimestamp(),
     });
   }
+    // ========== الحجز المالي ==========
+  Future<void> setHoldAmount(double amount) async {
+    if (_activeUserPhone == null) return;
+    await _db.collection('users').doc(_activeUserPhone).update({'heldBalance': amount});
+  }
+
+  double get heldBalance {
+    if (_activeUserPhone == null) return 0.0;
+    final user = _usersDatabase.firstWhere(
+      (u) => u['phone'] == _activeUserPhone,
+      orElse: () => {'heldBalance': 0.0},
+    );
+    return (user['heldBalance'] ?? 0.0).toDouble();
+  }
+
+  double get availableBalance {
+    if (_activeUserPhone == null) return 0.0;
+    return currentUserBalance - heldBalance;
+  }
 }
