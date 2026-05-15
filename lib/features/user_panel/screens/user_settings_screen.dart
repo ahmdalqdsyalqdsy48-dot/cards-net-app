@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_user_drawer.dart';
@@ -30,7 +31,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
   bool _transactionNotifications = true;
   bool _hideBalanceFromOthers = false;
   bool _showFullName = true;
-  String _selectedLanguage = 'ar';
 
   @override
   void initState() {
@@ -47,16 +47,18 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
 
   Future<void> _loadAllSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final currentPin = sys.currentUserPin;
+
     setState(() {
       _appSounds = prefs.getBool('user_app_sounds') ?? true;
       _dailyLimit = prefs.getDouble('user_daily_limit') ?? 0.0;
-      _userPin = prefs.getString('user_pin') ?? '';
+      _userPin = currentPin.isNotEmpty && currentPin.length == 6 ? currentPin : '';
       _notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
       _marketingNotifications = prefs.getBool('marketing_notifications') ?? true;
       _transactionNotifications = prefs.getBool('transaction_notifications') ?? true;
       _hideBalanceFromOthers = prefs.getBool('hide_balance') ?? false;
       _showFullName = prefs.getBool('show_full_name') ?? true;
-      _selectedLanguage = prefs.getString('language') ?? 'ar';
     });
   }
 
@@ -76,10 +78,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  Color _getTextColor(BuildContext context) {
-    return Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
-  }
-
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
@@ -89,10 +87,10 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     final primaryColor = themeProvider.primaryColor;
     final userName = systemProvider.currentUserName;
     final userPhone = systemProvider.currentUserPhone;
-    final textColor = _getTextColor(context);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: colorScheme.surface,
       appBar: CustomHeader(title: 'الإعدادات'),
       drawer: CustomUserDrawer(userName: userName, phoneNumber: userPhone),
       body: Directionality(
@@ -100,15 +98,15 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
         child: Column(
           children: [
             Container(
-              color: Theme.of(context).cardColor,
+              color: colorScheme.surface,
               child: TabBar(
                 controller: _tabController,
                 isScrollable: true,
                 labelColor: primaryColor,
-                unselectedLabelColor: Colors.grey,
+                unselectedLabelColor: colorScheme.onSurfaceVariant,
                 indicatorColor: primaryColor,
                 indicatorWeight: 3,
-                labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textColor),
+                labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: colorScheme.onSurface),
                 tabs: const [
                   Tab(text: 'الأمان'),
                   Tab(text: 'المظهر'),
@@ -122,11 +120,11 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildSecurityTab(systemProvider, primaryColor, isDark, textColor),
-                  _buildAppearanceTab(themeProvider, uiProvider, primaryColor, isDark, textColor),
-                  _buildAccountTab(systemProvider, primaryColor, isDark, textColor),
-                  _buildNotificationsTab(primaryColor, isDark, textColor),
-                  _buildPrivacyTab(systemProvider, primaryColor, isDark, textColor),
+                  _buildSecurityTab(systemProvider, primaryColor, colorScheme),
+                  _buildAppearanceTab(themeProvider, uiProvider, primaryColor, isDark, colorScheme),
+                  _buildAccountTab(systemProvider, primaryColor, colorScheme),
+                  _buildNotificationsTab(primaryColor, colorScheme),
+                  _buildPrivacyTab(systemProvider, primaryColor, colorScheme),
                 ],
               ),
             ),
@@ -136,16 +134,16 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  Widget _buildSecurityTab(SystemProvider sys, Color primaryColor, bool isDark, Color textColor) {
+  Widget _buildSecurityTab(SystemProvider sys, Color primaryColor, ColorScheme colorScheme) {
     final useBiometrics = sys.isBiometricCurrentlyEnabled;
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _buildSectionTitle('معلومات الدخول', textColor),
+        _buildSectionTitle('معلومات الدخول', colorScheme.onSurface),
         Card(
           elevation: 0,
-          color: Theme.of(context).cardColor,
+          color: colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15),
             side: BorderSide(color: primaryColor.withOpacity(0.3)),
@@ -154,10 +152,10 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
             children: [
               _buildListTile(
                 Icons.lock_outline,
-                'رمز PIN',
+                'رمز PIN الشامل',
                 _userPin.isNotEmpty ? 'تم تعيين رمز PIN مكون من 6 أرقام' : 'لم يتم تعيين رمز PIN بعد',
                 primaryColor,
-                textColor,
+                colorScheme.onSurface,
                 onTap: () => _showPinDialog(sys),
               ),
               const Divider(height: 1),
@@ -170,9 +168,9 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ),
                   child: Icon(Icons.fingerprint, color: primaryColor, size: 20),
                 ),
-                title: Text('الدخول بالبصمة', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
+                title: Text('الدخول بالبصمة', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                 subtitle: Text(kIsWeb ? 'غير مدعوم على الويب' : 'بصمة الإصبع أو الوجه',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                 value: useBiometrics && !kIsWeb,
                 activeColor: primaryColor,
                 onChanged: (val) {
@@ -189,10 +187,10 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
           ),
         ),
         const SizedBox(height: 20),
-        _buildSectionTitle('تغيير كلمة المرور', textColor),
+        _buildSectionTitle('تغيير كلمة المرور', colorScheme.onSurface),
         Card(
           elevation: 0,
-          color: Theme.of(context).cardColor,
+          color: colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15),
             side: BorderSide(color: primaryColor.withOpacity(0.3)),
@@ -206,55 +204,42 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
               ),
               child: Icon(Icons.lock_reset, color: primaryColor, size: 20),
             ),
-            title: Text('تغيير كلمة المرور', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
-            subtitle: const Text('تحديث كلمة المرور الأساسية', style: TextStyle(fontSize: 12, color: Colors.grey)),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+            title: Text('تغيير كلمة المرور', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+            subtitle: Text('تحديث كلمة المرور الأساسية', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+            trailing: Icon(Icons.arrow_forward_ios, size: 14, color: colorScheme.onSurfaceVariant),
             onTap: () => _showPasswordDialog(sys),
           ),
         ),
         const SizedBox(height: 20),
-        _buildSectionTitle('خيارات متقدمة', textColor),
+        _buildSectionTitle('خيارات متقدمة', colorScheme.onSurface),
         Card(
           elevation: 0,
-          color: Theme.of(context).cardColor,
+          color: colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15),
             side: BorderSide(color: primaryColor.withOpacity(0.3)),
           ),
-          child: Column(
-            children: [
-              _buildListTile(
-                Icons.devices,
-                'الأجهزة المتصلة',
-                'إدارة الجلسات النشطة',
-                primaryColor,
-                textColor,
-                onTap: () => _showToast('لا توجد جلسات أخرى نشطة حالياً'),
-              ),
-              const Divider(height: 1),
-              _buildListTile(
-                Icons.delete_forever,
-                'حذف الحساب',
-                'لا يمكن التراجع عن هذا الإجراء',
-                Colors.red,
-                textColor,
-                onTap: () => _showDeleteAccountDialog(sys),
-              ),
-            ],
+          child: _buildListTile(
+            Icons.delete_forever,
+            'حذف الحساب',
+            'لا يمكن التراجع عن هذا الإجراء',
+            colorScheme.error,
+            colorScheme.onSurface,
+            onTap: () => _showDeleteAccountDialog(sys),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildAppearanceTab(ThemeProvider themeProvider, UiProvider uiProvider, Color primaryColor, bool isDark, Color textColor) {
+  Widget _buildAppearanceTab(ThemeProvider themeProvider, UiProvider uiProvider, Color primaryColor, bool isDark, ColorScheme colorScheme) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _buildSectionTitle('المظهر العام', textColor),
+        _buildSectionTitle('المظهر العام', colorScheme.onSurface),
         Card(
           elevation: 0,
-          color: Theme.of(context).cardColor,
+          color: colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15),
             side: BorderSide(color: primaryColor.withOpacity(0.3)),
@@ -270,8 +255,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ),
                   child: Icon(Icons.dark_mode, color: primaryColor, size: 20),
                 ),
-                title: Text('الوضع الليلي', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
-                subtitle: const Text('تفعيل المظهر الداكن', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                title: Text('الوضع الليلي', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text('تفعيل المظهر الداكن', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                 value: themeProvider.isDarkMode,
                 activeColor: primaryColor,
                 onChanged: (val) {
@@ -289,15 +274,15 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ),
                   child: Icon(Icons.volume_up, color: primaryColor, size: 20),
                 ),
-                title: Text('الأصوات التفاعلية', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
-                subtitle: const Text('تشغيل الأصوات والاهتزاز', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                title: Text('الأصوات التفاعلية', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text('تشغيل الأصوات والاهتزاز', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                 value: _appSounds,
                 activeColor: primaryColor,
                 onChanged: (val) async {
                   setState(() => _appSounds = val);
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setBool('user_app_sounds', val);
-                  uiProvider.updateSoundSettings(val); // ✅ تم التصحيح
+                  uiProvider.updateSoundSettings(val);
                   if (val) {
                     uiProvider.playSound('click');
                     HapticFeedback.lightImpact();
@@ -310,98 +295,92 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
           ),
         ),
         const SizedBox(height: 20),
-
-        if (themeProvider.isDarkMode) ...[
-          _buildSectionTitle('تخصيص لون الواجهة', textColor),
-          Card(
-            elevation: 0,
-            color: Theme.of(context).cardColor,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15),
-              side: BorderSide(color: primaryColor.withOpacity(0.3)),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'اختر لوناً شخصياً ينعكس على جميع الشاشات والقوائم والبطاقات.',
-                    style: TextStyle(fontSize: 13, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      Column(
-                        children: [
-                          GestureDetector(
-                            onTap: () => _openColorWheelPicker(themeProvider),
-                            child: Container(
-                              width: 60,
-                              height: 60,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: const SweepGradient(
-                                  colors: [Colors.red, Colors.yellow, Colors.green, Colors.blue, Colors.purple, Colors.red],
-                                ),
-                                border: Border.all(color: Colors.grey.shade300),
-                                boxShadow: [
-                                  BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8),
-                                ],
-                              ),
-                              child: Center(
-                                child: Container(
-                                  width: 50,
-                                  height: 50,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: primaryColor,
-                                    border: Border.all(color: Colors.white, width: 2),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text('اختر لوناً', style: TextStyle(fontSize: 12, color: primaryColor)),
-                        ],
-                      ),
-                      Column(
-                        children: [
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              _playFeedback();
-                              themeProvider.resetToDefaultColor();
-                              _showToast('تم استعادة اللون الافتراضي');
-                            },
-                            icon: const Icon(Icons.restore, size: 20),
-                            label: const Text('اللون الافتراضي'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
-                              foregroundColor: isDark ? Colors.white : Colors.black87,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          const Text('استعادة', style: TextStyle(fontSize: 12)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-
-        const SizedBox(height: 20),
-        _buildSectionTitle('حجم الخط', textColor),
+        _buildSectionTitle('تخصيص لون الواجهة', colorScheme.onSurface),
         Card(
           elevation: 0,
-          color: Theme.of(context).cardColor,
+          color: colorScheme.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+            side: BorderSide(color: primaryColor.withOpacity(0.3)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('اختر لوناً شخصياً ينعكس على جميع الشاشات والقوائم والبطاقات.',
+                    style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Column(
+                      children: [
+                        GestureDetector(
+                          onTap: () => _openColorWheelPicker(themeProvider),
+                          child: Container(
+                            width: 60,
+                            height: 60,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: const SweepGradient(
+                                colors: [Colors.red, Colors.yellow, Colors.green, Colors.blue, Colors.purple, Colors.red],
+                              ),
+                              border: Border.all(color: Colors.grey.shade300),
+                              boxShadow: [
+                                BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8),
+                              ],
+                            ),
+                            child: Center(
+                              child: Container(
+                                width: 50,
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: primaryColor,
+                                  border: Border.all(color: Colors.white, width: 2),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text('اختر لوناً', style: TextStyle(fontSize: 12, color: primaryColor)),
+                      ],
+                    ),
+                    Column(
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            _playFeedback();
+                            themeProvider.resetToDefaultColor();
+                            _showToast('تم استعادة اللون الافتراضي');
+                          },
+                          icon: const Icon(Icons.restore, size: 20),
+                          label: const Text('اللون الافتراضي'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+                            foregroundColor: isDark ? Colors.white : Colors.black87,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text('استعادة', style: TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        _buildSectionTitle('حجم الخط', colorScheme.onSurface),
+        Card(
+          elevation: 0,
+          color: colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15),
             side: BorderSide(color: primaryColor.withOpacity(0.3)),
@@ -410,7 +389,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                Text('صغير', style: TextStyle(fontSize: 12, color: textColor)),
+                Text('صغير', style: TextStyle(fontSize: 12, color: colorScheme.onSurface)),
                 Expanded(
                   child: Slider(
                     value: themeProvider.fontSizeScale,
@@ -424,7 +403,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                     },
                   ),
                 ),
-                Text('كبير', style: TextStyle(fontSize: 16, color: textColor)),
+                Text('كبير', style: TextStyle(fontSize: 16, color: colorScheme.onSurface)),
               ],
             ),
           ),
@@ -433,14 +412,14 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  Widget _buildAccountTab(SystemProvider sys, Color primaryColor, bool isDark, Color textColor) {
+  Widget _buildAccountTab(SystemProvider sys, Color primaryColor, ColorScheme colorScheme) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _buildSectionTitle('الإعدادات المالية', textColor),
+        _buildSectionTitle('الإعدادات المالية', colorScheme.onSurface),
         Card(
           elevation: 0,
-          color: Theme.of(context).cardColor,
+          color: colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15),
             side: BorderSide(color: primaryColor.withOpacity(0.3)),
@@ -450,55 +429,15 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
             'الحد اليومي للمشتريات',
             _dailyLimit > 0 ? 'الحد الحالي: ${_dailyLimit.toStringAsFixed(0)} ريال' : 'لم يتم تعيين حد يومي',
             primaryColor,
-            textColor,
+            colorScheme.onSurface,
             onTap: () => _showLimitDialog(sys),
           ),
         ),
         const SizedBox(height: 20),
-
-        _buildSectionTitle('اللغة', textColor),
+        _buildSectionTitle('الجلسة', colorScheme.onSurface),
         Card(
           elevation: 0,
-          color: Theme.of(context).cardColor,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-            side: BorderSide(color: primaryColor.withOpacity(0.3)),
-          ),
-          child: Column(
-            children: [
-              RadioListTile<String>(
-                title: Text('العربية', style: TextStyle(color: textColor)),
-                value: 'ar',
-                groupValue: _selectedLanguage,
-                activeColor: primaryColor,
-                onChanged: (val) async {
-                  _playFeedback();
-                  setState(() => _selectedLanguage = val!);
-                  await sys.saveLanguage(val!);
-                  _showToast('تم تغيير اللغة إلى العربية');
-                },
-              ),
-              RadioListTile<String>(
-                title: Text('English', style: TextStyle(color: textColor)),
-                value: 'en',
-                groupValue: _selectedLanguage,
-                activeColor: primaryColor,
-                onChanged: (val) async {
-                  _playFeedback();
-                  setState(() => _selectedLanguage = val!);
-                  await sys.saveLanguage(val!);
-                  _showToast('Language changed to English');
-                },
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
-
-        _buildSectionTitle('الجلسة', textColor),
-        Card(
-          elevation: 0,
-          color: Theme.of(context).cardColor,
+          color: colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15),
             side: BorderSide(color: primaryColor.withOpacity(0.3)),
@@ -508,55 +447,52 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
             'تسجيل الخروج',
             'إنهاء الجلسة الحالية',
             Colors.orange,
-            textColor,
+            colorScheme.onSurface,
             onTap: () => _showLogoutDialog(),
           ),
         ),
         const SizedBox(height: 20),
-
-        _buildSectionTitle('معلومات', textColor),
+        _buildSectionTitle('معلومات', colorScheme.onSurface),
         Card(
           elevation: 0,
-          color: Theme.of(context).cardColor,
+          color: colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15),
             side: BorderSide(color: primaryColor.withOpacity(0.3)),
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.info_outline, size: 16, color: Colors.grey),
-                    const SizedBox(width: 8),
-                    Text('إصدار التطبيق: 2.0.0', style: TextStyle(color: Colors.grey.shade600)),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(Icons.policy, size: 16, color: Colors.grey),
-                    const SizedBox(width: 8),
-                    Text('سياسة الخصوصية', style: TextStyle(color: Colors.grey.shade600)),
-                  ],
-                ),
-              ],
-            ),
+          child: Column(
+            children: [
+              ListTile(
+                leading: Icon(Icons.info_outline, color: colorScheme.onSurfaceVariant),
+                title: Text('إصدار التطبيق: 2.0.0', style: TextStyle(color: colorScheme.onSurfaceVariant)),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: Icon(Icons.policy, color: colorScheme.onSurfaceVariant),
+                title: Text('سياسة الخصوصية', style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                trailing: Icon(Icons.open_in_new, size: 16, color: colorScheme.onSurfaceVariant),
+                onTap: () async {
+                  final uri = Uri.parse('https://your-website.com/privacy');
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
+              ),
+            ],
           ),
         ),
       ],
     );
   }
 
-  Widget _buildNotificationsTab(Color primaryColor, bool isDark, Color textColor) {
+  Widget _buildNotificationsTab(Color primaryColor, ColorScheme colorScheme) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _buildSectionTitle('إعدادات الإشعارات', textColor),
+        _buildSectionTitle('إعدادات الإشعارات', colorScheme.onSurface),
         Card(
           elevation: 0,
-          color: Theme.of(context).cardColor,
+          color: colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15),
             side: BorderSide(color: primaryColor.withOpacity(0.3)),
@@ -572,8 +508,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ),
                   child: Icon(Icons.notifications_active, color: primaryColor, size: 20),
                 ),
-                title: Text('تفعيل الإشعارات', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
-                subtitle: const Text('استلام إشعارات داخل التطبيق', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                title: Text('تفعيل الإشعارات', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text('استلام إشعارات داخل التطبيق', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                 value: _notificationsEnabled,
                 activeColor: primaryColor,
                 onChanged: (val) async {
@@ -594,8 +530,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ),
                   child: Icon(Icons.campaign, color: primaryColor, size: 20),
                 ),
-                title: Text('إشعارات التسويق والعروض', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
-                subtitle: const Text('استلام عروض وكوبونات', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                title: Text('إشعارات التسويق والعروض', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text('استلام عروض وكوبونات', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                 value: _marketingNotifications,
                 activeColor: primaryColor,
                 onChanged: _notificationsEnabled
@@ -617,8 +553,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ),
                   child: Icon(Icons.payments, color: primaryColor, size: 20),
                 ),
-                title: Text('إشعارات المعاملات المالية', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
-                subtitle: const Text('تنبيهات الشراء والتحويل', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                title: Text('إشعارات المعاملات المالية', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text('تنبيهات الشراء والتحويل', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                 value: _transactionNotifications,
                 activeColor: primaryColor,
                 onChanged: _notificationsEnabled
@@ -637,14 +573,14 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  Widget _buildPrivacyTab(SystemProvider sys, Color primaryColor, bool isDark, Color textColor) {
+  Widget _buildPrivacyTab(SystemProvider sys, Color primaryColor, ColorScheme colorScheme) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _buildSectionTitle('الخصوصية', textColor),
+        _buildSectionTitle('الخصوصية', colorScheme.onSurface),
         Card(
           elevation: 0,
-          color: Theme.of(context).cardColor,
+          color: colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15),
             side: BorderSide(color: primaryColor.withOpacity(0.3)),
@@ -660,8 +596,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ),
                   child: Icon(Icons.visibility_off, color: primaryColor, size: 20),
                 ),
-                title: Text('إخفاء الرصيد عن الآخرين', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
-                subtitle: const Text('لن يظهر رصيدك للمستخدمين عند البحث', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                title: Text('إخفاء الرصيد عن الآخرين', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text('لن يظهر رصيدك للمستخدمين عند البحث', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                 value: _hideBalanceFromOthers,
                 activeColor: primaryColor,
                 onChanged: (val) async {
@@ -683,8 +619,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ),
                   child: Icon(Icons.person, color: primaryColor, size: 20),
                 ),
-                title: Text('إظهار الاسم الكامل', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
-                subtitle: const Text('عند استقبال التحويلات', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                title: Text('إظهار الاسم الكامل', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text('عند استقبال التحويلات', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                 value: _showFullName,
                 activeColor: primaryColor,
                 onChanged: (val) async {
@@ -702,12 +638,12 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  Widget _buildSectionTitle(String title, Color textColor) {
+  Widget _buildSectionTitle(String title, Color color) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, right: 4),
       child: Text(
         title,
-        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: textColor),
+        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: color),
       ),
     );
   }
@@ -720,8 +656,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
         child: Icon(icon, color: color, size: 20),
       ),
       title: Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textColor)),
-      subtitle: subtitle.isNotEmpty ? Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey)) : null,
-      trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+      subtitle: subtitle.isNotEmpty ? Text(subtitle, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)) : null,
+      trailing: Icon(Icons.arrow_forward_ios, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
       onTap: onTap,
     );
   }
@@ -899,8 +835,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   final confirmPin = confirmPinController.text.trim();
                   final result = await sys.changeUserPinWithOld(oldPin, newPin, confirmPin);
                   if (result == 'تم تحديث رمز PIN بنجاح.') {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setString('user_pin', newPin);
                     setState(() => _userPin = newPin);
                     Navigator.pop(context);
                     _showToast(result);
