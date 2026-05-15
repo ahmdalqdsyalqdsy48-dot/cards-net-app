@@ -1,13 +1,13 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show kIsWeb; 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:local_auth/local_auth.dart';
-import 'package:google_fonts/google_fonts.dart'; 
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/providers/system_provider.dart';
-import '../../../core/providers/ui_provider.dart'; 
+import '../../../core/providers/ui_provider.dart';
 
 import '../../super_admin/screens/super_admin_dashboard.dart';
 import '../../agent_panel/screens/agent_dashboard_screen.dart';
@@ -21,26 +21,22 @@ class SSOLoginScreen extends StatefulWidget {
 }
 
 class _SSOLoginScreenState extends State<SSOLoginScreen> {
-  // ==========================================
-  // 1. متحكمات النصوص والحالة
-  // ==========================================
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-  final TextEditingController nameController = TextEditingController(); 
+  final TextEditingController nameController = TextEditingController();
   final TextEditingController pinController = TextEditingController();
-  
-  bool isLoginMode = true; 
-  bool isLoading = false; 
+
+  bool isLoginMode = true;
+  bool isLoading = false;
   bool obscurePassword = true;
   bool obscurePin = true;
-  bool rememberMe = false; 
+  bool rememberMe = false;
   bool usePinLogin = false;
 
-  // متغيرات الإعلانات/الصور
   final PageController _pageController = PageController();
   Timer? _carouselTimer;
   int _currentPage = 0;
-  
+
   final List<Color> _fallbackAdColors = [Colors.blue.shade800, Colors.deepPurple, Colors.teal];
   final LocalAuthentication auth = LocalAuthentication();
 
@@ -57,8 +53,8 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     int interval = systemProvider.carouselIntervalSeconds > 0 ? systemProvider.carouselIntervalSeconds : 5;
 
     _carouselTimer = Timer.periodic(Duration(seconds: interval), (Timer timer) {
-      int itemCount = systemProvider.loginCarouselImages.isNotEmpty 
-          ? systemProvider.loginCarouselImages.length 
+      int itemCount = systemProvider.loginCarouselImages.isNotEmpty
+          ? systemProvider.loginCarouselImages.length
           : _fallbackAdColors.length;
 
       if (itemCount > 0) {
@@ -86,17 +82,114 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   }
 
   // ==========================================
+  // ✅ نافذة إعداد PIN لأول مرة (بعد تسجيل الدخول)
+  // ==========================================
+  Future<bool> _showPinSetupIfNeeded() async {
+    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final currentPin = sys.currentUserPin;
+    
+    // إذا كان PIN موجوداً وطوله 6 أرقام، لا حاجة للإعداد
+    if (currentPin.isNotEmpty && currentPin.length == 6) return true;
+
+    final pinCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    bool visible = false;
+    bool confirmVisible = false;
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: const Text('إعداد رمز PIN الشامل', textAlign: TextAlign.center),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('يجب تعيين رمز مكون من 6 أرقام لتأمين حسابك وجميع العمليات.'),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: pinCtrl,
+                  obscureText: !visible,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  decoration: InputDecoration(
+                    labelText: 'الرمز السري (6 أرقام)',
+                    prefixIcon: const Icon(Icons.lock),
+                    suffixIcon: IconButton(
+                      icon: Icon(visible ? Icons.visibility : Icons.visibility_off),
+                      onPressed: () => setDialogState(() => visible = !visible),
+                    ),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: confirmCtrl,
+                  obscureText: !confirmVisible,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  decoration: InputDecoration(
+                    labelText: 'تأكيد الرمز السري',
+                    prefixIcon: const Icon(Icons.lock),
+                    suffixIcon: IconButton(
+                      icon: Icon(confirmVisible ? Icons.visibility : Icons.visibility_off),
+                      onPressed: () => setDialogState(() => confirmVisible = !confirmVisible),
+                    ),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('تخطي'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  if (pinCtrl.text.length != 6) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('يجب أن يكون الرمز 6 أرقام', textDirection: TextDirection.rtl)),
+                    );
+                    return;
+                  }
+                  if (pinCtrl.text != confirmCtrl.text) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('الرمز غير متطابق', textDirection: TextDirection.rtl)),
+                    );
+                    return;
+                  }
+                  Navigator.pop(ctx, pinCtrl.text);
+                },
+                child: const Text('حفظ'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (result is String) {
+      await sys.updateUserPin(result);
+      return true;
+    }
+    return false; // المستخدم ضغط "تخطي"
+  }
+
+  // ==========================================
   // 2. العمليات الأساسية المربوطة بالعقل المدبر
   // ==========================================
   Future<void> _processLogin() async {
     FocusScope.of(context).unfocus();
-    final uiProvider = Provider.of<UiProvider>(context, listen: false); 
-    uiProvider.playSound('click'); 
+    final uiProvider = Provider.of<UiProvider>(context, listen: false);
+    uiProvider.playSound('click');
 
     String phone = phoneController.text.trim();
 
     if (phone.isEmpty) {
-      uiProvider.playSound('error'); 
+      uiProvider.playSound('error');
       _showErrorSnackBar('يرجى إدخال رقم الهاتف.');
       return;
     }
@@ -119,8 +212,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
 
     setState(() => isLoading = true);
     final systemProvider = Provider.of<SystemProvider>(context, listen: false);
-    
-    // تجاوز وضع الصيانة فقط لمالك النظام
+
     if (systemProvider.isMaintenanceMode && phone != '774578241') {
       setState(() => isLoading = false);
       uiProvider.playSound('error');
@@ -134,16 +226,25 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     } else {
       userData = await systemProvider.loginUser(phone, passwordController.text.trim());
     }
-    
+
     if (!mounted) return;
     setState(() => isLoading = false);
 
     if (userData != null) {
-      String userRole = userData['role']; 
-      
+      String userRole = userData['role'];
+
+      // ✅ التحقق من إعداد PIN لأول مرة (للمستخدمين الجدد)
+      if (userRole == 'user' || userRole == 'pos') {
+        final pinSet = await _showPinSetupIfNeeded();
+        if (!pinSet) {
+          _showErrorSnackBar('يجب تعيين رمز PIN للمتابعة.');
+          return;
+        }
+      }
+
       Provider.of<ThemeProvider>(context, listen: false).setUser(userRole, phone);
-      uiProvider.playSound('success'); 
-      
+      uiProvider.playSound('success');
+
       if (userRole == 'super_admin' || userRole == 'staff') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SuperAdminDashboard()));
       } else if (userRole == 'agent') {
@@ -152,7 +253,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
       }
     } else {
-      uiProvider.playSound('error'); 
+      uiProvider.playSound('error');
       _showErrorSnackBar(usePinLogin ? 'رقم الهاتف أو رمز PIN غير صحيح!' : 'رقم الهاتف غير مسجل أو كلمة المرور خاطئة!');
     }
   }
@@ -188,6 +289,13 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       if (!mounted) return;
       setState(() => isLoading = false);
 
+      // ✅ إجبار المستخدم الجديد على تعيين PIN فوراً
+      final pinSet = await _showPinSetupIfNeeded();
+      if (!pinSet) {
+        _showErrorSnackBar('يجب تعيين رمز PIN للمتابعة.');
+        return;
+      }
+
       Provider.of<ThemeProvider>(context, listen: false).setUser('user', phone);
       uiProvider.playSound('success');
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const UserDashboardScreen()));
@@ -213,10 +321,10 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
         content: const TextField(keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: 'أدخل رقم هاتفك المسجل', prefixIcon: Icon(Icons.phone)), textDirection: TextDirection.rtl),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-          ElevatedButton(onPressed: () { 
-            Navigator.pop(context); 
+          ElevatedButton(onPressed: () {
+            Navigator.pop(context);
             Provider.of<UiProvider>(context, listen: false).playSound('success');
-            _showSuccessSnackBar('تم إرسال رمز الاستعادة (OTP) إلى رقمك.'); 
+            _showSuccessSnackBar('تم إرسال رمز الاستعادة (OTP) إلى رقمك.');
           }, child: const Text('إرسال الرمز')),
         ],
       ),
@@ -239,9 +347,8 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     final theme = Theme.of(context);
     final systemProvider = Provider.of<SystemProvider>(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
-    final colors = Theme.of(context).colorScheme; // ✅ استخدام ColorScheme الجديد
-    
-    // 🛡️ درع الصيانة العامة
+    final colors = Theme.of(context).colorScheme;
+
     if (systemProvider.isMaintenanceMode) {
       return Scaffold(
         backgroundColor: themeProvider.primaryColor,
@@ -266,7 +373,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       );
     }
 
-    // 🛡️ درع التحديث الإجباري
     if (systemProvider.isForcedUpdate) {
       return Scaffold(
         backgroundColor: themeProvider.primaryColor,
@@ -282,7 +388,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
               const SizedBox(height: 30),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12)),
-                onPressed: () { /* كود التوجيه لمتجر بلاي أو أبل */ },
+                onPressed: () { },
                 icon: const Icon(Icons.download, color: Colors.white),
                 label: const Text('تحديث الآن', style: TextStyle(color: Colors.white, fontSize: 16)),
               )
@@ -292,7 +398,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       );
     }
 
-    // الواجهة الطبيعية إذا لم تكن هناك صيانة أو تحديث
     final List<String> carouselImages = systemProvider.loginCarouselImages;
     final String welcomeMessage = systemProvider.loginWelcomeMessage.isNotEmpty ? systemProvider.loginWelcomeMessage : 'أهلاً بك في نظام كروت نت';
     final CrossAxisAlignment columnAlign = systemProvider.appNameAlign == 'right' ? CrossAxisAlignment.start : (systemProvider.appNameAlign == 'left' ? CrossAxisAlignment.end : CrossAxisAlignment.center);
@@ -315,10 +420,10 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                     itemBuilder: (context, index) {
                       if (carouselImages.isNotEmpty) {
                         return Container(
-                          color: Colors.transparent, 
+                          color: Colors.transparent,
                           child: Image.network(
-                            carouselImages[index], 
-                            fit: BoxFit.contain, 
+                            carouselImages[index],
+                            fit: BoxFit.contain,
                             errorBuilder: (context, error, stackTrace) => Container(
                               color: Colors.grey.shade300,
                               child: const Center(child: Icon(Icons.broken_image, color: Colors.grey, size: 50)),
@@ -334,42 +439,41 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                     },
                   ),
                 ),
-                
-                // شريط الأخبار
+
                 if (systemProvider.showNewsBar)
                   Container(
-                    width: double.infinity, height: 35, 
-                    color: Color(systemProvider.marqueeBgColor), 
+                    width: double.infinity, height: 35,
+                    color: Color(systemProvider.marqueeBgColor),
                     child: _CustomMarquee(
                       text: welcomeMessage,
-                      textColor: Color(systemProvider.marqueeTextColor), 
-                      direction: systemProvider.marqueeDirection, 
+                      textColor: Color(systemProvider.marqueeTextColor),
+                      direction: systemProvider.marqueeDirection,
                     ),
                   ),
-                
+
                 const SizedBox(height: 20),
-                
+
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24.0),
                   child: Directionality(
-                    textDirection: TextDirection.rtl, 
+                    textDirection: TextDirection.rtl,
                     child: Column(
-                      crossAxisAlignment: columnAlign, 
+                      crossAxisAlignment: columnAlign,
                       children: [
                         if (systemProvider.appLogoUrl.isNotEmpty) ...[
                           ClipRRect(
                             borderRadius: BorderRadius.circular(12),
                             child: Image.network(
-                              systemProvider.appLogoUrl, 
-                              height: 100, 
-                              fit: BoxFit.contain, 
+                              systemProvider.appLogoUrl,
+                              height: 100,
+                              fit: BoxFit.contain,
                               errorBuilder: (c, e, s) => const SizedBox.shrink()
                             ),
                           ),
-                          const SizedBox(height: 15), 
+                          const SizedBox(height: 15),
                         ],
                         Text(
-                          appName, 
+                          appName,
                           textAlign: systemProvider.appNameAlign == 'right' ? TextAlign.right : (systemProvider.appNameAlign == 'left' ? TextAlign.left : TextAlign.center),
                           style: customFont == 'System' || customFont.isEmpty
                               ? TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: customColor)
@@ -436,7 +540,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                       else
                         TextField(
                           controller: passwordController,
-                          obscureText: obscurePassword, 
+                          obscureText: obscurePassword,
                           decoration: InputDecoration(
                             labelText: "كلمة المرور",
                             prefixIcon: const Icon(Icons.lock_outline),
@@ -451,7 +555,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                             filled: true, fillColor: theme.cardColor,
                           ),
                         ),
-                      
+
                       if (isLoginMode)
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -480,13 +584,13 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                             ),
                           ],
                         ),
-                      
+
                       if (isLoginMode && !usePinLogin)
                         TextButton(
-                          onPressed: _showForgotPasswordDialog, 
+                          onPressed: _showForgotPasswordDialog,
                           child: const Text("نسيت كلمة المرور؟", style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
                         ),
-                      
+
                       const SizedBox(height: 20),
 
                       SizedBox(
@@ -499,7 +603,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                               : Text(isLoginMode ? "تسجيل الدخول" : "تأكيد التسجيل", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         ),
                       ),
-                      
+
                       const SizedBox(height: 15),
 
                       if (isLoginMode)
@@ -523,7 +627,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                             onPressed: () {
                               Provider.of<UiProvider>(context, listen: false).playSound('click');
                               setState(() {
-                                isLoginMode = !isLoginMode; 
+                                isLoginMode = !isLoginMode;
                                 phoneController.clear();
                                 passwordController.clear();
                                 pinController.clear();
@@ -545,7 +649,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     );
   }
 
-  // نافذة دخول طوارئ تظهر للمالك فقط إذا كان النظام تحت الصيانة
   void _showEmergencyLoginDialog() {
     showDialog(
       context: context,
@@ -567,7 +670,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
               onPressed: () {
                 Navigator.pop(context);
                 _processLogin();
-              }, 
+              },
               child: const Text('دخول')
             ),
           ],
@@ -586,8 +689,8 @@ class _CustomMarquee extends StatefulWidget {
   final String direction;
 
   const _CustomMarquee({
-    required this.text, 
-    required this.textColor, 
+    required this.text,
+    required this.textColor,
     required this.direction
   });
 
@@ -612,7 +715,7 @@ class _CustomMarqueeState extends State<_CustomMarquee> {
       if (_scrollController.hasClients) {
         double maxScroll = _scrollController.position.maxScrollExtent;
         double currentScroll = _scrollController.offset;
-        
+
         if (maxScroll > 0) {
           if (currentScroll >= maxScroll) {
             _scrollController.jumpTo(0.0);
@@ -638,11 +741,11 @@ class _CustomMarqueeState extends State<_CustomMarquee> {
       child: SingleChildScrollView(
         controller: _scrollController,
         scrollDirection: Axis.horizontal,
-        physics: const NeverScrollableScrollPhysics(), 
+        physics: const NeverScrollableScrollPhysics(),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 400.0, vertical: 6.0),
           child: Text(
-            widget.text, 
+            widget.text,
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: widget.textColor)
           ),
         ),
