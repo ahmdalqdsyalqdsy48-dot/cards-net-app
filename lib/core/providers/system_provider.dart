@@ -1198,39 +1198,36 @@ class SystemProvider extends ChangeNotifier {
 
   // ✅ جلب الحسابات البنكية النشطة التي تطابق شبكات المستخدم الحالي
   Future<List<Map<String, dynamic>>> getActiveBankAccountsForUserNetworks() async {
-    final userNetworkIds = currentUserNetworkIds;
-    if (userNetworkIds.isEmpty) return [];
+  // جلب جميع الوكلاء
+  final agentsSnap = await _db
+      .collection('users')
+      .where('role', isEqualTo: 'agent')
+      .get();
 
-    final agentsSnap = await _db
-        .collection('users')
-        .where('role', isEqualTo: 'agent')
-        .where('networkIds', arrayContainsAny: userNetworkIds)
+  List<Map<String, dynamic>> accounts = [];
+
+  // لكل وكيل، نجلب حساباته البنكية النشطة
+  for (var agentDoc in agentsSnap.docs) {
+    final agentId = agentDoc.id;
+    final bankAccSnap = await _db
+        .collection('agent_bank_accounts')
+        .where('agentPhone', isEqualTo: agentId)
+        .where('status', isEqualTo: 'نشط')
         .get();
 
-    List<Map<String, dynamic>> accounts = [];
-
-    for (var agentDoc in agentsSnap.docs) {
-      final agentId = agentDoc.id;
-      final bankAccSnap = await _db
-          .collection('agent_bank_accounts')
-          .where('agentPhone', isEqualTo: agentId)
-          .where('status', isEqualTo: 'نشط')
-          .get();
-
-      for (var accDoc in bankAccSnap.docs) {
-        final data = accDoc.data();
-        final accNetworkIds = List<String>.from(data['networkIds'] ?? []);
-        if (accNetworkIds.any((id) => userNetworkIds.contains(id))) {
-          accounts.add({
-            'docId': accDoc.id,
-            'agentId': agentId,
-            ...data,
-          });
-        }
-      }
+    for (var accDoc in bankAccSnap.docs) {
+      final data = accDoc.data();
+      accounts.add({
+        'docId': accDoc.id,
+        'agentId': agentId,
+        'agentPhone': agentId,  // مهم لاستخراج اسم الوكيل
+        ...data,
+      });
     }
-    return accounts;
   }
+
+  return accounts;
+}
 
   // ✅ رفع صورة الإيصال إلى Firebase Storage
   Future<String> uploadReceiptImage(File file) async {
