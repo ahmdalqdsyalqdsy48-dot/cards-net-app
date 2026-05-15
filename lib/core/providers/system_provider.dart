@@ -2946,4 +2946,44 @@ class SystemProvider extends ChangeNotifier {
       'lastSeen': FieldValue.serverTimestamp(),
     });
   }
+    // ========== القفل التلقائي للجلسة ==========
+  Future<void> setAutoLockEnabled(bool value) async {
+    if (_activeUserPhone == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('agent_autoLock', value);
+    await prefs.setInt('agent_lastActivity', DateTime.now().millisecondsSinceEpoch);
+  }
+
+  Future<bool> checkAutoLockAndRedirect(BuildContext context) async {
+    final prefs = await SharedPreferences.getInstance();
+    final autoLock = prefs.getBool('agent_autoLock') ?? false;
+    if (!autoLock) return false;
+
+    final lastActivity = prefs.getInt('agent_lastActivity') ?? DateTime.now().millisecondsSinceEpoch;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final diffMinutes = (now - lastActivity) / (1000 * 60);
+
+    if (diffMinutes >= 3) {
+      // إعادة التوجيه إلى شاشة القفل
+      Navigator.pushReplacementNamed(context, '/lock_screen');
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> updateLastActivity() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('agent_lastActivity', DateTime.now().millisecondsSinceEpoch);
+  }
+
+  // ========== إعدادات الطباعة (محاكاة + PDF) ==========
+  Future<void> setPrinterConnected(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('agent_printer_connected', value);
+  }
+
+  Future<bool> isPrinterConnected() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('agent_printer_connected') ?? false;
+  }
 }
