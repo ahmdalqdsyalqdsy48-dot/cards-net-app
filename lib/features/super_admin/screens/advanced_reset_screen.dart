@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
@@ -38,6 +39,11 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
   // ========== دمج ==========
   final TextEditingController _mergeFromController = TextEditingController();
   final TextEditingController _mergeToController = TextEditingController();
+
+  // ========== حالة التحقق ==========
+  bool _obscurePassword = true;
+  bool _obscurePin = true;
+  bool _usePinInstead = true; // افتراضي: PIN
 
   bool _isProcessing = false;
   String? _previewResult;
@@ -76,15 +82,125 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
   }
 
   // ==========================================
+  // نافذة التحقق المزدوج (PIN أو كلمة مرور)
+  // ==========================================
+  Future<bool> _showAuthDialog() async {
+    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final pinController = TextEditingController();
+    final passController = TextEditingController();
+
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: const Text('تأكيد هوية المشرف', textAlign: TextAlign.center),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // زر التبديل بين PIN وكلمة المرور
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(_usePinInstead ? 'PIN' : 'كلمة المرور',
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Switch(
+                      value: _usePinInstead,
+                      onChanged: (v) {
+                        setState(() => _usePinInstead = v);
+                        setDialogState(() => _usePinInstead = v);
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (_usePinInstead)
+                  TextField(
+                    controller: pinController,
+                    obscureText: _obscurePin,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    decoration: InputDecoration(
+                      labelText: 'رمز PIN (6 أرقام)',
+                      prefixIcon: const Icon(Icons.lock),
+                      suffixIcon: IconButton(
+                        icon: Icon(_obscurePin
+                            ? Icons.visibility_off
+                            : Icons.visibility),
+                        onPressed: () {
+                          setState(() => _obscurePin = !_obscurePin);
+                          setDialogState(() => _obscurePin = !_obscurePin);
+                        },
+                      ),
+                      border: const OutlineInputBorder(),
+                    ),
+                  )
+                else
+                  TextField(
+                    controller: passController,
+                    obscureText: _obscurePassword,
+                    decoration: InputDecoration(
+                      labelText: 'كلمة المرور',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(
+                        icon: Icon(_obscurePassword
+                            ? Icons.visibility_off
+                            : Icons.visibility),
+                        onPressed: () {
+                          setState(() =>
+                              _obscurePassword = !_obscurePassword);
+                          setDialogState(() =>
+                              _obscurePassword = !_obscurePassword);
+                        },
+                      ),
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('إلغاء'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  bool ok = false;
+                  if (_usePinInstead) {
+                    ok = sys.validatePin(pinController.text);
+                  } else {
+                    final doc = await FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(sys.currentUserPhone)
+                        .get();
+                    ok = (doc.data()?['password'] ?? '') ==
+                        passController.text;
+                  }
+                  Navigator.pop(ctx, ok);
+                },
+                child: const Text('تأكيد'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ) == true;
+  }
+
+  // ==========================================
   // تنفيذ الإجراء
   // ==========================================
   Future<void> _execute() async {
     _play('click');
     final sys = Provider.of<SystemProvider>(context, listen: false);
 
-    // تأكيد بكلمة مرور المشرف
-    final password = await _showPasswordDialog();
-    if (password == null) return;
+    final bool verified = await _showAuthDialog();
+    if (!verified) {
+      _showSnack('فشل التحقق من الهوية', error: true);
+      return;
+    }
 
     setState(() => _isProcessing = true);
     try {
@@ -93,7 +209,7 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
         accountNumber: _targetAccountController.text.trim(),
         targetType: _targetType,
         options: _collectOptions(),
-        adminPassword: password,
+        adminPassword: '', // لم نعد نستخدمها مباشرة
         renameTo: _renameAccount ? _renameController.text.trim() : null,
         mergeFrom: _mergeRecords ? _mergeFromController.text.trim() : null,
         mergeTo: _mergeRecords ? _mergeToController.text.trim() : null,
@@ -143,28 +259,6 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
       _mergeToController.clear();
       _previewResult = null;
     });
-  }
-
-  Future<String?> _showPasswordDialog() async {
-    final controller = TextEditingController();
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: const Text('تأكيد كلمة مرور المشرف'),
-          content: TextField(
-            controller: controller,
-            obscureText: true,
-            decoration: const InputDecoration(labelText: 'كلمة المرور'),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
-            ElevatedButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('تأكيد')),
-          ],
-        ),
-      ),
-    );
   }
 
   void _showSnack(String msg, {bool error = false}) {
