@@ -25,6 +25,7 @@ import '../../features/super_admin/screens/sms_gateway_screen.dart';
 import '../../features/super_admin/screens/backup_screen.dart';
 import '../../features/super_admin/screens/portals_management_screen.dart';
 import '../../features/super_admin/screens/admin_user_accounts_screen.dart';
+import '../../features/super_admin/screens/advanced_reset_screen.dart'; // ✅ جديد
 
 class CustomDrawer extends StatefulWidget {
   final String userName;
@@ -480,6 +481,12 @@ class _CustomDrawerState extends State<CustomDrawer> {
                       Icons.security,
                       Colors.red,
                       const AuditLogScreen()),
+                  _buildDrawerItem(
+                      context,
+                      'التحكم الشامل (إعادة التهيئة)',
+                      Icons.cleaning_services,
+                      Colors.red,
+                      const AdvancedResetScreen()),
                   _buildDrawerItem(
                       context,
                       'الإعدادات العامة',
