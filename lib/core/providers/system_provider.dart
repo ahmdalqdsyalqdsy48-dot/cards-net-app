@@ -2986,4 +2986,178 @@ class SystemProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool('agent_printer_connected') ?? false;
   }
+    // ========== دوال التحكم الشامل ==========
+
+  Future<String> previewResetImpact({
+    required String phone,
+    required String accountNumber,
+    required String targetType,
+    required Map<String, dynamic> options,
+  }) async {
+    final WriteBatch batch = _db.batch();
+    int affected = 0;
+    final phones = <String>[];
+
+    if (targetType == 'agent' || targetType == 'user') {
+      String? docId = phone.isNotEmpty ? phone : null;
+      if (docId == null && accountNumber.isNotEmpty) {
+        final snap = await _db
+            .collection('users')
+            .where('accountNumber', isEqualTo: accountNumber)
+            .limit(1)
+            .get();
+        if (snap.docs.isNotEmpty) docId = snap.docs.first.id;
+      }
+      if (docId != null) phones.add(docId);
+    } else if (targetType == 'all_agents') {
+      phones.addAll(agentsList.map((a) => a['phone'].toString()));
+    } else if (targetType == 'all_users') {
+      phones.addAll(usersList.map((u) => u['phone'].toString()));
+    } else if (targetType == 'self') {
+      phones.add(_activeUserPhone ?? '');
+    }
+
+    for (final phone in phones) {
+      if (options['resetBalance'] == true) {
+        batch.update(_db.collection('users').doc(phone), {'balance': 0, 'wallets': {}});
+        affected++;
+      }
+      if (options['resetNetworks'] == true) {
+        final nets = await _db.collection('networks').where('agentPhone', isEqualTo: phone).get();
+        for (final d in nets.docs) batch.delete(d.reference);
+        affected += nets.size;
+      }
+      if (options['resetTransactions'] == true) {
+        final txns = await _db.collection('transactions').where('fromPhone', isEqualTo: phone).get();
+        for (final d in txns.docs) batch.delete(d.reference);
+        final txns2 = await _db.collection('transactions').where('toPhone', isEqualTo: phone).get();
+        for (final d in txns2.docs) if (!txns.docs.any((e) => e.id == d.id)) batch.delete(d.reference);
+        affected += txns.size + txns2.size;
+      }
+      if (options['resetCards'] == true) {
+        final cards = await _db.collection('cards').where('buyerPhone', isEqualTo: phone).get();
+        for (final d in cards.docs) batch.delete(d.reference);
+        affected += cards.size;
+      }
+      if (options['resetBankAccounts'] == true) {
+        final banks = await _db.collection('agent_bank_accounts').where('agentPhone', isEqualTo: phone).get();
+        for (final d in banks.docs) batch.delete(d.reference);
+        affected += banks.size;
+      }
+      if (options['resetSubscriptions'] == true) {
+        batch.update(_db.collection('users').doc(phone), {
+          'subPlan': '',
+          'subPrice': 0,
+          'subStatus': 'ملغي',
+          'subExpiry': '',
+        });
+        affected++;
+      }
+      if (options['deleteAccount'] == true) {
+        // ستتم إزالة وثيقة المستخدم بالكامل
+        affected += 5; // تقديري
+      }
+    }
+    return 'متوقع تأثر حوالي $affected مستند/حقل.';
+  }
+
+  Future<void> executeReset({
+    required String phone,
+    required String accountNumber,
+    required String targetType,
+    required Map<String, dynamic> options,
+    required String adminPassword,
+    String? renameTo,
+    String? mergeFrom,
+    String? mergeTo,
+    bool exportBeforeDelete = false,
+  }) async {
+    // التحقق من كلمة مرور المشرف
+    final adminDoc = await _db.collection('users').doc(_activeUserPhone).get();
+    final adminData = adminDoc.data() ?? {};
+    if (adminData['password'] != adminPassword) {
+      throw 'كلمة مرور المشرف غير صحيحة';
+    }
+
+    final WriteBatch batch = _db.batch();
+    final phones = <String>[];
+
+    if (targetType == 'agent' || targetType == 'user') {
+      String? docId = phone.isNotEmpty ? phone : null;
+      if (docId == null && accountNumber.isNotEmpty) {
+        final snap = await _db
+            .collection('users')
+            .where('accountNumber', isEqualTo: accountNumber)
+            .limit(1)
+            .get();
+        if (snap.docs.isNotEmpty) docId = snap.docs.first.id;
+      }
+      if (docId != null) phones.add(docId);
+    } else if (targetType == 'all_agents') {
+      phones.addAll(agentsList.map((a) => a['phone'].toString()));
+    } else if (targetType == 'all_users') {
+      phones.addAll(usersList.map((u) => u['phone'].toString()));
+    } else if (targetType == 'self') {
+      phones.add(_activeUserPhone ?? '');
+    }
+
+    for (final phone in phones) {
+      if (options['resetBalance'] == true) {
+        batch.update(_db.collection('users').doc(phone), {'balance': 0, 'wallets': {}});
+      }
+      if (options['resetNetworks'] == true) {
+        final nets = await _db.collection('networks').where('agentPhone', isEqualTo: phone).get();
+        for (final d in nets.docs) batch.delete(d.reference);
+      }
+      if (options['resetTransactions'] == true) {
+        final txns = await _db.collection('transactions').where('fromPhone', isEqualTo: phone).get();
+        for (final d in txns.docs) batch.delete(d.reference);
+        final txns2 = await _db.collection('transactions').where('toPhone', isEqualTo: phone).get();
+        for (final d in txns2.docs) if (!txns.docs.any((e) => e.id == d.id)) batch.delete(d.reference);
+      }
+      if (options['resetCards'] == true) {
+        final cards = await _db.collection('cards').where('buyerPhone', isEqualTo: phone).get();
+        for (final d in cards.docs) batch.delete(d.reference);
+      }
+      if (options['resetBankAccounts'] == true) {
+        final banks = await _db.collection('agent_bank_accounts').where('agentPhone', isEqualTo: phone).get();
+        for (final d in banks.docs) batch.delete(d.reference);
+      }
+      if (options['resetSubscriptions'] == true) {
+        batch.update(_db.collection('users').doc(phone), {
+          'subPlan': '',
+          'subPrice': 0,
+          'subStatus': 'ملغي',
+          'subExpiry': '',
+        });
+      }
+      if (options['renameAccount'] == true && renameTo != null && renameTo.isNotEmpty) {
+        batch.update(_db.collection('users').doc(phone), {'name': renameTo});
+      }
+      if (options['deleteAccount'] == true) {
+        batch.delete(_db.collection('users').doc(phone));
+      }
+    }
+
+    // دمج السجلات: نقل سجلات المصدر إلى الهدف
+    if (options['mergeRecords'] == true && mergeFrom != null && mergeTo != null) {
+      final fromTxns = await _db.collection('transactions').where('fromPhone', isEqualTo: mergeFrom).get();
+      for (final d in fromTxns.docs) {
+        batch.update(d.reference, {'fromPhone': mergeTo});
+      }
+      final toTxns = await _db.collection('transactions').where('toPhone', isEqualTo: mergeFrom).get();
+      for (final d in toTxns.docs) {
+        batch.update(d.reference, {'toPhone': mergeTo});
+      }
+    }
+
+    await batch.commit();
+
+    // تسجيل العملية في سجل التدقيق
+    logAction(
+      action: 'إعادة تهيئة متقدمة',
+      details: 'نوع الهدف: $targetType, الخيارات: $options',
+      severity: 'critical',
+    );
+  }
 }
