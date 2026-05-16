@@ -10,7 +10,7 @@ import '../../../core/providers/system_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart';
-import '../../../core/providers/theme_provider.dart'; // 🆕 استدعاء ThemeProvider
+import '../../../core/providers/theme_provider.dart';
 
 import 'financial_center_screen.dart';
 import 'staff_support_screen.dart';
@@ -19,6 +19,7 @@ import 'agent_management_screen.dart';
 import 'sms_gateway_screen.dart';
 import 'settings_screen.dart';
 import 'banners_screen.dart';
+import 'advanced_reset_screen.dart'; // ✅ جديد
 
 class SuperAdminDashboard extends StatefulWidget {
   const SuperAdminDashboard({super.key});
@@ -221,9 +222,9 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context); // 🆕
+    final themeProvider = Provider.of<ThemeProvider>(context);
     final isDark = themeProvider.isDarkMode;
-    final primaryColor = themeProvider.primaryColor; // 🆕 اللون الديناميكي
+    final primaryColor = themeProvider.primaryColor;
     
     final systemProvider = Provider.of<SystemProvider>(context);
     final uiProvider = Provider.of<UiProvider>(context, listen: false);
@@ -258,7 +259,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     }
 
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor, // 🆕 خلفية ديناميكية
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: const CustomHeader(title: 'غرفة العمليات المركزية'),
       drawer: CustomDrawer(
         userName: userName,
@@ -271,12 +272,12 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // شريط الفلترة (يستخدم اللون الأساسي الآن)
+            // شريط الفلترة
             if (systemProvider.hasPermission('المركز المالي والمحافظ') || systemProvider.hasPermission('التقارير الشاملة'))
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: isDark ? primaryColor.withOpacity(0.4).withAlpha(100) : primaryColor.withOpacity(0.8), // 🆕 لون ديناميكي
+                color: isDark ? primaryColor.withOpacity(0.4).withAlpha(100) : primaryColor.withOpacity(0.8),
                 borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
               ),
               child: Row(
@@ -437,6 +438,22 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     color: Colors.blueGrey,
                     onTap: () => _navigateTo(const GlobalSettingsScreen(), uiProvider), 
                   ),
+
+                  // ✅ بطاقة التحكم الشامل (احتياطية + مضمونة الظهور)
+                  _buildDashboardCard(
+                    title: 'التحكم الشامل',
+                    value: 'إعادة تهيئة',
+                    subValue: 'فرمتة أي جزء من النظام',
+                    icon: Icons.cleaning_services,
+                    color: Colors.red,
+                    onTap: () {
+                      uiProvider.playSound('click');
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const AdvancedResetScreen()),
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
@@ -465,7 +482,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
         decoration: BoxDecoration(
           color: isAlert 
               ? (isDark ? Colors.red.withOpacity(0.2) : Colors.red.shade50) 
-              : Theme.of(context).cardColor, // 🆕 لون ديناميكي للبطاقات
+              : Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(15),
           border: Border.all(color: isAlert ? Colors.red.shade300 : color.withOpacity(0.3), width: 1.5),
           boxShadow: [
