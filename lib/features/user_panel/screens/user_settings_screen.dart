@@ -154,7 +154,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ================ تبويب الحساب ================
+  // ---------- تبويب الحساب ----------
   Widget _buildAccountTab(
       SystemProvider sys, Color primaryColor, ColorScheme colorScheme) {
     return ListView(
@@ -278,7 +278,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ================ تبويب الأمان ================
+  // ---------- تبويب الأمان ----------
   Widget _buildSecurityTab(
       SystemProvider sys, Color primaryColor, ColorScheme colorScheme) {
     final useBiometrics = sys.isBiometricCurrentlyEnabled;
@@ -442,7 +442,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ================ تبويب الإشعارات ================
+  // ---------- تبويب الإشعارات ----------
   Widget _buildNotificationsTab(Color primaryColor, ColorScheme colorScheme) {
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -482,9 +482,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   setState(() => _notificationsEnabled = val);
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setBool('notifications_enabled', val);
-                  _showToast(val
-                      ? 'تم تفعيل الإشعارات'
-                      : 'تم تعطيل الإشعارات');
+                  _showToast(val ? 'تم تفعيل الإشعارات' : 'تم تعطيل الإشعارات');
                 },
               ),
               const Divider(height: 1),
@@ -495,8 +493,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                     color: primaryColor.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
-                  child:
-                      Icon(Icons.campaign, color: primaryColor, size: 20),
+                  child: Icon(Icons.campaign, color: primaryColor, size: 20),
                 ),
                 title: Text('إشعارات التسويق والعروض',
                     style: TextStyle(
@@ -525,8 +522,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                     color: primaryColor.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
-                  child:
-                      Icon(Icons.payments, color: primaryColor, size: 20),
+                  child: Icon(Icons.payments, color: primaryColor, size: 20),
                 ),
                 title: Text('إشعارات المعاملات المالية',
                     style: TextStyle(
@@ -543,8 +539,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                         _playFeedback();
                         setState(() => _transactionNotifications = val);
                         final prefs = await SharedPreferences.getInstance();
-                        await prefs.setBool(
-                            'transaction_notifications', val);
+                        await prefs.setBool('transaction_notifications', val);
                       }
                     : null,
               ),
@@ -585,7 +580,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ================ تبويب المظهر واللغة ================
+  // ---------- تبويب المظهر واللغة ----------
   Widget _buildAppearanceTab(
       ThemeProvider themeProvider,
       UiProvider uiProvider,
@@ -704,8 +699,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   setState(() => _appSounds = val);
                   uiProvider.updateSoundSettings(val);
                   _playFeedback();
-                  _showToast(
-                      val ? 'تم تفعيل الأصوات' : 'تم كتم الأصوات');
+                  _showToast(val ? 'تم تفعيل الأصوات' : 'تم كتم الأصوات');
                 },
               ),
             ],
@@ -858,7 +852,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ================ تبويب الخصوصية ================
+  // ---------- تبويب الخصوصية ----------
   Widget _buildPrivacyTab(
       SystemProvider sys, Color primaryColor, ColorScheme colorScheme) {
     return ListView(
@@ -901,9 +895,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setBool('hide_balance', val);
                   await sys.updatePrivacySetting('hideBalance', val);
-                  _showToast(val
-                      ? 'تم إخفاء الرصيد'
-                      : 'سيظهر رصيدك للآخرين');
+                  _showToast(val ? 'تم إخفاء الرصيد' : 'سيظهر رصيدك للآخرين');
                 },
               ),
               const Divider(height: 1),
@@ -941,7 +933,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ================ أدوات مساعدة ================
+  // ---------- أدوات مساعدة ----------
   Widget _buildSectionTitle(String title, Color color) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, right: 4),
@@ -980,8 +972,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  // ================ حوارات كاملة ================
-
+  // ---------- حوارات ----------
   void _showPasswordDialog(SystemProvider sys) {
     final oldPassController = TextEditingController();
     final newPassController = TextEditingController();
