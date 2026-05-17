@@ -25,7 +25,7 @@ import 'features/super_admin/screens/sms_gateway_screen.dart';
 import 'features/super_admin/screens/audit_log_screen.dart';
 import 'features/super_admin/screens/settings_screen.dart';
 import 'features/super_admin/screens/backup_screen.dart';
-import 'features/super_admin/screens/admin_user_accounts_screen.dart'; // 🆕
+import 'features/super_admin/screens/admin_user_accounts_screen.dart';
 
 import 'features/agent_panel/screens/agent_dashboard_screen.dart';
 import 'features/agent_panel/screens/quick_pos_screen.dart';
@@ -89,19 +89,38 @@ void main() async {
   );
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   final String initialLang;
   const MyApp({super.key, required this.initialLang});
 
   @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  late String _currentLang;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentLang = widget.initialLang;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
+    final systemProvider = Provider.of<SystemProvider>(context);
+
+    // إعادة بناء اللغة إذا تغيرت
+    final newLang = systemProvider.getLanguageSync();
+    if (newLang != _currentLang) {
+      _currentLang = newLang;
+    }
 
     return MaterialApp(
       title: 'نظام كروت نت',
       debugShowCheckedModeBanner: false,
-
-      locale: Locale(initialLang),
+      locale: Locale(_currentLang),
       supportedLocales: const [Locale('en'), Locale('ar')],
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
@@ -117,7 +136,6 @@ class MyApp extends StatelessWidget {
         }
         return const Locale('en');
       },
-
       themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
       theme: themeProvider.lightTheme,
       darkTheme: themeProvider.darkTheme,
@@ -137,7 +155,7 @@ class MyApp extends StatelessWidget {
         '/audit_log': (context) => const AuditLogScreen(),
         '/settings': (context) => const GlobalSettingsScreen(),
         '/backup': (context) => const BackupScreen(),
-        '/admin_user_accounts': (context) => const AdminUserAccountsScreen(), // 🆕
+        '/admin_user_accounts': (context) => const AdminUserAccountsScreen(),
 
         '/agent_dashboard': (context) => const AgentDashboardScreen(),
         '/quick_pos': (context) => const QuickPosScreen(),
