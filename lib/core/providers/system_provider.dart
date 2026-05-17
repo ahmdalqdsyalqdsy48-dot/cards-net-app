@@ -2918,27 +2918,7 @@ class SystemProvider extends ChangeNotifier {
     return currentUserBalance - heldBalance;
   }
 
-  // ========== إعدادات تفعيل PIN (مضافة حديثاً) ==========
-  bool get isPinEnabled {
-    if (_activeUserPhone == null) return false;
-    final user = _usersDatabase.firstWhere(
-      (u) => u['phone'] == _activeUserPhone,
-      orElse: () => {'pinEnabled': false},
-    );
-    return user['pinEnabled'] == true;
-  }
 
-  Future<void> togglePinEnabled(bool value) async {
-    if (_activeUserPhone == null) return;
-    await _db.collection('users').doc(_activeUserPhone).update({
-      'pinEnabled': value,
-    });
-    final index = _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
-    if (index != -1) {
-      _usersDatabase[index]['pinEnabled'] = value;
-      notifyListeners();
-    }
-  }
 
   Future<void> updateLastSeen() async {
     if (_activeUserPhone == null) return;
@@ -3072,13 +3052,7 @@ class SystemProvider extends ChangeNotifier {
     String? mergeTo,
     bool exportBeforeDelete = false,
   }) async {
-    // التحقق من كلمة مرور المشرف
-    final adminDoc = await _db.collection('users').doc(_activeUserPhone).get();
-    final adminData = adminDoc.data() ?? {};
-    if (adminData['password'] != adminPassword) {
-      throw 'كلمة مرور المشرف غير صحيحة';
-    }
-
+    
     final WriteBatch batch = _db.batch();
     final phones = <String>[];
 
