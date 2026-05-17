@@ -2787,6 +2787,15 @@ String? get currentUserEmail => _currentUserEmail;
       notifyListeners();
     }
   }
+  Future<void> updateUserMonthlyLimit(double limit) async {
+  if (_activeUserPhone == null) return;
+  await _db.collection('users').doc(_activeUserPhone).update({'monthlyLimit': limit});
+  final index = _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
+  if (index != -1) {
+    _usersDatabase[index]['monthlyLimit'] = limit;
+    notifyListeners();
+  }
+}
 
   Future<bool> deleteUserAccount(String password) async {
     if (_activeUserPhone == null) return false;
