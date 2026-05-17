@@ -14,6 +14,7 @@ class SystemProvider extends ChangeNotifier {
   static const String _serverUrl = 'https://mikrotik-server-qu6a.onrender.com';
 
   String? _authToken;
+  String? _currentUserEmail;
 
   double _adminMainBalance = 0.0;
   int _totalSystemCards = 0;
@@ -343,6 +344,7 @@ class SystemProvider extends ChangeNotifier {
 
   void clearAllData() {
     _activeUserPhone = null;
+    _currentUserEmail = null;
     _currentUserRole = 'guest';
     _currentUserPermissions = {};
     _authToken = null;
@@ -383,6 +385,7 @@ class SystemProvider extends ChangeNotifier {
       final doc = await _db.collection('users').doc(phone).get();
       if (doc.exists && doc.data() != null) {
         final data = doc.data() as Map<String, dynamic>;
+        _currentUserEmail = data['email'];
         int index = _usersDatabase.indexWhere((u) => u['phone'] == phone);
         if (index != -1) {
           _usersDatabase[index] = data;
@@ -561,7 +564,8 @@ class SystemProvider extends ChangeNotifier {
   }
 
   String get currentUserPhone => _activeUserPhone ?? '';
-
+  
+String? get currentUserEmail => _currentUserEmail;
   bool hasPermission(String permissionName) {
     if (_currentUserRole == 'super_admin') return true;
     return _currentUserPermissions[permissionName] ?? false;
@@ -3155,4 +3159,22 @@ class SystemProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
+  // ---------- البريد الإلكتروني ----------
+Future<void> updateUserEmail(String email) async {
+  if (_activeUserPhone == null) return;
+  await _db.collection('users').doc(_activeUserPhone).update({'email': email});
+  _currentUserEmail = email;
+  notifyListeners();
+}
+
+Future<String?> loadUserEmail() async {
+  if (_activeUserPhone == null) return null;
+  final doc = await _db.collection('users').doc(_activeUserPhone).get();
+  if (doc.exists && doc.data() != null) {
+    _currentUserEmail = doc.data()!['email'];
+    notifyListeners();
+    return _currentUserEmail;
+  }
+  return null;
+}
 }
