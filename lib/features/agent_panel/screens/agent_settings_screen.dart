@@ -32,14 +32,14 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   bool _autoPrintEnabled = false;
   double _defaultQty = 1.0;
   bool _isPrinterConnected = false;
-  String _paperSize = '80mm'; // جديد
+  String _paperSize = '80mm';
   final TextEditingController _receiptFooterController =
       TextEditingController();
 
   // ---------- تبويب الأمان ----------
   bool _pinEnabled = false;
   bool _biometricsEnabled = false;
-  int _autoLockMinutes = 0; // 0 = معطل
+  int _autoLockMinutes = 0;
   String _userEmail = '';
   final TextEditingController _emailController = TextEditingController();
 
@@ -91,7 +91,6 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     final email = sys.currentUserEmail ?? '';
 
     setState(() {
-      // طباعة
       _autoPrintEnabled = prefs.getBool('agent_autoPrint') ?? false;
       _defaultQty = prefs.getDouble('agent_defaultQty') ?? 1.0;
       _receiptFooterController.text =
@@ -100,14 +99,12 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
           prefs.getBool('agent_printer_connected') ?? false;
       _paperSize = prefs.getString('agent_paperSize') ?? '80mm';
 
-      // أمان
       _biometricsEnabled = sys.isBiometricCurrentlyEnabled;
       _autoLockMinutes = prefs.getInt('agent_autoLockMinutes') ?? 0;
       _pinEnabled = sys.isPinEnabled;
       _userEmail = email;
       _emailController.text = email;
 
-      // إشعارات
       _notificationsEnabled =
           prefs.getBool('agent_notifications_enabled') ?? true;
       _salesNotifications =
@@ -117,7 +114,6 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
       _offerNotifications =
           prefs.getBool('agent_offer_notifications') ?? true;
 
-      // مظهر
       _appSounds = ui.isSoundsEnabled;
       _appLanguage = sys.getLanguageSync();
 
@@ -370,7 +366,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     );
   }
 
-  // ========== تبويب 1: الأمان والجلسة ==========
+  // ---------- تبويب الأمان والجلسة ----------
   Widget _buildSecurityTab(SystemProvider sys, Color primaryColor,
       ColorScheme colorScheme) {
     return ListView(
@@ -605,7 +601,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     );
   }
 
-  // ========== تبويب 2: الطباعة والمبيعات ==========
+  // ---------- تبويب الطباعة والمبيعات ----------
   Widget _buildPrinterTab(SystemProvider sys, Color primaryColor,
       ColorScheme colorScheme) {
     return ListView(
@@ -637,9 +633,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
               setState(() => _isPrinterConnected = val);
               await _saveSetting('agent_printer_connected', val);
               await sys.setPrinterConnected(val);
-              _showToast(val
-                  ? 'تم تفعيل الطباعة'
-                  : 'تم تعطيل الطباعة');
+              _showToast(val ? 'تم تفعيل الطباعة' : 'تم تعطيل الطباعة');
             },
           ),
         ),
@@ -761,7 +755,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     );
   }
 
-  // ========== تبويب 3: الإشعارات ==========
+  // ---------- تبويب الإشعارات ----------
   Widget _buildNotificationsTab(Color primaryColor,
       ColorScheme colorScheme) {
     return ListView(
@@ -876,7 +870,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     );
   }
 
-  // ========== تبويب 4: المظهر واللغة ==========
+  // ---------- تبويب المظهر واللغة ----------
   Widget _buildAppearanceTab(
       ThemeProvider theme,
       UiProvider ui,
@@ -1096,7 +1090,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     );
   }
 
-  // ========== تبويب 5: النظام والأدوات ==========
+  // ---------- تبويب النظام والأدوات ----------
   Widget _buildSystemTab(SystemProvider sys, Color primaryColor,
       ColorScheme colorScheme) {
     return ListView(
@@ -1189,9 +1183,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                 trailing: Icon(Icons.open_in_new,
                     size: 16,
                     color: colorScheme.onSurfaceVariant),
-                onTap: () async {
-                  // يمكن استبدال الرابط لاحقاً
-                },
+                onTap: () async {},
               ),
             ],
           ),
@@ -1200,7 +1192,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     );
   }
 
-  // ========== دوال مساعدة ==========
+  // ---------- دوال مساعدة ----------
   Widget _sectionTitle(String title, Color color) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, right: 4),
@@ -1240,7 +1232,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     );
   }
 
-  // ========== حوار البريد الإلكتروني ==========
+  // ---------- حوار البريد الإلكتروني ----------
   void _showEmailDialog(SystemProvider sys) {
     final controller = TextEditingController(text: _userEmail);
     showDialog(
@@ -1293,7 +1285,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     );
   }
 
-  // ========== حوار تسجيل الخروج ==========
+  // ---------- حوار تسجيل الخروج ----------
   void _showLogoutDialog() {
     showDialog(
       context: context,
