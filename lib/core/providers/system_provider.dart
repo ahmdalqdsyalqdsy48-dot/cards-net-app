@@ -2901,6 +2901,10 @@ String? get currentUserEmail => _currentUserEmail;
     await _prefs!.setString('language', langCode);
     notifyListeners();
   }
+  Future<void> changeAppLanguage(String langCode) async {
+  await saveLanguage(langCode);
+  notifyListeners();
+  }
 
   // ========== الحجز المالي ==========
   Future<void> setHoldAmount(double amount) async {
