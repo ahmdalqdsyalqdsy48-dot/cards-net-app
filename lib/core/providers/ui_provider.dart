@@ -24,20 +24,20 @@ class UiProvider extends ChangeNotifier {
   UiProvider(String? currentUserId) {
     _currentUserPhone = currentUserId;
     // إعداد المجمعات الصوتية (تدعم عدة مشغلات متزامنة)
-    _clickPool = AudioPool.fromAsset(
-      'sounds/click.mp3',
+    _clickPool = AudioPool(
+      source: AssetSource('sounds/click.mp3'),
       maxPlayers: 3,   // يسمح بـ 3 نقرات متداخلة
     );
-    _successPool = AudioPool.fromAsset(
-      'sounds/success.mp3',
+    _successPool = AudioPool(
+      source: AssetSource('sounds/success.mp3'),
       maxPlayers: 2,
     );
-    _errorPool = AudioPool.fromAsset(
-      'sounds/error.mp3',
+    _errorPool = AudioPool(
+      source: AssetSource('sounds/error.mp3'),
       maxPlayers: 2,
     );
-    _notifPool = AudioPool.fromAsset(
-      'sounds/notification.mp3',
+    _notifPool = AudioPool(
+      source: AssetSource('sounds/notification.mp3'),
       maxPlayers: 2,
     );
 
