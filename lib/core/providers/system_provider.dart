@@ -3134,4 +3134,25 @@ class SystemProvider extends ChangeNotifier {
       severity: 'critical',
     );
   }
+    // ========== إعدادات تفعيل PIN ==========
+  bool get isPinEnabled {
+    if (_activeUserPhone == null) return false;
+    final user = _usersDatabase.firstWhere(
+      (u) => u['phone'] == _activeUserPhone,
+      orElse: () => {'pinEnabled': false},
+    );
+    return user['pinEnabled'] == true;
+  }
+
+  Future<void> togglePinEnabled(bool value) async {
+    if (_activeUserPhone == null) return;
+    await _db.collection('users').doc(_activeUserPhone).update({
+      'pinEnabled': value,
+    });
+    final index = _usersDatabase.indexWhere((u) => u['phone'] == _activeUserPhone);
+    if (index != -1) {
+      _usersDatabase[index]['pinEnabled'] = value;
+      notifyListeners();
+    }
+  }
 }
