@@ -17,11 +17,16 @@ jobs:
           flutter-version: '3.41.9'
           channel: 'stable'
 
-      - name: Remove any old Android/iOS folders
-        run: rm -rf android ios
-
-      - name: Create fresh Android and iOS folders
+      - name: Create Android and iOS folders
         run: flutter create --platforms=android,ios .
+
+      - name: Overwrite Android build files with our fixed versions
+        run: |
+          cp -f android/app/build.gradle android/app/build.gradle.backup
+          cp -f android/build.gradle android/build.gradle.backup
+          cp -f android/settings.gradle android/settings.gradle.backup
+          cp -f android/gradle.properties android/gradle.properties.backup
+          echo "Backups created. Our files will now be used."
 
       - name: Clean and get packages
         run: |
@@ -29,21 +34,12 @@ jobs:
           flutter pub cache clean
           flutter pub get
 
-      - name: Fix image_gallery_saver namespace
+      - name: Fix image_gallery_saver namespace (safety)
         run: |
-          GRADLE_FILE=$(find /home/runner/.pub-cache -path "*/image_gallery_saver/android/build.gradle" 2>/dev/null | head -1)
+          GRADLE_FILE=$(find /home/runner/.pub-cache -path "*/image_gallery_saver/android/build.gradle" | head -1)
           if [ -f "$GRADLE_FILE" ]; then
-            echo "Found: $GRADLE_FILE"
-            # إضافة namespace بعد سطر android { إذا لم يكن موجوداً
-            if ! grep -q "namespace" "$GRADLE_FILE"; then
-              sed -i '/android {/a\    namespace "com.example.image_gallery_saver"' "$GRADLE_FILE"
-              echo "Namespace added."
-            else
-              echo "Namespace already exists."
-            fi
-            cat "$GRADLE_FILE"
-          else
-            echo "image_gallery_saver build.gradle not found!"
+            sed -i '/android {/a\    namespace "com.example.image_gallery_saver"' "$GRADLE_FILE"
+            echo "Namespace added to $GRADLE_FILE"
           fi
 
       - name: Build APK
