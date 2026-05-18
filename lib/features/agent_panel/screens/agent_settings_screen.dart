@@ -86,6 +86,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    await sys.loadUserData(sys.currentUserPhone);
     final sys = Provider.of<SystemProvider>(context, listen: false);
     final ui = Provider.of<UiProvider>(context, listen: false);
     final email = sys.currentUserEmail ?? '';
