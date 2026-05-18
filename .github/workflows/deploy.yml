@@ -19,18 +19,6 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: إعادة تهيئة ملفات المنصات (أندرويد وويب)
-        run: |
-          rm -rf android
-          rm -rf web
-          flutter create . --platforms android,web
-
-      # 👈 خطوة سحرية لإجبار الـ Gradle على إضافة الـ Namespace للمكتبات القديمة تلقائياً
-      - name: إصلاح مشاكل الـ Namespace للمكتبات القديمة
-        run: |
-          echo "android.defaults.buildfeatures.buildconfig=true" >> android/local.properties
-          echo "subprojects { afterEvaluate { project -> if (project.hasProperty('android')) { if (project.android.namespace == null) { project.android.namespace = project.group } } } }" >> android/build.gradle
-
       - name: تنظيف وتحميل المكاتب
         run: |
           flutter clean
