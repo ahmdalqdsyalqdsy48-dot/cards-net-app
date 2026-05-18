@@ -55,30 +55,33 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
   }
 
   Future<void> _loadAllSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    await sys.loadUserData(sys.currentUserPhone);
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    final currentPin = sys.currentUserPin;
-    final savedLang = sys.getLanguageSync();
-    final email = sys.currentUserEmail ?? '';
+  final prefs = await SharedPreferences.getInstance();
+  final sys = Provider.of<SystemProvider>(context, listen: false);
 
-    setState(() {
-      _appSounds = prefs.getBool('global_sounds_enabled') ?? true;
-      _dailyLimit = prefs.getDouble('user_daily_limit') ?? 0.0;
-      _monthlyLimit = prefs.getDouble('user_monthly_limit') ?? 0.0;
-      _userPin = currentPin.isNotEmpty && currentPin.length == 6 ? currentPin : '';
-      _notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
-      _marketingNotifications = prefs.getBool('marketing_notifications') ?? true;
-      _transactionNotifications = prefs.getBool('transaction_notifications') ?? true;
-      _emailNotifications = prefs.getBool('email_notifications') ?? false;
-      _hideBalanceFromOthers = prefs.getBool('hide_balance') ?? false;
-      _showFullName = prefs.getBool('show_full_name') ?? true;
-      _userEmail = email;
-      _emailController.text = email;
-      _appLanguage = savedLang;
-      _autoLockMinutes = prefs.getInt('user_autoLockMinutes') ?? 0;
-    });
-  }
+  // تحميل بيانات المستخدم من السحابة لضمان وجود البريد والحدود
+  await sys.loadUserData(sys.currentUserPhone);
+
+  final currentPin = sys.currentUserPin;
+  final savedLang = sys.getLanguageSync();
+  final email = sys.currentUserEmail ?? '';
+
+  setState(() {
+    _appSounds = prefs.getBool('global_sounds_enabled') ?? true;
+    _dailyLimit = prefs.getDouble('user_daily_limit') ?? 0.0;
+    _monthlyLimit = prefs.getDouble('user_monthly_limit') ?? 0.0;
+    _userPin = currentPin.isNotEmpty && currentPin.length == 6 ? currentPin : '';
+    _notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
+    _marketingNotifications = prefs.getBool('marketing_notifications') ?? true;
+    _transactionNotifications = prefs.getBool('transaction_notifications') ?? true;
+    _emailNotifications = prefs.getBool('email_notifications') ?? false;
+    _hideBalanceFromOthers = prefs.getBool('hide_balance') ?? false;
+    _showFullName = prefs.getBool('show_full_name') ?? true;
+    _userEmail = email;
+    _emailController.text = email;
+    _appLanguage = savedLang;
+    _autoLockMinutes = prefs.getInt('user_autoLockMinutes') ?? 0;
+  });
+}
 
   void _playFeedback() {
     final uiProvider = Provider.of<UiProvider>(context, listen: false);
