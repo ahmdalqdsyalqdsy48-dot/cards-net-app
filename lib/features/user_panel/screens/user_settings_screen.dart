@@ -56,6 +56,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
 
   Future<void> _loadAllSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    await sys.loadUserData(sys.currentUserPhone);
     final sys = Provider.of<SystemProvider>(context, listen: false);
     final currentPin = sys.currentUserPin;
     final savedLang = sys.getLanguageSync();
