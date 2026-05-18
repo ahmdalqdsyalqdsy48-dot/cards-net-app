@@ -19,6 +19,14 @@ jobs:
         with:
           channel: 'stable'
 
+      # 👈 خطوة لتصحيح المسميات داخل ملفات الكود لتتوافق مع المكتبة الجديدة تلقائياً
+      - name: تحديث استدعاءات المكتبة في الكود البرمجي
+        run: |
+          sed -i "s/import 'package:image_gallery_saver\/image_gallery_saver.dart';/import 'package:gal\/gal.dart';/g" lib/features/user_panel/screens/network_store_screen.dart
+          sed -i "s/import 'package:image_gallery_saver\/image_gallery_saver.dart';/import 'package:gal\/gal.dart';/g" lib/features/user_panel/screens/my_cards_screen.dart
+          sed -i "s/ImageGallerySaver.saveImage/Gal.putImage/g" lib/features/user_panel/screens/network_store_screen.dart
+          sed -i "s/ImageGallerySaver.saveImage/Gal.putImage/g" lib/features/user_panel/screens/my_cards_screen.dart
+
       - name: تنظيف وتحميل المكاتب
         run: |
           flutter clean
