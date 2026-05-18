@@ -20,27 +20,10 @@ jobs:
       - name: Create Android and iOS folders
         run: flutter create --platforms=android,ios .
 
-      - name: Overwrite Android build files with our fixed versions
-        run: |
-          cp -f android/app/build.gradle android/app/build.gradle.backup
-          cp -f android/build.gradle android/build.gradle.backup
-          cp -f android/settings.gradle android/settings.gradle.backup
-          cp -f android/gradle.properties android/gradle.properties.backup
-          echo "Backups created. Our files will now be used."
-
       - name: Clean and get packages
         run: |
           flutter clean
-          flutter pub cache clean
           flutter pub get
-
-      - name: Fix image_gallery_saver namespace (safety)
-        run: |
-          GRADLE_FILE=$(find /home/runner/.pub-cache -path "*/image_gallery_saver/android/build.gradle" | head -1)
-          if [ -f "$GRADLE_FILE" ]; then
-            sed -i '/android {/a\    namespace "com.example.image_gallery_saver"' "$GRADLE_FILE"
-            echo "Namespace added to $GRADLE_FILE"
-          fi
 
       - name: Build APK
         run: flutter build apk --debug
