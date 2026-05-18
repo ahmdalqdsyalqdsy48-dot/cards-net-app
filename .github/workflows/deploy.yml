@@ -19,6 +19,13 @@ jobs:
         with:
           channel: 'stable'
 
+      # 👈 خطوة أساسية لحذف المجلد القديم والمعطوب وإنشاء مجلد أندرويد وويب متوافق وحديث
+      - name: إعادة توليد ملفات المنصات (أندرويد وويب) بنقاء
+        run: |
+          rm -rf android
+          rm -rf web
+          flutter create . --platforms android,web
+
       - name: تنظيف وتحميل المكاتب
         run: |
           flutter clean
