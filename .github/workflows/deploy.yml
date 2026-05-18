@@ -1,4 +1,4 @@
-name: Build APK and Deploy Web
+name: Deploy Flutter Web to GitHub Pages
 
 on:
   push:
@@ -19,42 +19,20 @@ jobs:
         with:
           channel: 'stable'
 
-      # 👈 خطوة إجبارية لبناء مجلد أندرويد رسمي وجديد كلياً يتوافق مع مكاتبك
-      - name: إعادة إنشاء مجلد الأندرويد والويب بنقاء
-        run: |
-          rm -rf android
-          rm -rf web
-          flutter create . --platforms android,web
+      - name: تنظيف بيئة العمل
+        run: flutter clean
 
-      # 👈 خطوة تصحيح استدعاء المكتبة البديلة وحفظ البايتات بالشكل الصحيح
-      - name: تحديث استدعاءات المكتبة في الكود البرمجي
-        run: |
-          sed -i "s/import 'package:image_gallery_saver\/image_gallery_saver.dart';/import 'package:gal\/gal.dart';/g" lib/features/user_panel/screens/network_store_screen.dart
-          sed -i "s/import 'package:image_gallery_saver\/image_gallery_saver.dart';/import 'package:gal\/gal.dart';/g" lib/features/user_panel/screens/my_cards_screen.dart
-          sed -i "s/ImageGallerySaver.saveImage/Gal.putImageBytes/g" lib/features/user_panel/screens/network_store_screen.dart
-          sed -i "s/ImageGallerySaver.saveImage/Gal.putImageBytes/g" lib/features/user_panel/screens/my_cards_screen.dart
+      - name: تحميل المكاتب والإضافات
+        run: flutter pub get
 
-      - name: تنظيف وتحميل المكاتب
-        run: |
-          flutter clean
-          flutter pub get
+      - name: تفعيل دعم الويب
+        run: flutter create . --platforms web
 
       - name: بناء نسخة الويب
-        run: flutter build web --release
+        run: flutter build web --base-href "/cards-net-app/" --no-wasm-dry-run
 
-      - name: النشر على سيرفرات فايربيس هوسيتنج
-        uses: w9jds/firebase-action@master
+      - name: النشر على رابط جيت هاب
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          args: deploy --only hosting
-        env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-          PROJECT_ID: 'netcardsapp'
-
-      - name: بناء تطبيق الأندرويد APK
-        run: flutter build apk --release
-
-      - name: حفظ ملف APK لتنزيله
-        uses: actions/upload-artifact@v4
-        with:
-          name: NetCardsApp-Android
-          path: build/app/outputs/flutter-apk/app-release.apk
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build/web
