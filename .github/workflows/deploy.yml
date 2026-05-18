@@ -19,7 +19,14 @@ jobs:
         with:
           channel: 'stable'
 
-      # 👈 تصحيح الاستبدال لاستخدام دالة putImageBytes التي تقبل Uint8List
+      # 👈 خطوة إجبارية لبناء مجلد أندرويد رسمي وجديد كلياً يتوافق مع مكاتبك
+      - name: إعادة إنشاء مجلد الأندرويد والويب بنقاء
+        run: |
+          rm -rf android
+          rm -rf web
+          flutter create . --platforms android,web
+
+      # 👈 خطوة تصحيح استدعاء المكتبة البديلة وحفظ البايتات بالشكل الصحيح
       - name: تحديث استدعاءات المكتبة في الكود البرمجي
         run: |
           sed -i "s/import 'package:image_gallery_saver\/image_gallery_saver.dart';/import 'package:gal\/gal.dart';/g" lib/features/user_panel/screens/network_store_screen.dart
