@@ -18,8 +18,7 @@ jobs:
           channel: 'stable'
 
       - name: Remove any old Android/iOS folders
-        run: |
-          rm -rf android ios
+        run: rm -rf android ios
 
       - name: Create fresh Android and iOS folders
         run: flutter create --platforms=android,ios .
@@ -27,17 +26,24 @@ jobs:
       - name: Clean and get packages
         run: |
           flutter clean
+          flutter pub cache clean
           flutter pub get
 
       - name: Fix image_gallery_saver namespace
         run: |
           GRADLE_FILE=$(find /home/runner/.pub-cache -path "*/image_gallery_saver/android/build.gradle" 2>/dev/null | head -1)
-          if [ -n "$GRADLE_FILE" ]; then
-            # إضافة namespace بعد سطر `android {` مباشرة
-            sed -i '/android {/a\    namespace "com.example.image_gallery_saver"' "$GRADLE_FILE"
-            echo "Namespace added to $GRADLE_FILE"
+          if [ -f "$GRADLE_FILE" ]; then
+            echo "Found: $GRADLE_FILE"
+            # إضافة namespace بعد سطر android { إذا لم يكن موجوداً
+            if ! grep -q "namespace" "$GRADLE_FILE"; then
+              sed -i '/android {/a\    namespace "com.example.image_gallery_saver"' "$GRADLE_FILE"
+              echo "Namespace added."
+            else
+              echo "Namespace already exists."
+            fi
+            cat "$GRADLE_FILE"
           else
-            echo "image_gallery_saver build.gradle not found, skipping."
+            echo "image_gallery_saver build.gradle not found!"
           fi
 
       - name: Build APK
