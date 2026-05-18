@@ -1,4 +1,4 @@
-name: Deploy Flutter Web to GitHub Pages
+name: Deploy Flutter Web to Firebase Hosting
 
 on:
   push:
@@ -29,10 +29,13 @@ jobs:
         run: flutter create . --platforms web
 
       - name: بناء نسخة الويب
-        run: flutter build web --base-href "/cards-net-app/" --no-wasm-dry-run
+        run: flutter build web --release
 
-      - name: النشر على رابط جيت هاب
-        uses: peaceiris/actions-gh-pages@v3
+      # 👈 هذا الجزء الجديد الذي تم تعديله ليرفع مباشرة إلى روابط فايربيس الخاصة بك
+      - name: النشر على سيرفرات فايربيس هوسيتنج
+        uses: w9jds/firebase-action@master
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./build/web
+          args: deploy --only hosting
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          PROJECT_ID: 'netcardsapp'
