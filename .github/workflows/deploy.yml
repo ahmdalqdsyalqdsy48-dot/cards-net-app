@@ -1,4 +1,4 @@
-name: Deploy Flutter Web to Firebase Hosting
+name: Build APK and Deploy Web
 
 on:
   push:
@@ -19,19 +19,16 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: تنظيف بيئة العمل
-        run: flutter clean
-
-      - name: تحميل المكاتب والإضافات
-        run: flutter pub get
-
-      - name: تفعيل دعم الويب
-        run: flutter create . --platforms web
+      - name: تنظيف وتحميل المكاتب
+        run: |
+          flutter clean
+          flutter pub get
 
       - name: بناء نسخة الويب
-        run: flutter build web --release
+        run: |
+          flutter create . --platforms web
+          flutter build web --release
 
-      # 👈 هذا الجزء الجديد الذي تم تعديله ليرفع مباشرة إلى روابط فايربيس الخاصة بك
       - name: النشر على سيرفرات فايربيس هوسيتنج
         uses: w9jds/firebase-action@master
         with:
@@ -39,3 +36,13 @@ jobs:
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
           PROJECT_ID: 'netcardsapp'
+
+      # 👈 هذا الجزء الجديد لبناء ملف الـ APK للهاتف
+      - name: بناء تطبيق الأندرويد APK
+        run: flutter build apk --release
+
+      - name: حفظ ملف APK لتنزيله
+        uses: actions/upload-artifact@v4
+        with:
+          name: NetCardsApp-Android
+          path: build/app/outputs/flutter-apk/app-release.apk
