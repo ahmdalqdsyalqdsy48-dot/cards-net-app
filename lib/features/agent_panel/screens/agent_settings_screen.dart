@@ -85,42 +85,49 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
       Provider.of<UiProvider>(context, listen: false).playSound(type);
 
   Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    await sys.loadUserData(sys.currentUserPhone);
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    final ui = Provider.of<UiProvider>(context, listen: false);
-    final email = sys.currentUserEmail ?? '';
+  final prefs = await SharedPreferences.getInstance();
+  final sys = Provider.of<SystemProvider>(context, listen: false);
 
-    setState(() {
-      _autoPrintEnabled = prefs.getBool('agent_autoPrint') ?? false;
-      _defaultQty = prefs.getDouble('agent_defaultQty') ?? 1.0;
-      _receiptFooterController.text =
-          prefs.getString('agent_receiptFooter') ?? 'شكراً لتعاملكم معنا';
-      _isPrinterConnected =
-          prefs.getBool('agent_printer_connected') ?? false;
-      _paperSize = prefs.getString('agent_paperSize') ?? '80mm';
+  // تحميل بيانات الوكيل من السحابة لضمان وجود البريد وغيره
+  await sys.loadUserData(sys.currentUserPhone);
 
-      _biometricsEnabled = sys.isBiometricCurrentlyEnabled;
-      _autoLockMinutes = prefs.getInt('agent_autoLockMinutes') ?? 0;
-      _pinEnabled = sys.isPinEnabled;
-      _userEmail = email;
-      _emailController.text = email;
+  final ui = Provider.of<UiProvider>(context, listen: false);
+  final email = sys.currentUserEmail ?? '';
 
-      _notificationsEnabled =
-          prefs.getBool('agent_notifications_enabled') ?? true;
-      _salesNotifications =
-          prefs.getBool('agent_sales_notifications') ?? true;
-      _stockNotifications =
-          prefs.getBool('agent_stock_notifications') ?? true;
-      _offerNotifications =
-          prefs.getBool('agent_offer_notifications') ?? true;
+  setState(() {
+    // طباعة
+    _autoPrintEnabled = prefs.getBool('agent_autoPrint') ?? false;
+    _defaultQty = prefs.getDouble('agent_defaultQty') ?? 1.0;
+    _receiptFooterController.text =
+        prefs.getString('agent_receiptFooter') ?? 'شكراً لتعاملكم معنا';
+    _isPrinterConnected =
+        prefs.getBool('agent_printer_connected') ?? false;
+    _paperSize = prefs.getString('agent_paperSize') ?? '80mm';
 
-      _appSounds = ui.isSoundsEnabled;
-      _appLanguage = sys.getLanguageSync();
+    // أمان
+    _biometricsEnabled = sys.isBiometricCurrentlyEnabled;
+    _autoLockMinutes = prefs.getInt('agent_autoLockMinutes') ?? 0;
+    _pinEnabled = sys.isPinEnabled;
+    _userEmail = email;
+    _emailController.text = email;
 
-      _isLoading = false;
-    });
-  }
+    // إشعارات
+    _notificationsEnabled =
+        prefs.getBool('agent_notifications_enabled') ?? true;
+    _salesNotifications =
+        prefs.getBool('agent_sales_notifications') ?? true;
+    _stockNotifications =
+        prefs.getBool('agent_stock_notifications') ?? true;
+    _offerNotifications =
+        prefs.getBool('agent_offer_notifications') ?? true;
+
+    // مظهر
+    _appSounds = ui.isSoundsEnabled;
+    _appLanguage = sys.getLanguageSync();
+
+    _isLoading = false;
+  });
+}
 
   Future<void> _saveSetting(String key, dynamic value) async {
     final prefs = await SharedPreferences.getInstance();
