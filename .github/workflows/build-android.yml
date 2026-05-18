@@ -17,7 +17,13 @@ jobs:
           flutter-version: '3.41.9'
           channel: 'stable'
 
-      - name: Create Android and iOS folders
+      - name: Delete old Android/iOS folders completely
+        run: |
+          rm -rf android
+          rm -rf ios
+          echo "Old folders deleted."
+
+      - name: Create fresh Android and iOS folders
         run: flutter create --platforms=android,ios .
 
       - name: Clean and get packages
