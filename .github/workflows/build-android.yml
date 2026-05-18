@@ -20,6 +20,11 @@ jobs:
       - name: Create Android and iOS folders
         run: flutter create --platforms=android,ios .
 
+      - name: Clean and get packages
+        run: |
+          flutter clean
+          flutter pub get
+
       - name: Build APK
         run: flutter build apk --debug
 
