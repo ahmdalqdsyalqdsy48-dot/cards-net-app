@@ -11,7 +11,8 @@ import 'core/providers/auth_provider.dart';
 import 'core/providers/settings_provider.dart';
 import 'core/providers/wallet_provider.dart';
 import 'core/providers/notification_provider.dart';
-import 'core/providers/backup_provider.dart';          // ✅ تمت الإضافة
+import 'core/providers/backup_provider.dart';
+import 'core/providers/coupon_provider.dart';           // ✅ تمت الإضافة
 import 'core/providers/ui_provider.dart';
 
 import 'features/auth/screens/sso_login_screen.dart';
@@ -87,7 +88,8 @@ void main() async {
         ChangeNotifierProvider<NotificationProvider>(
           create: (context) => NotificationProvider(context.read<AuthProvider>()),
         ),
-        ChangeNotifierProvider(create: (context) => BackupProvider()),   // ✅ الجديد
+        ChangeNotifierProvider(create: (context) => BackupProvider()),
+        ChangeNotifierProvider(create: (context) => CouponProvider()),   // ✅ الجديد
         ChangeNotifierProvider(create: (context) => SystemProvider()),   // القديم
         ChangeNotifierProxyProvider<SystemProvider, UiProvider>(
           create: (context) => UiProvider(null),
