@@ -21,8 +21,6 @@ class AuthProvider extends ChangeNotifier {
     SharedPreferences.getInstance().then((prefs) {
       _prefs = prefs;
       _authToken = prefs.getString('authToken');
-      // إذا كان لدينا توكن قديم، يمكننا محاولة استعادة الجلسة
-      // (هذا يعتمد على وجود دالة للتحقق من صحة التوكن، سنضيفها لاحقاً)
     });
   }
 
@@ -51,11 +49,11 @@ class AuthProvider extends ChangeNotifier {
     clearAllData();
 
     try {
-      final apiService = _getApiService(); // بدون توكن لأننا نسجل الدخول
+      final apiService = _getApiService();
       final result = await apiService.post('/api/login', {
         'phone': phone,
         'password': password,
-      }, authenticate: false); // تسجيل الدخول لا يحتاج توكن
+      }, authenticate: false);
 
       final user = result['user'] as Map<String, dynamic>;
       final token = result['token'] as String;
@@ -75,7 +73,7 @@ class AuthProvider extends ChangeNotifier {
       // مزامنة بيانات المستخدم من Firestore
       await _loadUserData(phone);
 
-      // التأكد من وجود رقم حساب للمستخدم (في حال لم يكن موجوداً)
+      // التأكد من وجود رقم حساب للمستخدم
       await _ensureUserAccountNumber();
 
       // تسجيل الحدث في سجل التدقيق
@@ -152,7 +150,7 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // ------------------- التأكد من رقم الحساب (مبسطة) -------------------
+  // ------------------- التأكد من رقم الحساب -------------------
   Future<void> _ensureUserAccountNumber() async {
     if (_activeUserPhone == null) return;
     try {
@@ -160,8 +158,7 @@ class AuthProvider extends ChangeNotifier {
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
         if (data['accountNumber'] == null) {
-          // نترك التوليد لـ WalletProvider لاحقاً، هنا نكتفي بالتأكد
-          // يمكن استدعاء دالة التوليد من هناك أو تركها كما هي
+          // سيتم نقل التوليد الكامل لاحقاً إلى WalletProvider
         }
       }
     } catch (e) {
@@ -216,5 +213,19 @@ class AuthProvider extends ChangeNotifier {
   bool hasPermission(String permissionName) {
     if (_currentUserRole == 'super_admin') return true;
     return _currentUserPermissions[permissionName] ?? false;
+  }
+
+  // ✅ تمت الإضافة: التحقق من وجود مستخدم برقم هاتف معين
+  Future<bool> checkUserExists(String phone) async {
+    try {
+      final doc = await _db
+          .collection('users')
+          .doc(phone)
+          .get()
+          .timeout(const Duration(seconds: 5));
+      return doc.exists;
+    } catch (e) {
+      return false;
+    }
   }
 }
