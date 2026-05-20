@@ -7,7 +7,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/providers/theme_provider.dart';
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/system_provider.dart';    // ما زلنا نحتاجه لـ checkUserExists و getLanguageSync
+import '../../../core/providers/auth_provider.dart';       // ✅ الجديد
+import '../../../core/providers/settings_provider.dart';   // ✅ الجديد
+import '../../../core/providers/wallet_provider.dart';     // ✅ الجديد
 import '../../../core/providers/ui_provider.dart';
 
 import '../../super_admin/screens/super_admin_dashboard.dart';
@@ -54,14 +57,15 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   }
 
   void _startDynamicCarousel() {
-    final systemProvider = Provider.of<SystemProvider>(context, listen: false);
-    int interval = systemProvider.carouselIntervalSeconds > 0
-        ? systemProvider.carouselIntervalSeconds
+    // ✅ استبدال SystemProvider بـ SettingsProvider
+    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+    int interval = settingsProvider.carouselIntervalSeconds > 0
+        ? settingsProvider.carouselIntervalSeconds
         : 5;
 
     _carouselTimer = Timer.periodic(Duration(seconds: interval), (Timer timer) {
-      int itemCount = systemProvider.loginCarouselImages.isNotEmpty
-          ? systemProvider.loginCarouselImages.length
+      int itemCount = settingsProvider.loginCarouselImages.isNotEmpty
+          ? settingsProvider.loginCarouselImages.length
           : _fallbackAdColors.length;
 
       if (itemCount > 0) {
@@ -91,9 +95,13 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   }
 
   // ==========================================
-  // نافذة إعداد PIN لأول مرة (تُعيد String?)
+  // نافذة إعداد PIN لأول مرة
   // ==========================================
   Future<String?> _showPinSetupIfNeeded() async {
+    // ✅ استبدال SystemProvider بـ WalletProvider
+    final wallet = Provider.of<WalletProvider>(context, listen: false);
+    // لكن currentUserPin غير موجودة في WalletProvider الذي أنشأناه،
+    // سنضيفها لاحقاً. حالياً نستخدم SystemProvider للـ PIN فقط
     final sys = Provider.of<SystemProvider>(context, listen: false);
     final currentPin = sys.currentUserPin;
 
@@ -236,9 +244,12 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     }
 
     setState(() => isLoading = true);
-    final systemProvider = Provider.of<SystemProvider>(context, listen: false);
 
-    if (systemProvider.isMaintenanceMode && phone != '774578241') {
+    // ✅ استبدال SystemProvider بـ SettingsProvider و AuthProvider
+    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    if (settingsProvider.isMaintenanceMode && phone != '774578241') {
       setState(() => isLoading = false);
       uiProvider.playSound('error');
       _showErrorSnackBar('النظام تحت الصيانة حالياً. يرجى المحاولة لاحقاً.');
@@ -247,9 +258,9 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
 
     Map<String, dynamic>? userData;
     if (usePinLogin) {
-      userData = await systemProvider.loginWithPin(phone, pinController.text.trim());
+      userData = await authProvider.loginWithPin(phone, pinController.text.trim());
     } else {
-      userData = await systemProvider.loginUser(phone, passwordController.text.trim());
+      userData = await authProvider.loginUser(phone, passwordController.text.trim());
     }
 
     if (!mounted) return;
@@ -302,7 +313,9 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     }
 
     setState(() => isLoading = true);
+    // ✅ checkUserExists ما زالت في SystemProvider حالياً
     final systemProvider = Provider.of<SystemProvider>(context, listen: false);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
     bool isExist = await systemProvider.checkUserExists(phone);
 
     if (!mounted) return;
@@ -313,7 +326,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       _showErrorSnackBar('هذا الرقم مسجل مسبقاً! يرجى تسجيل الدخول.');
       setState(() => isLoginMode = true);
     } else {
-      await systemProvider.registerNewUser(name: name, phone: phone, password: password, role: 'user');
+      await authProvider.registerNewUser(name: name, phone: phone, password: password, role: 'user');
       if (!mounted) return;
       setState(() => isLoading = false);
 
@@ -323,7 +336,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
         return;
       }
 
-      // حفظ بيانات الدخول للبصمة
       await _saveCredentialsForBiometrics(phone);
 
       Provider.of<ThemeProvider>(context, listen: false).setUser('user', phone);
@@ -334,7 +346,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   }
 
   // ==========================================
-  // الدخول السريع بالبصمة (يعمل فعلياً)
+  // الدخول السريع بالبصمة
   // ==========================================
   Future<void> _authenticateWithBiometrics() async {
     final uiProvider = Provider.of<UiProvider>(context, listen: false);
@@ -356,7 +368,6 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
         return;
       }
 
-      // جلب بيانات الدخول المخزنة
       final prefs = await SharedPreferences.getInstance();
       final phone = prefs.getString('saved_phone') ?? '';
       final password = prefs.getString('saved_password') ?? '';
@@ -369,13 +380,14 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       }
 
       setState(() => isLoading = true);
-      final systemProvider = Provider.of<SystemProvider>(context, listen: false);
+      // ✅ استبدال SystemProvider بـ AuthProvider
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
       Map<String, dynamic>? userData;
       if (usePin && pin.length == 6) {
-        userData = await systemProvider.loginWithPin(phone, pin);
+        userData = await authProvider.loginWithPin(phone, pin);
       } else if (password.isNotEmpty) {
-        userData = await systemProvider.loginUser(phone, password);
+        userData = await authProvider.loginUser(phone, password);
       }
 
       if (!mounted) return;
@@ -431,11 +443,12 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final systemProvider = Provider.of<SystemProvider>(context);
+    // ✅ استبدال SystemProvider بـ SettingsProvider لجميع إعدادات المظهر
+    final settingsProvider = Provider.of<SettingsProvider>(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
     final colors = Theme.of(context).colorScheme;
 
-    if (systemProvider.isMaintenanceMode) {
+    if (settingsProvider.isMaintenanceMode) {
       return Scaffold(
         backgroundColor: themeProvider.primaryColor,
         body: Center(
@@ -459,7 +472,7 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       );
     }
 
-    if (systemProvider.isForcedUpdate) {
+    if (settingsProvider.isForcedUpdate) {
       return Scaffold(
         backgroundColor: themeProvider.primaryColor,
         body: Center(
@@ -484,15 +497,15 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
       );
     }
 
-    final List<String> carouselImages = systemProvider.loginCarouselImages;
-    final String welcomeMessage = systemProvider.loginWelcomeMessage.isNotEmpty ? systemProvider.loginWelcomeMessage : 'أهلاً بك في نظام كروت نت';
-    final CrossAxisAlignment columnAlign = systemProvider.appNameAlign == 'right' ? CrossAxisAlignment.start : (systemProvider.appNameAlign == 'left' ? CrossAxisAlignment.end : CrossAxisAlignment.center);
-    final String customFont = systemProvider.appNameFont;
-    final Color customColor = Color(systemProvider.appNameColor);
-    final String appName = systemProvider.appName.isNotEmpty ? systemProvider.appName : 'شبكة كروت نت';
+    final List<String> carouselImages = settingsProvider.loginCarouselImages;
+    final String welcomeMessage = settingsProvider.loginWelcomeMessage.isNotEmpty ? settingsProvider.loginWelcomeMessage : 'أهلاً بك في نظام كروت نت';
+    final CrossAxisAlignment columnAlign = settingsProvider.appNameAlign == 'right' ? CrossAxisAlignment.start : (settingsProvider.appNameAlign == 'left' ? CrossAxisAlignment.end : CrossAxisAlignment.center);
+    final String customFont = settingsProvider.appNameFont;
+    final Color customColor = Color(settingsProvider.appNameColor);
+    final String appName = settingsProvider.appName.isNotEmpty ? settingsProvider.appName : 'شبكة كروت نت';
 
     return Scaffold(
-      backgroundColor: Color(systemProvider.loginBgColor),
+      backgroundColor: Color(settingsProvider.loginBgColor),
       body: SafeArea(
         child: SingleChildScrollView(
           child: Column(
@@ -518,14 +531,14 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                     },
                   ),
                 ),
-                if (systemProvider.showNewsBar)
+                if (settingsProvider.showNewsBar)
                   Container(
                     width: double.infinity, height: 35,
-                    color: Color(systemProvider.marqueeBgColor),
+                    color: Color(settingsProvider.marqueeBgColor),
                     child: _CustomMarquee(
                       text: welcomeMessage,
-                      textColor: Color(systemProvider.marqueeTextColor),
-                      direction: systemProvider.marqueeDirection,
+                      textColor: Color(settingsProvider.marqueeTextColor),
+                      direction: settingsProvider.marqueeDirection,
                     ),
                   ),
                 const SizedBox(height: 20),
@@ -536,13 +549,13 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                     child: Column(
                       crossAxisAlignment: columnAlign,
                       children: [
-                        if (systemProvider.appLogoUrl.isNotEmpty) ...[
-                          ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(systemProvider.appLogoUrl, height: 100, fit: BoxFit.contain, errorBuilder: (c, e, s) => const SizedBox.shrink())),
+                        if (settingsProvider.appLogoUrl.isNotEmpty) ...[
+                          ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(settingsProvider.appLogoUrl, height: 100, fit: BoxFit.contain, errorBuilder: (c, e, s) => const SizedBox.shrink())),
                           const SizedBox(height: 15),
                         ],
                         Text(
                           appName,
-                          textAlign: systemProvider.appNameAlign == 'right' ? TextAlign.right : (systemProvider.appNameAlign == 'left' ? TextAlign.left : TextAlign.center),
+                          textAlign: settingsProvider.appNameAlign == 'right' ? TextAlign.right : (settingsProvider.appNameAlign == 'left' ? TextAlign.left : TextAlign.center),
                           style: customFont == 'System' || customFont.isEmpty
                               ? TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: customColor)
                               : GoogleFonts.getFont(customFont, textStyle: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: customColor)),
