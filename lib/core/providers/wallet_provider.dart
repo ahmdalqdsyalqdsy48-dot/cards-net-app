@@ -196,6 +196,16 @@ class WalletProvider extends ChangeNotifier {
 
   String? get activeUserPhone => _auth?.activeUserPhone;
 
+  // ✅ تمت الإضافة: رمز PIN الحالي للمستخدم المسجل دخوله
+  String get currentUserPin {
+    if (_auth?.activeUserPhone == null) return '';
+    final user = _usersDatabase.firstWhere(
+      (u) => u['phone'] == _auth!.activeUserPhone,
+      orElse: () => {'pin': '123456'},
+    );
+    return user['pin'] ?? '123456';
+  }
+
   // ---------- دوال المحافظ والتحويلات ----------
 
   Future<void> transferToUser({
@@ -704,5 +714,16 @@ class WalletProvider extends ChangeNotifier {
 
   Future<void> updateDangerLimit(String phone, double newLimit) async {
     await _db.collection('users').doc(phone).update({'dangerLimit': newLimit});
+  }
+
+  // ✅ تمت الإضافة: تحديث رمز PIN للمستخدم الحالي
+  Future<void> updateUserPin(String pin) async {
+    if (_auth?.activeUserPhone == null) return;
+    await _db.collection('users').doc(_auth!.activeUserPhone).update({'pin': pin});
+    final index = _usersDatabase.indexWhere((u) => u['phone'] == _auth!.activeUserPhone);
+    if (index != -1) {
+      _usersDatabase[index]['pin'] = pin;
+      notifyListeners();
+    }
   }
 }
