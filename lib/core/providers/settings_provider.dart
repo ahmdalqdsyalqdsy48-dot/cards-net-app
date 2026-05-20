@@ -412,7 +412,6 @@ class SettingsProvider extends ChangeNotifier {
 
   // ---------- دالة تسجيل الأحداث (مؤقتة) ----------
   void _logAction(String action, String details, String severity) {
-    // سننقل هذا إلى AuditProvider لاحقاً. حالياً نكتفي بالتسجيل في Firestore مباشرة.
     try {
       _db.collection('audit_logs').add({
         'action': action,
