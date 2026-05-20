@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/providers/theme_provider.dart';
 import 'core/providers/system_provider.dart';
+import 'core/providers/auth_provider.dart';        // ✅ تمت الإضافة
 import 'core/providers/ui_provider.dart';
 
 import 'features/auth/screens/sso_login_screen.dart';
@@ -74,7 +75,8 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (context) => ThemeProvider()),
-        ChangeNotifierProvider(create: (context) => SystemProvider()),
+        ChangeNotifierProvider(create: (context) => AuthProvider()),   // ✅ الجديد
+        ChangeNotifierProvider(create: (context) => SystemProvider()), // القديم
         ChangeNotifierProxyProvider<SystemProvider, UiProvider>(
           create: (context) => UiProvider(null),
           update: (context, systemProvider, previous) => UiProvider(
