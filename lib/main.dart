@@ -10,7 +10,8 @@ import 'core/providers/system_provider.dart';
 import 'core/providers/auth_provider.dart';
 import 'core/providers/settings_provider.dart';
 import 'core/providers/wallet_provider.dart';
-import 'core/providers/notification_provider.dart';   // ✅ تمت الإضافة
+import 'core/providers/notification_provider.dart';
+import 'core/providers/backup_provider.dart';          // ✅ تمت الإضافة
 import 'core/providers/ui_provider.dart';
 
 import 'features/auth/screens/sso_login_screen.dart';
@@ -85,8 +86,9 @@ void main() async {
         ),
         ChangeNotifierProvider<NotificationProvider>(
           create: (context) => NotificationProvider(context.read<AuthProvider>()),
-        ),                                                           // ✅ الجديد
-        ChangeNotifierProvider(create: (context) => SystemProvider()), // القديم
+        ),
+        ChangeNotifierProvider(create: (context) => BackupProvider()),   // ✅ الجديد
+        ChangeNotifierProvider(create: (context) => SystemProvider()),   // القديم
         ChangeNotifierProxyProvider<SystemProvider, UiProvider>(
           create: (context) => UiProvider(null),
           update: (context, systemProvider, previous) => UiProvider(
@@ -123,7 +125,6 @@ class _MyAppState extends State<MyApp> {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final systemProvider = Provider.of<SystemProvider>(context);
 
-    // إعادة بناء اللغة إذا تغيرت
     final newLang = systemProvider.getLanguageSync();
     if (newLang != _currentLang) {
       _currentLang = newLang;
@@ -152,7 +153,6 @@ class _MyAppState extends State<MyApp> {
       theme: themeProvider.lightTheme,
       darkTheme: themeProvider.darkTheme,
 
-      // ✅ تعريف المسارات للبحث
       routes: {
         '/super_admin_dashboard': (context) => const SuperAdminDashboard(),
         '/agent_management': (context) => const AgentManagementScreen(),
