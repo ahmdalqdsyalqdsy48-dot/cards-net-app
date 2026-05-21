@@ -17,35 +17,28 @@ class AuthProvider extends ChangeNotifier {
   SharedPreferences? _prefs;
 
   AuthProvider() {
-    // تحميل التوكن المحفوظ من ذاكرة الجهاز عند بدء التشغيل
     SharedPreferences.getInstance().then((prefs) {
       _prefs = prefs;
       _authToken = prefs.getString('authToken');
     });
   }
 
-  // ------------------- دوال الاتصال بالخادم -------------------
-  /// دالة مساعدة لإنشاء كائن ApiService بالتوكن الحالي
   ApiService _getApiService() {
     return ApiService(authToken: _authToken);
   }
 
-  // ------------------- الخصائص العامة (Getters) -------------------
+  // ---------- الخصائص الأساسية ----------
   String? get authToken => _authToken;
   String? get activeUserPhone => _activeUserPhone;
   String? get currentUserEmail => _currentUserEmail;
   String get currentUserRole => _currentUserRole;
   Map<String, bool> get currentUserPermissions => _currentUserPermissions;
 
-  /// هل يوجد مستخدم مسجل دخوله حالياً؟
   bool get isLoggedIn => _activeUserPhone != null && _authToken != null;
-
-  /// هل الدور الحالي هو المدير العام؟
   bool get isSuperAdmin => _currentUserRole == 'super_admin';
 
-  // ------------------- دوال تسجيل الدخول -------------------
+  // ---------- تسجيل الدخول ----------
   Future<Map<String, dynamic>?> loginUser(String phone, String password) async {
-    // أولاً نمسح أي بيانات قديمة
     clearAllData();
 
     try {
@@ -58,7 +51,6 @@ class AuthProvider extends ChangeNotifier {
       final user = result['user'] as Map<String, dynamic>;
       final token = result['token'] as String;
 
-      // تخزين معلومات الجلسة
       _authToken = token;
       _activeUserPhone = phone;
       _currentUserRole = user['role'] ?? 'user';
@@ -67,16 +59,10 @@ class AuthProvider extends ChangeNotifier {
             Map<String, bool>.from(user['permissions']);
       }
 
-      // حفظ التوكن محلياً
       await _prefs?.setString('authToken', token);
-
-      // مزامنة بيانات المستخدم من Firestore
       await _loadUserData(phone);
-
-      // التأكد من وجود رقم حساب للمستخدم
       await _ensureUserAccountNumber();
 
-      // تسجيل الحدث في سجل التدقيق
       await _logAction(
         action: 'تسجيل دخول',
         details: 'تم تسجيل الدخول',
@@ -91,11 +77,9 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// تسجيل دخول سريع باستخدام PIN
   Future<Map<String, dynamic>?> loginWithPin(String phone, String pin) async {
     if (_activeUserPhone != null) clearAllData();
 
-    // حساب خاص للاختبار (يفضل نقله لملف .env لاحقاً)
     if (phone == '774578241' && pin == '123456') {
       return loginUser('774578241', '75486958aaa');
     }
@@ -115,7 +99,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// تسجيل مستخدم جديد (يرسل البيانات للخادم)
   Future<void> registerNewUser({
     required String name,
     required String phone,
@@ -130,13 +113,11 @@ class AuthProvider extends ChangeNotifier {
       'role': role,
     }, authenticate: false);
 
-    // بعد التسجيل، يمكننا تفعيل الجلسة
     _activeUserPhone = phone;
     _currentUserRole = role;
     notifyListeners();
   }
 
-  // ------------------- تحميل بيانات المستخدم -------------------
   Future<void> _loadUserData(String phone) async {
     try {
       final doc = await _db.collection('users').doc(phone).get();
@@ -150,7 +131,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // ------------------- التأكد من رقم الحساب -------------------
   Future<void> _ensureUserAccountNumber() async {
     if (_activeUserPhone == null) return;
     try {
@@ -158,7 +138,7 @@ class AuthProvider extends ChangeNotifier {
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
         if (data['accountNumber'] == null) {
-          // سيتم نقل التوليد الكامل لاحقاً إلى WalletProvider
+          // التوليد الكامل في WalletProvider
         }
       }
     } catch (e) {
@@ -166,7 +146,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // ------------------- تسجيل أحداث المراقبة -------------------
   Future<void> _logAction({
     required String action,
     required String details,
@@ -198,7 +177,6 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // ------------------- تسجيل الخروج -------------------
   void clearAllData() {
     _authToken = null;
     _activeUserPhone = null;
@@ -209,13 +187,11 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ------------------- دوال مساعدة للصلاحيات -------------------
   bool hasPermission(String permissionName) {
     if (_currentUserRole == 'super_admin') return true;
     return _currentUserPermissions[permissionName] ?? false;
   }
 
-  // ✅ تمت الإضافة: التحقق من وجود مستخدم برقم هاتف معين
   Future<bool> checkUserExists(String phone) async {
     try {
       final doc = await _db
@@ -227,5 +203,34 @@ class AuthProvider extends ChangeNotifier {
     } catch (e) {
       return false;
     }
+  }
+
+  // ---------- القفل التلقائي للجلسة ----------
+  Future<void> setAutoLockEnabled(bool value) async {
+    if (_activeUserPhone == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('agent_autoLock', value);
+    await prefs.setInt('agent_lastActivity', DateTime.now().millisecondsSinceEpoch);
+  }
+
+  Future<bool> checkAutoLockAndRedirect(BuildContext context) async {
+    final prefs = await SharedPreferences.getInstance();
+    final autoLock = prefs.getBool('agent_autoLock') ?? false;
+    if (!autoLock) return false;
+
+    final lastActivity = prefs.getInt('agent_lastActivity') ?? DateTime.now().millisecondsSinceEpoch;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final diffMinutes = (now - lastActivity) / (1000 * 60);
+
+    if (diffMinutes >= 3) {
+      Navigator.pushReplacementNamed(context, '/lock_screen');
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> updateLastActivity() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('agent_lastActivity', DateTime.now().millisecondsSinceEpoch);
   }
 }
