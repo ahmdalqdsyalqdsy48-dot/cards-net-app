@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsProvider extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -66,9 +67,18 @@ class SettingsProvider extends ChangeNotifier {
   // ---------- متنوع ----------
   int _smsBalance = 0;
 
+  // ---------- SharedPreferences للغة والطابعة ----------
+  SharedPreferences? _prefs;
+
   // ---------- المُنشئ مع مستمع Firestore ----------
   SettingsProvider() {
     _initSettingsSync();
+    _initPrefs();
+  }
+
+  void _initPrefs() async {
+    _prefs = await SharedPreferences.getInstance();
+    notifyListeners();
   }
 
   void _initSettingsSync() {
@@ -408,6 +418,36 @@ class SettingsProvider extends ChangeNotifier {
         .collection('system')
         .doc('main_info')
         .update({'newsScrollSpeed': newSpeed});
+  }
+
+  // ---------- دوال اللغة (مضافة من SystemProvider) ----------
+  String getLanguageSync() {
+    if (_prefs == null) return 'ar';
+    return _prefs!.getString('language') ?? 'ar';
+  }
+
+  Future<void> saveLanguage(String langCode) async {
+    if (_prefs == null) {
+      _prefs = await SharedPreferences.getInstance();
+    }
+    await _prefs!.setString('language', langCode);
+    notifyListeners();
+  }
+
+  Future<void> changeAppLanguage(String langCode) async {
+    await saveLanguage(langCode);
+    notifyListeners();
+  }
+
+  // ---------- دوال الطابعة (مضافة من SystemProvider) ----------
+  Future<void> setPrinterConnected(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('agent_printer_connected', value);
+  }
+
+  Future<bool> isPrinterConnected() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('agent_printer_connected') ?? false;
   }
 
   // ---------- دالة تسجيل الأحداث (مؤقتة) ----------
