@@ -1,21 +1,21 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart'; 
-import 'package:provider/provider.dart'; 
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:intl/intl.dart' as intl;
-import 'dart:async'; // 👈 ضروري للعداد التنازلي
 
-import '../../../core/providers/system_provider.dart'; 
-import '../../../core/providers/ui_provider.dart'; 
-import '../../../core/providers/theme_provider.dart'; // 👈 ضروري لتلوين البوستر
-import '../../../core/widgets/custom_header.dart'; 
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
+import '../../../core/providers/ui_provider.dart';
+import '../../../core/providers/theme_provider.dart';
+import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_user_drawer.dart';
 
-// استدعاء الشاشات للانتقال إليها
 import 'user_wallet_screen.dart';
 import 'network_store_screen.dart';
 import 'my_cards_screen.dart';
@@ -31,110 +31,306 @@ class UserDashboardScreen extends StatefulWidget {
 }
 
 class _UserDashboardScreenState extends State<UserDashboardScreen> {
-  // 👈 الاتصال بقاعدة البيانات لجلب العروض
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // دالة موحدة للانتقال بين الشاشات بسهولة مع صوت
+  // تاريخي الفلترة (منفصلان)
+  DateTime? _startDate;
+  DateTime? _endDate;
+
+  final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey = GlobalKey<RefreshIndicatorState>();
+
   void _goTo(Widget screen) {
-    Provider.of<UiProvider>(context, listen: false).playSound('click');
-    Navigator.push(
-      context, 
-      MaterialPageRoute(builder: (context) => screen)
+    context.read<UiProvider>().playSound('click');
+    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+  }
+
+  void _play(String type) => context.read<UiProvider>().playSound(type);
+
+  // ============ اختيار التواريخ ============
+  Future<void> _pickStartDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _startDate ?? DateTime.now(),
+      firstDate: DateTime(2023),
+      lastDate: DateTime(2030),
+      helpText: 'اختر تاريخ البداية',
+      builder: (context, child) => Directionality(textDirection: TextDirection.rtl, child: child!),
+    );
+    if (picked != null && picked != _startDate) {
+      setState(() => _startDate = picked);
+    }
+  }
+
+  Future<void> _pickEndDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _endDate ?? (_startDate ?? DateTime.now()),
+      firstDate: _startDate ?? DateTime(2023),
+      lastDate: DateTime(2030),
+      helpText: 'اختر تاريخ النهاية',
+      builder: (context, child) => Directionality(textDirection: TextDirection.rtl, child: child!),
+    );
+    if (picked != null && picked != _endDate) {
+      setState(() => _endDate = picked);
+    }
+  }
+
+  void _resetDateFilter() {
+    setState(() {
+      _startDate = null;
+      _endDate = null;
+    });
+    _play('click');
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم إعادة التعيين إلى عرض الكروت بالكامل 📅', textDirection: TextDirection.rtl), backgroundColor: Colors.green),
     );
   }
 
-  void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
+  String _formatDate(DateTime date) {
+    return '${date.year}/${date.month}/${date.day}';
+  }
 
+  // ============ البناء الرئيسي ============
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final themeProvider = context.watch<ThemeProvider>();
     
-    // الاتصال بالعقل المدبر وتوفير الثيم
-    final systemProvider = Provider.of<SystemProvider>(context);
-    final themeProvider = Provider.of<ThemeProvider>(context);
-    final String role = systemProvider.currentUserRole; 
-    final bool isPos = role == 'pos'; 
+    final auth = context.watch<AuthProvider>();
+    final wallet = context.watch<WalletProvider>();
+    final uiProvider = context.read<UiProvider>();
+    
+    final String role = auth.currentUserRole;
+    final bool isPos = role == 'pos';
 
-    final double realBalance = systemProvider.currentUserBalance;
-    final List<Map<String, dynamic>> purchasedCards = systemProvider.userPurchasedCards;
+    final double realBalance = wallet.currentUserBalance;
+    final List<Map<String, dynamic>> purchasedCards = wallet.userPurchasedCards;
+
+    // فلترة الكروت إذا تم اختيار فترة
+    List<Map<String, dynamic>> filteredCards = purchasedCards;
+    if (_startDate != null || _endDate != null) {
+      filteredCards = purchasedCards.where((card) {
+        try {
+          final dateStr = card['date'] ?? '';
+          if (dateStr.isEmpty) return false;
+          final date = DateTime.parse(dateStr);
+          if (_startDate != null && date.isBefore(_startDate!)) return false;
+          if (_endDate != null && date.isAfter(_endDate!.add(const Duration(days: 1)))) return false;
+          return true;
+        } catch (e) {
+          return false;
+        }
+      }).toList();
+    }
+
     final bool hasActiveCard = purchasedCards.isNotEmpty;
+    final bool hasFilteredCards = filteredCards.isNotEmpty;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: const CustomHeader(title: 'الرئيسية'),
       drawer: CustomUserDrawer(
-        userName: systemProvider.currentUserName,
-        phoneNumber: systemProvider.currentUserPhone,
+        userName: wallet.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
       ),
-      body: Directionality(
-        textDirection: TextDirection.rtl,
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ==========================================
-              // 🌟 التمييز البصري للبقالات (يظهر للبقالة فقط)
-              // ==========================================
-              if (isPos)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [Colors.purple.shade700, Colors.purple.shade500]),
+      body: RefreshIndicator(
+        key: _refreshIndicatorKey,
+        onRefresh: () async {
+          setState(() {});
+          await Future.delayed(const Duration(milliseconds: 300));
+        },
+        child: CustomScrollView(
+          slivers: [
+            // شريط علوي متحرك
+            SliverAppBar(
+              floating: true,
+              snap: true,
+              pinned: false,
+              title: const Text('الرئيسية', style: TextStyle(color: Colors.white)),
+              backgroundColor: themeProvider.primaryColor,
+              iconTheme: const IconThemeData(color: Colors.white),
+              actions: [
+                if (_startDate != null || _endDate != null)
+                  IconButton(
+                    icon: const Icon(Icons.clear_all),
+                    tooltip: 'إعادة تعيين الفلترة',
+                    onPressed: _resetDateFilter,
                   ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.verified_user, color: Colors.amber, size: 20),
-                      SizedBox(width: 8),
-                      Text('نقطة بيع معتمدة 🏪 (أسعار الجملة مفعلة)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                    ],
+              ],
+            ),
+
+            // شريط اختيار التواريخ (نافذتين منفصلتين) + التمييز البصري للبقالات
+            SliverToBoxAdapter(
+              child: Column(
+                children: [
+                  if (isPos)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: [Colors.purple.shade700, Colors.purple.shade500]),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.verified_user, color: Colors.amber, size: 20),
+                          SizedBox(width: 8),
+                          Text('نقطة بيع معتمدة 🏪 (أسعار الجملة مفعلة)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                        ],
+                      ),
+                    ),
+
+                  // شريط الفلترة
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: isDark ? themeProvider.primaryColor.withOpacity(0.4) : themeProvider.primaryColor.withOpacity(0.8),
+                      borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _pickStartDate,
+                                icon: const Icon(Icons.date_range, color: Colors.blueAccent),
+                                label: Text(
+                                  _startDate == null ? 'بداية الفترة' : _formatDate(_startDate!),
+                                  style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isDark ? Colors.grey.shade800 : Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _pickEndDate,
+                                icon: const Icon(Icons.date_range, color: Colors.orangeAccent),
+                                label: Text(
+                                  _endDate == null ? 'نهاية الفترة' : _formatDate(_endDate!),
+                                  style: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isDark ? Colors.grey.shade800 : Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (_startDate != null || _endDate != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              'عرض الكروت من ${_startDate != null ? _formatDate(_startDate!) : "البداية"} إلى ${_endDate != null ? _formatDate(_endDate!) : "اليوم"}',
+                              style: TextStyle(color: Colors.white70, fontSize: 12),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
+                ],
+              ),
+            ),
 
-              // 1. بطاقة الرصيد الفاخرة
-              _buildBalanceCard(realBalance, isPos),
+            // محتوى الشاشة
+            SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 10),
+                  // بطاقة الرصيد
+                  _buildBalanceCard(realBalance, isPos),
+                  
+                  // الأزرار السريعة
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildQuickActionBtn(Icons.wifi, isPos ? 'سوق الشبكات' : 'شراء كرت', isPos ? Colors.purple : Colors.orange, () => _goTo(const NetworkStoreScreen())),
+                        _buildQuickActionBtn(Icons.send_to_mobile, isPos ? 'تغذية رصيد' : 'شحن محفظة', Colors.teal, () => _goTo(const UserWalletScreen())),
+                        _buildQuickActionBtn(Icons.receipt_long, 'مشترياتي', Colors.redAccent, () => _goTo(const MyCardsScreen())),
+                        if (isPos)
+                          _buildQuickActionBtn(Icons.bar_chart, 'مبيعاتي', Colors.blueGrey, () {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('شاشة تقارير البقالة قيد التطوير 🛠️')));
+                          })
+                        else
+                          _buildQuickActionBtn(Icons.stars, 'المكافآت', Colors.amber, () => _goTo(const RewardsScreen())),
+                      ],
+                    ),
+                  ),
 
-              // 2. الأزرار السريعة للعمليات
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildQuickActionBtn(Icons.wifi, isPos ? 'سوق الشبكات' : 'شراء كرت', isPos ? Colors.purple : Colors.orange, () => _goTo(const NetworkStoreScreen())),
-                    _buildQuickActionBtn(Icons.send_to_mobile, isPos ? 'تغذية رصيد' : 'شحن محفظة', Colors.teal, () => _goTo(const UserWalletScreen())),
-                    _buildQuickActionBtn(Icons.receipt_long, 'مشترياتي', Colors.redAccent, () => _goTo(const MyCardsScreen())),
-                    
-                    if (isPos)
-                      _buildQuickActionBtn(Icons.bar_chart, 'مبيعاتي', Colors.blueGrey, () {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('شاشة تقارير البقالة قيد التطوير 🛠️')));
-                      })
+                  const SizedBox(height: 25),
+
+                  // قسم الكروت المفلترة
+                  if (_startDate != null || _endDate != null) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        hasFilteredCards ? 'الكروت المشتراة في الفترة المحددة (${filteredCards.length})' : 'لا توجد كروت في هذه الفترة',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    if (hasFilteredCards)
+                      ...filteredCards.map((card) => _buildPurchasedCardTile(card, isPos)).toList()
                     else
-                      _buildQuickActionBtn(Icons.stars, 'المكافآت', Colors.amber, () => _goTo(const RewardsScreen())),
+                      const Padding(
+                        padding: EdgeInsets.all(20),
+                        child: Center(child: Text('لا توجد كروت مطابقة للفترة المحددة', style: TextStyle(color: Colors.grey))),
+                      ),
+                  ] else if (hasActiveCard) ...[
+                    _buildActiveCardSection(isDark, purchasedCards.last, isPos),
                   ],
-                ),
+
+                  const SizedBox(height: 20),
+
+                  // قسم العروض الإعلانية
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(isPos ? 'عروض الوكلاء ونقاط البيع 🔥' : 'عروض حصرية لك 🔥', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  ),
+                  const SizedBox(height: 10),
+                  _buildPromoSection(wallet, themeProvider),
+                  
+                  const SizedBox(height: 30),
+                ],
               ),
-
-              const SizedBox(height: 25),
-
-              // 3. قسم الكرت النشط
-              if (hasActiveCard) _buildActiveCardSection(isDark, purchasedCards.last, isPos),
-
-              // 4. قسم العروض الإعلانية المطوّر 🎟️
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(isPos ? 'عروض الوكلاء ونقاط البيع 🔥' : 'عروض حصرية لك 🔥', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              ),
-              const SizedBox(height: 10),
-              _buildPromoSection(systemProvider, themeProvider),
-              
-              const SizedBox(height: 30),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
+  // ============ ويدجت الكرت المشترى في الفلترة ============
+  Widget _buildPurchasedCardTile(Map<String, dynamic> card, bool isPos) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: isPos ? Colors.purple.withOpacity(0.2) : Colors.green.withOpacity(0.2),
+          child: Icon(Icons.credit_card, color: isPos ? Colors.purple : Colors.green),
+        ),
+        title: Text(card['title'] ?? 'كرت غير معروف'),
+        subtitle: Text('PIN: ${card['pin'] ?? 'غير متوفر'}'),
+        trailing: Text(card['date'] ?? '', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+      ),
+    );
+  }
+
+  // ============ بطاقة الرصيد ============
   Widget _buildBalanceCard(double balance, bool isPos) {
     return Container(
       width: double.infinity,
@@ -142,7 +338,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: isPos ? [Colors.purple.shade900, Colors.purple.shade600] : [Colors.blue.shade900, Colors.blue.shade500], 
+          colors: isPos ? [Colors.purple.shade900, Colors.purple.shade600] : [Colors.blue.shade900, Colors.blue.shade500],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -239,12 +435,12 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                   const Text('المدة: راجع تفاصيل الكرت', style: TextStyle(color: Colors.orange, fontSize: 11, fontWeight: FontWeight.bold)),
                   Row(
                     children: [
-                      if (isPos) 
+                      if (isPos)
                         IconButton(
                           onPressed: () {
                             _play('click');
                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ميزة المشاركة جاهزة للربط', textDirection: TextDirection.rtl)));
-                          }, 
+                          },
                           icon: const Icon(Icons.share, size: 18, color: Colors.teal), padding: EdgeInsets.zero, constraints: const BoxConstraints(),
                         ),
                       if (isPos) const SizedBox(width: 15),
@@ -253,7 +449,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                           _play('success');
                           Clipboard.setData(ClipboardData(text: actualPin));
                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم النسخ بنجاح ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
-                        }, 
+                        },
                         icon: const Icon(Icons.copy, size: 18, color: Colors.blue), padding: EdgeInsets.zero, constraints: const BoxConstraints(),
                       ),
                     ],
@@ -277,9 +473,9 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   // ==========================================
-  // بناء قسم العروض الإعلانية الترويجية (يدعم الهاتف أو رقم الحساب)
+  // بناء قسم العروض الإعلانية الترويجية (معدلة لاستخدام WalletProvider)
   // ==========================================
-  Widget _buildPromoSection(SystemProvider sys, ThemeProvider theme) {
+  Widget _buildPromoSection(WalletProvider wallet, ThemeProvider theme) {
     return StreamBuilder<QuerySnapshot>(
       stream: _db.collection('coupons').snapshots(),
       builder: (context, snapshot) {
@@ -290,9 +486,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
         if (snapshot.hasError) {
           return SizedBox(
             height: 180,
-            child: Center(
-                child: Text('تعذر تحميل العروض',
-                    style: TextStyle(color: Colors.grey))),
+            child: Center(child: Text('تعذر تحميل العروض', style: TextStyle(color: Colors.grey))),
           );
         }
 
@@ -303,7 +497,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
         var activeCoupons = snapshot.data!.docs.map((doc) => doc.data() as Map<String, dynamic>).where((offer) {
           try {
             if (offer['isActive'] != true) return false;
-            
             if (offer['expiryDate'] == null) return false;
             final Timestamp expiryTs = offer['expiryDate'] as Timestamp;
             final DateTime expiry = expiryTs.toDate();
@@ -313,16 +506,13 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
             final int max = offer['maxUsage'] ?? 1;
             if (current >= max) return false;
 
-            // 🆕 التحقق من رقم الهاتف أو رقم الحساب
             final String targetId = (offer['targetPhone'] ?? '').toString().trim();
             if (targetId.isNotEmpty) {
-              // يقارن برقم الهاتف وبرقم الحساب
-              if (targetId != sys.currentUserPhone &&
-                  targetId != (sys.currentUserAccountNumber ?? '')) {
+              if (targetId != wallet.activeUserPhone &&
+                  targetId != (wallet.currentUserAccountNumber ?? '')) {
                 return false;
               }
             }
-
             return true;
           } catch (e) {
             return false;
@@ -340,14 +530,14 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
         }
 
         return SizedBox(
-          height: 170, // تم التوسيع لاستيعاب العداد التنازلي والأزرار
+          height: 170,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: activeCoupons.length,
             itemBuilder: (context, index) {
               var offer = activeCoupons[index];
-              List<Color> gradientColors = index % 2 == 0 
+              List<Color> gradientColors = index % 2 == 0
                   ? [Colors.orange.shade400, Colors.deepOrange]
                   : [Colors.purple.shade400, Colors.deepPurple];
 
@@ -359,11 +549,10 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
     );
   }
 
-  // بناء كرت العرض الديناميكي المربوط بالكوبون
   Widget _buildDynamicPromoBanner(Map<String, dynamic> offer, List<Color> colors, ThemeProvider theme) {
     String discountTitle = '';
     String subTitle = '';
-    
+
     if (offer['discountType'] == 'percent') {
       discountTitle = 'خصم ${offer['discountValue']}%';
       subTitle = 'استخدم الكود: ${offer['code']}';
@@ -386,12 +575,10 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
         _play('success');
         Clipboard.setData(ClipboardData(text: offer['code']));
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم نسخ الكود: ${offer['code']}! جاري نقلك للمتجر 🛒', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
-        
-        // 👈 التوجيه المباشر (Deep Linking) لمتجر الشبكات
-        Navigator.push(context, MaterialPageRoute(builder: (context) => const NetworkStoreScreen()));
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const NetworkStoreScreen()));
       },
       child: Container(
-        width: 300, // أعرض قليلاً
+        width: 300,
         margin: const EdgeInsets.only(left: 10),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -409,17 +596,12 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                 const SizedBox(height: 5),
                 Text(subTitle, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                
                 if (network.isNotEmpty && network != 'الكل')
                   Text('🌐 صالح لشبكة: $network', style: const TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.bold))
                 else
                   const Text('🌐 صالح لجميع الشبكات', style: TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.bold)),
-                
                 const SizedBox(height: 8),
-                
-                // ⏱️ العداد التنازلي الحي (FOMO Timer)
                 _LiveCountdownTimer(expiryDate: expiryDate),
-                
                 if (offer['isHappyHour'] == true)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
@@ -427,8 +609,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                   ),
               ],
             ),
-            
-            // 📲 زر المشاركة في الزاوية
             Positioned(
               top: -10,
               left: -10,
@@ -443,16 +623,13 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
     );
   }
 
-  // ==========================================
-  // 📲 وظائف المشاركة المتقدمة للمستخدم النهائي
-  // ==========================================
   void _showSharePosterDialog(Map<String, dynamic> offer, ThemeProvider theme) {
     _play('click');
     final GlobalKey posterKey = GlobalKey();
 
     String discountTitle = '';
     String subTitle = '';
-    
+
     if (offer['discountType'] == 'percent') {
       discountTitle = 'خصم ${offer['discountValue']}%';
       subTitle = 'على مشترياتك من الكروت';
@@ -477,7 +654,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 🖼️ البوستر
               RepaintBoundary(
                 key: posterKey,
                 child: Container(
@@ -498,13 +674,11 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                       Text(discountTitle, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 5),
                       Text(subTitle, style: const TextStyle(color: Colors.white70, fontSize: 16), textAlign: TextAlign.center),
-                      
                       if (offer['targetNetwork'] != null && offer['targetNetwork'] != '' && offer['targetNetwork'] != 'الكل')
                         Padding(
                           padding: const EdgeInsets.only(top: 8.0),
                           child: Text('صالح لشبكة: ${offer['targetNetwork']}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 14, fontWeight: FontWeight.bold)),
                         ),
-                        
                       const SizedBox(height: 20),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -517,7 +691,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                   ),
                 ),
               ),
-              // أزرار المشاركة
               Padding(
                 padding: const EdgeInsets.all(15.0),
                 child: Row(
@@ -584,7 +757,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
       ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData != null) {
         Uint8List pngBytes = byteData.buffer.asUint8List();
-        Navigator.pop(context); 
+        Navigator.pop(context);
         await Share.shareXFiles([XFile.fromData(pngBytes, mimeType: 'image/png', name: 'coupon_$code.png')], text: 'استخدم هذا الكود الآن! 🔥');
       }
     } catch (e) {
@@ -595,7 +768,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
 }
 
 // ==========================================
-// ⏱️ الويدجت المستقل للعداد التنازلي الحي (يمنع إعادة بناء الشاشة بالكامل)
+// ⏱️ الويدجت المستقل للعداد التنازلي الحي
 // ==========================================
 class _LiveCountdownTimer extends StatefulWidget {
   final DateTime expiryDate;
@@ -637,7 +810,7 @@ class __LiveCountdownTimerState extends State<_LiveCountdownTimer> {
   @override
   Widget build(BuildContext context) {
     if (_timeLeft == Duration.zero) return const Text('انتهى العرض', style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold));
-    
+
     int days = _timeLeft.inDays;
     int hours = _timeLeft.inHours % 24;
     int minutes = _timeLeft.inMinutes % 60;
