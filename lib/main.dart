@@ -13,7 +13,8 @@ import 'core/providers/wallet_provider.dart';
 import 'core/providers/notification_provider.dart';
 import 'core/providers/backup_provider.dart';
 import 'core/providers/coupon_provider.dart';
-import 'core/providers/audit_provider.dart';             // ✅ الأخير
+import 'core/providers/audit_provider.dart';
+import 'core/providers/agent_admin_provider.dart';
 import 'core/providers/ui_provider.dart';
 
 import 'features/auth/screens/sso_login_screen.dart';
@@ -80,19 +81,37 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
+        // --- المزودات المستقلة ---
         ChangeNotifierProvider(create: (context) => ThemeProvider()),
         ChangeNotifierProvider(create: (context) => AuthProvider()),
         ChangeNotifierProvider(create: (context) => SettingsProvider()),
+
+        // --- المزودات التي تعتمد على غيرها ---
         ChangeNotifierProvider<WalletProvider>(
-          create: (context) => WalletProvider(context.read<AuthProvider>()),
+          create: (context) {
+            final auth = context.read<AuthProvider>();
+            final settings = context.read<SettingsProvider>();
+            return WalletProvider(auth, settings: settings);
+          },
         ),
         ChangeNotifierProvider<NotificationProvider>(
           create: (context) => NotificationProvider(context.read<AuthProvider>()),
         ),
+        ChangeNotifierProvider<AgentAdminProvider>(
+          create: (context) {
+            final auth = context.read<AuthProvider>();
+            final wallet = context.read<WalletProvider>();
+            return AgentAdminProvider(auth, wallet);
+          },
+        ),
+
+        // --- المزودات المستقلة المتبقية ---
         ChangeNotifierProvider(create: (context) => BackupProvider()),
         ChangeNotifierProvider(create: (context) => CouponProvider()),
-        ChangeNotifierProvider(create: (context) => AuditProvider()),    // ✅ الأخير
-        ChangeNotifierProvider(create: (context) => SystemProvider()),   // القديم باقٍ
+        ChangeNotifierProvider(create: (context) => AuditProvider()),
+
+        // --- القديم (مؤقت) ---
+        ChangeNotifierProvider(create: (context) => SystemProvider()),
         ChangeNotifierProxyProvider<SystemProvider, UiProvider>(
           create: (context) => UiProvider(null),
           update: (context, systemProvider, previous) => UiProvider(
@@ -127,15 +146,18 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
+    // ما زلنا نقرأ اللغة من SystemProvider مؤقتاً
     final systemProvider = Provider.of<SystemProvider>(context);
+    final settingsProvider = Provider.of<SettingsProvider>(context);
 
-    final newLang = systemProvider.getLanguageSync();
+    // محاولة قراءة اللغة من SettingsProvider أولاً
+    final newLang = settingsProvider.getLanguageSync();
     if (newLang != _currentLang) {
       _currentLang = newLang;
     }
 
     return MaterialApp(
-      title: 'نظام كروت نت',
+      title: settingsProvider.appName,
       debugShowCheckedModeBanner: false,
       locale: Locale(_currentLang),
       supportedLocales: const [Locale('en'), Locale('ar')],
