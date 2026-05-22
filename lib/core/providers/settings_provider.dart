@@ -30,6 +30,10 @@ class SettingsProvider extends ChangeNotifier {
   String _termsAndConditions = '';
   String _supportNumbers = '';
 
+  // ---------- متغيرات المالية العامة ----------
+  double _adminMainBalance = 0.0;
+  int _totalSystemCards = 0;
+
   // ---------- متغيرات بوابة الوكلاء ----------
   List<String> _agentUniversalHiddenSections = [];
   List<Map<String, dynamic>> _agentBanners = [];
@@ -111,6 +115,10 @@ class SettingsProvider extends ChangeNotifier {
         _termsAndConditions = data['termsAndConditions'] ?? '';
         _supportNumbers = data['supportNumbers'] ?? '';
 
+        // المفقودين
+        _adminMainBalance = (data['adminMainBalance'] ?? 0.0).toDouble();
+        _totalSystemCards = data['totalSystemCards'] ?? 0;
+
         _agentUniversalHiddenSections =
             List<String>.from(data['agentUniversalHiddenSections'] ?? []);
         _hideProfitEnabled = data['hideProfitEnabled'] ?? false;
@@ -173,6 +181,9 @@ class SettingsProvider extends ChangeNotifier {
   String get minimumChargeLimit => _minimumChargeLimit;
   String get termsAndConditions => _termsAndConditions;
   String get supportNumbers => _supportNumbers;
+
+  double get adminMainBalance => _adminMainBalance;
+  int get totalSystemCards => _totalSystemCards;
 
   List<String> get agentUniversalHiddenSections => _agentUniversalHiddenSections;
   List<Map<String, dynamic>> get agentBanners => _agentBanners;
@@ -420,7 +431,7 @@ class SettingsProvider extends ChangeNotifier {
         .update({'newsScrollSpeed': newSpeed});
   }
 
-  // ---------- دوال اللغة (مضافة من SystemProvider) ----------
+  // ---------- دوال اللغة ----------
   String getLanguageSync() {
     if (_prefs == null) return 'ar';
     return _prefs!.getString('language') ?? 'ar';
@@ -439,7 +450,7 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---------- دوال الطابعة (مضافة من SystemProvider) ----------
+  // ---------- دوال الطابعة ----------
   Future<void> setPrinterConnected(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('agent_printer_connected', value);
@@ -450,7 +461,7 @@ class SettingsProvider extends ChangeNotifier {
     return prefs.getBool('agent_printer_connected') ?? false;
   }
 
-  // ---------- دالة تسجيل الأحداث (مؤقتة) ----------
+  // ---------- دالة تسجيل الأحداث ----------
   void _logAction(String action, String details, String severity) {
     try {
       _db.collection('audit_logs').add({
