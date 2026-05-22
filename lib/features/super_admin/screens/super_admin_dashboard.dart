@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -6,7 +7,9 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/settings_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart';
@@ -19,7 +22,7 @@ import 'agent_management_screen.dart';
 import 'sms_gateway_screen.dart';
 import 'settings_screen.dart';
 import 'banners_screen.dart';
-import 'advanced_reset_screen.dart'; // ✅ جديد
+import 'advanced_reset_screen.dart';
 
 class SuperAdminDashboard extends StatefulWidget {
   const SuperAdminDashboard({super.key});
@@ -29,39 +32,76 @@ class SuperAdminDashboard extends StatefulWidget {
 }
 
 class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
+  // تاريخي الفلترة (منفصلان)
+  DateTime? _startDate;
+  DateTime? _endDate;
 
-  Future<void> _selectDateRange(SystemProvider provider, UiProvider uiProvider) async {
-    uiProvider.playSound('click');
-    final DateTimeRange? picked = await showDateRangePicker(
+  // مفتاح التجديد (RefreshIndicator)
+  final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey = GlobalKey<RefreshIndicatorState>();
+
+  // ============ دوال التاريخ ============
+  Future<void> _pickStartDate() async {
+    final picked = await showDatePicker(
       context: context,
-      initialDateRange: provider.dashboardDateRange ?? DateTimeRange(start: DateTime.now(), end: DateTime.now()),
+      initialDate: _startDate ?? DateTime.now(),
       firstDate: DateTime(2023),
       lastDate: DateTime(2030),
-      helpText: 'حدد فترة الفلترة (من - إلى)',
-      cancelText: 'إلغاء',
-      confirmText: 'تأكيد الفلترة',
+      helpText: 'اختر تاريخ البداية',
       builder: (context, child) => Directionality(textDirection: TextDirection.rtl, child: child!),
     );
-
-    if (picked != null && picked != provider.dashboardDateRange) {
-      provider.setDashboardDateRange(picked);
-      uiProvider.playSound('success');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم تحديث الإحصائيات للفترة من ${_formatDate(picked.start)} إلى ${_formatDate(picked.end)} 📊', textDirection: TextDirection.rtl), backgroundColor: Colors.green)
-      );
+    if (picked != null && picked != _startDate) {
+      setState(() => _startDate = picked);
+      _updateDashboardRange();
     }
+  }
+
+  Future<void> _pickEndDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _endDate ?? (_startDate ?? DateTime.now()),
+      firstDate: _startDate ?? DateTime(2023),
+      lastDate: DateTime(2030),
+      helpText: 'اختر تاريخ النهاية',
+      builder: (context, child) => Directionality(textDirection: TextDirection.rtl, child: child!),
+    );
+    if (picked != null && picked != _endDate) {
+      setState(() => _endDate = picked);
+      _updateDashboardRange();
+    }
+  }
+
+  void _updateDashboardRange() {
+    final wallet = context.read<WalletProvider>();
+    if (_startDate != null && _endDate != null) {
+      wallet.setDashboardDateRange(DateTimeRange(start: _startDate!, end: _endDate!));
+    } else {
+      wallet.setDashboardDateRange(null);
+    }
+  }
+
+  void _resetDateFilter() {
+    setState(() {
+      _startDate = null;
+      _endDate = null;
+    });
+    context.read<WalletProvider>().setDashboardDateRange(null);
+    context.read<UiProvider>().playSound('click');
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم إعادة التعيين إلى إحصائيات اليوم 📅', textDirection: TextDirection.rtl), backgroundColor: Colors.green),
+    );
   }
 
   String _formatDate(DateTime date) {
     return '${date.year}/${date.month}/${date.day}';
   }
 
-  void _navigateTo(Widget screen, UiProvider uiProvider) {
-    uiProvider.playSound('click');
-    Navigator.push(context, MaterialPageRoute(builder: (context) => screen));
+  // ============ التنقل والطباعة ============
+  void _navigateTo(Widget screen) {
+    context.read<UiProvider>().playSound('click');
+    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
 
-  Future<void> _generateAndPrintPDF(SystemProvider provider, UiProvider uiProvider, String topAgent, int agentsDanger, double pendingTotal) async {
+  Future<void> _generateAndPrintPDF(WalletProvider wallet, UiProvider uiProvider, String topAgent, int agentsDanger, double pendingTotal) async {
     uiProvider.playSound('click');
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري تجهيز تقرير الـ PDF... 📄', textDirection: TextDirection.rtl)));
     
@@ -69,9 +109,9 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     final arabicFont = await PdfGoogleFonts.cairoRegular();
     final arabicFontBold = await PdfGoogleFonts.cairoBold();
 
-    String dateText = provider.dashboardDateRange == null 
+    String dateText = (wallet.dashboardDateRange == null) 
         ? 'تقرير مبيعات اليوم' 
-        : 'تقرير من: ${_formatDate(provider.dashboardDateRange!.start)} إلى ${_formatDate(provider.dashboardDateRange!.end)}';
+        : 'تقرير من: ${_formatDate(wallet.dashboardDateRange!.start)} إلى ${_formatDate(wallet.dashboardDateRange!.end)}';
 
     pdf.addPage(
       pw.Page(
@@ -100,12 +140,12 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                 cellAlignment: pw.Alignment.center,
                 data: <List<String>>[
                   ['البيان', 'القيمة'],
-                  ['إجمالي المبيعات المحققة', '${provider.filteredSales.toStringAsFixed(0)} ريال'],
-                  ['إجمالي الأرباح', '${provider.filteredProfit.toStringAsFixed(0)} ريال'],
-                  ['طلبات الشحن المعلقة', '${provider.pendingRechargeRequests.length} طلبات (${pendingTotal.toStringAsFixed(0)} ريال)'],
+                  ['إجمالي المبيعات المحققة', '${wallet.filteredSales.toStringAsFixed(0)} ريال'],
+                  ['إجمالي الأرباح', '${wallet.filteredProfit.toStringAsFixed(0)} ريال'],
+                  ['طلبات الشحن المعلقة', '${wallet.pendingRechargeRequests.length} طلبات (${pendingTotal.toStringAsFixed(0)} ريال)'],
                   ['وكلاء في مرحلة الخطر', '$agentsDanger وكلاء'],
                   ['الوكيل الأنشط بالفترة', topAgent],
-                  ['إجمالي تذاكر الدعم المفتوحة', '${provider.openTicketsCount} تذاكر'],
+                  ['إجمالي تذاكر الدعم المفتوحة', '${wallet.openTicketsCount} تذاكر'],
                 ],
               ),
               pw.SizedBox(height: 30),
@@ -120,13 +160,15 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     uiProvider.playSound('success');
   }
 
-  void _showPendingRequestsModal(BuildContext context, List<QueryDocumentSnapshot> requests, UiProvider uiProvider) {
+  // ============ معالجة طلبات الشحن ============
+  void _showPendingRequestsModal(BuildContext context, List<QueryDocumentSnapshot> requests) {
+    final uiProvider = context.read<UiProvider>();
     uiProvider.playSound('click');
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Directionality(
+      builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: Container(
           height: MediaQuery.of(context).size.height * 0.7,
@@ -158,8 +200,8 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                IconButton(icon: const Icon(Icons.check_circle, color: Colors.green), onPressed: () => _handleRequest(docId, req, true, uiProvider)),
-                                IconButton(icon: const Icon(Icons.cancel, color: Colors.red), onPressed: () => _handleRequest(docId, req, false, uiProvider)),
+                                IconButton(icon: const Icon(Icons.check_circle, color: Colors.green), onPressed: () => _handleRequest(docId, req, true)),
+                                IconButton(icon: const Icon(Icons.cancel, color: Colors.red), onPressed: () => _handleRequest(docId, req, false)),
                               ],
                             ),
                           ),
@@ -174,8 +216,9 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     );
   }
 
-  Future<void> _handleRequest(String docId, Map<String, dynamic> reqData, bool isApprove, UiProvider uiProvider) async {
+  Future<void> _handleRequest(String docId, Map<String, dynamic> reqData, bool isApprove) async {
     Navigator.pop(context);
+    final uiProvider = context.read<UiProvider>();
     try {
       WriteBatch batch = FirebaseFirestore.instance.batch();
       String agentPhone = reqData['agentPhone'];
@@ -220,36 +263,38 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     }
   }
 
+  // ============ البناء الرئيسي ============
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
+    final themeProvider = context.watch<ThemeProvider>();
     final isDark = themeProvider.isDarkMode;
     final primaryColor = themeProvider.primaryColor;
     
-    final systemProvider = Provider.of<SystemProvider>(context);
-    final uiProvider = Provider.of<UiProvider>(context, listen: false);
+    final auth = context.watch<AuthProvider>();
+    final settings = context.watch<SettingsProvider>();
+    final wallet = context.watch<WalletProvider>();
+    final uiProvider = context.read<UiProvider>();
     
-    final adminBalance = systemProvider.adminMainBalance;
-    final userName = systemProvider.currentUserName;
-    final String userPhone = systemProvider.currentUserPhone;
-
-    final totalCards = systemProvider.totalSystemCards;
-    final double todaySales = systemProvider.filteredSales; 
-    final double todayProfit = systemProvider.filteredProfit;  
-    final int openTicketsCount = systemProvider.openTicketsCount;    
-    final int criticalTicketsCount = systemProvider.criticalTicketsCount; 
-    final int smsBalance = systemProvider.smsBalance;        
+    final adminBalance = settings.adminMainBalance;   // سيتم إضافتها إلى SettingsProvider
+    final userName = wallet.currentUserName;
+    final String userPhone = auth.activeUserPhone ?? '';
+    final totalCards = settings.totalSystemCards;     // سيتم إضافتها إلى SettingsProvider
+    final double todaySales = wallet.filteredSales;
+    final double todayProfit = wallet.filteredProfit;
+    final int openTicketsCount = wallet.openTicketsCount;
+    final int criticalTicketsCount = wallet.criticalTicketsCount;
+    final int smsBalance = settings.smsBalance;
     
-    final agentsInDanger = systemProvider.agentsList.where((agent) {
+    final agentsInDanger = wallet.agentsList.where((agent) {
       double balance = ((agent['balance'] ?? 0.0) as num).toDouble();
       double dangerLimit = ((agent['dangerLimit'] ?? 0.0) as num).toDouble();
       return balance <= dangerLimit;
     }).length;
 
     String topAgentName = 'لا يوجد وكلاء';
-    if (systemProvider.agentsList.isNotEmpty) {
+    if (wallet.agentsList.isNotEmpty) {
       try {
-        final topAgent = systemProvider.agentsList.reduce((curr, next) {
+        final topAgent = wallet.agentsList.reduce((curr, next) {
           final currBalance = ((curr['balance'] ?? 0) as num).toDouble();
           final nextBalance = ((next['balance'] ?? 0) as num).toDouble();
           return currBalance > nextBalance ? curr : next;
@@ -260,186 +305,236 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: const CustomHeader(title: 'غرفة العمليات المركزية'),
       drawer: CustomDrawer(
         userName: userName,
         phoneNumber: userPhone,
-        role: systemProvider.hasPermission('الرئيسية (غرفة العمليات)') && adminBalance > 0 ? 'مالك النظام' : 'موظف مخصص',
+        role: auth.hasPermission('الرئيسية (غرفة العمليات)') && adminBalance > 0 ? 'مالك النظام' : 'موظف مخصص',
         balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
       ),
-      
-      body: Directionality(
-        textDirection: TextDirection.rtl,
-        child: Column(
-          children: [
-            // شريط الفلترة
-            if (systemProvider.hasPermission('المركز المالي والمحافظ') || systemProvider.hasPermission('التقارير الشاملة'))
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: isDark ? primaryColor.withOpacity(0.4).withAlpha(100) : primaryColor.withOpacity(0.8),
-                borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _selectDateRange(systemProvider, uiProvider), 
-                      icon: const Icon(Icons.calendar_month, color: Colors.blueAccent),
-                      label: Text(
-                        systemProvider.dashboardDateRange == null 
-                            ? 'فلترة الإحصائيات (اليوم)' 
-                            : 'من ${_formatDate(systemProvider.dashboardDateRange!.start)} إلى ${_formatDate(systemProvider.dashboardDateRange!.end)}',
-                        style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 13),
-                        overflow: TextOverflow.ellipsis, 
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: isDark ? Colors.grey.shade800 : Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                    ),
+      body: RefreshIndicator(
+        key: _refreshIndicatorKey,
+        onRefresh: () async {
+          // تحديث واجهة المستخدم (البيانات حية من المزودات)
+          setState(() {});
+          await Future.delayed(const Duration(milliseconds: 300));
+        },
+        child: CustomScrollView(
+          slivers: [
+            // شريط علوي متحرك (يختفي عند التمرير لأسفل)
+            SliverAppBar(
+              floating: true,
+              snap: true,
+              pinned: false,
+              title: const Text('غرفة العمليات المركزية', style: TextStyle(color: Colors.white)),
+              backgroundColor: primaryColor,
+              iconTheme: const IconThemeData(color: Colors.white),
+              actions: [
+                // زر إعادة ضبط الفلترة
+                if (_startDate != null || _endDate != null)
+                  IconButton(
+                    icon: const Icon(Icons.clear_all),
+                    tooltip: 'إعادة تعيين الفلترة',
+                    onPressed: _resetDateFilter,
                   ),
-                  const SizedBox(width: 10),
-                  Container(
-                    decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(10)),
-                    child: IconButton(
-                      icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
-                      tooltip: 'تصدير تقرير فوري',
-                      onPressed: () {
-                        _generateAndPrintPDF(systemProvider, uiProvider, topAgentName, agentsInDanger, 0);
-                      },
+              ],
+            ),
+
+            // شريط اختيار التواريخ (نافذتين منفصلتين)
+            SliverToBoxAdapter(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: isDark ? primaryColor.withOpacity(0.4) : primaryColor.withOpacity(0.8),
+                  borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        // زر تاريخ البداية
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () { _pickStartDate(); },
+                            icon: const Icon(Icons.date_range, color: Colors.blueAccent),
+                            label: Text(
+                              _startDate == null ? 'بداية الفترة' : _formatDate(_startDate!),
+                              style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isDark ? Colors.grey.shade800 : Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // زر تاريخ النهاية
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () { _pickEndDate(); },
+                            icon: const Icon(Icons.date_range, color: Colors.orangeAccent),
+                            label: Text(
+                              _endDate == null ? 'نهاية الفترة' : _formatDate(_endDate!),
+                              style: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isDark ? Colors.grey.shade800 : Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // زر التقرير PDF
+                        Container(
+                          decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(10)),
+                          child: IconButton(
+                            icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
+                            tooltip: 'تصدير تقرير فوري',
+                            onPressed: () {
+                              _generateAndPrintPDF(wallet, uiProvider, topAgentName, agentsInDanger, 0);
+                            },
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                    // عرض حالة الفلترة الحالية
+                    if (_startDate != null || _endDate != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          'الفلترة: ${_startDate != null ? _formatDate(_startDate!) : "أول السنة"} - ${_endDate != null ? _formatDate(_endDate!) : "اليوم"}',
+                          style: TextStyle(color: Colors.white70, fontSize: 12),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
-            
-            const SizedBox(height: 10),
 
-            // شبكة البطاقات الذكية
-            Expanded(
-              child: GridView.count(
-                crossAxisCount: 2, 
-                padding: const EdgeInsets.all(16),
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 1.1, 
-                children: [
+            // شبكة البطاقات
+            SliverPadding(
+              padding: const EdgeInsets.all(16),
+              sliver: SliverGrid(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 1.1,
+                ),
+                delegate: SliverChildListDelegate([
+                  if (auth.hasPermission('المركز المالي والمحافظ'))
+                    _buildDashboardCard(
+                      title: 'المبيعات (مفلترة)',
+                      value: todaySales.toStringAsFixed(0),
+                      subValue: '+ أرباح: ${todayProfit.toStringAsFixed(0)}',
+                      icon: Icons.monetization_on,
+                      color: Colors.green,
+                      onTap: () => _navigateTo(const FinancialCenterScreen()),
+                    ),
                   
-                  if (systemProvider.hasPermission('المركز المالي والمحافظ'))
-                  _buildDashboardCard(
-                    title: 'المبيعات (مفلترة)',
-                    value: todaySales.toStringAsFixed(0),
-                    subValue: '+ أرباح: ${todayProfit.toStringAsFixed(0)}',
-                    icon: Icons.monetization_on,
-                    color: Colors.green,
-                    onTap: () => _navigateTo(const FinancialCenterScreen(), uiProvider),
-                  ),
-                  
-                  if (systemProvider.hasPermission('المركز المالي والمحافظ'))
-                  StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('recharge_requests').where('status', isEqualTo: 'pending').snapshots(),
-                    builder: (context, snapshot) {
-                      int pendingCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
-                      double pendingTotal = 0;
-                      if (snapshot.hasData) {
-                        for (var doc in snapshot.data!.docs) {
-                          pendingTotal += ((doc.data() as Map<String, dynamic>)['amount'] ?? 0).toDouble();
-                        }
-                      }
-                      return _buildDashboardCard(
-                        title: 'طلبات شحن معلقة',
-                        value: '$pendingCount طلبات',
-                        subValue: pendingCount > 0 ? 'بإجمالي: ${pendingTotal.toStringAsFixed(0)} ريال' : 'لا توجد طلبات جديدة',
-                        icon: Icons.download,
-                        color: pendingCount > 0 ? Colors.redAccent : Colors.grey,
-                        isAlert: pendingCount > 0,
-                        onTap: () {
-                          if (pendingCount > 0) {
-                            _showPendingRequestsModal(context, snapshot.data!.docs, uiProvider);
-                          } else {
-                            uiProvider.playSound('click');
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا توجد طلبات معلقة حالياً')));
+                  if (auth.hasPermission('المركز المالي والمحافظ'))
+                    StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance.collection('recharge_requests').where('status', isEqualTo: 'pending').snapshots(),
+                      builder: (context, snapshot) {
+                        int pendingCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                        double pendingTotal = 0;
+                        if (snapshot.hasData) {
+                          for (var doc in snapshot.data!.docs) {
+                            pendingTotal += ((doc.data() as Map<String, dynamic>)['amount'] ?? 0).toDouble();
                           }
-                        },
-                      );
-                    }
-                  ),
+                        }
+                        return _buildDashboardCard(
+                          title: 'طلبات شحن معلقة',
+                          value: '$pendingCount طلبات',
+                          subValue: pendingCount > 0 ? 'بإجمالي: ${pendingTotal.toStringAsFixed(0)} ريال' : 'لا توجد طلبات جديدة',
+                          icon: Icons.download,
+                          color: pendingCount > 0 ? Colors.redAccent : Colors.grey,
+                          isAlert: pendingCount > 0,
+                          onTap: () {
+                            if (pendingCount > 0) {
+                              _showPendingRequestsModal(context, snapshot.data!.docs);
+                            } else {
+                              uiProvider.playSound('click');
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا توجد طلبات معلقة حالياً')));
+                            }
+                          },
+                        );
+                      }
+                    ),
                   
-                  if (systemProvider.hasPermission('إدارة الوكلاء الشاملة'))
-                  _buildDashboardCard(
-                    title: 'رادار الخطر',
-                    value: '$agentsInDanger وكلاء',
-                    subValue: agentsInDanger > 0 ? 'تجاوزوا حد الخطر المسموح!' : 'جميع الوكلاء في أمان',
-                    icon: Icons.warning_amber_rounded,
-                    color: agentsInDanger > 0 ? Colors.orange : Colors.grey,
-                    isAlert: agentsInDanger > 0,
-                    onTap: () => _navigateTo(const AgentManagementScreen(), uiProvider),
-                  ),
+                  if (auth.hasPermission('إدارة الوكلاء الشاملة'))
+                    _buildDashboardCard(
+                      title: 'رادار الخطر',
+                      value: '$agentsInDanger وكلاء',
+                      subValue: agentsInDanger > 0 ? 'تجاوزوا حد الخطر المسموح!' : 'جميع الوكلاء في أمان',
+                      icon: Icons.warning_amber_rounded,
+                      color: agentsInDanger > 0 ? Colors.orange : Colors.grey,
+                      isAlert: agentsInDanger > 0,
+                      onTap: () => _navigateTo(const AgentManagementScreen()),
+                    ),
                   
-                  if (systemProvider.hasPermission('إدارة الموظفين والدعم'))
-                  _buildDashboardCard(
-                    title: 'تذاكر الدعم',
-                    value: '$openTicketsCount مفتوحة',
-                    subValue: '$criticalTicketsCount منها أولوية قصوى',
-                    icon: Icons.support_agent,
-                    color: Colors.blue,
-                    isAlert: criticalTicketsCount > 0, 
-                    onTap: () => _navigateTo(const StaffSupportScreen(), uiProvider),
-                  ),
+                  if (auth.hasPermission('إدارة الموظفين والدعم'))
+                    _buildDashboardCard(
+                      title: 'تذاكر الدعم',
+                      value: '$openTicketsCount مفتوحة',
+                      subValue: '$criticalTicketsCount منها أولوية قصوى',
+                      icon: Icons.support_agent,
+                      color: Colors.blue,
+                      isAlert: criticalTicketsCount > 0,
+                      onTap: () => _navigateTo(const StaffSupportScreen()),
+                    ),
                   
-                  if (systemProvider.hasPermission('التقارير الشاملة'))
-                  _buildDashboardCard(
-                    title: 'إجمالي المخزون',
-                    value: '$totalCards كرت',
-                    subValue: 'كروت متوفرة بالنظام',
-                    icon: Icons.inventory_2,
-                    color: Colors.teal,
-                    onTap: () => _navigateTo(const ReportsScreen(), uiProvider),
-                  ),
+                  if (auth.hasPermission('التقارير الشاملة'))
+                    _buildDashboardCard(
+                      title: 'إجمالي المخزون',
+                      value: '$totalCards كرت',
+                      subValue: 'كروت متوفرة بالنظام',
+                      icon: Icons.inventory_2,
+                      color: Colors.teal,
+                      onTap: () => _navigateTo(const ReportsScreen()),
+                    ),
                   
-                  if (systemProvider.hasPermission('إدارة الوكلاء الشاملة'))
-                  _buildDashboardCard(
-                    title: 'الوكيل الأنشط',
-                    value: topAgentName, 
-                    subValue: 'الأعلى رصيداً حالياً', 
-                    icon: Icons.star,
-                    color: Colors.amber.shade600,
-                    onTap: () => _navigateTo(const AgentManagementScreen(), uiProvider),
-                  ),
+                  if (auth.hasPermission('إدارة الوكلاء الشاملة'))
+                    _buildDashboardCard(
+                      title: 'الوكيل الأنشط',
+                      value: topAgentName,
+                      subValue: 'الأعلى رصيداً حالياً',
+                      icon: Icons.star,
+                      color: Colors.amber.shade600,
+                      onTap: () => _navigateTo(const AgentManagementScreen()),
+                    ),
                   
-                  if (systemProvider.hasPermission('بوابة رسائل الـ SMS'))
-                  _buildDashboardCard(
-                    title: 'رصيد الـ SMS',
-                    value: smsBalance.toString(),
-                    subValue: 'رسالة متبقية',
-                    icon: Icons.sms,
-                    color: Colors.purple,
-                    onTap: () => _navigateTo(const SmsGatewayScreen(), uiProvider),
-                  ),
+                  if (auth.hasPermission('بوابة رسائل الـ SMS'))
+                    _buildDashboardCard(
+                      title: 'رصيد الـ SMS',
+                      value: smsBalance.toString(),
+                      subValue: 'رسالة متبقية',
+                      icon: Icons.sms,
+                      color: Colors.purple,
+                      onTap: () => _navigateTo(const SmsGatewayScreen()),
+                    ),
 
-                  if (systemProvider.hasPermission('الإعلانات التسويقية'))
-                  _buildDashboardCard(
-                    title: 'الإعلانات والبنرات',
-                    value: 'نشطة',
-                    subValue: 'إدارة الحملات الحية',
-                    icon: Icons.campaign,
-                    color: Colors.pink,
-                    onTap: () => _navigateTo(const BannersScreen(), uiProvider),
-                  ),
+                  if (auth.hasPermission('الإعلانات التسويقية'))
+                    _buildDashboardCard(
+                      title: 'الإعلانات والبنرات',
+                      value: 'نشطة',
+                      subValue: 'إدارة الحملات الحية',
+                      icon: Icons.campaign,
+                      color: Colors.pink,
+                      onTap: () => _navigateTo(const BannersScreen()),
+                    ),
                   
-                  if (systemProvider.hasPermission('الإعدادات العامة'))
-                  _buildDashboardCard(
-                    title: 'إعدادات النظام',
-                    value: 'تحكم كامل',
-                    subValue: 'هوية، حماية، سياسات',
-                    icon: Icons.settings,
-                    color: Colors.blueGrey,
-                    onTap: () => _navigateTo(const GlobalSettingsScreen(), uiProvider), 
-                  ),
+                  if (auth.hasPermission('الإعدادات العامة'))
+                    _buildDashboardCard(
+                      title: 'إعدادات النظام',
+                      value: 'تحكم كامل',
+                      subValue: 'هوية، حماية، سياسات',
+                      icon: Icons.settings,
+                      color: Colors.blueGrey,
+                      onTap: () => _navigateTo(const GlobalSettingsScreen()),
+                    ),
 
-                  // ✅ بطاقة التحكم الشامل (احتياطية + مضمونة الظهور)
                   _buildDashboardCard(
                     title: 'التحكم الشامل',
                     value: 'إعادة تهيئة',
@@ -448,13 +543,10 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                     color: Colors.red,
                     onTap: () {
                       uiProvider.playSound('click');
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const AdvancedResetScreen()),
-                      );
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const AdvancedResetScreen()));
                     },
                   ),
-                ],
+                ]),
               ),
             ),
           ],
@@ -470,7 +562,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
-    bool isAlert = false, 
+    bool isAlert = false,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
@@ -502,13 +594,13 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                   child: Icon(icon, color: color, size: 20),
                 ),
                 if (isAlert) 
-                  const Icon(Icons.circle, color: Colors.red, size: 12), 
+                  const Icon(Icons.circle, color: Colors.red, size: 12),
               ],
             ),
             const Spacer(),
             Text(title, style: const TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
             const SizedBox(height: 4),
-            Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isAlert ? Colors.red : null), overflow: TextOverflow.ellipsis), 
+            Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isAlert ? Colors.red : null), overflow: TextOverflow.ellipsis),
             const SizedBox(height: 4),
             Text(subValue, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
           ],
