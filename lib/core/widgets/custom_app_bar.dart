@@ -1,10 +1,10 @@
-// lib/core/widgets/custom_app_bar.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:marquee/marquee.dart';
 
 import '../providers/theme_provider.dart';
-import '../providers/system_provider.dart';
+import '../providers/settings_provider.dart';
+import '../providers/notification_provider.dart';
 import '../providers/ui_provider.dart';
 
 class CustomAppBar extends StatefulWidget implements PreferredSizeWidget {
@@ -39,10 +39,11 @@ class _CustomAppBarState extends State<CustomAppBar>
     super.dispose();
   }
 
-  void _showNotifications(BuildContext context, UiProvider uiProvider) {
+  void _showNotifications(BuildContext context, UiProvider uiProvider,
+      NotificationProvider notificationProvider) {
     uiProvider.playSound('click');
     final List<Map<String, dynamic>> currentNotifications =
-        List.from(uiProvider.unreadNotifications);
+        List.from(notificationProvider.notifications);
 
     showDialog(
       context: context,
@@ -97,7 +98,7 @@ class _CustomAppBarState extends State<CustomAppBar>
             TextButton(
               onPressed: () {
                 uiProvider.playSound('click');
-                uiProvider.markNotificationsAsRead();
+                notificationProvider.markNotificationsAsRead();
                 Navigator.pop(context);
               },
               child: const Text('مقروء وإغلاق',
@@ -106,29 +107,29 @@ class _CustomAppBarState extends State<CustomAppBar>
           ],
         ),
       ),
-    ).then((_) => uiProvider.markNotificationsAsRead());
+    ).then((_) => notificationProvider.markNotificationsAsRead());
   }
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
-    final systemProvider = Provider.of<SystemProvider>(context);
-    final uiProvider = Provider.of<UiProvider>(context);
+    final themeProvider = context.watch<ThemeProvider>();
+    final settingsProvider = context.watch<SettingsProvider>();
+    final notificationProvider = context.watch<NotificationProvider>();
+    final uiProvider = context.read<UiProvider>();
     final ColorScheme colors = Theme.of(context).colorScheme;
 
     final bool isDark = themeProvider.isDarkMode;
     final bool isOnline = uiProvider.isOnline;
-    final int notificationCount = uiProvider.unreadNotifications.length;
-    final String liveNews = systemProvider.announcements.isNotEmpty
-        ? systemProvider.announcements.join('   🔴   ')
+    final int notificationCount = notificationProvider.unreadNotificationsCount;
+    final String liveNews = settingsProvider.announcements.isNotEmpty
+        ? settingsProvider.announcements.join('   🔴   ')
         : 'مرحباً بك في نظام كروت نت...';
 
-    // استخدام ألوان متكيفة من الثيم
     final Color headerColor = colors.primaryContainer;
     final Color onHeaderColor = colors.onPrimaryContainer;
 
-    final Color marqueeBg = Color(systemProvider.marqueeBgColor);
-    final Color marqueeTextCol = Color(systemProvider.marqueeTextColor);
+    final Color marqueeBg = Color(settingsProvider.marqueeBgColor);
+    final Color marqueeTextCol = Color(settingsProvider.marqueeTextColor);
 
     return AppBar(
       elevation: 2,
@@ -180,7 +181,7 @@ class _CustomAppBarState extends State<CustomAppBar>
                 icon: const Icon(Icons.notifications_active),
                 tooltip: 'الإشعارات',
                 color: onHeaderColor,
-                onPressed: () => _showNotifications(context, uiProvider),
+                onPressed: () => _showNotifications(context, uiProvider, notificationProvider),
               ),
               if (notificationCount > 0)
                 Positioned(
@@ -210,7 +211,7 @@ class _CustomAppBarState extends State<CustomAppBar>
         preferredSize: const Size.fromHeight(70),
         child: Column(
           children: [
-            if (systemProvider.showNewsBar)
+            if (settingsProvider.showNewsBar)
               Container(
                 width: double.infinity,
                 height: 25,
@@ -225,15 +226,15 @@ class _CustomAppBarState extends State<CustomAppBar>
                         text: liveNews,
                         style: TextStyle(
                             color: marqueeTextCol,
-                            fontSize: systemProvider.marqueeFontSize,
+                            fontSize: settingsProvider.marqueeFontSize,
                             fontWeight: FontWeight.bold),
                         scrollAxis: Axis.horizontal,
                         crossAxisAlignment: CrossAxisAlignment.center,
                         blankSpace: 50.0,
-                        velocity: systemProvider.newsScrollSpeed,
+                        velocity: settingsProvider.newsScrollSpeed,
                         pauseAfterRound: const Duration(milliseconds: 500),
                         startPadding: 10.0,
-                        textDirection: systemProvider.marqueeDirection == 'rtl'
+                        textDirection: settingsProvider.marqueeDirection == 'rtl'
                             ? TextDirection.rtl
                             : TextDirection.ltr,
                       ),
