@@ -1,4 +1,3 @@
-// lib/core/widgets/custom_header.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:marquee/marquee.dart';
@@ -6,7 +5,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 
 import '../providers/theme_provider.dart';
-import '../providers/system_provider.dart';
+import '../providers/auth_provider.dart';
+import '../providers/settings_provider.dart';
+import '../providers/notification_provider.dart';
 import '../providers/ui_provider.dart';
 
 class CustomHeader extends StatefulWidget implements PreferredSizeWidget {
@@ -42,10 +43,10 @@ class _CustomHeaderState extends State<CustomHeader>
   }
 
   void _showNotifications(BuildContext context, UiProvider uiProvider,
-      SystemProvider systemProvider) {
+      NotificationProvider notificationProvider) {
     uiProvider.playSound('click');
     final List<Map<String, dynamic>> currentNotifications =
-        List.from(systemProvider.notifications);
+        List.from(notificationProvider.notifications);
     final ColorScheme colors = Theme.of(context).colorScheme;
     final Color onSurface = colors.onSurface;
 
@@ -133,7 +134,7 @@ class _CustomHeaderState extends State<CustomHeader>
             TextButton(
               onPressed: () {
                 uiProvider.playSound('click');
-                systemProvider.markNotificationsAsRead();
+                notificationProvider.markNotificationsAsRead();
                 Navigator.pop(ctx);
               },
               child: Text('مقروء وإغلاق',
@@ -143,33 +144,34 @@ class _CustomHeaderState extends State<CustomHeader>
           ],
         ),
       ),
-    ).then((_) => systemProvider.markNotificationsAsRead());
+    ).then((_) => notificationProvider.markNotificationsAsRead());
   }
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
-    final systemProvider = Provider.of<SystemProvider>(context);
-    final uiProvider = Provider.of<UiProvider>(context);
+    final themeProvider = context.watch<ThemeProvider>();
+    final authProvider = context.watch<AuthProvider>();
+    final settingsProvider = context.watch<SettingsProvider>();
+    final notificationProvider = context.watch<NotificationProvider>();
+    final uiProvider = context.read<UiProvider>();
     final ColorScheme colors = Theme.of(context).colorScheme;
 
     final bool isDark = themeProvider.isDarkMode;
     final bool isOnline =
-        uiProvider.isOnline && !systemProvider.isMaintenanceMode;
+        uiProvider.isOnline && !settingsProvider.isMaintenanceMode;
 
-    final int unreadCount = systemProvider.unreadNotificationsCount;
+    final int unreadCount = notificationProvider.unreadNotificationsCount;
     final bool hasNotifications = unreadCount > 0;
 
-    final String liveNews = systemProvider.announcements.isNotEmpty
-        ? systemProvider.announcements.join('   🔴   ')
+    final String liveNews = settingsProvider.announcements.isNotEmpty
+        ? settingsProvider.announcements.join('   🔴   ')
         : 'مرحباً بك في نظام كروت نت...';
 
-    // ألوان متكيفة بالكامل مع الثيم
     final Color headerColor = colors.primaryContainer;
     final Color onHeaderColor = colors.onPrimaryContainer;
 
-    final Color marqueeBg = Color(systemProvider.marqueeBgColor);
-    final Color marqueeTextCol = Color(systemProvider.marqueeTextColor);
+    final Color marqueeBg = Color(settingsProvider.marqueeBgColor);
+    final Color marqueeTextCol = Color(settingsProvider.marqueeTextColor);
 
     return AppBar(
       elevation: 0,
@@ -219,7 +221,7 @@ class _CustomHeaderState extends State<CustomHeader>
                       color: Colors.amber),
                   tooltip: 'الإشعارات',
                   onPressed: () =>
-                      _showNotifications(context, uiProvider, systemProvider)),
+                      _showNotifications(context, uiProvider, notificationProvider)),
               if (hasNotifications)
                 Positioned(
                   right: 8,
@@ -253,7 +255,7 @@ class _CustomHeaderState extends State<CustomHeader>
         preferredSize: const Size.fromHeight(70),
         child: Column(
           children: [
-            if (systemProvider.showNewsBar)
+            if (settingsProvider.showNewsBar)
               Container(
                 width: double.infinity,
                 height: 25,
@@ -269,16 +271,16 @@ class _CustomHeaderState extends State<CustomHeader>
                         text: liveNews,
                         style: TextStyle(
                             color: marqueeTextCol,
-                            fontSize: systemProvider.marqueeFontSize,
+                            fontSize: settingsProvider.marqueeFontSize,
                             fontWeight: FontWeight.bold),
                         scrollAxis: Axis.horizontal,
                         crossAxisAlignment: CrossAxisAlignment.center,
                         blankSpace: 50.0,
-                        velocity: systemProvider.newsScrollSpeed,
+                        velocity: settingsProvider.newsScrollSpeed,
                         pauseAfterRound: const Duration(milliseconds: 500),
                         startPadding: 10.0,
                         textDirection:
-                            systemProvider.marqueeDirection == 'rtl'
+                            settingsProvider.marqueeDirection == 'rtl'
                                 ? TextDirection.rtl
                                 : TextDirection.ltr,
                       ),
@@ -295,7 +297,7 @@ class _CustomHeaderState extends State<CustomHeader>
                   showSearch(
                       context: context,
                       delegate: SystemSearchDelegate(uiProvider,
-                          userRole: systemProvider.currentUserRole));
+                          userRole: authProvider.currentUserRole));
                 },
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
