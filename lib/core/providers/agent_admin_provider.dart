@@ -55,7 +55,8 @@ class AgentAdminProvider extends ChangeNotifier {
             details: 'تم إضافة وكيل جديد باسم "$name" ورقم $phone',
             severity: 'medium');
 
-        _wallet._sendNotification(
+        // تم التصحيح: sendNotification (عامة)
+        _wallet.sendNotification(
             targetPhones: [phone],
             title: 'أهلاً بك كوكيل جديد! 🎉',
             body: 'تم تفعيل حسابك كوكيل معتمد في النظام.');
@@ -323,7 +324,8 @@ class AgentAdminProvider extends ChangeNotifier {
             'subStatus': 'نشط'
           });
         }
-        _wallet._sendNotification(
+        // تم التصحيح
+        _wallet.sendNotification(
             targetPhones: ['all_agents'],
             title: 'تحديث الباقة 🎁',
             body: 'تم تجديد باقتك إلى "$planName" بنجاح.');
@@ -335,7 +337,8 @@ class AgentAdminProvider extends ChangeNotifier {
           'subExpiry': formattedExpiry,
           'subStatus': 'نشط'
         });
-        _wallet._sendNotification(
+        // تم التصحيح
+        _wallet.sendNotification(
             targetPhones: [targetAgentPhone],
             title: 'تحديث الباقة 🎁',
             body: 'تم تجديد باقتك إلى "$planName" بنجاح.');
@@ -352,7 +355,8 @@ class AgentAdminProvider extends ChangeNotifier {
         'subExpiry': newExpiryDate,
         'subStatus': 'إنذار'
       });
-      _wallet._sendNotification(
+      // تم التصحيح
+      _wallet.sendNotification(
           targetPhones: [agentPhone],
           title: 'تنبيه فترة السماح ⚠️',
           body: 'تم تعديل تاريخ انتهاء باقتك إلى $newExpiryDate');
@@ -365,7 +369,8 @@ class AgentAdminProvider extends ChangeNotifier {
     try {
       String newStatus = currentStatus == 'موقوف مؤقتاً' ? 'نشط' : 'موقوف مؤقتاً';
       await _db.collection('users').doc(agentPhone).update({'subStatus': newStatus});
-      _wallet._sendNotification(
+      // تم التصحيح
+      _wallet.sendNotification(
           targetPhones: [agentPhone],
           title: 'حالة الحساب',
           body: 'تم تحويل حالة حسابك إلى: $newStatus');
@@ -374,7 +379,7 @@ class AgentAdminProvider extends ChangeNotifier {
     }
   }
 
-  // ---------- الحسابات البنكية العامة (مدير عام) ----------
+  // ---------- الحسابات البنكية العامة ----------
   Future<void> addBankAccount(String bankName, String accNumber, String beneficiary) async {
     try {
       int newOrder = _wallet.bankAccounts.length;
@@ -431,7 +436,8 @@ class AgentAdminProvider extends ChangeNotifier {
       for (var doc in usersSnapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
         if (data['accountNumber'] == null) {
-          final newAcc = await _wallet._generateNextAccountNumber();
+          // تم التصحيح
+          final newAcc = await _wallet.generateNextAccountNumber();
           await doc.reference.update({'accountNumber': newAcc});
           generated++;
         }
