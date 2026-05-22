@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class SettingsProvider extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // ---------- متغيرات الإعدادات العامة ----------
+  // ---------- الإعدادات العامة للتطبيق ----------
   String _appName = 'كروت نت';
   String _appLogoUrl = '';
   int _loginBgColor = 0xFFFFFFFF;
@@ -21,7 +21,7 @@ class SettingsProvider extends ChangeNotifier {
   String _appNameFont = 'Cairo';
   int _appNameColor = 0xFF2196F3;
 
-  // ---------- متغيرات حالة النظام ----------
+  // ---------- حالة النظام ----------
   bool _isMaintenanceMode = false;
   bool _isForcedUpdate = false;
   bool _showNewsBar = true;
@@ -30,11 +30,11 @@ class SettingsProvider extends ChangeNotifier {
   String _termsAndConditions = '';
   String _supportNumbers = '';
 
-  // ---------- متغيرات المالية العامة ----------
+  // ---------- المالية العامة (للمدير العام) ----------
   double _adminMainBalance = 0.0;
   int _totalSystemCards = 0;
 
-  // ---------- متغيرات بوابة الوكلاء ----------
+  // ---------- إعدادات بوابة الوكلاء ----------
   List<String> _agentUniversalHiddenSections = [];
   List<Map<String, dynamic>> _agentBanners = [];
   Map<String, dynamic> _agentEmergencyAlert = {
@@ -47,7 +47,7 @@ class SettingsProvider extends ChangeNotifier {
   bool _leaderboardEnabled = false;
   bool _forceAgentTheme = false;
 
-  // ---------- متغيرات بوابة المستخدمين ----------
+  // ---------- إعدادات بوابة المستخدمين ----------
   List<String> _userUniversalHiddenSections = [];
   bool _guestModeEnabled = false;
   bool _kycRequired = false;
@@ -64,17 +64,18 @@ class SettingsProvider extends ChangeNotifier {
   };
   bool _loyaltySystemEnabled = false;
 
-  // ---------- أخبار موجهة (شريط الأخبار) ----------
+  // ---------- الشريط الإخباري والإعلانات ----------
   List<Map<String, dynamic>> _targetedNews = [];
+  List<String> _announcements = [];
   double _newsScrollSpeed = 40.0;
 
   // ---------- متنوع ----------
   int _smsBalance = 0;
 
-  // ---------- SharedPreferences للغة والطابعة ----------
+  // ---------- تفضيلات محلية (لغة وطابعة) ----------
   SharedPreferences? _prefs;
 
-  // ---------- المُنشئ مع مستمع Firestore ----------
+  // ---------- المُنشئ ----------
   SettingsProvider() {
     _initSettingsSync();
     _initPrefs();
@@ -115,7 +116,6 @@ class SettingsProvider extends ChangeNotifier {
         _termsAndConditions = data['termsAndConditions'] ?? '';
         _supportNumbers = data['supportNumbers'] ?? '';
 
-        // المفقودين
         _adminMainBalance = (data['adminMainBalance'] ?? 0.0).toDouble();
         _totalSystemCards = data['totalSystemCards'] ?? 0;
 
@@ -150,6 +150,7 @@ class SettingsProvider extends ChangeNotifier {
               List<Map<String, dynamic>>.from(data['targetedNews']);
         }
 
+        _announcements = List<String>.from(data['announcements'] ?? []);
         _newsScrollSpeed = (data['newsScrollSpeed'] ?? 40.0).toDouble();
         _smsBalance = data['smsBalance'] ?? 0;
 
@@ -200,6 +201,7 @@ class SettingsProvider extends ChangeNotifier {
   bool get loyaltySystemEnabled => _loyaltySystemEnabled;
 
   List<Map<String, dynamic>> get targetedNews => _targetedNews;
+  List<String> get announcements => _announcements;
   double get newsScrollSpeed => _newsScrollSpeed;
   int get smsBalance => _smsBalance;
 
@@ -431,7 +433,7 @@ class SettingsProvider extends ChangeNotifier {
         .update({'newsScrollSpeed': newSpeed});
   }
 
-  // ---------- دوال اللغة ----------
+  // ---------- إعدادات اللغة (جديد) ----------
   String getLanguageSync() {
     if (_prefs == null) return 'ar';
     return _prefs!.getString('language') ?? 'ar';
@@ -450,7 +452,7 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---------- دوال الطابعة ----------
+  // ---------- إعدادات الطابعة (جديد) ----------
   Future<void> setPrinterConnected(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('agent_printer_connected', value);
@@ -461,7 +463,7 @@ class SettingsProvider extends ChangeNotifier {
     return prefs.getBool('agent_printer_connected') ?? false;
   }
 
-  // ---------- دالة تسجيل الأحداث ----------
+  // ---------- تسجيل الأحداث (مؤقت) ----------
   void _logAction(String action, String details, String severity) {
     try {
       _db.collection('audit_logs').add({
