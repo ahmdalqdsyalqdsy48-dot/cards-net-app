@@ -120,16 +120,15 @@ void main() async {
         ChangeNotifierProvider(create: (context) => CouponProvider()),
         ChangeNotifierProvider(create: (context) => AuditProvider()),
 
-        // --- القديم (مؤقت) ---
-        ChangeNotifierProvider(create: (context) => SystemProvider()),
-        ChangeNotifierProxyProvider<SystemProvider, UiProvider>(
-          create: (context) => UiProvider(null),
-          update: (context, systemProvider, previous) => UiProvider(
-            systemProvider.currentUserPhone == 'لا يوجد رقم'
-                ? null
-                : systemProvider.currentUserPhone,
+        // --- UiProvider الجديد (يستخدم SoundService) ---
+        ChangeNotifierProvider<UiProvider>(
+          create: (context) => UiProvider(
+            soundService: context.read<SoundService>(),
           ),
         ),
+
+        // --- القديم (مؤقت) ---
+        ChangeNotifierProvider(create: (context) => SystemProvider()),
       ],
       child: MyApp(initialLang: savedLang),
     ),
