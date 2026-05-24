@@ -2,18 +2,21 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'auth_provider.dart';
+import '../services/sound_service.dart';
 
 class NotificationProvider extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final AuthProvider _auth;
+  final SoundService _soundService;
 
   List<Map<String, dynamic>> _notifications = [];
   StreamSubscription? _notificationSubscription;
 
-  NotificationProvider(this._auth) {
-    // استمع لتغيرات AuthProvider لتحديث المستمعين عند تسجيل الدخول/الخروج
+  /// لتتبع الإشعارات السابقة ومنع تكرار الصوت عند التحميل الأول
+  Set<String> _previousDocIds = {};
+
+  NotificationProvider(this._auth, this._soundService) {
     _auth.addListener(_onAuthChanged);
-    // إذا كان المستخدم مسجلاً بالفعل، قم بتشغيل المستمعين
     if (_auth.activeUserPhone != null) {
       _startListening();
     }
@@ -32,12 +35,13 @@ class NotificationProvider extends ChangeNotifier {
     } else {
       _cancelSubscription();
       _notifications = [];
+      _previousDocIds = {};
       notifyListeners();
     }
   }
 
   void _startListening() {
-    _cancelSubscription(); // إلغاء أي مستمع سابق
+    _cancelSubscription();
 
     _notificationSubscription = _db
         .collection('notifications')
@@ -57,6 +61,27 @@ class NotificationProvider extends ChangeNotifier {
             data['isRead'] == true;
         return {'docId': doc.id, ...data, 'isReadLocal': isRead};
       }).toList();
+
+      // جمع معرّفات الإشعارات الحالية
+      final Set<String> currentIds = _notifications
+          .map((n) => n['docId'] as String)
+          .toSet();
+
+      // في أول تحميل، نخزن المعرّفات ولا نشغل صوت
+      if (_previousDocIds.isEmpty) {
+        _previousDocIds = currentIds;
+      } else {
+        // الإشعارات الجديدة = الموجودة الآن وغير موجودة سابقاً
+        final newIds = currentIds.difference(_previousDocIds);
+
+        // تشغيل صوت لكل إشعار جديد يظهر
+        for (final _ in newIds) {
+          _soundService.play('notification');
+        }
+
+        _previousDocIds = currentIds;
+      }
+
       notifyListeners();
     });
   }
@@ -74,7 +99,6 @@ class NotificationProvider extends ChangeNotifier {
 
   // ---------- دوال الإشعارات ----------
 
-  /// تعليم جميع الإشعارات الحالية كمقروءة
   Future<void> markNotificationsAsRead() async {
     if (_auth.activeUserPhone == null) return;
 
@@ -90,7 +114,6 @@ class NotificationProvider extends ChangeNotifier {
     await batch.commit();
   }
 
-  /// إرسال إشعار جديد (تستخدمه المزودات الأخرى)
   Future<void> sendNotification({
     required List<String> targetPhones,
     required String title,
