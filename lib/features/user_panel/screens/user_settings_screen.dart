@@ -9,7 +9,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_user_drawer.dart';
 import '../../../core/providers/theme_provider.dart';
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/settings_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../auth/screens/sso_login_screen.dart';
 
@@ -55,36 +57,37 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
   }
 
   Future<void> _loadAllSettings() async {
-  final prefs = await SharedPreferences.getInstance();
-  final sys = Provider.of<SystemProvider>(context, listen: false);
+    final prefs = await SharedPreferences.getInstance();
+    final wallet = context.read<WalletProvider>();
+    final settings = context.read<SettingsProvider>();
 
-  // تحميل بيانات المستخدم من السحابة لضمان وجود البريد والحدود
-  await sys.loadUserData(sys.currentUserPhone);
+    // تحميل بيانات المستخدم من السحابة
+    await wallet.loadUserEmail();
 
-  final currentPin = sys.currentUserPin;
-  final savedLang = sys.getLanguageSync();
-  final email = sys.currentUserEmail ?? '';
+    final currentPin = wallet.currentUserPin;
+    final savedLang = settings.getLanguageSync();
+    final email = wallet.currentUserEmail ?? '';
 
-  setState(() {
-    _appSounds = prefs.getBool('global_sounds_enabled') ?? true;
-    _dailyLimit = prefs.getDouble('user_daily_limit') ?? 0.0;
-    _monthlyLimit = prefs.getDouble('user_monthly_limit') ?? 0.0;
-    _userPin = currentPin.isNotEmpty && currentPin.length == 6 ? currentPin : '';
-    _notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
-    _marketingNotifications = prefs.getBool('marketing_notifications') ?? true;
-    _transactionNotifications = prefs.getBool('transaction_notifications') ?? true;
-    _emailNotifications = prefs.getBool('email_notifications') ?? false;
-    _hideBalanceFromOthers = prefs.getBool('hide_balance') ?? false;
-    _showFullName = prefs.getBool('show_full_name') ?? true;
-    _userEmail = email;
-    _emailController.text = email;
-    _appLanguage = savedLang;
-    _autoLockMinutes = prefs.getInt('user_autoLockMinutes') ?? 0;
-  });
-}
+    setState(() {
+      _appSounds = settings.isSoundEnabled;
+      _dailyLimit = prefs.getDouble('user_daily_limit') ?? 0.0;
+      _monthlyLimit = prefs.getDouble('user_monthly_limit') ?? 0.0;
+      _userPin = currentPin.isNotEmpty && currentPin.length == 6 ? currentPin : '';
+      _notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
+      _marketingNotifications = prefs.getBool('marketing_notifications') ?? true;
+      _transactionNotifications = prefs.getBool('transaction_notifications') ?? true;
+      _emailNotifications = prefs.getBool('email_notifications') ?? false;
+      _hideBalanceFromOthers = prefs.getBool('hide_balance') ?? false;
+      _showFullName = prefs.getBool('show_full_name') ?? true;
+      _userEmail = email;
+      _emailController.text = email;
+      _appLanguage = savedLang;
+      _autoLockMinutes = prefs.getInt('user_autoLockMinutes') ?? 0;
+    });
+  }
 
   void _playFeedback() {
-    final uiProvider = Provider.of<UiProvider>(context, listen: false);
+    final uiProvider = context.read<UiProvider>();
     uiProvider.playSound('click');
     if (!kIsWeb) HapticFeedback.lightImpact();
   }
@@ -100,18 +103,20 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
-    final systemProvider = Provider.of<SystemProvider>(context);
-    final uiProvider = Provider.of<UiProvider>(context);
+    final themeProvider = context.watch<ThemeProvider>();
+    final auth = context.watch<AuthProvider>();
+    final wallet = context.watch<WalletProvider>();
+    final settings = context.watch<SettingsProvider>();
+    final uiProvider = context.watch<UiProvider>();
     final isDark = themeProvider.isDarkMode;
     final primaryColor = themeProvider.primaryColor;
-    final userName = systemProvider.currentUserName;
-    final userPhone = systemProvider.currentUserPhone;
+    final userName = wallet.currentUserName;
+    final userPhone = auth.activeUserPhone ?? '';
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      appBar: CustomHeader(title: 'الإعدادات'),
+      appBar: const CustomHeader(title: 'الإعدادات'),
       drawer: CustomUserDrawer(userName: userName, phoneNumber: userPhone),
       body: Directionality(
         textDirection: TextDirection.rtl,
@@ -143,12 +148,12 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildAccountTab(systemProvider, primaryColor, colorScheme),
-                  _buildSecurityTab(systemProvider, primaryColor, colorScheme),
+                  _buildAccountTab(wallet, primaryColor, colorScheme),
+                  _buildSecurityTab(wallet, primaryColor, colorScheme),
                   _buildNotificationsTab(primaryColor, colorScheme),
-                  _buildAppearanceTab(themeProvider, uiProvider, systemProvider,
+                  _buildAppearanceTab(themeProvider, uiProvider, settings, wallet,
                       primaryColor, isDark, colorScheme),
-                  _buildPrivacyTab(systemProvider, primaryColor, colorScheme),
+                  _buildPrivacyTab(wallet, primaryColor, colorScheme),
                 ],
               ),
             ),
@@ -160,7 +165,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
 
   // ---------- تبويب الحساب ----------
   Widget _buildAccountTab(
-      SystemProvider sys, Color primaryColor, ColorScheme colorScheme) {
+      WalletProvider wallet, Color primaryColor, ColorScheme colorScheme) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -181,7 +186,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                     ? 'الحد الحالي: ${_dailyLimit.toStringAsFixed(0)} ريال'
                     : 'لم يتم تعيين حد يومي',
                 primaryColor,
-                onTap: () => _showLimitDialog(sys, false),
+                onTap: () => _showLimitDialog(wallet, false),
               ),
               const Divider(height: 1),
               _buildListTile(
@@ -191,7 +196,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                     ? 'الحد الشهري: ${_monthlyLimit.toStringAsFixed(0)} ريال'
                     : 'لم يتم تعيين حد شهري',
                 primaryColor,
-                onTap: () => _showLimitDialog(sys, true),
+                onTap: () => _showLimitDialog(wallet, true),
               ),
             ],
           ),
@@ -223,7 +228,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                     fontSize: 12, color: colorScheme.onSurfaceVariant)),
             trailing: Icon(Icons.arrow_forward_ios,
                 size: 14, color: colorScheme.onSurfaceVariant),
-            onTap: () => _showEmailDialog(sys),
+            onTap: () => _showEmailDialog(wallet),
           ),
         ),
         const SizedBox(height: 20),
@@ -284,8 +289,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
 
   // ---------- تبويب الأمان ----------
   Widget _buildSecurityTab(
-      SystemProvider sys, Color primaryColor, ColorScheme colorScheme) {
-    final useBiometrics = sys.isBiometricCurrentlyEnabled;
+      WalletProvider wallet, Color primaryColor, ColorScheme colorScheme) {
+    final useBiometrics = wallet.isBiometricCurrentlyEnabled;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -307,7 +312,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                     ? 'تم تعيين رمز PIN مكون من 6 أرقام'
                     : 'لم يتم تعيين رمز PIN بعد',
                 primaryColor,
-                onTap: () => _showPinDialog(sys),
+                onTap: () => _showPinDialog(wallet),
               ),
               const Divider(height: 1),
               SwitchListTile(
@@ -337,7 +342,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                     _showToast('البصمة مدعومة فقط على الهواتف');
                     return;
                   }
-                  sys.toggleBiometric(val);
+                  wallet.toggleBiometric(val);
                   _showToast(val
                       ? 'تم تفعيل الدخول بالبصمة'
                       : 'تم إيقاف الدخول بالبصمة');
@@ -373,7 +378,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                     fontSize: 12, color: colorScheme.onSurfaceVariant)),
             trailing: Icon(Icons.arrow_forward_ios,
                 size: 14, color: colorScheme.onSurfaceVariant),
-            onTap: () => _showPasswordDialog(sys),
+            onTap: () => _showPasswordDialog(wallet),
           ),
         ),
         const SizedBox(height: 20),
@@ -439,7 +444,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
             'حذف الحساب',
             'لا يمكن التراجع عن هذا الإجراء',
             colorScheme.error,
-            onTap: () => _showDeleteAccountDialog(sys),
+            onTap: () => _showDeleteAccountDialog(wallet),
           ),
         ),
       ],
@@ -588,7 +593,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
   Widget _buildAppearanceTab(
       ThemeProvider themeProvider,
       UiProvider uiProvider,
-      SystemProvider sys,
+      SettingsProvider settings,
+      WalletProvider wallet,
       Color primaryColor,
       bool isDark,
       ColorScheme colorScheme) {
@@ -671,7 +677,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                     if (val == null) return;
                     _playFeedback();
                     setState(() => _appLanguage = val);
-                    await sys.changeAppLanguage(val);
+                    await settings.changeAppLanguage(val);
                     _showToast(val == 'ar'
                         ? 'تم تغيير اللغة إلى العربية'
                         : 'Language changed to English');
@@ -701,7 +707,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 activeColor: primaryColor,
                 onChanged: (val) async {
                   setState(() => _appSounds = val);
-                  uiProvider.updateSoundSettings(val);
+                  settings.setSoundEnabled(val);
                   _playFeedback();
                   _showToast(val ? 'تم تفعيل الأصوات' : 'تم كتم الأصوات');
                 },
@@ -736,7 +742,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                       children: [
                         GestureDetector(
                           onTap: () =>
-                              _openColorWheelPicker(themeProvider),
+                              _openColorWheelPicker(themeProvider, wallet),
                           child: Container(
                             width: 60,
                             height: 60,
@@ -858,7 +864,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
 
   // ---------- تبويب الخصوصية ----------
   Widget _buildPrivacyTab(
-      SystemProvider sys, Color primaryColor, ColorScheme colorScheme) {
+      WalletProvider wallet, Color primaryColor, ColorScheme colorScheme) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -898,7 +904,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   setState(() => _hideBalanceFromOthers = val);
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setBool('hide_balance', val);
-                  await sys.updatePrivacySetting('hideBalance', val);
+                  await wallet.updatePrivacySetting('hideBalance', val);
                   _showToast(val ? 'تم إخفاء الرصيد' : 'سيظهر رصيدك للآخرين');
                 },
               ),
@@ -927,7 +933,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   setState(() => _showFullName = val);
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setBool('show_full_name', val);
-                  await sys.updatePrivacySetting('showFullName', val);
+                  await wallet.updatePrivacySetting('showFullName', val);
                 },
               ),
             ],
@@ -977,7 +983,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
   }
 
   // ---------- حوارات ----------
-  void _showPasswordDialog(SystemProvider sys) {
+  void _showPasswordDialog(WalletProvider wallet) {
     final oldPassController = TextEditingController();
     final newPassController = TextEditingController();
     final confirmPassController = TextEditingController();
@@ -1073,7 +1079,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   }
 
                   final success =
-                      sys.changeUserPassword(oldPass, newPass);
+                      wallet.changeUserPassword(oldPass, newPass);
                   if (success) {
                     Navigator.pop(context);
                     _showToast('تم تحديث كلمة المرور بنجاح');
@@ -1090,7 +1096,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  void _showPinDialog(SystemProvider sys) {
+  void _showPinDialog(WalletProvider wallet) {
     final oldPinController = TextEditingController();
     final newPinController = TextEditingController();
     final confirmPinController = TextEditingController();
@@ -1176,7 +1182,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   final oldPin = oldPinController.text.trim();
                   final newPin = newPinController.text.trim();
                   final confirmPin = confirmPinController.text.trim();
-                  final result = await sys.changeUserPinWithOld(
+                  final result = await wallet.changeUserPinWithOld(
                       oldPin, newPin, confirmPin);
                   if (result == 'تم تحديث رمز PIN بنجاح.') {
                     setState(() => _userPin = newPin);
@@ -1195,7 +1201,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  void _showLimitDialog(SystemProvider sys, bool isMonthly) {
+  void _showLimitDialog(WalletProvider wallet, bool isMonthly) {
     final limitController = TextEditingController(
         text: isMonthly
             ? (_monthlyLimit > 0 ? _monthlyLimit.toStringAsFixed(0) : '')
@@ -1226,12 +1232,12 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                 final newLimit =
                     double.tryParse(limitController.text.trim()) ?? 0.0;
                 if (isMonthly) {
-                  await sys.updateUserMonthlyLimit(newLimit);
+                  await wallet.updateUserMonthlyLimit(newLimit);
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setDouble('user_monthly_limit', newLimit);
                   setState(() => _monthlyLimit = newLimit);
                 } else {
-                  await sys.updateUserDailyLimit(newLimit);
+                  await wallet.updateUserDailyLimit(newLimit);
                   final prefs = await SharedPreferences.getInstance();
                   await prefs.setDouble('user_daily_limit', newLimit);
                   setState(() => _dailyLimit = newLimit);
@@ -1269,9 +1275,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   ElevatedButton.styleFrom(backgroundColor: Colors.orange),
               onPressed: () {
                 _playFeedback();
-                final sys =
-                    Provider.of<SystemProvider>(context, listen: false);
-                sys.clearAllData();
+                final auth = context.read<AuthProvider>();
+                auth.clearAllData();
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(
@@ -1288,7 +1293,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  void _showDeleteAccountDialog(SystemProvider sys) {
+  void _showDeleteAccountDialog(WalletProvider wallet) {
     final passwordController = TextEditingController();
     showDialog(
       context: context,
@@ -1332,7 +1337,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   _showToast('يرجى إدخال كلمة المرور');
                   return;
                 }
-                final success = await sys.deleteUserAccount(password);
+                final success = await wallet.deleteUserAccount(password);
                 if (success) {
                   Navigator.pop(context);
                   Navigator.pushAndRemoveUntil(
@@ -1355,7 +1360,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  void _openColorWheelPicker(ThemeProvider themeProvider) {
+  void _openColorWheelPicker(ThemeProvider themeProvider, WalletProvider wallet) {
     Color tempColor = themeProvider.primaryColor;
     showDialog(
       context: context,
@@ -1382,9 +1387,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
               themeProvider.setUserCustomColor(tempColor);
               Navigator.pop(context);
               _showToast('تم حفظ اللون الشخصي');
-              final sys =
-                  Provider.of<SystemProvider>(context, listen: false);
-              await sys.saveUserPreferredColor(tempColor);
+              await wallet.saveUserPreferredColor(tempColor);
             },
             child: const Text('حفظ', style: TextStyle(color: Colors.white)),
           ),
@@ -1393,7 +1396,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     );
   }
 
-  void _showEmailDialog(SystemProvider sys) {
+  void _showEmailDialog(WalletProvider wallet) {
     final controller = TextEditingController(text: _userEmail);
     showDialog(
       context: context,
@@ -1425,7 +1428,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
                   _showToast('يرجى إدخال بريد إلكتروني صحيح');
                   return;
                 }
-                await sys.updateUserEmail(email);
+                await wallet.updateUserEmail(email);
                 setState(() {
                   _userEmail = email;
                   _emailController.text = email;
