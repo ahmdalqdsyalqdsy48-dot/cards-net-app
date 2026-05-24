@@ -72,7 +72,10 @@ class SettingsProvider extends ChangeNotifier {
   // ---------- متنوع ----------
   int _smsBalance = 0;
 
-  // ---------- تفضيلات محلية (لغة وطابعة) ----------
+  // ---------- إعداد الصوت (جديد) ----------
+  bool _soundEnabled = true;
+
+  // ---------- تفضيلات محلية (لغة وطابعة وصوت) ----------
   SharedPreferences? _prefs;
 
   // ---------- المُنشئ ----------
@@ -83,6 +86,8 @@ class SettingsProvider extends ChangeNotifier {
 
   void _initPrefs() async {
     _prefs = await SharedPreferences.getInstance();
+    // قراءة إعداد الصوت المحفوظ
+    _soundEnabled = _prefs?.getBool('sound_enabled') ?? true;
     notifyListeners();
   }
 
@@ -204,6 +209,15 @@ class SettingsProvider extends ChangeNotifier {
   List<String> get announcements => _announcements;
   double get newsScrollSpeed => _newsScrollSpeed;
   int get smsBalance => _smsBalance;
+
+  // ---------- إعداد الصوت (جديد) ----------
+  bool get isSoundEnabled => _soundEnabled;
+
+  Future<void> setSoundEnabled(bool value) async {
+    _soundEnabled = value;
+    if (_prefs != null) await _prefs!.setBool('sound_enabled', value);
+    notifyListeners();
+  }
 
   // ---------- دوال التحديث (تكتب إلى Firestore وتُسجل حدثاً) ----------
 
@@ -433,7 +447,7 @@ class SettingsProvider extends ChangeNotifier {
         .update({'newsScrollSpeed': newSpeed});
   }
 
-  // ---------- إعدادات اللغة (جديد) ----------
+  // ---------- إعدادات اللغة ----------
   String getLanguageSync() {
     if (_prefs == null) return 'ar';
     return _prefs!.getString('language') ?? 'ar';
@@ -452,7 +466,7 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---------- إعدادات الطابعة (جديد) ----------
+  // ---------- إعدادات الطابعة ----------
   Future<void> setPrinterConnected(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('agent_printer_connected', value);
