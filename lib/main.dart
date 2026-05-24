@@ -102,7 +102,10 @@ void main() async {
           },
         ),
         ChangeNotifierProvider<NotificationProvider>(
-          create: (context) => NotificationProvider(context.read<AuthProvider>()),
+          create: (context) => NotificationProvider(
+            context.read<AuthProvider>(),
+            context.read<SoundService>(),
+          ),
         ),
         ChangeNotifierProvider<AgentAdminProvider>(
           create: (context) {
@@ -153,11 +156,9 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    // ما زلنا نقرأ اللغة من SystemProvider مؤقتاً
     final systemProvider = Provider.of<SystemProvider>(context);
     final settingsProvider = Provider.of<SettingsProvider>(context);
 
-    // محاولة قراءة اللغة من SettingsProvider أولاً
     final newLang = settingsProvider.getLanguageSync();
     if (newLang != _currentLang) {
       _currentLang = newLang;
@@ -223,14 +224,12 @@ class _MyAppState extends State<MyApp> {
         '/user_settings': (context) => const UserSettingsScreen(),
       },
 
-      // ========== طبقة الصوت العام + النقرات الخفيفة ==========
       builder: (context, child) {
         final soundService = context.read<SoundService>();
 
         return GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTap: () {
-            // صوت نقرة خفيفة عند لمس أي مساحة فارغة
             soundService.play('tap');
           },
           child: MediaQuery(
