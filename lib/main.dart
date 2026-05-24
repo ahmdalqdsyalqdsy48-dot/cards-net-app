@@ -20,7 +20,6 @@ import 'core/services/sound_service.dart';
 
 import 'features/auth/screens/sso_login_screen.dart';
 
-// استيراد الشاشات الأساسية لتعريف المسارات
 import 'features/super_admin/screens/super_admin_dashboard.dart';
 import 'features/super_admin/screens/agent_management_screen.dart';
 import 'features/super_admin/screens/subscriptions_screen.dart';
@@ -82,18 +81,15 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
-        // --- المزودات المستقلة ---
         ChangeNotifierProvider(create: (context) => ThemeProvider()),
         ChangeNotifierProvider(create: (context) => AuthProvider()),
         ChangeNotifierProvider(create: (context) => SettingsProvider()),
 
-        // --- SoundService (يحتاج SettingsProvider) ---
         Provider<SoundService>(
           create: (context) => SoundService(context.read<SettingsProvider>()),
           dispose: (context, service) => service.dispose(),
         ),
 
-        // --- المزودات التي تعتمد على غيرها ---
         ChangeNotifierProvider<WalletProvider>(
           create: (context) {
             final auth = context.read<AuthProvider>();
@@ -115,19 +111,16 @@ void main() async {
           },
         ),
 
-        // --- المزودات المستقلة المتبقية ---
         ChangeNotifierProvider(create: (context) => BackupProvider()),
         ChangeNotifierProvider(create: (context) => CouponProvider()),
         ChangeNotifierProvider(create: (context) => AuditProvider()),
 
-        // --- UiProvider الجديد (يستخدم SoundService) ---
         ChangeNotifierProvider<UiProvider>(
           create: (context) => UiProvider(
             soundService: context.read<SoundService>(),
           ),
         ),
 
-        // --- القديم (مؤقت) ---
         ChangeNotifierProvider(create: (context) => SystemProvider()),
       ],
       child: MyApp(initialLang: savedLang),
