@@ -16,6 +16,7 @@ import 'core/providers/coupon_provider.dart';
 import 'core/providers/audit_provider.dart';
 import 'core/providers/agent_admin_provider.dart';
 import 'core/providers/ui_provider.dart';
+import 'core/services/sound_service.dart';
 
 import 'features/auth/screens/sso_login_screen.dart';
 
@@ -85,6 +86,12 @@ void main() async {
         ChangeNotifierProvider(create: (context) => ThemeProvider()),
         ChangeNotifierProvider(create: (context) => AuthProvider()),
         ChangeNotifierProvider(create: (context) => SettingsProvider()),
+
+        // --- SoundService (يحتاج SettingsProvider) ---
+        Provider<SoundService>(
+          create: (context) => SoundService(context.read<SettingsProvider>()),
+          dispose: (context, service) => service.dispose(),
+        ),
 
         // --- المزودات التي تعتمد على غيرها ---
         ChangeNotifierProvider<WalletProvider>(
@@ -216,12 +223,22 @@ class _MyAppState extends State<MyApp> {
         '/user_settings': (context) => const UserSettingsScreen(),
       },
 
+      // ========== طبقة الصوت العام + النقرات الخفيفة ==========
       builder: (context, child) {
-        return MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            textScaler: TextScaler.linear(themeProvider.fontSizeScale),
+        final soundService = context.read<SoundService>();
+
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () {
+            // صوت نقرة خفيفة عند لمس أي مساحة فارغة
+            soundService.play('tap');
+          },
+          child: MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              textScaler: TextScaler.linear(themeProvider.fontSizeScale),
+            ),
+            child: child!,
           ),
-          child: child!,
         );
       },
       home: const SSOLoginScreen(),
