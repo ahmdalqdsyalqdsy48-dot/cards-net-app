@@ -9,7 +9,9 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/settings_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/widgets/custom_header.dart';
@@ -85,49 +87,51 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
       Provider.of<UiProvider>(context, listen: false).playSound(type);
 
   Future<void> _loadSettings() async {
-  final prefs = await SharedPreferences.getInstance();
-  final sys = Provider.of<SystemProvider>(context, listen: false);
+    final prefs = await SharedPreferences.getInstance();
+    final auth = context.read<AuthProvider>();
+    final wallet = context.read<WalletProvider>();
+    final settings = context.read<SettingsProvider>();
 
-  // تحميل بيانات الوكيل من السحابة لضمان وجود البريد وغيره
-  await sys.loadUserData(sys.currentUserPhone);
+    // تحميل البريد الإلكتروني من السحابة
+    await wallet.loadUserEmail();
 
-  final ui = Provider.of<UiProvider>(context, listen: false);
-  final email = sys.currentUserEmail ?? '';
+    // قراءة إعداد الصوت من SettingsProvider
+    final soundsEnabled = settings.isSoundEnabled;
 
-  setState(() {
-    // طباعة
-    _autoPrintEnabled = prefs.getBool('agent_autoPrint') ?? false;
-    _defaultQty = prefs.getDouble('agent_defaultQty') ?? 1.0;
-    _receiptFooterController.text =
-        prefs.getString('agent_receiptFooter') ?? 'شكراً لتعاملكم معنا';
-    _isPrinterConnected =
-        prefs.getBool('agent_printer_connected') ?? false;
-    _paperSize = prefs.getString('agent_paperSize') ?? '80mm';
+    setState(() {
+      // طباعة
+      _autoPrintEnabled = prefs.getBool('agent_autoPrint') ?? false;
+      _defaultQty = prefs.getDouble('agent_defaultQty') ?? 1.0;
+      _receiptFooterController.text =
+          prefs.getString('agent_receiptFooter') ?? 'شكراً لتعاملكم معنا';
+      _isPrinterConnected =
+          prefs.getBool('agent_printer_connected') ?? false;
+      _paperSize = prefs.getString('agent_paperSize') ?? '80mm';
 
-    // أمان
-    _biometricsEnabled = sys.isBiometricCurrentlyEnabled;
-    _autoLockMinutes = prefs.getInt('agent_autoLockMinutes') ?? 0;
-    _pinEnabled = sys.isPinEnabled;
-    _userEmail = email;
-    _emailController.text = email;
+      // أمان
+      _biometricsEnabled = wallet.isBiometricCurrentlyEnabled;
+      _autoLockMinutes = prefs.getInt('agent_autoLockMinutes') ?? 0;
+      _pinEnabled = wallet.isPinEnabled;
+      _userEmail = wallet.currentUserEmail ?? '';
+      _emailController.text = _userEmail;
 
-    // إشعارات
-    _notificationsEnabled =
-        prefs.getBool('agent_notifications_enabled') ?? true;
-    _salesNotifications =
-        prefs.getBool('agent_sales_notifications') ?? true;
-    _stockNotifications =
-        prefs.getBool('agent_stock_notifications') ?? true;
-    _offerNotifications =
-        prefs.getBool('agent_offer_notifications') ?? true;
+      // إشعارات
+      _notificationsEnabled =
+          prefs.getBool('agent_notifications_enabled') ?? true;
+      _salesNotifications =
+          prefs.getBool('agent_sales_notifications') ?? true;
+      _stockNotifications =
+          prefs.getBool('agent_stock_notifications') ?? true;
+      _offerNotifications =
+          prefs.getBool('agent_offer_notifications') ?? true;
 
-    // مظهر
-    _appSounds = ui.isSoundsEnabled;
-    _appLanguage = sys.getLanguageSync();
+      // مظهر
+      _appSounds = soundsEnabled;
+      _appLanguage = settings.getLanguageSync();
 
-    _isLoading = false;
-  });
-}
+      _isLoading = false;
+    });
+  }
 
   Future<void> _saveSetting(String key, dynamic value) async {
     final prefs = await SharedPreferences.getInstance();
@@ -138,7 +142,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   }
 
   // ========== تغيير رمز PIN ==========
-  void _showPinChangeDialog(SystemProvider sys) {
+  void _showPinChangeDialog(WalletProvider wallet) {
     final oldPinController = TextEditingController();
     final newPinController = TextEditingController();
     final confirmPinController = TextEditingController();
@@ -150,10 +154,8 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
         builder: (ctx, setDialogState) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-            title: const Text('تغيير رمز PIN الشامل',
-                textAlign: TextAlign.center),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            title: const Text('تغيير رمز PIN الشامل', textAlign: TextAlign.center),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -164,24 +166,21 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                     controller: oldPinController,
                     label: 'رمز PIN القديم',
                     obscure: obsOld,
-                    onToggle: () =>
-                        setDialogState(() => obsOld = !obsOld),
+                    onToggle: () => setDialogState(() => obsOld = !obsOld),
                   ),
                   const SizedBox(height: 10),
                   _buildPinField(
                     controller: newPinController,
                     label: 'رمز PIN الجديد',
                     obscure: obsNew,
-                    onToggle: () =>
-                        setDialogState(() => obsNew = !obsNew),
+                    onToggle: () => setDialogState(() => obsNew = !obsNew),
                   ),
                   const SizedBox(height: 10),
                   _buildPinField(
                     controller: confirmPinController,
                     label: 'تأكيد رمز PIN الجديد',
                     obscure: obsConfirm,
-                    onToggle: () =>
-                        setDialogState(() => obsConfirm = !obsConfirm),
+                    onToggle: () => setDialogState(() => obsConfirm = !obsConfirm),
                   ),
                 ],
               ),
@@ -206,7 +205,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                     return;
                   }
 
-                  final result = await sys.changeUserPinWithOld(
+                  final result = await wallet.changeUserPinWithOld(
                       oldPin, newPin, confirmPin);
                   Navigator.pop(ctx);
                   _showToast(result);
@@ -244,7 +243,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   }
 
   // ========== تغيير كلمة المرور ==========
-  void _changePassword(SystemProvider sys) {
+  void _changePassword(WalletProvider wallet) {
     final oldPass = _oldPasswordController.text.trim();
     final newPass = _newPasswordController.text.trim();
     final confirmPass = _confirmPasswordController.text.trim();
@@ -262,7 +261,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
       return;
     }
 
-    final success = sys.changeUserPassword(oldPass, newPass);
+    final success = wallet.changeUserPassword(oldPass, newPass);
     if (success) {
       _showToast('تم تغيير كلمة المرور بنجاح');
       _oldPasswordController.clear();
@@ -287,14 +286,12 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     );
 
     if (kIsWeb) {
-      await Printing.layoutPdf(
-          onLayout: (format) async => pdf.save());
+      await Printing.layoutPdf(onLayout: (format) async => pdf.save());
     } else {
       final output = await getTemporaryDirectory();
       final file = File('${output.path}/test_print.pdf');
       await file.writeAsBytes(await pdf.save());
-      await Printing.sharePdf(
-          bytes: await pdf.save(), filename: 'اختبار_الطباعة.pdf');
+      await Printing.sharePdf(bytes: await pdf.save(), filename: 'اختبار_الطباعة.pdf');
     }
     _showToast('تم فتح نافذة الطباعة');
   }
@@ -308,25 +305,26 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   // ========== الواجهة الأساسية ==========
   @override
   Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
-    final ui = Provider.of<UiProvider>(context);
-    final theme = Provider.of<ThemeProvider>(context);
+    final auth = context.watch<AuthProvider>();
+    final wallet = context.watch<WalletProvider>();
+    final settings = context.watch<SettingsProvider>();
+    final ui = context.watch<UiProvider>();
+    final theme = context.watch<ThemeProvider>();
     final colorScheme = Theme.of(context).colorScheme;
     final primaryColor = theme.primaryColor;
 
     if (_isLoading) {
-      return const Scaffold(
-          body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
       appBar: const CustomHeader(title: 'إعدادات الوكيل'),
       drawer: CustomAgentDrawer(
-        agentName: sys.currentUserName,
-        phoneNumber: sys.currentUserPhone,
+        agentName: wallet.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
         role: 'وكيل معتمد',
-        currentBalance: sys.currentUserBalance,
+        currentBalance: wallet.currentUserBalance,
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
@@ -359,12 +357,11 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildSecurityTab(sys, primaryColor, colorScheme),
-                  _buildPrinterTab(sys, primaryColor, colorScheme),
+                  _buildSecurityTab(wallet, settings, primaryColor, colorScheme),
+                  _buildPrinterTab(settings, primaryColor, colorScheme),
                   _buildNotificationsTab(primaryColor, colorScheme),
-                  _buildAppearanceTab(
-                      theme, ui, sys, primaryColor, colorScheme),
-                  _buildSystemTab(sys, primaryColor, colorScheme),
+                  _buildAppearanceTab(theme, ui, settings, primaryColor, colorScheme),
+                  _buildSystemTab(wallet, primaryColor, colorScheme),
                 ],
               ),
             ),
@@ -375,50 +372,43 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   }
 
   // ---------- تبويب الأمان والجلسة ----------
-  Widget _buildSecurityTab(SystemProvider sys, Color primaryColor,
-      ColorScheme colorScheme) {
+  Widget _buildSecurityTab(WalletProvider wallet, SettingsProvider settings,
+      Color primaryColor, ColorScheme colorScheme) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         _sectionTitle('رمز PIN الشامل', colorScheme.onSurface),
         Card(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           color: colorScheme.surface,
           child: Column(
             children: [
               ListTile(
                 leading: Icon(Icons.lock_outline, color: primaryColor),
                 title: Text('تغيير رمز PIN',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                 subtitle: Text(
-                    'الرمز الحالي: ${sys.currentUserPin.isNotEmpty && sys.currentUserPin.length == 6 ? "******" : "غير معين"}',
-                    style: TextStyle(
-                        color: colorScheme.onSurfaceVariant)),
+                    'الرمز الحالي: ${wallet.currentUserPin.isNotEmpty && wallet.currentUserPin.length == 6 ? "******" : "غير معين"}',
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
                 trailing: Icon(Icons.arrow_forward_ios,
                     size: 14, color: colorScheme.onSurfaceVariant),
                 onTap: () {
                   _play('click');
-                  _showPinChangeDialog(sys);
+                  _showPinChangeDialog(wallet);
                 },
               ),
               const Divider(height: 1),
               SwitchListTile(
                 secondary: Icon(Icons.security, color: primaryColor),
                 title: Text('تفعيل رمز PIN للعمليات',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                 subtitle: Text('طلب الرمز عند الشحن والتحويل والبيع',
-                    style: TextStyle(
-                        color: colorScheme.onSurfaceVariant)),
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
                 value: _pinEnabled,
                 activeColor: primaryColor,
                 onChanged: (val) async {
                   _play('click');
-                  await sys.togglePinEnabled(val);
+                  await wallet.togglePinEnabled(val);
                   setState(() => _pinEnabled = val);
                   _showToast(val
                       ? 'تم تفعيل طلب رمز PIN للعمليات'
@@ -432,8 +422,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
 
         _sectionTitle('تغيير كلمة المرور', colorScheme.onSurface),
         Card(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           color: colorScheme.surface,
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -444,41 +433,34 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                     hint: 'كلمة المرور الحالية',
                     icon: Icons.lock_outline,
                     obscure: _obsOldPass,
-                    onToggle: () =>
-                        setState(() => _obsOldPass = !_obsOldPass)),
+                    onToggle: () => setState(() => _obsOldPass = !_obsOldPass)),
                 const SizedBox(height: 10),
                 _buildPasswordField(
                     controller: _newPasswordController,
                     hint: 'كلمة المرور الجديدة',
                     icon: Icons.lock,
                     obscure: _obsNewPass,
-                    onToggle: () =>
-                        setState(() => _obsNewPass = !_obsNewPass)),
+                    onToggle: () => setState(() => _obsNewPass = !_obsNewPass)),
                 const SizedBox(height: 10),
                 _buildPasswordField(
                     controller: _confirmPasswordController,
                     hint: 'تأكيد كلمة المرور الجديدة',
                     icon: Icons.check_circle_outline,
                     obscure: _obsConfPass,
-                    onToggle: () =>
-                        setState(() => _obsConfPass = !_obsConfPass)),
+                    onToggle: () => setState(() => _obsConfPass = !_obsConfPass)),
                 const SizedBox(height: 15),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.redAccent,
-                        shape: RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.circular(10))),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                     onPressed: () {
                       _play('click');
-                      _changePassword(sys);
+                      _changePassword(wallet);
                     },
                     child: const Text('تغيير كلمة المرور',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold)),
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                 ),
               ],
@@ -489,68 +471,48 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
 
         _sectionTitle('أمان الجلسة', colorScheme.onSurface),
         Card(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           color: colorScheme.surface,
           child: Column(
             children: [
               SwitchListTile(
                 secondary: Icon(Icons.fingerprint, color: primaryColor),
                 title: Text('تسجيل الدخول بالبصمة',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                 subtitle: Text('استخدام بصمة الإصبع للدخول السريع',
-                    style: TextStyle(
-                        color: colorScheme.onSurfaceVariant)),
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
                 value: _biometricsEnabled,
                 activeColor: primaryColor,
                 onChanged: (val) {
                   _play('click');
-                  sys.toggleBiometric(val);
+                  wallet.toggleBiometric(val);
                   setState(() => _biometricsEnabled = val);
-                  _showToast(val
-                      ? 'تم تفعيل الدخول بالبصمة'
-                      : 'تم تعطيل الدخول بالبصمة');
+                  _showToast(val ? 'تم تفعيل الدخول بالبصمة' : 'تم تعطيل الدخول بالبصمة');
                 },
               ),
               const Divider(height: 1),
               ListTile(
-                leading:
-                    Icon(Icons.lock_clock, color: primaryColor),
+                leading: Icon(Icons.lock_clock, color: primaryColor),
                 title: Text('القفل التلقائي للجلسة',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                 subtitle: Text(
-                    _autoLockMinutes == 0
-                        ? 'معطل'
-                        : 'بعد $_autoLockMinutes دقيقة من الخمول',
-                    style: TextStyle(
-                        color: colorScheme.onSurfaceVariant)),
+                    _autoLockMinutes == 0 ? 'معطل' : 'بعد $_autoLockMinutes دقيقة من الخمول',
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
                 trailing: DropdownButton<int>(
                   value: _autoLockMinutes,
                   items: const [
-                    DropdownMenuItem(
-                        value: 0, child: Text('معطل')),
-                    DropdownMenuItem(
-                        value: 1, child: Text('1 دقيقة')),
-                    DropdownMenuItem(
-                        value: 3, child: Text('3 دقائق')),
-                    DropdownMenuItem(
-                        value: 5, child: Text('5 دقائق')),
-                    DropdownMenuItem(
-                        value: 10, child: Text('10 دقائق')),
+                    DropdownMenuItem(value: 0, child: Text('معطل')),
+                    DropdownMenuItem(value: 1, child: Text('1 دقيقة')),
+                    DropdownMenuItem(value: 3, child: Text('3 دقائق')),
+                    DropdownMenuItem(value: 5, child: Text('5 دقائق')),
+                    DropdownMenuItem(value: 10, child: Text('10 دقائق')),
                   ],
                   onChanged: (val) async {
                     if (val == null) return;
                     _play('click');
                     setState(() => _autoLockMinutes = val);
-                    await _saveSetting(
-                        'agent_autoLockMinutes', val);
-                    _showToast(val == 0
-                        ? 'تم تعطيل القفل التلقائي'
-                        : 'تم تعيين القفل بعد $val دقيقة');
+                    await _saveSetting('agent_autoLockMinutes', val);
+                    _showToast(val == 0 ? 'تم تعطيل القفل التلقائي' : 'تم تعيين القفل بعد $val دقيقة');
                   },
                 ),
               ),
@@ -561,44 +523,32 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
 
         _sectionTitle('البريد الإلكتروني', colorScheme.onSurface),
         Card(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           color: colorScheme.surface,
           child: ListTile(
-            leading:
-                Icon(Icons.email, color: primaryColor),
+            leading: Icon(Icons.email, color: primaryColor),
             title: Text('البريد الإلكتروني',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurface)),
-            subtitle: Text(
-                _userEmail.isEmpty ? 'غير مضاف' : _userEmail,
-                style: TextStyle(
-                    color: colorScheme.onSurfaceVariant)),
-            trailing: Icon(Icons.edit,
-                color: colorScheme.onSurfaceVariant),
-            onTap: () => _showEmailDialog(sys),
+                style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+            subtitle: Text(_userEmail.isEmpty ? 'غير مضاف' : _userEmail,
+                style: TextStyle(color: colorScheme.onSurfaceVariant)),
+            trailing: Icon(Icons.edit, color: colorScheme.onSurfaceVariant),
+            onTap: () => _showEmailDialog(wallet),
           ),
         ),
         const SizedBox(height: 20),
 
         _sectionTitle('الجلسة', colorScheme.onSurface),
         Card(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           color: colorScheme.surface,
           child: ListTile(
             leading: const Icon(Icons.logout, color: Colors.red),
             title: Text('تسجيل الخروج',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurface)),
+                style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
             subtitle: Text('إنهاء الجلسة الحالية',
-                style: TextStyle(
-                    color: colorScheme.onSurfaceVariant)),
+                style: TextStyle(color: colorScheme.onSurfaceVariant)),
             trailing: Icon(Icons.arrow_forward_ios,
-                size: 14,
-                color: colorScheme.onSurfaceVariant),
+                size: 14, color: colorScheme.onSurfaceVariant),
             onTap: () {
               _play('click');
               _showLogoutDialog();
@@ -610,37 +560,30 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   }
 
   // ---------- تبويب الطباعة والمبيعات ----------
-  Widget _buildPrinterTab(SystemProvider sys, Color primaryColor,
+  Widget _buildPrinterTab(SettingsProvider settings, Color primaryColor,
       ColorScheme colorScheme) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         _sectionTitle('حالة الطابعة', colorScheme.onSurface),
         Card(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           color: colorScheme.surface,
           child: SwitchListTile(
             secondary: Icon(
                 kIsWeb ? Icons.picture_as_pdf : Icons.bluetooth_connected,
-                color:
-                    _isPrinterConnected ? Colors.green : Colors.grey),
-            title: Text(
-                kIsWeb ? 'تفعيل الطباعة (PDF)' : 'الاتصال بالطابعة',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurface)),
-            subtitle: Text(
-                _isPrinterConnected ? 'جاهز للطباعة' : 'غير مفعّل',
-                style: TextStyle(
-                    color: colorScheme.onSurfaceVariant)),
+                color: _isPrinterConnected ? Colors.green : Colors.grey),
+            title: Text(kIsWeb ? 'تفعيل الطباعة (PDF)' : 'الاتصال بالطابعة',
+                style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+            subtitle: Text(_isPrinterConnected ? 'جاهز للطباعة' : 'غير مفعّل',
+                style: TextStyle(color: colorScheme.onSurfaceVariant)),
             value: _isPrinterConnected,
             activeColor: primaryColor,
             onChanged: (val) async {
               _play('click');
               setState(() => _isPrinterConnected = val);
               await _saveSetting('agent_printer_connected', val);
-              await sys.setPrinterConnected(val);
+              await settings.setPrinterConnected(val);
               _showToast(val ? 'تم تفعيل الطباعة' : 'تم تعطيل الطباعة');
             },
           ),
@@ -648,19 +591,15 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
         const SizedBox(height: 20),
         _sectionTitle('تفضيلات الطباعة', colorScheme.onSurface),
         Card(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           color: colorScheme.surface,
           child: Column(
             children: [
               SwitchListTile(
                 title: Text('الطباعة التلقائية فور البيع',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                 subtitle: Text('تجاوز نافذة التأكيد',
-                    style: TextStyle(
-                        color: colorScheme.onSurfaceVariant)),
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
                 activeColor: primaryColor,
                 value: _autoPrintEnabled,
                 onChanged: (val) {
@@ -671,16 +610,12 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
               ),
               const Divider(height: 1),
               Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                        'الكمية الافتراضية: ${_defaultQty.toInt()} كروت',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.onSurface)),
+                    Text('الكمية الافتراضية: ${_defaultQty.toInt()} كروت',
+                        style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                     Slider(
                       value: _defaultQty,
                       min: 1,
@@ -699,30 +634,20 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
               const Divider(height: 1),
               ListTile(
                 title: Text('حجم الورق',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
-                subtitle: Text(_paperSize == '80mm'
-                    ? 'ورق حراري 80 مم'
-                    : 'ورق A4'),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text(_paperSize == '80mm' ? 'ورق حراري 80 مم' : 'ورق A4'),
                 trailing: DropdownButton<String>(
                   value: _paperSize,
                   items: const [
-                    DropdownMenuItem(
-                        value: '80mm',
-                        child: Text('80mm (ورق حراري)')),
-                    DropdownMenuItem(
-                        value: 'A4',
-                        child: Text('A4 (ورق عادي)')),
+                    DropdownMenuItem(value: '80mm', child: Text('80mm (ورق حراري)')),
+                    DropdownMenuItem(value: 'A4', child: Text('A4 (ورق عادي)')),
                   ],
                   onChanged: (val) {
                     if (val == null) return;
                     _play('click');
                     setState(() => _paperSize = val);
                     _saveSetting('agent_paperSize', val);
-                    _showToast(val == '80mm'
-                        ? 'تم اختيار ورق حراري'
-                        : 'تم اختيار ورق A4');
+                    _showToast(val == '80mm' ? 'تم اختيار ورق حراري' : 'تم اختيار ورق A4');
                   },
                 ),
               ),
@@ -733,26 +658,20 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                   controller: _receiptFooterController,
                   decoration: InputDecoration(
                     labelText: 'تذييل الفاتورة',
-                    border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(10)),
-                    prefixIcon:
-                        const Icon(Icons.text_fields),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    prefixIcon: const Icon(Icons.text_fields),
                   ),
-                  onChanged: (val) =>
-                      _saveSetting('agent_receiptFooter', val),
+                  onChanged: (val) => _saveSetting('agent_receiptFooter', val),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     onPressed: _printTestPage,
                     icon: const Icon(Icons.print),
-                    label:
-                        const Text('طباعة صفحة اختبار'),
+                    label: const Text('طباعة صفحة اختبار'),
                   ),
                 ),
               ),
@@ -764,110 +683,79 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   }
 
   // ---------- تبويب الإشعارات ----------
-  Widget _buildNotificationsTab(Color primaryColor,
-      ColorScheme colorScheme) {
+  Widget _buildNotificationsTab(Color primaryColor, ColorScheme colorScheme) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         _sectionTitle('إعدادات الإشعارات', colorScheme.onSurface),
         Card(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           color: colorScheme.surface,
           child: Column(
             children: [
               SwitchListTile(
-                secondary: Icon(Icons.notifications_active,
-                    color: primaryColor),
+                secondary: Icon(Icons.notifications_active, color: primaryColor),
                 title: Text('تفعيل الإشعارات',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                 subtitle: Text('استلام إشعارات داخل التطبيق',
-                    style: TextStyle(
-                        color: colorScheme.onSurfaceVariant)),
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
                 value: _notificationsEnabled,
                 activeColor: primaryColor,
                 onChanged: (val) async {
                   _play('click');
-                  setState(
-                      () => _notificationsEnabled = val);
-                  await _saveSetting(
-                      'agent_notifications_enabled', val);
-                  _showToast(val
-                      ? 'تم تفعيل الإشعارات'
-                      : 'تم تعطيل الإشعارات');
+                  setState(() => _notificationsEnabled = val);
+                  await _saveSetting('agent_notifications_enabled', val);
+                  _showToast(val ? 'تم تفعيل الإشعارات' : 'تم تعطيل الإشعارات');
                 },
               ),
               const Divider(height: 1),
               SwitchListTile(
-                secondary:
-                    Icon(Icons.point_of_sale, color: primaryColor),
+                secondary: Icon(Icons.point_of_sale, color: primaryColor),
                 title: Text('إشعارات المبيعات',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                 subtitle: Text('إيصال بعد كل عملية بيع',
-                    style: TextStyle(
-                        color: colorScheme.onSurfaceVariant)),
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
                 value: _salesNotifications,
                 activeColor: primaryColor,
                 onChanged: _notificationsEnabled
                     ? (val) async {
                         _play('click');
-                        setState(() =>
-                            _salesNotifications = val);
-                        await _saveSetting(
-                            'agent_sales_notifications',
-                            val);
+                        setState(() => _salesNotifications = val);
+                        await _saveSetting('agent_sales_notifications', val);
                       }
                     : null,
               ),
               const Divider(height: 1),
               SwitchListTile(
-                secondary:
-                    Icon(Icons.inventory, color: primaryColor),
+                secondary: Icon(Icons.inventory, color: primaryColor),
                 title: Text('إشعارات انخفاض المخزون',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                 subtitle: Text('عند وصول المخزون للحد الأدنى',
-                    style: TextStyle(
-                        color: colorScheme.onSurfaceVariant)),
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
                 value: _stockNotifications,
                 activeColor: primaryColor,
                 onChanged: _notificationsEnabled
                     ? (val) async {
                         _play('click');
-                        setState(() =>
-                            _stockNotifications = val);
-                        await _saveSetting(
-                            'agent_stock_notifications',
-                            val);
+                        setState(() => _stockNotifications = val);
+                        await _saveSetting('agent_stock_notifications', val);
                       }
                     : null,
               ),
               const Divider(height: 1),
               SwitchListTile(
-                secondary:
-                    Icon(Icons.campaign, color: primaryColor),
+                secondary: Icon(Icons.campaign, color: primaryColor),
                 title: Text('إشعارات العروض والتحديثات',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                 subtitle: Text('العروض الجديدة من الإدارة',
-                    style: TextStyle(
-                        color: colorScheme.onSurfaceVariant)),
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
                 value: _offerNotifications,
                 activeColor: primaryColor,
                 onChanged: _notificationsEnabled
                     ? (val) async {
                         _play('click');
-                        setState(() =>
-                            _offerNotifications = val);
-                        await _saveSetting(
-                            'agent_offer_notifications',
-                            val);
+                        setState(() => _offerNotifications = val);
+                        await _saveSetting('agent_offer_notifications', val);
                       }
                     : null,
               ),
@@ -882,7 +770,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   Widget _buildAppearanceTab(
       ThemeProvider theme,
       UiProvider ui,
-      SystemProvider sys,
+      SettingsProvider settings,
       Color primaryColor,
       ColorScheme colorScheme) {
     final isDark = theme.isDarkMode;
@@ -891,40 +779,28 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
       children: [
         _sectionTitle('المظهر العام', colorScheme.onSurface),
         Card(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           color: colorScheme.surface,
           child: Column(
             children: [
               ListTile(
-                leading: Icon(Icons.brightness_6,
-                    color: primaryColor),
+                leading: Icon(Icons.brightness_6, color: primaryColor),
                 title: Text('الوضع الليلي',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
-                subtitle: Text(
-                    isDark ? 'داكن' : 'فاتح',
-                    style: TextStyle(
-                        color: colorScheme.onSurfaceVariant)),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text(isDark ? 'داكن' : 'فاتح',
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
                 trailing: DropdownButton<String>(
                   value: isDark ? 'dark' : 'light',
                   items: const [
-                    DropdownMenuItem(
-                        value: 'light', child: Text('فاتح')),
-                    DropdownMenuItem(
-                        value: 'dark', child: Text('داكن')),
-                    DropdownMenuItem(
-                        value: 'auto',
-                        child: Text('تلقائي')),
+                    DropdownMenuItem(value: 'light', child: Text('فاتح')),
+                    DropdownMenuItem(value: 'dark', child: Text('داكن')),
+                    DropdownMenuItem(value: 'auto', child: Text('تلقائي')),
                   ],
                   onChanged: (val) {
                     _play('click');
                     if (val == 'auto') {
-                      final brightness = MediaQuery.of(context)
-                          .platformBrightness;
-                      theme.toggleTheme(
-                          brightness == Brightness.dark);
+                      final brightness = MediaQuery.of(context).platformBrightness;
+                      theme.toggleTheme(brightness == Brightness.dark);
                     } else {
                       theme.toggleTheme(val == 'dark');
                     }
@@ -933,33 +809,22 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
               ),
               const Divider(height: 1),
               ListTile(
-                leading:
-                    Icon(Icons.language, color: primaryColor),
+                leading: Icon(Icons.language, color: primaryColor),
                 title: Text('لغة التطبيق',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
-                subtitle: Text(
-                    _appLanguage == 'ar'
-                        ? 'العربية'
-                        : 'English',
-                    style: TextStyle(
-                        color: colorScheme.onSurfaceVariant)),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text(_appLanguage == 'ar' ? 'العربية' : 'English',
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
                 trailing: DropdownButton<String>(
                   value: _appLanguage,
                   items: const [
-                    DropdownMenuItem(
-                        value: 'ar',
-                        child: Text('العربية')),
-                    DropdownMenuItem(
-                        value: 'en',
-                        child: Text('English')),
+                    DropdownMenuItem(value: 'ar', child: Text('العربية')),
+                    DropdownMenuItem(value: 'en', child: Text('English')),
                   ],
                   onChanged: (val) async {
                     if (val == null) return;
                     _play('click');
                     setState(() => _appLanguage = val);
-                    await sys.changeAppLanguage(val);
+                    await settings.changeAppLanguage(val);
                     _showToast(val == 'ar'
                         ? 'تم تغيير اللغة إلى العربية'
                         : 'Language changed to English');
@@ -968,24 +833,18 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
               ),
               const Divider(height: 1),
               SwitchListTile(
-                secondary:
-                    Icon(Icons.volume_up, color: primaryColor),
+                secondary: Icon(Icons.volume_up, color: primaryColor),
                 title: Text('الأصوات التفاعلية',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                 subtitle: Text('أصوات النقرات والعمليات',
-                    style: TextStyle(
-                        color: colorScheme.onSurfaceVariant)),
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
                 value: _appSounds,
                 activeColor: primaryColor,
                 onChanged: (val) {
                   _play('click');
                   setState(() => _appSounds = val);
-                  ui.updateSoundSettings(val);
-                  _showToast(val
-                      ? 'تم تفعيل الأصوات'
-                      : 'تم كتم الأصوات');
+                  settings.setSoundEnabled(val);
+                  _showToast(val ? 'تم تفعيل الأصوات' : 'تم كتم الأصوات');
                 },
               ),
             ],
@@ -994,27 +853,22 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
         const SizedBox(height: 20),
         _sectionTitle('تخصيص لون الواجهة', colorScheme.onSurface),
         Card(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           color: colorScheme.surface,
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
                 Row(
-                  mainAxisAlignment:
-                      MainAxisAlignment.spaceBetween,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text('لونك المفضل:',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.onSurface)),
+                        style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                     CircleAvatar(
                       backgroundColor: primaryColor,
                       radius: 20,
                       child: primaryColor == Colors.white
-                          ? const Icon(Icons.palette,
-                              color: Colors.grey)
+                          ? const Icon(Icons.palette, color: Colors.grey)
                           : null,
                     ),
                   ],
@@ -1024,20 +878,15 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                   child: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                            color: Colors.grey.shade200,
-                            width: 2)),
+                        shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade200, width: 2)),
                     child: ColorPicker(
                       pickerColor: primaryColor,
-                      onColorChanged: (color) =>
-                          theme.changeColor(color),
+                      onColorChanged: (color) => theme.changeColor(color),
                       paletteType: PaletteType.hsvWithHue,
                       enableAlpha: false,
                       displayThumbColor: true,
                       labelTypes: const [],
-                      pickerAreaBorderRadius:
-                          BorderRadius.circular(100),
+                      pickerAreaBorderRadius: BorderRadius.circular(100),
                     ),
                   ),
                 ),
@@ -1047,12 +896,9 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                     _play('click');
                     theme.resetToDefault();
                   },
-                  icon: const Icon(Icons.refresh,
-                      color: Colors.blueGrey),
+                  icon: const Icon(Icons.refresh, color: Colors.blueGrey),
                   label: const Text('استعادة المظهر الافتراضي',
-                      style: TextStyle(
-                          color: Colors.blueGrey,
-                          fontWeight: FontWeight.bold)),
+                      style: TextStyle(color: Colors.blueGrey, fontWeight: FontWeight.bold)),
                 ),
               ],
             ),
@@ -1061,35 +907,27 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
         const SizedBox(height: 20),
         _sectionTitle('حجم الخط', colorScheme.onSurface),
         Card(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           color: colorScheme.surface,
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                Text('صغير',
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: colorScheme.onSurface)),
+                Text('صغير', style: TextStyle(fontSize: 12, color: colorScheme.onSurface)),
                 Expanded(
                   child: Slider(
                     value: theme.fontSizeScale,
                     min: 0.8,
                     max: 1.5,
                     divisions: 7,
-                    label:
-                        theme.fontSizeScale.toStringAsFixed(2),
+                    label: theme.fontSizeScale.toStringAsFixed(2),
                     activeColor: primaryColor,
                     onChanged: (val) {
                       theme.changeFontSizeScale(val);
                     },
                   ),
                 ),
-                Text('كبير',
-                    style: TextStyle(
-                        fontSize: 16,
-                        color: colorScheme.onSurface)),
+                Text('كبير', style: TextStyle(fontSize: 16, color: colorScheme.onSurface)),
               ],
             ),
           ),
@@ -1099,68 +937,51 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   }
 
   // ---------- تبويب النظام والأدوات ----------
-  Widget _buildSystemTab(SystemProvider sys, Color primaryColor,
+  Widget _buildSystemTab(WalletProvider wallet, Color primaryColor,
       ColorScheme colorScheme) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         _sectionTitle('أدوات النظام', colorScheme.onSurface),
         Card(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           color: colorScheme.surface,
           child: Column(
             children: [
               ListTile(
-                leading: const Icon(Icons.cleaning_services,
-                    color: Colors.orange),
+                leading: const Icon(Icons.cleaning_services, color: Colors.orange),
                 title: Text('تنظيف الذاكرة المؤقتة',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                 subtitle: Text('يساعد في تسريع التطبيق',
-                    style: TextStyle(
-                        color: colorScheme.onSurfaceVariant)),
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
                 trailing: Icon(Icons.arrow_forward_ios,
-                    size: 14,
-                    color: colorScheme.onSurfaceVariant),
+                    size: 14, color: colorScheme.onSurfaceVariant),
                 onTap: () {
                   _play('click');
                   imageCache.clear();
                   imageCache.clearLiveImages();
-                  PaintingBinding.instance.imageCache
-                      .clear();
-                  _showToast(
-                      'تم تنظيف الذاكرة المؤقتة 🚀');
+                  PaintingBinding.instance.imageCache.clear();
+                  _showToast('تم تنظيف الذاكرة المؤقتة 🚀');
                 },
               ),
               const Divider(height: 1),
               ListTile(
-                leading: const Icon(Icons.cloud_sync,
-                    color: Colors.blue),
+                leading: const Icon(Icons.cloud_sync, color: Colors.blue),
                 title: Text('فرض المزامنة',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface)),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                 subtitle: Text('سحب أحدث بيانات من السيرفر',
-                    style: TextStyle(
-                        color: colorScheme.onSurfaceVariant)),
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
                 trailing: Icon(Icons.arrow_forward_ios,
-                    size: 14,
-                    color: colorScheme.onSurfaceVariant),
+                    size: 14, color: colorScheme.onSurfaceVariant),
                 onTap: () async {
                   _play('click');
                   showDialog(
                       context: context,
                       barrierDismissible: false,
-                      builder: (c) => const Center(
-                          child:
-                              CircularProgressIndicator()));
-                  await sys.loadUserData(
-                      sys.currentUserPhone);
+                      builder: (c) => const Center(child: CircularProgressIndicator()));
+                  await wallet.loadUserEmail(); // تحديث البيانات
                   if (mounted) Navigator.pop(context);
-                  _showToast(
-                      'تمت مزامنة البيانات بنجاح 🔄');
+                  _showToast('تمت مزامنة البيانات بنجاح 🔄');
                 },
               ),
             ],
@@ -1169,28 +990,21 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
         const SizedBox(height: 20),
         _sectionTitle('معلومات', colorScheme.onSurface),
         Card(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           color: colorScheme.surface,
           child: Column(
             children: [
               ListTile(
-                leading: Icon(Icons.info_outline,
-                    color: colorScheme.onSurfaceVariant),
+                leading: Icon(Icons.info_outline, color: colorScheme.onSurfaceVariant),
                 title: Text('إصدار التطبيق: 2.0.0',
-                    style: TextStyle(
-                        color: colorScheme.onSurfaceVariant)),
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
               ),
               const Divider(height: 1),
               ListTile(
-                leading: Icon(Icons.policy,
-                    color: colorScheme.onSurfaceVariant),
+                leading: Icon(Icons.policy, color: colorScheme.onSurfaceVariant),
                 title: Text('سياسة الخصوصية',
-                    style: TextStyle(
-                        color: colorScheme.onSurfaceVariant)),
-                trailing: Icon(Icons.open_in_new,
-                    size: 16,
-                    color: colorScheme.onSurfaceVariant),
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                trailing: Icon(Icons.open_in_new, size: 16, color: colorScheme.onSurfaceVariant),
                 onTap: () async {},
               ),
             ],
@@ -1205,10 +1019,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, right: 4),
       child: Text(title,
-          style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              color: color)),
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: color)),
     );
   }
 
@@ -1226,30 +1037,24 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
         labelText: hint,
         prefixIcon: Icon(icon, color: Colors.blueGrey),
         suffixIcon: IconButton(
-          icon: Icon(obscure
-              ? Icons.visibility_off
-              : Icons.visibility,
-              color: Colors.grey),
+          icon: Icon(obscure ? Icons.visibility_off : Icons.visibility, color: Colors.grey),
           onPressed: onToggle,
         ),
-        border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10)),
-        contentPadding:
-            const EdgeInsets.symmetric(vertical: 10),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        contentPadding: const EdgeInsets.symmetric(vertical: 10),
       ),
     );
   }
 
   // ---------- حوار البريد الإلكتروني ----------
-  void _showEmailDialog(SystemProvider sys) {
+  void _showEmailDialog(WalletProvider wallet) {
     final controller = TextEditingController(text: _userEmail);
     showDialog(
       context: context,
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           title: const Text('البريد الإلكتروني'),
           content: TextField(
             controller: controller,
@@ -1262,28 +1067,22 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
             ),
           ),
           actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('إلغاء')),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
             ElevatedButton(
               onPressed: () async {
                 _play('click');
                 final email = controller.text.trim();
-                if (email.isNotEmpty &&
-                    !email.contains('@')) {
-                  _showToast(
-                      'يرجى إدخال بريد إلكتروني صحيح');
+                if (email.isNotEmpty && !email.contains('@')) {
+                  _showToast('يرجى إدخال بريد إلكتروني صحيح');
                   return;
                 }
-                await sys.updateUserEmail(email);
+                await wallet.updateUserEmail(email);
                 setState(() {
                   _userEmail = email;
                   _emailController.text = email;
                 });
                 Navigator.pop(context);
-                _showToast(email.isEmpty
-                    ? 'تم حذف البريد الإلكتروني'
-                    : 'تم حفظ البريد الإلكتروني');
+                _showToast(email.isEmpty ? 'تم حذف البريد الإلكتروني' : 'تم حفظ البريد الإلكتروني');
               },
               child: const Text('حفظ'),
             ),
@@ -1300,35 +1099,24 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
       builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15)),
-          title: const Text('تسجيل الخروج',
-              style: TextStyle(color: Colors.orange)),
-          content: const Text(
-              'هل أنت متأكد أنك تريد تسجيل الخروج؟'),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.orange)),
+          content: const Text('هل أنت متأكد أنك تريد تسجيل الخروج؟'),
           actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('إلغاء')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
               onPressed: () {
                 _play('click');
-                final sys = Provider.of<SystemProvider>(
-                    context,
-                    listen: false);
-                sys.clearAllData();
+                final auth = context.read<AuthProvider>();
+                auth.clearAllData();
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(
-                      builder: (_) =>
-                          const SSOLoginScreen()),
+                  MaterialPageRoute(builder: (_) => const SSOLoginScreen()),
                   (route) => false,
                 );
               },
-              child: const Text('تأكيد',
-                  style: TextStyle(color: Colors.white)),
+              child: const Text('تأكيد', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
