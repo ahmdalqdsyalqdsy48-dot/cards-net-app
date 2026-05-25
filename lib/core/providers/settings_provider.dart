@@ -72,22 +72,30 @@ class SettingsProvider extends ChangeNotifier {
   // ---------- متنوع ----------
   int _smsBalance = 0;
 
-  // ---------- إعداد الصوت (جديد) ----------
+  // ---------- إعداد الصوت ----------
   bool _soundEnabled = true;
 
   // ---------- تفضيلات محلية (لغة وطابعة وصوت) ----------
   SharedPreferences? _prefs;
 
-  // ---------- المُنشئ ----------
+  // ---------- المُنشئ الأساسي ----------
   SettingsProvider() {
     _initSettingsSync();
     _initPrefs();
   }
 
-  void _initPrefs() async {
+  // ✅ مُنشئ إضافي يستقبل قيمة الصوت المحملة مسبقاً من main.dart
+  SettingsProvider.withSoundPref(bool soundEnabled) {
+    _soundEnabled = soundEnabled;
+    _initSettingsSync();
+    _initPrefs(skipSound: true);
+  }
+
+  Future<void> _initPrefs({bool skipSound = false}) async {
     _prefs = await SharedPreferences.getInstance();
-    // قراءة إعداد الصوت المحفوظ
-    _soundEnabled = _prefs?.getBool('sound_enabled') ?? true;
+    if (!skipSound) {
+      _soundEnabled = _prefs?.getBool('sound_enabled') ?? true;
+    }
     notifyListeners();
   }
 
@@ -210,7 +218,7 @@ class SettingsProvider extends ChangeNotifier {
   double get newsScrollSpeed => _newsScrollSpeed;
   int get smsBalance => _smsBalance;
 
-  // ---------- إعداد الصوت (جديد) ----------
+  // ---------- إعداد الصوت ----------
   bool get isSoundEnabled => _soundEnabled;
 
   Future<void> setSoundEnabled(bool value) async {
@@ -219,8 +227,7 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---------- دوال التحديث (تكتب إلى Firestore وتُسجل حدثاً) ----------
-
+  // ---------- دوال التحديث ----------
   Future<void> updateGlobalAppName(String newName) async {
     await _db
         .collection('system')
