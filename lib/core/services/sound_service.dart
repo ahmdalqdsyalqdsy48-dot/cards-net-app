@@ -2,11 +2,10 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import '../providers/settings_provider.dart';
 
-/// خدمة الصوت المركزية – تحاكي تماماً سلوك النظام القديم مع دعم الكتم
 class SoundService {
   final SettingsProvider _settings;
 
-  // عدة مشغلات لكل نوع (مثل النظام القديم)
+  // مشغلات متعددة كما في النظام القديم
   final List<AudioPlayer> _clickPlayers = [];
   final List<AudioPlayer> _successPlayers = [];
   final List<AudioPlayer> _errorPlayers = [];
@@ -14,100 +13,93 @@ class SoundService {
   final List<AudioPlayer> _tapPlayers = [];
   final List<AudioPlayer> _notifPlayers = [];
 
-  int _clickIndex = 0;
-  int _successIndex = 0;
-  int _errorIndex = 0;
-  int _warningIndex = 0;
-  int _tapIndex = 0;
-  int _notifIndex = 0;
+  int _clickIdx = 0, _succIdx = 0, _errIdx = 0, _warnIdx = 0, _tapIdx = 0, _notifIdx = 0;
 
   SoundService(this._settings) {
-    // إعداد 3 مشغلات للنقر، ومشغلين اثنين لبقية الأصوات
+    _initPlayers();
+  }
+
+  void _initPlayers() {
+    // 3 مشغلات للنقر، 2 للبقية
     for (int i = 0; i < 3; i++) {
-      _clickPlayers.add(AudioPlayer()..setSource(AssetSource('sounds/click.mp3')));
+      _clickPlayers.add(AudioPlayer());
     }
     for (int i = 0; i < 2; i++) {
-      _successPlayers.add(AudioPlayer()..setSource(AssetSource('sounds/success.mp3')));
-      _errorPlayers.add(AudioPlayer()..setSource(AssetSource('sounds/error.mp3')));
-      _warningPlayers.add(AudioPlayer()..setSource(AssetSource('sounds/warning.mp3')));
-      _tapPlayers.add(AudioPlayer()..setSource(AssetSource('sounds/tap.mp3')));
-      _notifPlayers.add(AudioPlayer()..setSource(AssetSource('sounds/notification.mp3')));
+      _successPlayers.add(AudioPlayer());
+      _errorPlayers.add(AudioPlayer());
+      _warningPlayers.add(AudioPlayer());
+      _tapPlayers.add(AudioPlayer());
+      _notifPlayers.add(AudioPlayer());
     }
   }
 
-  /// تشغيل صوت حسب النوع
   Future<void> play(String type) async {
-    if (!_settings.isSoundEnabled) return;
+    // ✅ قراءة إعداد الصوت في كل مرة (ليس مرة واحدة)
+    bool soundEnabled = true;
+    try {
+      soundEnabled = _settings.isSoundEnabled;
+    } catch (_) {
+      // إذا لم تكن الإعدادات جاهزة، نفترض أن الصوت مفعّل
+      soundEnabled = true;
+    }
+    if (!soundEnabled) return;
+
+    AudioPlayer? player;
+    String assetPath;
+    double volume;
+
+    switch (type) {
+      case 'click':
+        player = _clickPlayers[_clickIdx % _clickPlayers.length];
+        _clickIdx++;
+        assetPath = 'sounds/click.mp3';
+        volume = 0.5;
+        break;
+      case 'success':
+        player = _successPlayers[_succIdx % _successPlayers.length];
+        _succIdx++;
+        assetPath = 'sounds/success.mp3';
+        volume = 1.0;
+        break;
+      case 'error':
+        player = _errorPlayers[_errIdx % _errorPlayers.length];
+        _errIdx++;
+        assetPath = 'sounds/error.mp3';
+        volume = 0.8;
+        break;
+      case 'warning':
+        player = _warningPlayers[_warnIdx % _warningPlayers.length];
+        _warnIdx++;
+        assetPath = 'sounds/warning.mp3';
+        volume = 0.9;
+        break;
+      case 'tap':
+        player = _tapPlayers[_tapIdx % _tapPlayers.length];
+        _tapIdx++;
+        assetPath = 'sounds/tap.mp3';
+        volume = 0.3;
+        break;
+      case 'notification':
+        player = _notifPlayers[_notifIdx % _notifPlayers.length];
+        _notifIdx++;
+        assetPath = 'sounds/notification.mp3';
+        volume = 1.0;
+        break;
+      default:
+        return;
+    }
 
     try {
-      switch (type) {
-        case 'click':
-          final player = _clickPlayers[_clickIndex % _clickPlayers.length];
-          _clickIndex++;
-          await player.stop();
-          await player.play(AssetSource('sounds/click.mp3'), volume: 0.5);
-          break;
-        case 'success':
-          final player = _successPlayers[_successIndex % _successPlayers.length];
-          _successIndex++;
-          await player.stop();
-          await player.play(AssetSource('sounds/success.mp3'), volume: 1.0);
-          break;
-        case 'error':
-          final player = _errorPlayers[_errorIndex % _errorPlayers.length];
-          _errorIndex++;
-          await player.stop();
-          await player.play(AssetSource('sounds/error.mp3'), volume: 0.8);
-          break;
-        case 'warning':
-          final player = _warningPlayers[_warningIndex % _warningPlayers.length];
-          _warningIndex++;
-          await player.stop();
-          await player.play(AssetSource('sounds/warning.mp3'), volume: 0.9);
-          break;
-        case 'tap':
-          final player = _tapPlayers[_tapIndex % _tapPlayers.length];
-          _tapIndex++;
-          await player.stop();
-          await player.play(AssetSource('sounds/tap.mp3'), volume: 0.3);
-          break;
-        case 'notification':
-          final player = _notifPlayers[_notifIndex % _notifPlayers.length];
-          _notifIndex++;
-          await player.stop();
-          await player.play(AssetSource('sounds/notification.mp3'), volume: 1.0);
-          break;
-      }
+      await player.stop(); // إيقاف السابق
+      await player.play(AssetSource(assetPath), volume: volume);
     } catch (e) {
-      debugPrint('SoundService error: $e');
+      debugPrint('SoundService error ($type): $e');
     }
   }
 
-  /// إيقاف جميع المشغلات
-  Future<void> stopAll() async {
-    for (final p in [
-      ..._clickPlayers,
-      ..._successPlayers,
-      ..._errorPlayers,
-      ..._warningPlayers,
-      ..._tapPlayers,
-      ..._notifPlayers
-    ]) {
-      await p.stop();
-    }
-  }
-
-  /// تحرير الموارد
   void dispose() {
-    for (final p in [
-      ..._clickPlayers,
-      ..._successPlayers,
-      ..._errorPlayers,
-      ..._warningPlayers,
-      ..._tapPlayers,
-      ..._notifPlayers
-    ]) {
-      p.dispose();
+    for (final list in [_clickPlayers, _successPlayers, _errorPlayers, _warningPlayers, _tapPlayers, _notifPlayers]) {
+      for (final p in list) p.dispose();
     }
   }
 }
