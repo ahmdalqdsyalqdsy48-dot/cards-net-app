@@ -20,6 +20,7 @@ import 'core/services/sound_service.dart';
 
 import 'features/auth/screens/sso_login_screen.dart';
 
+// استيراد الشاشات الأساسية لتعريف المسارات
 import 'features/super_admin/screens/super_admin_dashboard.dart';
 import 'features/super_admin/screens/agent_management_screen.dart';
 import 'features/super_admin/screens/subscriptions_screen.dart';
@@ -75,16 +76,22 @@ void main() async {
     cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
   );
 
+  // تحميل الإعدادات المحلية مبكراً
   final prefs = await SharedPreferences.getInstance();
   final String savedLang = prefs.getString('language') ?? 'en';
+  final bool savedSoundEnabled = prefs.getBool('sound_enabled') ?? true;
 
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (context) => ThemeProvider()),
         ChangeNotifierProvider(create: (context) => AuthProvider()),
-        ChangeNotifierProvider(create: (context) => SettingsProvider()),
+        // ✅ SettingsProvider مع قيمة صوت محملة مسبقاً
+        ChangeNotifierProvider(
+          create: (context) => SettingsProvider.withSoundPref(savedSoundEnabled),
+        ),
 
+        // ✅ SoundService جاهز الآن بالإعدادات الصحيحة
         Provider<SoundService>(
           create: (context) => SoundService(context.read<SettingsProvider>()),
           dispose: (context, service) => service.dispose(),
@@ -121,6 +128,7 @@ void main() async {
           ),
         ),
 
+        // القديم (مؤقت)
         ChangeNotifierProvider(create: (context) => SystemProvider()),
       ],
       child: MyApp(initialLang: savedLang),
