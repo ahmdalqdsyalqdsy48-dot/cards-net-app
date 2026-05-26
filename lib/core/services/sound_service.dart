@@ -5,84 +5,83 @@ import '../providers/settings_provider.dart';
 class SoundService {
   final SettingsProvider _settings;
 
-  late final AudioPool _clickPool;
-  late final AudioPool _successPool;
-  late final AudioPool _errorPool;
-  late final AudioPool _warningPool;
-  late final AudioPool _tapPool;
-  late final AudioPool _notifPool;
+  final List<AudioPlayer> _clickPlayers = [];
+  final List<AudioPlayer> _successPlayers = [];
+  final List<AudioPlayer> _errorPlayers = [];
+  final List<AudioPlayer> _warningPlayers = [];
+  final List<AudioPlayer> _tapPlayers = [];
+  final List<AudioPlayer> _notifPlayers = [];
+
+  int _clickIdx = 0, _succIdx = 0, _errIdx = 0, _warnIdx = 0, _tapIdx = 0, _notifIdx = 0;
 
   SoundService(this._settings) {
-    // يتم إنشاء المجموعات الصوتية بشكل غير متزامن، ولكننا نستطيع استدعاء play فوراً
-    _clickPool = AudioPool(
-      source: AssetSource('sounds/click.mp3'),
-      maxPlayers: 4,
-      minPlayers: 2,
-    );
-    _successPool = AudioPool(
-      source: AssetSource('sounds/success.mp3'),
-      maxPlayers: 3,
-      minPlayers: 1,
-    );
-    _errorPool = AudioPool(
-      source: AssetSource('sounds/error.mp3'),
-      maxPlayers: 3,
-      minPlayers: 1,
-    );
-    _warningPool = AudioPool(
-      source: AssetSource('sounds/warning.mp3'),
-      maxPlayers: 3,
-      minPlayers: 1,
-    );
-    _tapPool = AudioPool(
-      source: AssetSource('sounds/tap.mp3'),
-      maxPlayers: 3,
-      minPlayers: 1,
-    );
-    _notifPool = AudioPool(
-      source: AssetSource('sounds/notification.mp3'),
-      maxPlayers: 3,
-      minPlayers: 1,
-    );
+    for (int i = 0; i < 3; i++) {
+      _clickPlayers.add(AudioPlayer());
+    }
+    for (int i = 0; i < 2; i++) {
+      _successPlayers.add(AudioPlayer());
+      _errorPlayers.add(AudioPlayer());
+      _warningPlayers.add(AudioPlayer());
+      _tapPlayers.add(AudioPlayer());
+      _notifPlayers.add(AudioPlayer());
+    }
   }
 
   Future<void> play(String type) async {
     if (!_settings.isSoundEnabled) return;
 
+    AudioPlayer player;
+    double volume;
+    String fileName;
+
+    switch (type) {
+      case 'click':
+        player = _clickPlayers[_clickIdx++ % _clickPlayers.length];
+        volume = 0.5;
+        fileName = 'click.mp3';
+        break;
+      case 'success':
+        player = _successPlayers[_succIdx++ % _successPlayers.length];
+        volume = 1.0;
+        fileName = 'success.mp3';
+        break;
+      case 'error':
+        player = _errorPlayers[_errIdx++ % _errorPlayers.length];
+        volume = 0.8;
+        fileName = 'error.mp3';
+        break;
+      case 'warning':
+        player = _warningPlayers[_warnIdx++ % _warningPlayers.length];
+        volume = 0.9;
+        fileName = 'warning.mp3';
+        break;
+      case 'tap':
+        player = _tapPlayers[_tapIdx++ % _tapPlayers.length];
+        volume = 0.3;
+        fileName = 'tap.mp3';
+        break;
+      case 'notification':
+        player = _notifPlayers[_notifIdx++ % _notifPlayers.length];
+        volume = 1.0;
+        fileName = 'notification.mp3';
+        break;
+      default:
+        return;
+    }
+
     try {
-      switch (type) {
-        case 'click':
-          await _clickPool.start(volume: 0.5);
-          break;
-        case 'success':
-          await _successPool.start(volume: 1.0);
-          break;
-        case 'error':
-          await _errorPool.start(volume: 0.8);
-          break;
-        case 'warning':
-          await _warningPool.start(volume: 0.9);
-          break;
-        case 'tap':
-          await _tapPool.start(volume: 0.3);
-          break;
-        case 'notification':
-          await _notifPool.start(volume: 1.0);
-          break;
-        default:
-          break;
-      }
+      await player.stop();
+      await player.play(AssetSource('sounds/$fileName'), volume: volume);
     } catch (e) {
       debugPrint('SoundService error ($type): $e');
     }
   }
 
   void dispose() {
-    _clickPool.dispose();
-    _successPool.dispose();
-    _errorPool.dispose();
-    _warningPool.dispose();
-    _tapPool.dispose();
-    _notifPool.dispose();
+    for (final list in [_clickPlayers, _successPlayers, _errorPlayers, _warningPlayers, _tapPlayers, _notifPlayers]) {
+      for (final p in list) {
+        p.dispose();
+      }
+    }
   }
 }
