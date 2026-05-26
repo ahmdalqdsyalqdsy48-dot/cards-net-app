@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:math';
 
-import '../../../core/providers/system_provider.dart'; 
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/settings_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
+import '../../../core/providers/agent_admin_provider.dart';
+import '../../../core/providers/coupon_provider.dart';
+import '../../../core/providers/audit_provider.dart';
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart';
 
@@ -14,17 +19,17 @@ class SubscriptionsScreen extends StatefulWidget {
 }
 
 class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
-  String _selectedFilter = 'الكل'; 
+  String _selectedFilter = 'الكل';
 
   // ==========================================
-  // 1. تطبيق خطة / اشتراك (الآن بحقل السعر الحقيقي 💰)
+  // 1. تطبيق خطة / اشتراك
   // ==========================================
-  void _showCreatePlanDialog(SystemProvider provider) {
-    int targetingFilter = 1; 
+  void _showCreatePlanDialog(AgentAdminProvider agentAdmin) {
+    int targetingFilter = 1;
     final planNameController = TextEditingController();
-    final planPriceController = TextEditingController(); // 👈 حقل السعر الحقيقي
+    final planPriceController = TextEditingController();
     final durationController = TextEditingController();
-    final phoneController = TextEditingController(); 
+    final phoneController = TextEditingController();
 
     showDialog(
       context: context,
@@ -36,7 +41,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
               children: [
                 Icon(Icons.add_box, color: Colors.blue),
                 SizedBox(width: 8),
-                Text('تطبيق خطة / تجديد', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text('تطبيق خطة / تجديد',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               ],
             ),
             content: SingleChildScrollView(
@@ -44,47 +50,67 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildTextField('اسم الخطة (مثال: باقة 5%)', Icons.star, controller: planNameController),
-                  _buildTextField('قيمة الباقة بالريال (لحساب الأرباح)', Icons.monetization_on, isNumber: true, controller: planPriceController), // 👈
-                  _buildTextField('المدة (بالأشهر)', Icons.calendar_today, isNumber: true, controller: durationController),
+                  _buildTextField('اسم الخطة (مثال: باقة 5%)', Icons.star,
+                      controller: planNameController),
+                  _buildTextField('قيمة الباقة بالريال (لحساب الأرباح)',
+                      Icons.monetization_on,
+                      isNumber: true,
+                      controller: planPriceController),
+                  _buildTextField('المدة (بالأشهر)', Icons.calendar_today,
+                      isNumber: true, controller: durationController),
                   const Divider(),
-                  const Text('الاستهداف السحابي:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('الاستهداف السحابي:',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                   RadioListTile(
                     title: const Text('تطبيق على جميع الوكلاء'),
                     value: 1,
                     groupValue: targetingFilter,
-                    onChanged: (val) => setStateDialog(() => targetingFilter = val as int),
+                    onChanged: (val) =>
+                        setStateDialog(() => targetingFilter = val as int),
                   ),
                   RadioListTile(
                     title: const Text('تطبيق على وكيل محدد'),
                     value: 2,
                     groupValue: targetingFilter,
-                    onChanged: (val) => setStateDialog(() => targetingFilter = val as int),
+                    onChanged: (val) =>
+                        setStateDialog(() => targetingFilter = val as int),
                   ),
                   if (targetingFilter == 2)
-                    _buildTextField('رقم الوكيل المستهدف', Icons.phone, isNumber: true, controller: phoneController),
+                    _buildTextField('رقم الوكيل المستهدف', Icons.phone,
+                        isNumber: true, controller: phoneController),
                 ],
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء', style: TextStyle(color: Colors.red))),
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('إلغاء',
+                      style: TextStyle(color: Colors.red))),
               ElevatedButton(
                 onPressed: () {
-                  if (planNameController.text.isNotEmpty && durationController.text.isNotEmpty && planPriceController.text.isNotEmpty) {
+                  if (planNameController.text.isNotEmpty &&
+                      durationController.text.isNotEmpty &&
+                      planPriceController.text.isNotEmpty) {
                     final messenger = ScaffoldMessenger.of(context);
                     int months = int.tryParse(durationController.text) ?? 1;
-                    double price = double.tryParse(planPriceController.text) ?? 0.0; // 👈 استخراج السعر
+                    double price =
+                        double.tryParse(planPriceController.text) ?? 0.0;
 
-                    provider.applySubscriptionPlan(
+                    agentAdmin
+                        .applySubscriptionPlan(
                       targetingFilter: targetingFilter,
                       planName: planNameController.text,
-                      planPrice: price, // 👈 إرسال السعر للسحابة
+                      planPrice: price,
                       durationMonths: months,
                       targetAgentPhone: phoneController.text,
-                    ).catchError((e) => messenger.showSnackBar(SnackBar(content: Text('خطأ: $e'))));
+                    )
+                        .catchError((e) => messenger.showSnackBar(
+                            SnackBar(content: Text('خطأ: $e'))));
 
                     Navigator.pop(context);
-                    messenger.showSnackBar(const SnackBar(content: Text('جاري تطبيق الخطة سحابياً 🚀', textDirection: TextDirection.rtl)));
+                    messenger.showSnackBar(const SnackBar(
+                        content: Text('جاري تطبيق الخطة سحابياً 🚀',
+                            textDirection: TextDirection.rtl)));
                   }
                 },
                 child: const Text('اعتماد'),
@@ -97,9 +123,9 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   }
 
   // ==========================================
-  // 2. نافذة الكوبونات (مكتملة ومربوطة بالإرسال الحقيقي 🎟️)
+  // 2. نافذة الكوبونات
   // ==========================================
-  void _showCouponsManagerDialog(SystemProvider provider) {
+  void _showCouponsManagerDialog(CouponProvider couponProvider) {
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -110,7 +136,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
             children: [
               Icon(Icons.local_offer, color: Colors.orange),
               SizedBox(width: 8),
-              Text('مركز الكوبونات الذكية', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('مركز الكوبونات الذكية',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
             ],
           ),
           content: SizedBox(
@@ -123,13 +150,16 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                   const TabBar(
                     labelColor: Colors.orange,
                     indicatorColor: Colors.orange,
-                    tabs: [Tab(text: 'توليد جديد ➕'), Tab(text: 'الكوبونات النشطة 📊')],
+                    tabs: [
+                      Tab(text: 'توليد جديد ➕'),
+                      Tab(text: 'الكوبونات النشطة 📊')
+                    ],
                   ),
                   Expanded(
                     child: TabBarView(
                       children: [
-                        _buildCreateCouponTab(provider, context),
-                        _buildActiveCouponsTab(provider),
+                        _buildCreateCouponTab(couponProvider, context),
+                        _buildActiveCouponsTab(couponProvider),
                       ],
                     ),
                   ),
@@ -138,14 +168,17 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('إغلاق')),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildCreateCouponTab(SystemProvider provider, BuildContext parentContext) {
+  Widget _buildCreateCouponTab(
+      CouponProvider couponProvider, BuildContext parentContext) {
     final codeController = TextEditingController();
     final discountValueController = TextEditingController();
     final maxUsesController = TextEditingController();
@@ -160,15 +193,19 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           children: [
             Row(
               children: [
-                Expanded(child: _buildTextField('كود الكوبون', Icons.qr_code, controller: codeController)),
+                Expanded(
+                    child: _buildTextField(
+                        'كود الكوبون', Icons.qr_code, controller: codeController)),
                 IconButton(
                   icon: const Icon(Icons.casino, color: Colors.orange),
                   tooltip: 'توليد آلي 🎲',
                   onPressed: () {
-                    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                    const chars =
+                        'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
                     final rnd = Random();
                     setStateTab(() {
-                      codeController.text = 'NET-${String.fromCharCodes(Iterable.generate(6, (_) => chars.codeUnitAt(rnd.nextInt(chars.length))))}';
+                      codeController.text =
+                          'NET-${String.fromCharCodes(Iterable.generate(6, (_) => chars.codeUnitAt(rnd.nextInt(chars.length))))}';
                     });
                   },
                 ),
@@ -177,42 +214,73 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
               value: discountType,
-              decoration: InputDecoration(labelText: 'نوع الخصم', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
-              items: ['تمديد أيام مجانية', 'خصم نسبة مئوية %'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              onChanged: (val) => setStateTab(() => discountType = val!),
+              decoration: InputDecoration(
+                  labelText: 'نوع الخصم',
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10))),
+              items: ['تمديد أيام مجانية', 'خصم نسبة مئوية %']
+                  .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                  .toList(),
+              onChanged: (val) =>
+                  setStateTab(() => discountType = val!),
             ),
             const SizedBox(height: 15),
-            _buildTextField('قيمة الخصم (رقم فقط)', Icons.numbers, isNumber: true, controller: discountValueController),
-            _buildTextField('حد الاستخدام (مثال: 50 وكيل)', Icons.group, isNumber: true, controller: maxUsesController),
+            _buildTextField('قيمة الخصم (رقم فقط)', Icons.numbers,
+                isNumber: true, controller: discountValueController),
+            _buildTextField('حد الاستخدام (مثال: 50 وكيل)', Icons.group,
+                isNumber: true, controller: maxUsesController),
             const Divider(),
             DropdownButtonFormField<String>(
               value: sendMethod,
-              decoration: InputDecoration(labelText: 'قناة الإرسال', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), prefixIcon: const Icon(Icons.send)),
-              items: ['إرسال إشعار داخل التطبيق 📱', 'إرسال رسالة SMS 💬', 'الكل (تطبيق + SMS) 🚀'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              onChanged: (val) => setStateTab(() => sendMethod = val!),
+              decoration: InputDecoration(
+                  labelText: 'قناة الإرسال',
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                  prefixIcon: const Icon(Icons.send)),
+              items: [
+                'إرسال إشعار داخل التطبيق 📱',
+                'إرسال رسالة SMS 💬',
+                'الكل (تطبيق + SMS) 🚀'
+              ]
+                  .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                  .toList(),
+              onChanged: (val) =>
+                  setStateTab(() => sendMethod = val!),
             ),
             const SizedBox(height: 15),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, padding: const EdgeInsets.symmetric(vertical: 12)),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    padding: const EdgeInsets.symmetric(vertical: 12)),
                 onPressed: () {
-                  if (codeController.text.isNotEmpty && discountValueController.text.isNotEmpty && maxUsesController.text.isNotEmpty) {
-                    final messenger = ScaffoldMessenger.of(parentContext);
-                    
-                    // 👈 إرسال البيانات المكتملة للسحابة مع طريقة الإرسال
-                    provider.createSmartCoupon(
+                  if (codeController.text.isNotEmpty &&
+                      discountValueController.text.isNotEmpty &&
+                      maxUsesController.text.isNotEmpty) {
+                    final messenger =
+                        ScaffoldMessenger.of(parentContext);
+
+                    couponProvider.createSmartCoupon(
                       code: codeController.text,
-                      discountDetails: '$discountType: ${discountValueController.text}',
+                      discountDetails:
+                          '$discountType: ${discountValueController.text}',
                       maxUses: int.parse(maxUsesController.text),
-                      sendMethod: sendMethod, 
+                      sendMethod: sendMethod,
                     );
 
                     Navigator.pop(parentContext);
-                    messenger.showSnackBar(SnackBar(content: Text('تم توليد الكوبون وتسجيل أمر الإرسال ✅', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
+                    messenger.showSnackBar(SnackBar(
+                        content: Text(
+                            'تم توليد الكوبون وتسجيل أمر الإرسال ✅',
+                            textDirection: TextDirection.rtl),
+                        backgroundColor: Colors.green));
                   }
                 },
-                child: const Text('توليد وحفظ وإرسال', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                child: const Text('توليد وحفظ وإرسال',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -221,49 +289,70 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     );
   }
 
-  Widget _buildActiveCouponsTab(SystemProvider provider) {
-    final coupons = provider.coupons;
-    if (coupons.isEmpty) return const Center(child: Text('لا توجد كوبونات', style: TextStyle(color: Colors.grey)));
+  Widget _buildActiveCouponsTab(CouponProvider couponProvider) {
+    final coupons = couponProvider.coupons;
+    if (coupons.isEmpty)
+      return const Center(
+          child: Text('لا توجد كوبونات',
+              style: TextStyle(color: Colors.grey)));
 
     return ListView.builder(
       itemCount: coupons.length,
       itemBuilder: (context, index) {
         final coupon = coupons[index];
         final isActive = coupon['isActive'] ?? false;
-        
+
         return ListTile(
-          leading: Icon(isActive ? Icons.local_offer : Icons.block, color: isActive ? Colors.green : Colors.red),
-          title: Text(coupon['code'], style: const TextStyle(fontWeight: FontWeight.bold)),
-          subtitle: Text('${coupon['discountDetails']}\nالاستخدام: ${coupon['usedCount']} / ${coupon['maxUses']}'),
-          trailing: isActive 
-            ? IconButton(
-                icon: const Icon(Icons.power_settings_new, color: Colors.red),
-                tooltip: 'إعدام الكوبون فوراً',
-                onPressed: () {
-                  // 👈 دالة الإعدام الحقيقية تعمل الآن
-                  provider.deactivateCoupon(coupon['docId'], coupon['code']);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إيقاف الكوبون بنجاح 🚫', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
-                },
-              ) 
-            : const Text('منتهي', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          leading: Icon(
+              isActive ? Icons.local_offer : Icons.block,
+              color: isActive ? Colors.green : Colors.red),
+          title: Text(coupon['code'],
+              style: const TextStyle(fontWeight: FontWeight.bold)),
+          subtitle: Text(
+              '${coupon['discountDetails']}\nالاستخدام: ${coupon['usedCount']} / ${coupon['maxUses']}'),
+          trailing: isActive
+              ? IconButton(
+                  icon: const Icon(Icons.power_settings_new,
+                      color: Colors.red),
+                  tooltip: 'إعدام الكوبون فوراً',
+                  onPressed: () {
+                    couponProvider.deactivateCoupon(
+                        coupon['docId'], coupon['code']);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text(
+                              'تم إيقاف الكوبون بنجاح 🚫',
+                              textDirection: TextDirection.rtl),
+                          backgroundColor: Colors.red),
+                    );
+                  },
+                )
+              : const Text('منتهي',
+                  style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.bold)),
         );
       },
     );
   }
 
   // ==========================================
-  // 3. نافذة تعديل فترة السماح (بالتقويم 📅)
+  // 3. نافذة تعديل فترة السماح
   // ==========================================
-  Future<void> _showEditGracePeriodDialog(String agentName, String agentPhone, SystemProvider provider) async {
+  Future<void> _showEditGracePeriodDialog(
+      String agentName, String agentPhone, AgentAdminProvider agentAdmin) async {
     DateTime? pickedDate = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
-      firstDate: DateTime.now().subtract(const Duration(days: 30)), 
+      firstDate: DateTime.now().subtract(const Duration(days: 30)),
       lastDate: DateTime(2030),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(primary: Colors.blueAccent, onPrimary: Colors.white, onSurface: Colors.black),
+            colorScheme: const ColorScheme.light(
+                primary: Colors.blueAccent,
+                onPrimary: Colors.white,
+                onSurface: Colors.black),
           ),
           child: child!,
         );
@@ -271,63 +360,109 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     );
 
     if (pickedDate != null) {
-      String formattedDate = '${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}';
+      String formattedDate =
+          '${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}';
       final messenger = ScaffoldMessenger.of(context);
-      
-      provider.updateAgentGracePeriod(agentPhone, formattedDate).catchError((error) {
-        messenger.showSnackBar(SnackBar(content: Text('فشل التعديل ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+
+      agentAdmin
+          .updateAgentGracePeriod(agentPhone, formattedDate)
+          .catchError((error) {
+        messenger.showSnackBar(SnackBar(
+            content: Text('فشل التعديل ❌: $error',
+                textDirection: TextDirection.rtl),
+            backgroundColor: Colors.red));
       });
 
-      messenger.showSnackBar(SnackBar(content: Text('تم تمديد $agentName حتى $formattedDate ⏱️', textDirection: TextDirection.rtl), backgroundColor: Colors.blueGrey));
+      messenger.showSnackBar(SnackBar(
+          content: Text(
+              'تم تمديد $agentName حتى $formattedDate ⏱️',
+              textDirection: TextDirection.rtl),
+          backgroundColor: Colors.blueGrey));
     }
   }
 
   // ==========================================
-  // 4. نافذة السجل التاريخي الحقيقي 📜
+  // 4. نافذة السجل التاريخي
   // ==========================================
-  void _showHistoryLog(String agentName, String agentPhone, SystemProvider provider) {
-    final agentLogs = provider.auditLogs.where((log) => log['targetPhone'] == agentPhone || log['phone'] == agentPhone).toList();
+  void _showHistoryLog(
+      String agentName, String agentPhone, AuditProvider auditProvider) {
+    final agentLogs = auditProvider.auditLogs
+        .where((log) =>
+            log['targetPhone'] == agentPhone || log['phone'] == agentPhone)
+        .toList();
 
     showDialog(
       context: context,
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          title: Text('الخط الزمني لـ: $agentName', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          title: Text('الخط الزمني لـ: $agentName',
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 16)),
           content: SizedBox(
             width: double.maxFinite,
             child: agentLogs.isEmpty
-                ? const Center(child: Text('لا توجد سجلات تاريخية.', style: TextStyle(color: Colors.grey)))
+                ? const Center(
+                    child: Text('لا توجد سجلات تاريخية.',
+                        style: TextStyle(color: Colors.grey)))
                 : ListView.builder(
                     shrinkWrap: true,
                     itemCount: agentLogs.length,
                     itemBuilder: (context, index) {
                       final log = agentLogs[index];
                       Color dotColor = Colors.blue;
-                      if (log['action'].toString().contains('تجميد') || log['action'].toString().contains('حذف')) dotColor = Colors.red;
-                      if (log['action'].toString().contains('تطبيق') || log['action'].toString().contains('تجديد')) dotColor = Colors.green;
-                      if (log['action'].toString().contains('تعديل')) dotColor = Colors.orange;
+                      if (log['action'].toString().contains('تجميد') ||
+                          log['action'].toString().contains('حذف'))
+                        dotColor = Colors.red;
+                      if (log['action'].toString().contains('تطبيق') ||
+                          log['action'].toString().contains('تجديد'))
+                        dotColor = Colors.green;
+                      if (log['action'].toString().contains('تعديل'))
+                        dotColor = Colors.orange;
 
                       return Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Column(
                             children: [
-                              Container(width: 15, height: 15, decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2))),
+                              Container(
+                                  width: 15,
+                                  height: 15,
+                                  decoration: BoxDecoration(
+                                      color: dotColor,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                          color: Colors.white, width: 2))),
                               if (index != agentLogs.length - 1)
-                                Container(width: 2, height: 50, color: Colors.grey.withOpacity(0.3)),
+                                Container(
+                                    width: 2,
+                                    height: 50,
+                                    color: Colors.grey.withOpacity(0.3)),
                             ],
                           ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Padding(
-                              padding: const EdgeInsets.only(bottom: 15.0),
+                              padding:
+                                  const EdgeInsets.only(bottom: 15.0),
                               child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
                                 children: [
-                                  Text(log['action'] ?? 'إجراء', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: dotColor)),
-                                  Text(log['details'], style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                  Text(log['datetime'], style: const TextStyle(fontSize: 10, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
+                                  Text(log['action'] ?? 'إجراء',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                          color: dotColor)),
+                                  Text(log['details'],
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey)),
+                                  Text(log['datetime'],
+                                      style: const TextStyle(
+                                          fontSize: 10,
+                                          color: Colors.blueGrey,
+                                          fontWeight: FontWeight.bold)),
                                 ],
                               ),
                             ),
@@ -337,66 +472,102 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                     },
                   ),
           ),
-          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق'))],
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('إغلاق'))
+          ],
         ),
       ),
     );
   }
 
-  void _togglePausePlan(String agentPhone, String currentStatus, SystemProvider provider) {
+  void _togglePausePlan(
+      String agentPhone, String currentStatus, AgentAdminProvider agentAdmin) {
     final messenger = ScaffoldMessenger.of(context);
-    provider.toggleSubscriptionStatus(agentPhone, currentStatus).catchError((error) {
-      messenger.showSnackBar(SnackBar(content: Text('خطأ: $error', textDirection: TextDirection.rtl)));
+    agentAdmin
+        .toggleSubscriptionStatus(agentPhone, currentStatus)
+        .catchError((error) {
+      messenger.showSnackBar(SnackBar(
+          content: Text('خطأ: $error',
+              textDirection: TextDirection.rtl)));
     });
-    messenger.showSnackBar(SnackBar(content: Text(currentStatus == 'موقوف مؤقتاً' ? 'جاري الاستئناف... ▶️' : 'جاري الإيقاف... ⏸️', textDirection: TextDirection.rtl), backgroundColor: Colors.blueGrey, duration: const Duration(seconds: 1)));
+    messenger.showSnackBar(SnackBar(
+        content: Text(
+            currentStatus == 'موقوف مؤقتاً'
+                ? 'جاري الاستئناف... ▶️'
+                : 'جاري الإيقاف... ⏸️',
+            textDirection: TextDirection.rtl),
+        backgroundColor: Colors.blueGrey,
+        duration: const Duration(seconds: 1)));
   }
 
   @override
   Widget build(BuildContext context) {
-    final systemProvider = Provider.of<SystemProvider>(context);
-    final stats = systemProvider.subscriptionStats; 
-    
-    List<Map<String, dynamic>> displayedAgents = systemProvider.agentsList.where((agent) {
+    final auth = context.watch<AuthProvider>();
+    final settings = context.watch<SettingsProvider>();
+    final wallet = context.watch<WalletProvider>();
+    final agentAdmin = context.read<AgentAdminProvider>();
+    final couponProvider = context.read<CouponProvider>();
+    final auditProvider = context.read<AuditProvider>();
+
+    final stats = wallet.subscriptionStats;
+
+    List<Map<String, dynamic>> displayedAgents = wallet.agentsList.where((agent) {
       String status = agent['subStatus'] ?? 'نشط';
       if (_selectedFilter == 'الكل') return true;
-      if (_selectedFilter == 'نشط' && (status == 'نشط' || status == 'فترة مجانية')) return true;
+      if (_selectedFilter == 'نشط' &&
+          (status == 'نشط' || status == 'فترة مجانية')) return true;
       if (_selectedFilter == 'إنذار' && status == 'إنذار') return true;
-      if (_selectedFilter == 'مجمد' && (status == 'مجمد' || status == 'موقوف مؤقتاً')) return true;
+      if (_selectedFilter == 'مجمد' &&
+          (status == 'مجمد' || status == 'موقوف مؤقتاً')) return true;
       return false;
     }).toList();
 
     return Scaffold(
       appBar: const CustomHeader(title: 'الرادار والاشتراكات'),
       drawer: CustomDrawer(
-        userName: systemProvider.currentUserName,
-        phoneNumber: systemProvider.currentUserPhone,
+        userName: wallet.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
         role: 'مالك النظام',
-        balanceOrPoints: 'أرباح النظام: ${systemProvider.adminMainBalance.toStringAsFixed(0)} ريال',
+        balanceOrPoints:
+            'أرباح النظام: ${settings.adminMainBalance.toStringAsFixed(0)} ريال',
       ),
-      body: Directionality(
-        textDirection: TextDirection.rtl,
+      body: RefreshIndicator(
+        onRefresh: () async {
+          setState(() {});
+          await Future.delayed(const Duration(milliseconds: 300));
+        },
         child: Column(
           children: [
-            // === 1. شريط إحصائيات الرادار (مربوط بالأرباح الحقيقية) ===
             Container(
               margin: const EdgeInsets.all(12),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context).brightness == Brightness.dark ? Colors.black26 : Colors.white,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.black26
+                    : Colors.white,
                 borderRadius: BorderRadius.circular(15),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+                boxShadow: [
+                  BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10)
+                ],
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildStatItem('نشط', stats['active'].toString(), Colors.green),
-                  _buildStatItem('إنذار', stats['expiringSoon'].toString(), Colors.orange),
-                  _buildStatItem('موقوف', stats['frozen'].toString(), Colors.red),
-                  _buildStatItem('متوقع', '${stats['expectedRevenue']} ر.ي', Colors.blue), // 👈 رقم حقيقي
+                  _buildStatItem(
+                      'نشط', stats['active'].toString(), Colors.green),
+                  _buildStatItem('إنذار',
+                      stats['expiringSoon'].toString(), Colors.orange),
+                  _buildStatItem(
+                      'موقوف', stats['frozen'].toString(), Colors.red),
+                  _buildStatItem('متوقع',
+                      '${stats['expectedRevenue']} ر.ي', Colors.blue),
                 ],
               ),
             ),
-
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Row(
@@ -404,103 +575,205 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                   Expanded(
                     flex: 2,
                     child: ElevatedButton.icon(
-                      onPressed: () => _showCreatePlanDialog(systemProvider),
-                      icon: const Icon(Icons.flash_on, color: Colors.white),
-                      label: const Text('تطبيق خطة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, padding: const EdgeInsets.symmetric(vertical: 12)),
+                      onPressed: () =>
+                          _showCreatePlanDialog(agentAdmin),
+                      icon: const Icon(Icons.flash_on,
+                          color: Colors.white),
+                      label: const Text('تطبيق خطة',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blueAccent,
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 12)),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     flex: 1,
                     child: ElevatedButton.icon(
-                      onPressed: () => _showCouponsManagerDialog(systemProvider),
-                      icon: const Icon(Icons.local_offer, color: Colors.white),
-                      label: const Text('كوبونات', style: TextStyle(color: Colors.white)),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, padding: const EdgeInsets.symmetric(vertical: 12)),
+                      onPressed: () =>
+                          _showCouponsManagerDialog(couponProvider),
+                      icon: const Icon(Icons.local_offer,
+                          color: Colors.white),
+                      label: const Text('كوبونات',
+                          style: TextStyle(color: Colors.white)),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 12)),
                     ),
                   ),
                 ],
               ),
             ),
-
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 10),
               child: Row(
                 children: ['الكل', 'نشط', 'إنذار', 'مجمد'].map((filter) {
                   bool isSelected = _selectedFilter == filter;
                   return Padding(
                     padding: const EdgeInsets.only(left: 8.0),
                     child: ChoiceChip(
-                      label: Text(filter, style: TextStyle(color: isSelected ? Colors.white : Colors.black87, fontWeight: FontWeight.bold)),
+                      label: Text(filter,
+                          style: TextStyle(
+                              color: isSelected
+                                  ? Colors.white
+                                  : Colors.black87,
+                              fontWeight: FontWeight.bold)),
                       selected: isSelected,
                       selectedColor: Colors.blueAccent,
-                      backgroundColor: Colors.grey.withOpacity(0.2),
-                      onSelected: (val) => setState(() => _selectedFilter = filter),
+                      backgroundColor:
+                          Colors.grey.withOpacity(0.2),
+                      onSelected: (val) =>
+                          setState(() => _selectedFilter = filter),
                     ),
                   );
                 }).toList(),
               ),
             ),
-
             Expanded(
               child: displayedAgents.isEmpty
-                  ? Center(child: Text('لا يوجد وكلاء في قسم "$_selectedFilter"', style: const TextStyle(color: Colors.grey)))
+                  ? Center(
+                      child: Text(
+                      'لا يوجد وكلاء في قسم "$_selectedFilter"',
+                      style: const TextStyle(color: Colors.grey),
+                    ))
                   : ListView.builder(
                       itemCount: displayedAgents.length,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 5),
                       itemBuilder: (context, index) {
                         final agent = displayedAgents[index];
-                        final subStatus = agent['subStatus'] ?? 'نشط';
-                        final isPaused = subStatus == 'موقوف مؤقتاً' || subStatus == 'مجمد';
-                        
+                        final subStatus =
+                            agent['subStatus'] ?? 'نشط';
+                        final isPaused = subStatus == 'موقوف مؤقتاً' ||
+                            subStatus == 'مجمد';
+
                         Color statusColor = Colors.grey;
-                        if (subStatus == 'نشط' || subStatus == 'فترة مجانية') statusColor = Colors.green;
-                        if (subStatus == 'إنذار') statusColor = Colors.orange;
-                        if (subStatus == 'موقوف مؤقتاً' || subStatus == 'مجمد') statusColor = Colors.red;
+                        if (subStatus == 'نشط' ||
+                            subStatus == 'فترة مجانية')
+                          statusColor = Colors.green;
+                        if (subStatus == 'إنذار')
+                          statusColor = Colors.orange;
+                        if (subStatus == 'موقوف مؤقتاً' ||
+                            subStatus == 'مجمد')
+                          statusColor = Colors.red;
 
                         return Card(
                           margin: const EdgeInsets.only(bottom: 12),
                           elevation: 2,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: statusColor.withOpacity(0.3))),
+                          shape: RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.circular(15),
+                              side: BorderSide(
+                                  color: statusColor
+                                      .withOpacity(0.3))),
                           child: Padding(
                             padding: const EdgeInsets.all(12.0),
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
                               children: [
                                 Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment
+                                          .spaceBetween,
                                   children: [
-                                    Text(agent['name'] ?? 'مجهول', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                    Text(
+                                        agent['name'] ?? 'مجهول',
+                                        style: const TextStyle(
+                                            fontWeight:
+                                                FontWeight.bold,
+                                            fontSize: 16)),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(20), border: Border.all(color: statusColor)),
-                                      child: Text(subStatus, style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.bold)),
+                                      padding: const EdgeInsets
+                                          .symmetric(
+                                          horizontal: 8,
+                                          vertical: 4),
+                                      decoration: BoxDecoration(
+                                          color: statusColor
+                                              .withOpacity(0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(
+                                                  20),
+                                          border: Border.all(
+                                              color: statusColor)),
+                                      child: Text(subStatus,
+                                          style: TextStyle(
+                                              color: statusColor,
+                                              fontSize: 12,
+                                              fontWeight:
+                                                  FontWeight.bold)),
                                     ),
                                   ],
                                 ),
                                 const SizedBox(height: 5),
-                                Text('الهاتف: ${agent['phone']}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                                Text(
+                                    'الهاتف: ${agent['phone']}',
+                                    style: const TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 12)),
                                 Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment
+                                          .spaceBetween,
                                   children: [
-                                    Text('الخطة: ${agent['subPlan'] ?? 'افتراضية'}', style: const TextStyle(color: Colors.blueGrey, fontSize: 13)),
-                                    Text('الانتهاء: ${agent['subExpiry'] ?? '--'}', style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 13)),
+                                    Text(
+                                        'الخطة: ${agent['subPlan'] ?? 'افتراضية'}',
+                                        style: const TextStyle(
+                                            color: Colors.blueGrey,
+                                            fontSize: 13)),
+                                    Text(
+                                        'الانتهاء: ${agent['subExpiry'] ?? '--'}',
+                                        style: TextStyle(
+                                            color: statusColor,
+                                            fontWeight:
+                                                FontWeight.bold,
+                                            fontSize: 13)),
                                   ],
                                 ),
                                 const Divider(),
                                 Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment
+                                          .spaceEvenly,
                                   children: [
-                                    _buildActionButton(Icons.calendar_month, 'تعديل التقويم', Colors.blue, () => _showEditGracePeriodDialog(agent['name'], agent['phone'], systemProvider)),
                                     _buildActionButton(
-                                      isPaused ? Icons.play_circle_fill : Icons.pause_circle_filled,
-                                      isPaused ? 'استئناف' : 'إيقاف',
-                                      isPaused ? Colors.green : Colors.redAccent,
-                                      () => _togglePausePlan(agent['phone'], subStatus, systemProvider),
+                                        Icons.calendar_month,
+                                        'تعديل التقويم',
+                                        Colors.blue,
+                                        () => _showEditGracePeriodDialog(
+                                            agent['name'],
+                                            agent['phone'],
+                                            agentAdmin)),
+                                    _buildActionButton(
+                                      isPaused
+                                          ? Icons.play_circle_fill
+                                          : Icons
+                                              .pause_circle_filled,
+                                      isPaused
+                                          ? 'استئناف'
+                                          : 'إيقاف',
+                                      isPaused
+                                          ? Colors.green
+                                          : Colors.redAccent,
+                                      () => _togglePausePlan(
+                                          agent['phone'],
+                                          subStatus,
+                                          agentAdmin),
                                     ),
-                                    _buildActionButton(Icons.timeline, 'الخط الزمني', Colors.blueGrey, () => _showHistoryLog(agent['name'], agent['phone'], systemProvider)),
+                                    _buildActionButton(
+                                        Icons.timeline,
+                                        'الخط الزمني',
+                                        Colors.blueGrey,
+                                        () => _showHistoryLog(
+                                            agent['name'],
+                                            agent['phone'],
+                                            auditProvider)),
                                   ],
                                 ),
                               ],
@@ -520,13 +793,17 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: color)),
-        Text(label, style: const TextStyle(fontSize: 11, color: Colors.blueGrey)),
+        Text(value,
+            style: TextStyle(
+                fontWeight: FontWeight.bold, fontSize: 18, color: color)),
+        Text(label,
+            style: const TextStyle(fontSize: 11, color: Colors.blueGrey)),
       ],
     );
   }
 
-  Widget _buildTextField(String label, IconData icon, {bool isNumber = false, TextEditingController? controller}) {
+  Widget _buildTextField(String label, IconData icon,
+      {bool isNumber = false, TextEditingController? controller}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: TextField(
@@ -535,14 +812,19 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(icon, color: Colors.blueAccent),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          border:
+              OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
           contentPadding: const EdgeInsets.symmetric(vertical: 10),
         ),
       ),
     );
   }
 
-  Widget _buildActionButton(IconData icon, String tooltip, Color color, VoidCallback onTap) {
-    return IconButton(icon: Icon(icon, color: color, size: 28), tooltip: tooltip, onPressed: onTap);
+  Widget _buildActionButton(
+      IconData icon, String tooltip, Color color, VoidCallback onTap) {
+    return IconButton(
+        icon: Icon(icon, color: color, size: 28),
+        tooltip: tooltip,
+        onPressed: onTap);
   }
 }
