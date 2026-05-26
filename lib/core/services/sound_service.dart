@@ -1,4 +1,5 @@
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart';
 import '../providers/settings_provider.dart';
 
 class SoundService {
@@ -12,29 +13,36 @@ class SoundService {
   late final AudioPool _notifPool;
 
   SoundService(this._settings) {
+    // يتم إنشاء المجموعات الصوتية بشكل غير متزامن، ولكننا نستطيع استدعاء play فوراً
     _clickPool = AudioPool(
-      AssetSource('sounds/click.mp3'),
-      maxPlayers: 3,
+      source: AssetSource('sounds/click.mp3'),
+      maxPlayers: 4,
+      minPlayers: 2,
     );
     _successPool = AudioPool(
-      AssetSource('sounds/success.mp3'),
-      maxPlayers: 2,
+      source: AssetSource('sounds/success.mp3'),
+      maxPlayers: 3,
+      minPlayers: 1,
     );
     _errorPool = AudioPool(
-      AssetSource('sounds/error.mp3'),
-      maxPlayers: 2,
+      source: AssetSource('sounds/error.mp3'),
+      maxPlayers: 3,
+      minPlayers: 1,
     );
     _warningPool = AudioPool(
-      AssetSource('sounds/warning.mp3'),
-      maxPlayers: 2,
+      source: AssetSource('sounds/warning.mp3'),
+      maxPlayers: 3,
+      minPlayers: 1,
     );
     _tapPool = AudioPool(
-      AssetSource('sounds/tap.mp3'),
-      maxPlayers: 2,
+      source: AssetSource('sounds/tap.mp3'),
+      maxPlayers: 3,
+      minPlayers: 1,
     );
     _notifPool = AudioPool(
-      AssetSource('sounds/notification.mp3'),
-      maxPlayers: 2,
+      source: AssetSource('sounds/notification.mp3'),
+      maxPlayers: 3,
+      minPlayers: 1,
     );
   }
 
@@ -44,22 +52,22 @@ class SoundService {
     try {
       switch (type) {
         case 'click':
-          await _clickPool.play(volume: 0.5);
+          await _clickPool.start(volume: 0.5);
           break;
         case 'success':
-          await _successPool.play(volume: 1.0);
+          await _successPool.start(volume: 1.0);
           break;
         case 'error':
-          await _errorPool.play(volume: 0.8);
+          await _errorPool.start(volume: 0.8);
           break;
         case 'warning':
-          await _warningPool.play(volume: 0.9);
+          await _warningPool.start(volume: 0.9);
           break;
         case 'tap':
-          await _tapPool.play(volume: 0.3);
+          await _tapPool.start(volume: 0.3);
           break;
         case 'notification':
-          await _notifPool.play(volume: 1.0);
+          await _notifPool.start(volume: 1.0);
           break;
         default:
           break;
