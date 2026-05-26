@@ -5,6 +5,7 @@ import '../providers/settings_provider.dart';
 class SoundService {
   final SettingsProvider _settings;
 
+  // عدة مشغلات لكل نوع
   final List<AudioPlayer> _clickPlayers = [];
   final List<AudioPlayer> _successPlayers = [];
   final List<AudioPlayer> _errorPlayers = [];
@@ -15,6 +16,7 @@ class SoundService {
   int _clickIdx = 0, _succIdx = 0, _errIdx = 0, _warnIdx = 0, _tapIdx = 0, _notifIdx = 0;
 
   SoundService(this._settings) {
+    // إنشاء 3 مشغلات للنقر، 2 للبقية
     for (int i = 0; i < 3; i++) {
       _clickPlayers.add(AudioPlayer());
     }
@@ -70,7 +72,9 @@ class SoundService {
     }
 
     try {
+      // ✅ الحل: إعادة تعيين المصدر قبل كل تشغيل (ضروري للويب)
       await player.stop();
+      await player.setSource(AssetSource('sounds/$fileName'));
       await player.play(AssetSource('sounds/$fileName'), volume: volume);
     } catch (e) {
       debugPrint('SoundService error ($type): $e');
