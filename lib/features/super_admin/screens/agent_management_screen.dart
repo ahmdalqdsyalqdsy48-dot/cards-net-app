@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../core/providers/system_provider.dart'; 
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/settings_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
+import '../../../core/providers/agent_admin_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_drawer.dart';
-import '../../../core/widgets/custom_header.dart'; 
-import 'agent_profile_screen.dart'; 
+import '../../../core/widgets/custom_header.dart';
+import 'agent_profile_screen.dart';
 
 class AgentManagementScreen extends StatefulWidget {
   const AgentManagementScreen({super.key});
@@ -17,19 +20,19 @@ class AgentManagementScreen extends StatefulWidget {
 class _AgentManagementScreenState extends State<AgentManagementScreen> {
   String _searchQuery = '';
 
-  void _play(BuildContext context, String type) => 
+  void _play(BuildContext context, String type) =>
       Provider.of<UiProvider>(context, listen: false).playSound(type);
 
   // ==========================================
-  // 1. نافذة إضافة وكيل جديد (مُعدلة)
+  // 1. نافذة إضافة وكيل جديد
   // ==========================================
-  void _showAddAgentDialog(SystemProvider provider) {
+  void _showAddAgentDialog(AgentAdminProvider agentAdmin) {
     _play(context, 'click');
     final nameController = TextEditingController();
     final phoneController = TextEditingController();
     final profitController = TextEditingController();
     final passwordController = TextEditingController();
-    final balanceController = TextEditingController(); // 🆕 رصيد ابتدائي
+    final balanceController = TextEditingController();
 
     showDialog(
       context: context,
@@ -71,7 +74,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                     onPressed: () { _play(context, 'click'); Navigator.pop(context); },
                     child: const Text('إلغاء', style: TextStyle(color: Colors.red)),
                   ),
-                
+
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blueAccent,
@@ -82,18 +85,16 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                     String name = nameController.text.trim();
 
                     if (name.isNotEmpty && phone.isNotEmpty) {
-                      setStateDialog(() => isLoading = true); 
+                      setStateDialog(() => isLoading = true);
 
                       try {
-                        await provider.addAgent(
+                        await agentAdmin.addAgent(
                           name: name,
                           phone: phone,
                           password: passwordController.text.trim().isNotEmpty
                               ? passwordController.text.trim()
                               : phone,
-                          // لم نعد نمرر networkName أو location
                           profitMargin: profitController.text.trim(),
-                          // 🆕 تمرير الرصيد الابتدائي إن وجد
                           initialBalance: double.tryParse(balanceController.text.trim()) ?? 0,
                         );
 
@@ -114,13 +115,13 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                         }
                       }
                     } else {
-                        _play(context, 'error');
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('يرجى إدخال الاسم ورقم الهاتف على الأقل! ❌'), backgroundColor: Colors.red),
-                        );
+                      _play(context, 'error');
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('يرجى إدخال الاسم ورقم الهاتف على الأقل! ❌'), backgroundColor: Colors.red),
+                      );
                     }
                   },
-                  child: isLoading 
+                  child: isLoading
                       ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                       : const Text('حفظ واعتماد', style: TextStyle(color: Colors.white)),
                 ),
@@ -133,16 +134,16 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
   }
 
   // ==========================================
-  // 2. نافذة تعديل بيانات وكيل حالي (مُعدلة - بدون اسم الشبكة والموقع)
+  // 2. نافذة تعديل بيانات وكيل حالي
   // ==========================================
-  void _showEditAgentDialog(Map<String, dynamic> agent, SystemProvider provider) {
+  void _showEditAgentDialog(Map<String, dynamic> agent, AgentAdminProvider agentAdmin) {
     _play(context, 'click');
     final nameController = TextEditingController(text: agent['name']);
     final phoneController = TextEditingController(text: agent['phone']);
     final profitController = TextEditingController(text: agent['profitMargin'].toString().replaceAll('%', ''));
     final passwordController = TextEditingController(text: agent['password']);
 
-    final oldPhone = agent['phone']; 
+    final oldPhone = agent['phone'];
 
     showDialog(
       context: context,
@@ -176,19 +177,19 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
               actions: [
                 if (!isLoading)
                   TextButton(onPressed: () { _play(context, 'click'); Navigator.pop(context); }, child: const Text('إلغاء')),
-                
+
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                   onPressed: isLoading ? null : () async {
                     setStateDialog(() => isLoading = true);
 
                     try {
-                      await provider.updateAgentDetails(
+                      await agentAdmin.updateAgentDetails(
                         oldPhone: oldPhone,
                         newPhone: phoneController.text.trim(),
                         newName: nameController.text.trim(),
-                        newNetwork: '', // لم نعد نستخدمه
-                        newLocation: '', // لم نعد نستخدمه
+                        newNetwork: '',
+                        newLocation: '',
                         newProfit: '${profitController.text.trim()}%',
                         newPassword: passwordController.text.trim(),
                       );
@@ -206,7 +207,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                       }
                     }
                   },
-                  child: isLoading 
+                  child: isLoading
                       ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                       : const Text('حفظ التعديلات', style: TextStyle(color: Colors.white)),
                 ),
@@ -219,17 +220,17 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
   }
 
   // ==========================================
-  // 3. تجميد الوكيل (بدون تغيير)
+  // 3. تجميد الوكيل
   // ==========================================
-  void _toggleFreeze(Map<String, dynamic> agent, SystemProvider provider) {
+  void _toggleFreeze(Map<String, dynamic> agent, AgentAdminProvider agentAdmin) {
     _play(context, 'click');
     bool isGoingToFreeze = agent['status'] == 'نشط';
 
     try {
-      provider.toggleUserStatus(agent['phone'], agent['status']);
+      agentAdmin.toggleUserStatus(agent['phone'], agent['status']);
       _play(context, 'success');
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(isGoingToFreeze ? 'تم تجميد حساب الوكيل ⏸️' : 'تم إعادة تنشيط الوكيل ▶️'), 
+        content: Text(isGoingToFreeze ? 'تم تجميد حساب الوكيل ⏸️' : 'تم إعادة تنشيط الوكيل ▶️'),
         backgroundColor: isGoingToFreeze ? Colors.orange : Colors.green,
       ));
     } catch (e) {
@@ -239,9 +240,9 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
   }
 
   // ==========================================
-  // 4. حذف الوكيل (بدون تغيير)
+  // 4. حذف الوكيل
   // ==========================================
-  void _deleteAgent(Map<String, dynamic> agent, SystemProvider provider) {
+  void _deleteAgent(Map<String, dynamic> agent, AgentAdminProvider agentAdmin) {
     _play(context, 'click');
     showDialog(
       context: context,
@@ -256,7 +257,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () {
                 try {
-                  provider.deleteAgent(agent['phone']); 
+                  agentAdmin.deleteAgent(agent['phone']);
                   _play(context, 'success');
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم الحذف النهائي من السيرفر 🗑️'), backgroundColor: Colors.red));
@@ -284,24 +285,31 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final systemProvider = Provider.of<SystemProvider>(context);
-    final realAgentsList = systemProvider.agentsList; 
+    final auth = context.watch<AuthProvider>();
+    final settings = context.watch<SettingsProvider>();
+    final wallet = context.watch<WalletProvider>();
+    final agentAdmin = context.read<AgentAdminProvider>();
 
-    final filteredAgents = realAgentsList.where((agent) => 
-      (agent['name']?.toString() ?? '').contains(_searchQuery) || 
-      (agent['phone']?.toString() ?? '').contains(_searchQuery)
+    final realAgentsList = wallet.agentsList;
+
+    final filteredAgents = realAgentsList.where((agent) =>
+        (agent['name']?.toString() ?? '').contains(_searchQuery) ||
+        (agent['phone']?.toString() ?? '').contains(_searchQuery)
     ).toList();
 
     return Scaffold(
       appBar: const CustomHeader(title: 'إدارة الوكلاء'),
       drawer: CustomDrawer(
-        userName: systemProvider.currentUserName,
-        phoneNumber: systemProvider.currentUserPhone,
+        userName: wallet.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
         role: 'مالك النظام',
-        balanceOrPoints: 'رصيد النظام: ${systemProvider.adminMainBalance.toStringAsFixed(0)}', 
+        balanceOrPoints: 'رصيد النظام: ${settings.adminMainBalance.toStringAsFixed(0)}',
       ),
-      body: Directionality(
-        textDirection: TextDirection.rtl,
+      body: RefreshIndicator(
+        onRefresh: () async {
+          setState(() {});
+          await Future.delayed(const Duration(milliseconds: 300));
+        },
         child: Column(
           children: [
             Padding(
@@ -312,7 +320,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton.icon(
-                      onPressed: () => _showAddAgentDialog(systemProvider),
+                      onPressed: () => _showAddAgentDialog(agentAdmin),
                       icon: const Icon(Icons.person_add, color: Colors.white),
                       label: const Text('إضافة وكيل جديد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
@@ -321,7 +329,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                   const SizedBox(height: 15),
                   TextField(
                     onChanged: (value) {
-                      if(value.length == 1) _play(context, 'click');
+                      if (value.length == 1) _play(context, 'click');
                       setState(() => _searchQuery = value);
                     },
                     decoration: InputDecoration(
@@ -335,7 +343,6 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                 ],
               ),
             ),
-
             Expanded(
               child: filteredAgents.isEmpty
                   ? const Center(child: Text('لا يوجد وكلاء مطابقين للبحث أو لم يتم إضافة وكلاء بعد.', style: TextStyle(color: Colors.grey)))
@@ -351,7 +358,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                           elevation: 3,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(15),
-                            side: BorderSide(color: isFrozen ? Colors.red.withOpacity(0.3) : Colors.transparent, width: 1.5)
+                            side: BorderSide(color: isFrozen ? Colors.red.withOpacity(0.3) : Colors.transparent, width: 1.5),
                           ),
                           child: Padding(
                             padding: const EdgeInsets.all(12.0),
@@ -364,7 +371,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text('${agent['name'] ?? 'مجهول'} - ${agent['networkName'] ?? 'بدون شبكة'}', 
+                                          Text('${agent['name'] ?? 'مجهول'} - ${agent['networkName'] ?? 'بدون شبكة'}',
                                             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, decoration: isFrozen ? TextDecoration.lineThrough : null),
                                             overflow: TextOverflow.ellipsis,
                                           ),
@@ -384,14 +391,14 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                                   children: [
                                     _buildActionButton(Icons.visibility, 'تفاصيل', Colors.blue, () => _showAgentDetails(agent)),
-                                    _buildActionButton(Icons.edit, 'تعديل', Colors.orange, () => _showEditAgentDialog(agent, systemProvider)),
+                                    _buildActionButton(Icons.edit, 'تعديل', Colors.orange, () => _showEditAgentDialog(agent, agentAdmin)),
                                     _buildActionButton(
                                       isFrozen ? Icons.play_arrow : Icons.pause,
                                       isFrozen ? 'تنشيط' : 'تجميد',
                                       isFrozen ? Colors.green : Colors.red,
-                                      () => _toggleFreeze(agent, systemProvider),
+                                      () => _toggleFreeze(agent, agentAdmin),
                                     ),
-                                    _buildActionButton(Icons.delete_forever, 'حذف', Colors.red.shade900, () => _deleteAgent(agent, systemProvider)),
+                                    _buildActionButton(Icons.delete_forever, 'حذف', Colors.red.shade900, () => _deleteAgent(agent, agentAdmin)),
                                   ],
                                 ),
                               ],
