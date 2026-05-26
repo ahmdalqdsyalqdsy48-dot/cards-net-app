@@ -16,7 +16,6 @@ class SoundService {
   int _clickIdx = 0, _succIdx = 0, _errIdx = 0, _warnIdx = 0, _tapIdx = 0, _notifIdx = 0;
 
   SoundService(this._settings) {
-    // إنشاء 3 مشغلات للنقر، 2 للبقية
     for (int i = 0; i < 3; i++) {
       _clickPlayers.add(AudioPlayer());
     }
