@@ -1573,6 +1573,59 @@ class WalletProvider extends ChangeNotifier {
 
     return accounts;
   }
+    // ---------- قبول ورفض طلبات الشحن (للمركز المالي) ----------
+  Future<void> adminAcceptSaaSRecharge(String requestId, String agentPhone,
+      double quotaAmount, double feeAmount) async {
+    final batch = _db.batch();
+
+    batch.update(_db.collection('recharge_requests').doc(requestId), {
+      'status': 'approved',
+      'processedAt': FieldValue.serverTimestamp(),
+    });
+
+    batch.update(_db.collection('users').doc(agentPhone), {
+      'balance': FieldValue.increment(quotaAmount),
+    });
+
+    final notifRef = _db.collection('notifications').doc();
+    batch.set(notifRef, {
+      'targetPhones': [agentPhone],
+      'title': 'تم شحن رصيدك! 🎉',
+      'body': 'تمت الموافقة على طلبك وإضافة $quotaAmount ريال إلى محفظتك.',
+      'timestamp': FieldValue.serverTimestamp(),
+      'isRead': false,
+      'readBy': [],
+    });
+
+    await batch.commit();
+  }
+
+  Future<void> rejectRechargeRequest(String requestId, String reason) async {
+    final reqDoc = await _db.collection('recharge_requests').doc(requestId).get();
+    if (reqDoc.exists) {
+      final reqData = reqDoc.data() as Map<String, dynamic>;
+      String agentPhone = reqData['userPhone'] ?? reqData['agentPhone'];
+
+      final batch = _db.batch();
+      batch.update(reqDoc.reference, {
+        'status': 'rejected',
+        'rejectReason': reason,
+        'processedAt': FieldValue.serverTimestamp(),
+      });
+
+      final notifRef = _db.collection('notifications').doc();
+      batch.set(notifRef, {
+        'targetPhones': [agentPhone],
+        'title': 'عذراً، تم رفض طلب الشحن ❌',
+        'body': 'تم رفض طلب الشحن. السبب: $reason',
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'readBy': [],
+      });
+
+      await batch.commit();
+    }
+  }
 
   // ---------- دوال مساعدة (إشعارات، تدقيق) ----------
   // أصبحت عامة ليستخدمها AgentAdminProvider
