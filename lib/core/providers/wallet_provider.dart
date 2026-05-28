@@ -1573,20 +1573,40 @@ class WalletProvider extends ChangeNotifier {
 
     return accounts;
   }
-    // ---------- قبول ورفض طلبات الشحن (للمركز المالي) ----------
-  Future<void> adminAcceptSaaSRecharge(String requestId, String agentPhone,
+      Future<void> adminAcceptSaaSRecharge(String requestId, String agentPhone,
       double quotaAmount, double feeAmount) async {
     final batch = _db.batch();
 
+    // 1. تحديث حالة الطلب
     batch.update(_db.collection('recharge_requests').doc(requestId), {
       'status': 'approved',
       'processedAt': FieldValue.serverTimestamp(),
     });
 
+    // 2. إضافة الرصيد للوكيل
     batch.update(_db.collection('users').doc(agentPhone), {
       'balance': FieldValue.increment(quotaAmount),
     });
 
+    // 3. تسجيل العملية في السجل (إصلاح المشكلة)
+    final txnRef = _db.collection('transactions').doc();
+    batch.set(txnRef, {
+      'fromPhone': '774578241',
+      'toPhone': agentPhone,
+      'agentPhone': agentPhone,
+      'agentName': '',
+      'targetName': 'وكيل',
+      'networkName': 'النظام',
+      'type': 'deposit',
+      'title': 'توريد حصة مبيعات (موافقة طلب)',
+      'amount': quotaAmount,
+      'fee': feeAmount,
+      'paymentMethod': 'نظام SaaS',
+      'reference': 'REQ-$requestId',
+      'timestamp': FieldValue.serverTimestamp()
+    });
+
+    // 4. إرسال إشعار للوكيل
     final notifRef = _db.collection('notifications').doc();
     batch.set(notifRef, {
       'targetPhones': [agentPhone],
