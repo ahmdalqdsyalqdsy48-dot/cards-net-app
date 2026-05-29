@@ -441,11 +441,13 @@ async function checkAndSendScheduledReports() {
   await initTransporter();
   if (!transporter) return;
 
+  // ✅ استخدام توقيت الرياض بدلاً من UTC
   const now = new Date();
-  const currentHour = now.getHours(); // 24 ساعة
-  const currentMinute = now.getMinutes();
-  const currentDayOfWeek = now.getDay(); // 0=أحد, 1=إثنين ... 6=سبت (JavaScript)
-  const currentDayOfMonth = now.getDate();
+  const riyadhTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Riyadh' }));
+  const currentHour = riyadhTime.getHours();
+  const currentMinute = riyadhTime.getMinutes();
+  const currentDayOfWeek = riyadhTime.getDay(); // 0=أحد, 1=إثنين ... 6=سبت (JavaScript)
+  const currentDayOfMonth = riyadhTime.getDate();
 
   const schedulesSnap = await getDocs(collection(db, 'scheduled_reports'));
   for (const docSnap of schedulesSnap.docs) {
