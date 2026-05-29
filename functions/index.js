@@ -442,28 +442,30 @@ async function checkAndSendScheduledReports() {
   if (!transporter) return;
 
   const now = new Date();
-  const currentHour = now.getHours();
+  const currentHour = now.getHours(); // 24 ساعة
   const currentMinute = now.getMinutes();
-  const currentDayOfWeek = now.getDay(); // 0=أحد, 1=إثنين ... 6=سبت
+  const currentDayOfWeek = now.getDay(); // 0=أحد, 1=إثنين ... 6=سبت (JavaScript)
   const currentDayOfMonth = now.getDate();
 
   const schedulesSnap = await getDocs(collection(db, 'scheduled_reports'));
   for (const docSnap of schedulesSnap.docs) {
     const schedule = docSnap.data();
-    const { frequency, day, hour: hour12, amPm, email, phone } = schedule;
+    const { frequency, day, hour: hour12, amPm, email, phone, minute = 0 } = schedule;
 
     // تحويل الساعة 12 إلى نظام 24
     let scheduleHour = (hour12 % 12);
     if (amPm === 'مساءاً') scheduleHour += 12;
 
+    // ✅ التحقق من الساعة والدقيقة المحددة
     if (currentHour !== scheduleHour) continue;
-    if (currentMinute >= 10) continue; // لمنع التكرار
+    if (currentMinute !== minute) continue;
 
     let shouldSend = false;
     if (frequency === 'يومياً') {
       shouldSend = true;
     } else if (frequency === 'أسبوعياً') {
       // day: 1=السبت, 2=الأحد... 7=الجمعة
+      // JavaScript getDay: 0=الأحد، 1=الإثنين، ... 6=السبت
       const jsDayMap = { 1: 6, 2: 0, 3: 1, 4: 2, 5: 3, 6: 4, 7: 5 };
       const targetDay = jsDayMap[day] ?? 0;
       if (currentDayOfWeek === targetDay) shouldSend = true;
@@ -473,10 +475,10 @@ async function checkAndSendScheduledReports() {
 
     if (!shouldSend) continue;
 
-    // تجنب التكرار في نفس اليوم
+    // تجنب تكرار الإرسال خلال نفس الدقيقة (حسب آخر إرسال)
     const lastSent = schedule.lastSentAt ? schedule.lastSentAt.toDate() : null;
-    if (lastSent && lastSent.toDateString() === now.toDateString()) {
-      continue;
+    if (lastSent && lastSent.toDateString() === now.toDateString() && lastSent.getHours() === currentHour && lastSent.getMinutes() === currentMinute) {
+      continue; // تم الإرسال بالفعل في هذه الدقيقة
     }
 
     try {
@@ -488,8 +490,9 @@ async function checkAndSendScheduledReports() {
         text: report.text,
         html: report.html,
       });
+      // تحديث آخر إرسال
       await updateDoc(docSnap.ref, { lastSentAt: serverTimestamp() });
-      console.log(`✅ تم إرسال التقرير إلى ${email}`);
+      console.log(`✅ تم إرسال التقرير إلى ${email} في ${currentHour}:${currentMinute}`);
     } catch (err) {
       console.error(`❌ فشل إرسال التقرير إلى ${email}:`, err.message);
     }
