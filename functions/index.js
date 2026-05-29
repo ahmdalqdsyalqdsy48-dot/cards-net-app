@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
 const cron = require('node-cron');
+const nodemailer = require('nodemailer');
 const { RouterOSAPI } = require('node-routeros');
 const { initializeApp } = require('firebase/app');
 const {
@@ -44,6 +45,38 @@ const storage = getStorage(firebaseApp);
 const app = express();
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: '10mb' }));
+
+// ---------- إعداد البريد الإلكتروني ----------
+let transporter = null;
+async function initTransporter() {
+  if (transporter) return;
+  if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+    console.log('✅ تم إعداد البريد من متغيرات البيئة');
+    return;
+  }
+  try {
+    const mailDoc = await getDoc(doc(db, 'system', 'mail_settings'));
+    if (mailDoc.exists()) {
+      const { user, pass } = mailDoc.data();
+      if (user && pass) {
+        transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: { user, pass },
+        });
+        console.log('✅ تم إعداد البريد من Firestore');
+      }
+    }
+  } catch (e) {
+    console.warn('⚠️ لا توجد إعدادات بريد، لن يتم إرسال التقارير');
+  }
+}
 
 // ---------- تسجيل دخول السيرفر ----------
 async function serverLogin() {
@@ -392,8 +425,85 @@ async function autoGenerateBot() {
 
 cron.schedule('*/5 * * * *', async () => { await autoGenerateBot(); });
 
-// ---------- بدء الخادم (بدلاً من functions.https.onRequest) ----------
+// ============== الإرسال التلقائي للتقارير المجدولة ==============
+async function generateReportContent(phone, email) {
+  const userDoc = await getDoc(doc(db, 'users', phone));
+  const userName = userDoc.exists() ? userDoc.data().name : 'مستخدم';
+  const now = new Date();
+  return {
+    subject: `تقرير كروت نت - ${userName} - ${now.toLocaleDateString('ar-EG')}`,
+    text: `السلام عليكم ${userName}،\n\nهذا تقريرك المجدول من نظام كروت نت.\nتاريخ الإصدار: ${now.toLocaleString('ar-EG')}.\n\nمع تحيات فريق كروت نت.`,
+    html: `<div dir="rtl"><h3>تقرير ${userName}</h3><p>تاريخ: ${now.toLocaleString('ar-EG')}</p></div>`
+  };
+}
+
+async function checkAndSendScheduledReports() {
+  await initTransporter();
+  if (!transporter) return;
+
+  const now = new Date();
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  const currentDayOfWeek = now.getDay(); // 0=أحد, 1=إثنين ... 6=سبت
+  const currentDayOfMonth = now.getDate();
+
+  const schedulesSnap = await getDocs(collection(db, 'scheduled_reports'));
+  for (const docSnap of schedulesSnap.docs) {
+    const schedule = docSnap.data();
+    const { frequency, day, hour: hour12, amPm, email, phone } = schedule;
+
+    // تحويل الساعة 12 إلى نظام 24
+    let scheduleHour = (hour12 % 12);
+    if (amPm === 'مساءاً') scheduleHour += 12;
+
+    if (currentHour !== scheduleHour) continue;
+    if (currentMinute >= 10) continue; // لمنع التكرار
+
+    let shouldSend = false;
+    if (frequency === 'يومياً') {
+      shouldSend = true;
+    } else if (frequency === 'أسبوعياً') {
+      // day: 1=السبت, 2=الأحد... 7=الجمعة
+      const jsDayMap = { 1: 6, 2: 0, 3: 1, 4: 2, 5: 3, 6: 4, 7: 5 };
+      const targetDay = jsDayMap[day] ?? 0;
+      if (currentDayOfWeek === targetDay) shouldSend = true;
+    } else if (frequency === 'شهرياً') {
+      if (currentDayOfMonth === day) shouldSend = true;
+    }
+
+    if (!shouldSend) continue;
+
+    // تجنب التكرار في نفس اليوم
+    const lastSent = schedule.lastSentAt ? schedule.lastSentAt.toDate() : null;
+    if (lastSent && lastSent.toDateString() === now.toDateString()) {
+      continue;
+    }
+
+    try {
+      const report = await generateReportContent(phone, email);
+      await transporter.sendMail({
+        from: `"نظام كروت نت" <${process.env.EMAIL_USER || 'noreply@netcardsapp.com'}>`,
+        to: email,
+        subject: report.subject,
+        text: report.text,
+        html: report.html,
+      });
+      await updateDoc(docSnap.ref, { lastSentAt: serverTimestamp() });
+      console.log(`✅ تم إرسال التقرير إلى ${email}`);
+    } catch (err) {
+      console.error(`❌ فشل إرسال التقرير إلى ${email}:`, err.message);
+    }
+  }
+}
+
+// تشغيل فحص الجدولة كل دقيقة
+cron.schedule('* * * * *', async () => {
+  await checkAndSendScheduledReports();
+});
+
+// ---------- بدء الخادم ----------
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '0.0.0.0', async () => {
   console.log(`✅ Server is running on port ${PORT}`);
+  await initTransporter();
 });
