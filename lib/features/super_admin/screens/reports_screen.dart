@@ -44,6 +44,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   String _scheduleFrequency = 'شهرياً';
   int _scheduleDay = 1;
   int _scheduleHour = 8;
+  int _scheduleMinute = 0;   // ✅ جديد
   String _scheduleAmPm = 'صباحاً';
   String _scheduleEmail = '';
   bool _hasSchedule = false;
@@ -91,6 +92,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         _scheduleFrequency = data['frequency'] ?? 'شهرياً';
         _scheduleDay = data['day'] ?? 1;
         _scheduleHour = data['hour'] ?? 8;
+        _scheduleMinute = data['minute'] ?? 0;
         _scheduleAmPm = data['amPm'] ?? 'صباحاً';
         _scheduleEmail = data['email'] ?? '';
       });
@@ -140,12 +142,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return total;
   }
 
-  // ========== نافذة الجدولة ==========
+  // ========== نافذة الجدولة (مُضافة الدقائق) ==========
   void _showScheduleDialog() {
     _play('click');
     String freq = _scheduleFrequency;
     int day = _scheduleDay;
     int hour = _scheduleHour;
+    int minute = _scheduleMinute;
     String amPm = _scheduleAmPm;
     final emailCtrl = TextEditingController(text: _scheduleEmail);
 
@@ -228,6 +231,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     ],
                   ),
                   const SizedBox(height: 10),
+                  // ✅ حقل الدقائق
+                  TextField(
+                    controller: TextEditingController(
+                        text: minute.toString()),
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'الدقائق (0-59)',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (val) {
+                      int? m = int.tryParse(val);
+                      if (m != null && m >= 0 && m <= 59) {
+                        setStateDialog(() => minute = m);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 10),
                   TextField(
                     controller: emailCtrl,
                     keyboardType: TextInputType.emailAddress,
@@ -267,6 +287,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         'frequency': freq,
                         'day': day,
                         'hour': hour,
+                        'minute': minute,   // ✅ حفظ الدقيقة
                         'amPm': amPm,
                         'email': email,
                         'updatedAt': FieldValue.serverTimestamp(),
@@ -277,6 +298,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         'frequency': freq,
                         'day': day,
                         'hour': hour,
+                        'minute': minute,   // ✅ حفظ الدقيقة
                         'amPm': amPm,
                         'email': email,
                         'createdAt': FieldValue.serverTimestamp(),
@@ -288,6 +310,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       _scheduleFrequency = freq;
                       _scheduleDay = day;
                       _scheduleHour = hour;
+                      _scheduleMinute = minute;   // ✅ تحديث الحالة
                       _scheduleAmPm = amPm;
                       _scheduleEmail = email;
                     });
@@ -774,7 +797,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'جدولة: $_scheduleFrequency | $_scheduleEmail',
+                                'جدولة: $_scheduleFrequency | $_scheduleEmail | ${_scheduleHour}:${_scheduleMinute.toString().padLeft(2, '0')} $_scheduleAmPm',
                                 style: const TextStyle(
                                     fontSize: 12,
                                     color: Colors.green),
