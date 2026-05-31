@@ -10,6 +10,7 @@ import 'package:printing/printing.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/providers/wallet_provider.dart';
+import '../../../core/providers/transactions_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart';
@@ -38,6 +39,8 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
 
   // ========== اختيار التواريخ ==========
   Future<void> _pickStartDate() async {
+    final ui = context.read<UiProvider>();
+    ui.playSound('click');
     final picked = await showDatePicker(
       context: context,
       initialDate: _startDate ?? DateTime.now(),
@@ -53,6 +56,8 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
   }
 
   Future<void> _pickEndDate() async {
+    final ui = context.read<UiProvider>();
+    ui.playSound('click');
     final picked = await showDatePicker(
       context: context,
       initialDate: _endDate ?? (_startDate ?? DateTime.now()),
@@ -68,21 +73,22 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
   }
 
   void _updateDashboardRange() {
-    final wallet = context.read<WalletProvider>();
+    final transactions = context.read<TransactionsProvider>();
     if (_startDate != null && _endDate != null) {
-      wallet.setDashboardDateRange(DateTimeRange(start: _startDate!, end: _endDate!));
+      transactions.setDashboardDateRange(DateTimeRange(start: _startDate!, end: _endDate!));
     } else {
-      wallet.setDashboardDateRange(null);
+      transactions.setDashboardDateRange(null);
     }
   }
 
   void _resetDates() {
+    final ui = context.read<UiProvider>();
+    ui.playSound('click');
     setState(() {
       _startDate = null;
       _endDate = null;
     });
-    context.read<WalletProvider>().setDashboardDateRange(null);
-    context.read<UiProvider>().playSound('click');
+    context.read<TransactionsProvider>().setDashboardDateRange(null);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('تم إعادة التعيين إلى إحصائيات اليوم 📅', textDirection: TextDirection.rtl),
@@ -100,11 +106,11 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
 
   // ========== طباعة PDF ==========
   Future<void> _generateAndPrintPDF(
+    TransactionsProvider transactions,
     WalletProvider wallet,
     UiProvider uiProvider,
     String topAgent,
     int agentsDanger,
-    double pendingTotal,
   ) async {
     uiProvider.playSound('click');
     ScaffoldMessenger.of(context).showSnackBar(
@@ -117,9 +123,13 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     final arabicFont = await PdfGoogleFonts.cairoRegular();
     final arabicFontBold = await PdfGoogleFonts.cairoBold();
 
-    String dateText = wallet.dashboardDateRange == null
+    String dateText = transactions.dashboardDateRange == null
         ? 'تقرير مبيعات اليوم'
-        : 'تقرير من: ${_formatDate(wallet.dashboardDateRange!.start)} إلى ${_formatDate(wallet.dashboardDateRange!.end)}';
+        : 'تقرير من: ${_formatDate(transactions.dashboardDateRange!.start)} إلى ${_formatDate(transactions.dashboardDateRange!.end)}';
+
+    // جمع إجمالي طلبات الشحن المعلقة (سنستخدم StreamBuilder لاحقاً لكن هنا نضع قيمة إجمالية 0 لأننا لا نستطيع جلبها بشكل تزامني)
+    // سنمرر 0 كما في الكود الأصلي، لكن يمكن تحسينه بجلب البيانات قبل فتح الـ PDF
+    const double pendingTotal = 0; // سيبقى كما هو للتوافق، يمكن تحسينه لاحقاً
 
     pdf.addPage(
       pw.Page(
@@ -149,12 +159,12 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                 cellAlignment: pw.Alignment.center,
                 data: <List<String>>[
                   ['البيان', 'القيمة'],
-                  ['إجمالي المبيعات المحققة', '${wallet.filteredSales.toStringAsFixed(0)} ريال'],
-                  ['إجمالي الأرباح', '${wallet.filteredProfit.toStringAsFixed(0)} ريال'],
+                  ['إجمالي المبيعات المحققة', '${transactions.filteredSales.toStringAsFixed(0)} ريال'],
+                  ['إجمالي الأرباح', '${transactions.filteredProfit.toStringAsFixed(0)} ريال'],
                   ['طلبات الشحن المعلقة', '${wallet.pendingRechargeRequests.length} طلبات (${pendingTotal.toStringAsFixed(0)} ريال)'],
                   ['وكلاء في مرحلة الخطر', '$agentsDanger وكلاء'],
                   ['الوكيل الأنشط بالفترة', topAgent],
-                  ['إجمالي تذاكر الدعم المفتوحة', '${wallet.openTicketsCount} تذاكر'],
+                  ['إجمالي تذاكر الدعم المفتوحة', '${transactions.openTicketsCount} تذاكر'],
                 ],
               ),
               pw.SizedBox(height: 30),
@@ -264,10 +274,9 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
 
         DocumentReference notifRef = FirebaseFirestore.instance.collection('notifications').doc();
         batch.set(notifRef, {
-          'targetUserId': agentPhone,
+          'targetPhones': [agentPhone],
           'title': 'تم شحن رصيدك بنجاح! 🎉',
           'body': 'تمت الموافقة على طلبك وتمت إضافة مبلغ $amount ريال إلى محفظتك.',
-          'type': 'success',
           'isRead': false,
           'timestamp': FieldValue.serverTimestamp(),
         });
@@ -278,10 +287,9 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
       } else {
         DocumentReference notifRef = FirebaseFirestore.instance.collection('notifications').doc();
         batch.set(notifRef, {
-          'targetUserId': agentPhone,
+          'targetPhones': [agentPhone],
           'title': 'عذراً، تم رفض طلب الشحن ❌',
           'body': 'تم رفض طلب الشحن الخاص بك بقيمة $amount ريال، يرجى مراجعة الإدارة.',
-          'type': 'warning',
           'isRead': false,
           'timestamp': FieldValue.serverTimestamp(),
         });
@@ -310,16 +318,17 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     final auth = context.watch<AuthProvider>();
     final settings = context.watch<SettingsProvider>();
     final wallet = context.watch<WalletProvider>();
+    final transactions = context.watch<TransactionsProvider>();
     final uiProvider = context.read<UiProvider>();
 
     final adminBalance = settings.adminMainBalance;
     final userName = wallet.currentUserName;
     final String userPhone = auth.activeUserPhone ?? '';
     final totalCards = settings.totalSystemCards;
-    final double todaySales = wallet.filteredSales;
-    final double todayProfit = wallet.filteredProfit;
-    final int openTicketsCount = wallet.openTicketsCount;
-    final int criticalTicketsCount = wallet.criticalTicketsCount;
+    final double todaySales = transactions.filteredSales;
+    final double todayProfit = transactions.filteredProfit;
+    final int openTicketsCount = transactions.openTicketsCount;
+    final int criticalTicketsCount = transactions.criticalTicketsCount;
     final int smsBalance = settings.smsBalance;
 
     final agentsInDanger = wallet.agentsList.where((agent) {
@@ -354,8 +363,9 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
       body: RefreshIndicator(
         key: _refreshKey,
         onRefresh: () async {
-          setState(() {});
+          // يتم التحديث من المستمعات تلقائياً
           await Future.delayed(const Duration(milliseconds: 300));
+          uiProvider.playSound('success');
         },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -409,7 +419,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                           child: IconButton(
                             icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
                             tooltip: 'تصدير تقرير فوري',
-                            onPressed: () => _generateAndPrintPDF(wallet, uiProvider, topAgentName, agentsInDanger, 0),
+                            onPressed: () => _generateAndPrintPDF(transactions, wallet, uiProvider, topAgentName, agentsInDanger),
                           ),
                         ),
                       ],
