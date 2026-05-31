@@ -12,8 +12,12 @@ import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/settings_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
+import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_header.dart';
+import '../../../core/widgets/custom_drawer.dart';
 
 class AgentProfileScreen extends StatefulWidget {
   final Map<String, dynamic> agentData;
@@ -28,20 +32,23 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final ScrollController _scrollController = ScrollController();
 
-  // فلاتر التبويب الأول (نظام متقدم)
   String _overviewFilter = 'اليوم';
   DateTime? _customStart;
   DateTime? _customEnd;
   TimeOfDay? _startTime;
   TimeOfDay? _endTime;
 
-  // عدد البقالات الحقيقي
   int _posCount = 0;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 5, vsync: this);
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) {
+        context.read<UiProvider>().playSound('click');
+      }
+    });
   }
 
   @override
@@ -51,7 +58,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     super.dispose();
   }
 
-  // --- نطاق التاريخ المتقدم ---
   DateTimeRange _getDateRange() {
     final now = DateTime.now();
     switch (_overviewFilter) {
@@ -98,7 +104,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     }
   }
 
-  // --- بناء شريط الفلاتر (متقدم) ---
   Widget _buildFilterBar() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -146,6 +151,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
       selectedColor: colors.primaryContainer,
       backgroundColor: colors.surfaceVariant.withOpacity(0.5),
       onSelected: (val) {
+        context.read<UiProvider>().playSound('click');
         setState(() {
           _overviewFilter = label;
           if (label != 'مخصص') {
@@ -162,6 +168,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
   Widget _datePickButton(String label, DateTime? current, ValueChanged<DateTime> onPick) {
     return TextButton.icon(
       onPressed: () async {
+        context.read<UiProvider>().playSound('click');
         final picked = await showDatePicker(
           context: context,
           initialDate: current ?? DateTime.now(),
@@ -182,6 +189,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
   Widget _timePickButton(String label, TimeOfDay? current, ValueChanged<TimeOfDay> onPick) {
     return TextButton.icon(
       onPressed: () async {
+        context.read<UiProvider>().playSound('click');
         final picked = await showTimePicker(
           context: context,
           initialTime: current ?? TimeOfDay.now(),
@@ -199,9 +207,11 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final provider = Provider.of<SystemProvider>(context);
+    final wallet = context.watch<WalletProvider>();
+    final auth = context.watch<AuthProvider>();
+    final settings = context.watch<SettingsProvider>();
 
-    final liveAgent = provider.agentsList.firstWhere(
+    final liveAgent = wallet.agentsList.firstWhere(
       (a) => a['phone'] == widget.agentData['phone'],
       orElse: () => widget.agentData,
     );
@@ -214,58 +224,70 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     final String agentPhone = liveAgent['phone'] ?? '';
 
     return Scaffold(
-      body: NestedScrollView(
-        controller: _scrollController,
-        headerSliverBuilder: (context, innerBoxIsScrolled) {
-          return [
-            SliverAppBar(
-              title: Text('الملف الشامل للوكيل',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              centerTitle: true,
-              floating: true,
-              pinned: false,
-              snap: true,
-              backgroundColor: colors.primaryContainer,
-              foregroundColor: colors.onPrimaryContainer,
-              elevation: 0,
-              expandedHeight: 0,
-            ),
-            SliverToBoxAdapter(
-              child: _buildIdentityCard(agentName, nameInitial, balance, liveAgent),
-            ),
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _SliverTabBarDelegate(
-                TabBar(
-                  controller: _tabController,
-                  isScrollable: false,
-                  labelColor: colors.onPrimary,
-                  unselectedLabelColor: colors.onSurface.withOpacity(0.7),
-                  indicatorColor: colors.primary,
-                  indicatorWeight: 4,
-                  labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                  tabs: [
-                    Tab(icon: Icon(Icons.analytics, size: 22), text: 'نظرة عامة'),
-                    Tab(icon: Icon(Icons.inventory_2, size: 22), text: 'المخزون'),
-                    Tab(icon: Icon(Icons.store, size: 22), text: 'البقالات'),
-                    Tab(icon: Icon(Icons.dns, size: 22), text: 'الشبكات'),
-                    Tab(icon: Icon(Icons.history, size: 22), text: 'سجل العمليات'),
-                  ],
-                ),
-                colors.surface,
-              ),
-            ),
-          ];
+      drawer: CustomDrawer(
+        userName: wallet.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
+        role: 'مالك النظام',
+        balanceOrPoints: 'أرباح النظام: ${settings.adminMainBalance.toStringAsFixed(0)} ريال',
+      ),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await Future.delayed(const Duration(milliseconds: 300));
+          context.read<UiProvider>().playSound('success');
         },
-        body: TabBarView(
-          controller: _tabController,
-          children: [
-            _buildSalesOverviewTab(liveAgent),
-            _buildInventoryTab(liveAgent),
-            _buildPosTab(liveAgent),
-            _buildNetworksTab(agentPhone),
-            _buildAuditLogTab(agentPhone),
-          ],
+        child: NestedScrollView(
+          controller: _scrollController,
+          headerSliverBuilder: (context, innerBoxIsScrolled) {
+            return [
+              SliverAppBar(
+                title: Text('الملف الشامل للوكيل',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                centerTitle: true,
+                floating: true,
+                pinned: false,
+                snap: true,
+                backgroundColor: colors.primaryContainer,
+                foregroundColor: colors.onPrimaryContainer,
+                elevation: 0,
+                expandedHeight: 0,
+              ),
+              SliverToBoxAdapter(
+                child: _buildIdentityCard(agentName, nameInitial, balance, liveAgent),
+              ),
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _SliverTabBarDelegate(
+                  TabBar(
+                    controller: _tabController,
+                    isScrollable: false,
+                    labelColor: colors.onPrimary,
+                    unselectedLabelColor: colors.onSurface.withOpacity(0.7),
+                    indicatorColor: colors.primary,
+                    indicatorWeight: 4,
+                    labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    tabs: [
+                      Tab(icon: Icon(Icons.analytics, size: 22), text: 'نظرة عامة'),
+                      Tab(icon: Icon(Icons.inventory_2, size: 22), text: 'المخزون'),
+                      Tab(icon: Icon(Icons.store, size: 22), text: 'البقالات'),
+                      Tab(icon: Icon(Icons.dns, size: 22), text: 'الشبكات'),
+                      Tab(icon: Icon(Icons.history, size: 22), text: 'سجل العمليات'),
+                    ],
+                  ),
+                  colors.surface,
+                ),
+              ),
+            ];
+          },
+          body: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildSalesOverviewTab(liveAgent),
+              _buildInventoryTab(liveAgent),
+              _buildPosTab(liveAgent),
+              _buildNetworksTab(agentPhone),
+              _buildAuditLogTab(agentPhone),
+            ],
+          ),
         ),
       ),
     );
@@ -335,7 +357,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     );
   }
 
-  // ========== تبويب نظرة عامة ==========
   Widget _buildSalesOverviewTab(Map<String, dynamic> agent) {
     final range = _getDateRange();
     final String agentPhone = agent['phone'] ?? '';
@@ -344,7 +365,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     return Column(
       children: [
         _buildFilterBar(),
-        // أزرار التقارير
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
@@ -393,7 +413,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
                 if (data['type'] == 'sale') {
                   totalSales += (data['amount'] ?? 0).toDouble();
                   totalCards += (data['quantity'] as int?) ?? 1;
-                  // استخراج اسم الفئة من title
                   String title = data['title'] ?? '';
                   String catName = 'فئة عامة';
                   if (title.contains(':') && title.contains('لـ')) {
@@ -404,13 +423,11 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
                     }
                   }
                   categorySales[catName] = (categorySales[catName] ?? 0) + (data['amount'] ?? 0).toDouble();
-                  // توزيع البقالات
                   String buyer = data['fromPhone'] ?? '';
                   posSales[buyer] = (posSales[buyer] ?? 0) + (data['amount'] ?? 0).toDouble();
                 }
               }
 
-              // أفضل فئة
               String bestCategory = 'غير متوفر';
               double bestCatAmount = 0;
               categorySales.forEach((name, amt) {
@@ -492,7 +509,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     );
   }
 
-  // ========== تبويب المخزون ==========
   Widget _buildInventoryTab(Map<String, dynamic> agent) {
     final String agentPhone = agent['phone'] ?? '';
     final colors = Theme.of(context).colorScheme;
@@ -562,7 +578,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     );
   }
 
-  // ========== تبويب البقالات ==========
   Widget _buildPosTab(Map<String, dynamic> agent) {
     final String agentPhone = agent['phone'] ?? '';
     final colors = Theme.of(context).colorScheme;
@@ -572,7 +587,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
         if (!snapshot.hasData) return _buildSkeletonLoader();
         if (snapshot.hasError) return _buildErrorWidget('تعذر تحميل البقالات');
         final posList = snapshot.data!.docs;
-        // تحديث عدد البقالات
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && _posCount != posList.length) {
             setState(() => _posCount = posList.length);
@@ -602,6 +616,9 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
                 subtitle: Text('الموقع: $location | الرصيد: $walletBalance ريال',
                     style: TextStyle(fontSize: 12, color: colors.onSurface.withOpacity(0.7))),
                 leading: CircleAvatar(backgroundColor: colors.primary, child: Icon(Icons.store, color: colors.onPrimary)),
+                onExpansionChanged: (expanded) {
+                  if (expanded) context.read<UiProvider>().playSound('click');
+                },
                 children: [
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -627,7 +644,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     );
   }
 
-  // ========== تبويب الشبكات ==========
   Widget _buildNetworksTab(String agentPhone) {
     final colors = Theme.of(context).colorScheme;
     return StreamBuilder<QuerySnapshot>(
@@ -693,7 +709,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     );
   }
 
-  // ========== تبويب سجل العمليات ==========
   Widget _buildAuditLogTab(String agentPhone) {
     final colors = Theme.of(context).colorScheme;
     return StreamBuilder<QuerySnapshot>(
@@ -731,24 +746,26 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     );
   }
 
-  // --- تقارير PDF ---
   Future<void> _printReport(Map<String, dynamic> agent, DateTimeRange range) async {
+    context.read<UiProvider>().playSound('click');
     final pdf = await _generatePdf(agent, range);
     await Printing.layoutPdf(onLayout: (format) => pdf.save());
+    context.read<UiProvider>().playSound('success');
   }
 
   Future<void> _downloadReport(Map<String, dynamic> agent, DateTimeRange range) async {
+    context.read<UiProvider>().playSound('click');
     final pdf = await _generatePdf(agent, range);
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/تقرير_الوكيل.pdf');
     await file.writeAsBytes(await pdf.save());
     await Share.shareXFiles([XFile(file.path)], subject: 'تقرير الوكيل');
+    context.read<UiProvider>().playSound('success');
   }
 
   Future<pw.Document> _generatePdf(Map<String, dynamic> agent, DateTimeRange range) async {
     final pdf = pw.Document();
     final transactions = await _fetchTransactions(agent['phone'] ?? '', range);
-    // حساب إحصاءات مماثلة
     double totalSales = 0; int totalCards = 0;
     Map<String, double> catSales = {};
     for (var t in transactions) {
@@ -772,7 +789,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
         build: (context) => [
           pw.Header(level: 0, child: pw.Text('تقرير مبيعات الوكيل', textDirection: pw.TextDirection.rtl)),
           pw.Text('الوكيل: ${agent['name']}', textDirection: pw.TextDirection.rtl),
-pw.Text('الفترة: ${DateFormat('yyyy/MM/dd').format(range.start)} - ${DateFormat('yyyy/MM/dd').format(range.end)}', textDirection: pw.TextDirection.rtl),
+          pw.Text('الفترة: ${DateFormat('yyyy/MM/dd').format(range.start)} - ${DateFormat('yyyy/MM/dd').format(range.end)}', textDirection: pw.TextDirection.rtl),
           pw.Divider(),
           pw.Table(border: pw.TableBorder.all(), children: [
             pw.TableRow(children: [pw.Text('الإحصاء'), pw.Text('القيمة')]),
@@ -796,7 +813,6 @@ pw.Text('الفترة: ${DateFormat('yyyy/MM/dd').format(range.start)} - ${DateF
     return snap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
   }
 
-  // --- ودجات مساعدة ---
   Widget _infoRow(IconData icon, String label, String value) {
     final colors = Theme.of(context).colorScheme;
     return Padding(
@@ -859,6 +875,7 @@ pw.Text('الفترة: ${DateFormat('yyyy/MM/dd').format(range.start)} - ${DateF
   }
 
   void _showLocationMap(double lat, double lng, String title) {
+    context.read<UiProvider>().playSound('click');
     showDialog(
       context: context,
       builder: (ctx) => Directionality(
@@ -886,7 +903,6 @@ pw.Text('الفترة: ${DateFormat('yyyy/MM/dd').format(range.start)} - ${DateF
   }
 }
 
-// --- Delegate لتثبيت TabBar داخل Sliver ---
 class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
   _SliverTabBarDelegate(this._tabBar, this.color);
   final TabBar _tabBar;
