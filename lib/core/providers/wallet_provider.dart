@@ -219,6 +219,58 @@ class WalletProvider extends ChangeNotifier {
     return (user['heldBalance'] ?? 0.0).toDouble();
   }
 
+  // ---------- دوال وسيطة للملف الشخصي (تفويض إلى AuthProvider) ----------
+  Future<bool> changeUserName(String newName) async =>
+      await _auth?.changeUserName(newName) ?? false;
+
+  Future<bool> changeUserPin(String oldPin, String newPin) async =>
+      await _auth?.changeUserPin(oldPin, newPin) ?? false;
+
+  Future<String> changeUserPinWithOld(String oldPin, String newPin, String confirmPin) async {
+    if (_auth == null) return 'خطأ في المصادقة';
+    return await _auth!.changeUserPinWithOld(oldPin, newPin, confirmPin);
+  }
+
+  bool changeUserPassword(String oldPassword, String newPassword) =>
+      _auth?.changeUserPassword(oldPassword, newPassword) ?? false;
+
+  void toggleBiometric(bool isEnabled) =>
+      _auth?.toggleBiometric(isEnabled);
+
+  Future<void> updatePrivacySettings({required bool showPhone}) async =>
+      await _auth?.updatePrivacySettings(showPhone: showPhone);
+
+  Future<void> updatePrivacySetting(String key, bool value) async =>
+      await _auth?.updatePrivacySetting(key, value);
+
+  Future<void> updateUserDailyLimit(double limit) async =>
+      await _auth?.updateUserDailyLimit(limit);
+
+  Future<void> updateUserMonthlyLimit(double limit) async =>
+      await _auth?.updateUserMonthlyLimit(limit);
+
+  Future<bool> deleteUserAccount(String password) async =>
+      await _auth?.deleteUserAccount(password) ?? false;
+
+  Future<void> saveUserPreferredColor(Color color) async =>
+      await _auth?.saveUserPreferredColor(color);
+
+  Future<Color?> getUserPreferredColor() async =>
+      await _auth?.getUserPreferredColor();
+
+  Future<void> updateLastSeen() async =>
+      await _auth?.updateLastSeen();
+
+  Future<void> togglePinEnabled(bool value) async =>
+      await _auth?.togglePinEnabled(value);
+
+  // ---------- Getters وسيطة للجلسة والملف الشخصي ----------
+  String? get activeUserPhone => _auth?.activeUserPhone;
+  String get currentUserPhone => _auth?.activeUserPhone ?? '';
+  String get currentUserRole => _auth?.currentUserRole ?? 'guest';
+  bool hasPermission(String permissionName) =>
+      _auth?.hasPermission(permissionName) ?? false;
+
   String get currentUserName {
     if (_auth?.activeUserPhone == null) return '';
     final user = _usersDatabase.firstWhere(
@@ -227,16 +279,7 @@ class WalletProvider extends ChangeNotifier {
     return user['name'] ?? '';
   }
 
-  String? get activeUserPhone => _auth?.activeUserPhone;
-
-  String get currentUserPin {
-    if (_auth?.activeUserPhone == null) return '';
-    final user = _usersDatabase.firstWhere(
-      (u) => u['phone'] == _auth!.activeUserPhone,
-      orElse: () => {'pin': '123456'},
-    );
-    return user['pin'] ?? '123456';
-  }
+  String get currentUserPin => _auth?.currentUserPin ?? '';
 
   String get currentUserNetwork {
     if (_auth?.activeUserPhone == null) return 'غير محدد';
@@ -278,6 +321,15 @@ class WalletProvider extends ChangeNotifier {
     return user['isBiometricEnabled'] ?? false;
   }
 
+  bool get isPinEnabled {
+    if (_auth?.activeUserPhone == null) return false;
+    final user = _usersDatabase.firstWhere(
+      (u) => u['phone'] == _auth!.activeUserPhone,
+      orElse: () => {'pinEnabled': false},
+    );
+    return user['pinEnabled'] == true;
+  }
+
   double getWalletBalance(String agentPhone) {
     if (_auth?.activeUserPhone == null) return 0.0;
     final user = _usersDatabase.firstWhere(
@@ -309,7 +361,6 @@ class WalletProvider extends ChangeNotifier {
     return structuredList;
   }
 
-  // ---------- البريد الإلكتروني ----------
   String? get currentUserEmail {
     if (_auth?.activeUserPhone == null) return null;
     final user = _usersDatabase.firstWhere(
@@ -318,6 +369,19 @@ class WalletProvider extends ChangeNotifier {
     return user['email'];
   }
 
+  List<String> get currentUserHiddenSections {
+    if (_auth?.activeUserPhone == null) return [];
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {'role': 'user', 'hiddenSections': <String>[]});
+    List<String> personalHidden = List<String>.from(user['hiddenSections'] ?? []);
+    List<String> universalHidden = user['role'] == 'agent'
+        ? (_settings?.agentUniversalHiddenSections ?? [])
+        : (_settings?.userUniversalHiddenSections ?? []);
+    return {...personalHidden, ...universalHidden}.toList();
+  }
+
+  // ---------- البريد الإلكتروني ----------
   Future<void> updateUserEmail(String email) async {
     if (_auth?.activeUserPhone == null) return;
     await _db.collection('users').doc(_auth!.activeUserPhone).update({'email': email});
@@ -343,49 +407,6 @@ class WalletProvider extends ChangeNotifier {
     return null;
   }
 
-  // ---------- آخر ظهور ----------
-  Future<void> updateLastSeen() async {
-    if (_auth?.activeUserPhone == null) return;
-    await _db.collection('users').doc(_auth!.activeUserPhone).update({
-      'lastSeen': FieldValue.serverTimestamp(),
-    });
-  }
-
-  // ---------- PIN مفعل/غير مفعل ----------
-  bool get isPinEnabled {
-    if (_auth?.activeUserPhone == null) return false;
-    final user = _usersDatabase.firstWhere(
-      (u) => u['phone'] == _auth!.activeUserPhone,
-      orElse: () => {'pinEnabled': false},
-    );
-    return user['pinEnabled'] == true;
-  }
-
-  Future<void> togglePinEnabled(bool value) async {
-    if (_auth?.activeUserPhone == null) return;
-    await _db.collection('users').doc(_auth!.activeUserPhone).update({
-      'pinEnabled': value,
-    });
-    final index = _usersDatabase.indexWhere((u) => u['phone'] == _auth!.activeUserPhone);
-    if (index != -1) {
-      _usersDatabase[index]['pinEnabled'] = value;
-      notifyListeners();
-    }
-  }
-
-  // ---------- الأقسام المخفية للمستخدم الحالي ----------
-  List<String> get currentUserHiddenSections {
-    if (_auth?.activeUserPhone == null) return [];
-    final user = _usersDatabase.firstWhere(
-        (u) => u['phone'] == _auth!.activeUserPhone,
-        orElse: () => {'role': 'user', 'hiddenSections': <String>[]});
-    List<String> personalHidden = List<String>.from(user['hiddenSections'] ?? []);
-    List<String> universalHidden = user['role'] == 'agent'
-        ? (_settings?.agentUniversalHiddenSections ?? [])
-        : (_settings?.userUniversalHiddenSections ?? []);
-    return {...personalHidden, ...universalHidden}.toList();
-  }
-
   // ---------- أرقام الحسابات ----------
   bool _isSpecialAccountNumber(String numberStr) {
     final num = int.tryParse(numberStr);
@@ -398,7 +419,6 @@ class WalletProvider extends ChangeNotifier {
     return false;
   }
 
-  // أصبحت عامة ليستخدمها AgentAdminProvider
   Future<String> generateNextAccountNumber() async {
     final usersSnapshot = await _db
         .collection('users')
@@ -567,198 +587,6 @@ class WalletProvider extends ChangeNotifier {
     } catch (e) {
       throw 'حدث خطأ أثناء البحث عن الرقم.';
     }
-  }
-
-  // ---------- إعدادات المستخدم الشخصية ----------
-  Future<bool> changeUserName(String newName) async {
-    if (_auth?.activeUserPhone == null) return false;
-    try {
-      await _db.collection('users').doc(_auth!.activeUserPhone).update({'name': newName});
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  Future<bool> changeUserPin(String oldPin, String newPin) async {
-    if (_auth?.activeUserPhone == null) return false;
-    if (currentUserPin == oldPin) {
-      await _db.collection('users').doc(_auth!.activeUserPhone).update({'pin': newPin});
-      return true;
-    }
-    return false;
-  }
-
-  Future<String> changeUserPinWithOld(String oldPin, String newPin, String confirmPin) async {
-    if (_auth?.activeUserPhone == null) return 'يرجى تسجيل الدخول.';
-    if (newPin.length != 6) return 'يجب أن يتكون رمز PIN من 6 أرقام.';
-    if (newPin != confirmPin) return 'رمز PIN الجديد غير متطابق.';
-
-    final user = _usersDatabase.firstWhere(
-        (u) => u['phone'] == _auth!.activeUserPhone,
-        orElse: () => {});
-    if (user.isEmpty) return 'المستخدم غير موجود.';
-
-    String storedPin = user['pin'] ?? '123456';
-    if (storedPin != oldPin) return 'رمز PIN القديم غير صحيح.';
-
-    await _db.collection('users').doc(_auth!.activeUserPhone).update({'pin': newPin});
-    final index = _usersDatabase.indexWhere((u) => u['phone'] == _auth!.activeUserPhone);
-    if (index != -1) {
-      _usersDatabase[index]['pin'] = newPin;
-      notifyListeners();
-    }
-    return 'تم تحديث رمز PIN بنجاح.';
-  }
-
-  bool changeUserPassword(String oldPassword, String newPassword) {
-    if (_auth?.activeUserPhone == null) return false;
-    final user = _usersDatabase.firstWhere((u) => u['phone'] == _auth!.activeUserPhone);
-    if (user['password'] == oldPassword) {
-      _db.collection('users').doc(_auth!.activeUserPhone).update({'password': newPassword});
-      return true;
-    }
-    return false;
-  }
-
-  void toggleBiometric(bool isEnabled) {
-    if (_auth?.activeUserPhone == null) return;
-    _db.collection('users').doc(_auth!.activeUserPhone).update({'isBiometricEnabled': isEnabled});
-  }
-
-  Future<void> updatePrivacySettings({required bool showPhone}) async {
-    if (_auth?.activeUserPhone == null) return;
-    await _db.collection('users').doc(_auth!.activeUserPhone).update({
-      'privacy_showPhone': showPhone,
-    });
-    final index = _usersDatabase.indexWhere((u) => u['phone'] == _auth!.activeUserPhone);
-    if (index != -1) {
-      _usersDatabase[index]['privacy_showPhone'] = showPhone;
-      notifyListeners();
-    }
-  }
-
-  Future<void> updatePrivacySetting(String key, bool value) async {
-    if (_auth?.activeUserPhone == null) return;
-    await _db.collection('users').doc(_auth!.activeUserPhone).update({'privacy_$key': value});
-  }
-
-  Future<void> updateUserDailyLimit(double limit) async {
-    if (_auth?.activeUserPhone == null) return;
-    await _db.collection('users').doc(_auth!.activeUserPhone).update({'dailyLimit': limit});
-    final index = _usersDatabase.indexWhere((u) => u['phone'] == _auth!.activeUserPhone);
-    if (index != -1) {
-      _usersDatabase[index]['dailyLimit'] = limit;
-      notifyListeners();
-    }
-  }
-
-  Future<void> updateUserMonthlyLimit(double limit) async {
-    if (_auth?.activeUserPhone == null) return;
-    await _db.collection('users').doc(_auth!.activeUserPhone).update({'monthlyLimit': limit});
-    final index = _usersDatabase.indexWhere((u) => u['phone'] == _auth!.activeUserPhone);
-    if (index != -1) {
-      _usersDatabase[index]['monthlyLimit'] = limit;
-      notifyListeners();
-    }
-  }
-
-  Future<bool> deleteUserAccount(String password) async {
-    if (_auth?.activeUserPhone == null) return false;
-    try {
-      final doc = await _db.collection('users').doc(_auth!.activeUserPhone).get();
-      if (!doc.exists) return false;
-      final data = doc.data() as Map<String, dynamic>;
-      if (data['password'] != password) return false;
-
-      await _db.collection('users').doc(_auth!.activeUserPhone).delete();
-      return true;
-    } catch (e) {
-      debugPrint('خطأ في حذف الحساب: $e');
-      return false;
-    }
-  }
-
-  Future<void> saveUserPreferredColor(Color color) async {
-    if (_auth?.activeUserPhone == null) return;
-    final colorValue = color.value;
-    await _db.collection('users').doc(_auth!.activeUserPhone).update({
-      'preferredColor': colorValue,
-    });
-  }
-
-  Future<Color?> getUserPreferredColor() async {
-    if (_auth?.activeUserPhone == null) return null;
-    try {
-      final doc = await _db.collection('users').doc(_auth!.activeUserPhone).get();
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data() as Map<String, dynamic>;
-        final colorValue = data['preferredColor'];
-        if (colorValue != null) {
-          return Color(colorValue);
-        }
-      }
-    } catch (e) {
-      debugPrint('خطأ في جلب اللون المفضل: $e');
-    }
-    return null;
-  }
-
-  Future<Map<String, dynamic>?> getUserTierForAgent(String agentPhone) async {
-    if (_auth?.activeUserPhone == null) return null;
-
-    final user = _usersDatabase.firstWhere(
-        (u) => u['phone'] == _auth!.activeUserPhone,
-        orElse: () => {});
-    Map<String, dynamic> wallets = user['wallets'] ?? {};
-    double walletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
-
-    final tierQuery = await _db.collection('discount_tiers')
-        .where('agentPhone', isEqualTo: agentPhone)
-        .where('isActive', isEqualTo: true)
-        .get();
-
-    if (tierQuery.docs.isEmpty) return null;
-
-    List<Map<String, dynamic>> tiers = tierQuery.docs
-        .map((doc) => doc.data() as Map<String, dynamic>)
-        .toList();
-
-    tiers.sort((a, b) => (b['condition'] as int).compareTo(a['condition'] as int));
-
-    for (var tier in tiers) {
-      if (walletBalance >= (tier['condition'] as num).toDouble()) {
-        return tier;
-      }
-    }
-    return null;
-  }
-
-  Future<Map<String, dynamic>?> getUserHighestTier() async {
-    if (_auth?.activeUserPhone == null) return null;
-
-    final user = _usersDatabase.firstWhere(
-        (u) => u['phone'] == _auth!.activeUserPhone,
-        orElse: () => {});
-    Map<String, dynamic> wallets = user['wallets'] ?? {};
-    if (wallets.isEmpty) return null;
-
-    Map<String, dynamic>? bestTier;
-    double bestCondition = 0;
-
-    for (var agentPhone in wallets.keys) {
-      final tier = await getUserTierForAgent(agentPhone);
-      if (tier != null && (tier['condition'] as num).toDouble() > bestCondition) {
-        bestCondition = (tier['condition'] as num).toDouble();
-        bestTier = tier;
-      }
-    }
-    return bestTier;
-  }
-
-  bool validatePin(String pin) {
-    if (_auth?.activeUserPhone == null) return false;
-    return currentUserPin == pin;
   }
 
   // ---------- دوال المحافظ والتحويلات ----------
@@ -1573,22 +1401,20 @@ class WalletProvider extends ChangeNotifier {
 
     return accounts;
   }
-      Future<void> adminAcceptSaaSRecharge(String requestId, String agentPhone,
+
+  Future<void> adminAcceptSaaSRecharge(String requestId, String agentPhone,
       double quotaAmount, double feeAmount) async {
     final batch = _db.batch();
 
-    // 1. تحديث حالة الطلب
     batch.update(_db.collection('recharge_requests').doc(requestId), {
       'status': 'approved',
       'processedAt': FieldValue.serverTimestamp(),
     });
 
-    // 2. إضافة الرصيد للوكيل
     batch.update(_db.collection('users').doc(agentPhone), {
       'balance': FieldValue.increment(quotaAmount),
     });
 
-    // 3. تسجيل العملية في السجل (إصلاح المشكلة)
     final txnRef = _db.collection('transactions').doc();
     batch.set(txnRef, {
       'fromPhone': '774578241',
@@ -1606,7 +1432,6 @@ class WalletProvider extends ChangeNotifier {
       'timestamp': FieldValue.serverTimestamp()
     });
 
-    // 4. إرسال إشعار للوكيل
     final notifRef = _db.collection('notifications').doc();
     batch.set(notifRef, {
       'targetPhones': [agentPhone],
@@ -1648,7 +1473,6 @@ class WalletProvider extends ChangeNotifier {
   }
 
   // ---------- دوال مساعدة (إشعارات، تدقيق) ----------
-  // أصبحت عامة ليستخدمها AgentAdminProvider
   void sendNotification({
     required List<String> targetPhones,
     required String title,
