@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/providers/wallet_provider.dart';
+import '../../../core/providers/agent_admin_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart';
@@ -17,12 +18,11 @@ class BankAccountsScreen extends StatefulWidget {
 }
 
 class _BankAccountsScreenState extends State<BankAccountsScreen> {
-  
-  // ==========================================
-  // 1. نافذة إضافة حساب بنكي جديد ➕
-  // ==========================================
-  void _showAddAccountDialog(WalletProvider wallet) {
-    context.read<UiProvider>().playSound('click');
+  void _play(String type) =>
+      context.read<UiProvider>().playSound(type);
+
+  void _showAddAccountDialog(AgentAdminProvider agentAdmin) {
+    _play('click');
     final bankNameController = TextEditingController();
     final accountNumberController = TextEditingController();
     final beneficiaryController = TextEditingController();
@@ -43,19 +43,17 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _buildTextField('اسم البنك / المحفظة (مثال: الكريمي)', Icons.account_balance_wallet, controller: bankNameController),
+                _buildTextField('اسم البنك / المحفظة', Icons.account_balance_wallet, controller: bankNameController),
                 _buildTextField('رقم الحساب / المحفظة', Icons.numbers, controller: accountNumberController, isNumber: true),
                 _buildTextField('الاسم الرباعي للمستفيد', Icons.person, controller: beneficiaryController),
-                _buildTextField('ملاحظات التحويل (اختياري)', Icons.notes),
                 const SizedBox(height: 10),
-                
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(15),
                   decoration: BoxDecoration(
                     color: Colors.blue.shade50,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.blue.shade200, style: BorderStyle.solid),
+                    border: Border.all(color: Colors.blue.shade200),
                   ),
                   child: Column(
                     children: [
@@ -66,13 +64,13 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
                       const SizedBox(height: 10),
                       ElevatedButton.icon(
                         onPressed: () {
-                          context.read<UiProvider>().playSound('click');
+                          _play('click');
                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ميزة رفع الصور ستتوفر قريباً 📸', textDirection: TextDirection.rtl)));
                         },
                         icon: const Icon(Icons.upload_file, size: 16),
                         label: const Text('اختيار صورة من المعرض'),
                         style: ElevatedButton.styleFrom(elevation: 0),
-                      )
+                      ),
                     ],
                   ),
                 ),
@@ -80,28 +78,26 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () { context.read<UiProvider>().playSound('click'); Navigator.pop(ctx); }, child: const Text('إلغاء')),
+            TextButton(onPressed: () { _play('click'); Navigator.pop(ctx); }, child: const Text('إلغاء')),
             ElevatedButton(
               onPressed: () {
                 if (bankNameController.text.isNotEmpty && accountNumberController.text.isNotEmpty) {
                   final messenger = ScaffoldMessenger.of(context);
-                  
-                  wallet.addBankAccount(
+                  agentAdmin.addBankAccount(
                     bankNameController.text,
                     accountNumberController.text,
                     beneficiaryController.text,
                   ).then((_) {
-                    context.read<UiProvider>().playSound('success');
+                    _play('success');
                   }).catchError((error) {
-                    context.read<UiProvider>().playSound('error');
-                    messenger.showSnackBar(SnackBar(content: Text('فشل الحفظ ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red, duration: const Duration(seconds: 6)));
+                    _play('error');
+                    messenger.showSnackBar(SnackBar(content: Text('فشل الحفظ ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
                   });
-
                   Navigator.pop(ctx);
-                  context.read<UiProvider>().playSound('click');
+                  _play('click');
                   messenger.showSnackBar(const SnackBar(content: Text('جاري الحفظ في السحابة... ☁️', textDirection: TextDirection.rtl), backgroundColor: Colors.blueGrey, duration: Duration(seconds: 2)));
                 } else {
-                  context.read<UiProvider>().playSound('error');
+                  _play('error');
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال اسم البنك ورقم الحساب على الأقل ❌', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
                 }
               },
@@ -113,11 +109,8 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
     );
   }
 
-  // ==========================================
-  // 2. نافذة تعديل حساب موجود ✏️
-  // ==========================================
-  void _showEditAccountDialog(WalletProvider wallet, Map<String, dynamic> account) {
-    context.read<UiProvider>().playSound('click');
+  void _showEditAccountDialog(AgentAdminProvider agentAdmin, Map<String, dynamic> account) {
+    _play('click');
     final bankNameController = TextEditingController(text: account['bankName']);
     final accountNumberController = TextEditingController(text: account['accountNumber']);
     final beneficiaryController = TextEditingController(text: account['beneficiary']);
@@ -145,26 +138,24 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () { context.read<UiProvider>().playSound('click'); Navigator.pop(ctx); }, child: const Text('إلغاء')),
+            TextButton(onPressed: () { _play('click'); Navigator.pop(ctx); }, child: const Text('إلغاء')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
               onPressed: () {
                 final messenger = ScaffoldMessenger.of(context);
-                
-                wallet.updateBankAccount(
+                agentAdmin.updateBankAccount(
                   account['docId'],
                   bankNameController.text,
                   accountNumberController.text,
                   beneficiaryController.text,
                 ).then((_) {
-                  context.read<UiProvider>().playSound('success');
+                  _play('success');
                 }).catchError((error) {
-                  context.read<UiProvider>().playSound('error');
-                  messenger.showSnackBar(SnackBar(content: Text('فشل التعديل ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red, duration: const Duration(seconds: 6)));
+                  _play('error');
+                  messenger.showSnackBar(SnackBar(content: Text('فشل التعديل ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
                 });
-
                 Navigator.pop(ctx);
-                context.read<UiProvider>().playSound('click');
+                _play('click');
                 messenger.showSnackBar(const SnackBar(content: Text('جاري تطبيق التعديلات... ☁️', textDirection: TextDirection.rtl), backgroundColor: Colors.orange, duration: Duration(seconds: 2)));
               },
               child: const Text('حفظ التعديلات', style: TextStyle(color: Colors.white)),
@@ -175,20 +166,15 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
     );
   }
 
-  // ==========================================
-  // 3. دوال التحكم (تغيير حالة، حذف، نسخ)
-  // ==========================================
-  void _toggleAccountStatus(WalletProvider wallet, Map<String, dynamic> account) {
-    context.read<UiProvider>().playSound('click');
+  void _toggleAccountStatus(AgentAdminProvider agentAdmin, Map<String, dynamic> account) {
+    _play('click');
     final messenger = ScaffoldMessenger.of(context);
-    
-    wallet.toggleBankAccountStatus(account['docId'], account['status']).then((_) {
-        context.read<UiProvider>().playSound('success');
+    agentAdmin.toggleBankAccountStatus(account['docId'], account['status']).then((_) {
+        _play('success');
     }).catchError((error) {
-      context.read<UiProvider>().playSound('error');
+      _play('error');
       messenger.showSnackBar(SnackBar(content: Text('فشل تغيير الحالة ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
     });
-    
     messenger.showSnackBar(SnackBar(
       content: Text(account['status'] == 'موقوف' ? 'جاري التفعيل... ▶️' : 'جاري الإيقاف... ⏸️', textDirection: TextDirection.rtl),
       backgroundColor: Colors.blueGrey,
@@ -196,8 +182,8 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
     ));
   }
 
-  void _deleteAccount(WalletProvider wallet, String docId) {
-    context.read<UiProvider>().playSound('click');
+  void _deleteAccount(AgentAdminProvider agentAdmin, String docId) {
+    _play('click');
     showDialog(
       context: context,
       builder: (ctx) => Directionality(
@@ -206,21 +192,19 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
           title: const Text('تحذير الحذف ⚠️', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
           content: const Text('هل أنت متأكد من حذف هذا الحساب نهائياً من قاعدة البيانات؟'),
           actions: [
-            TextButton(onPressed: () { context.read<UiProvider>().playSound('click'); Navigator.pop(ctx); }, child: const Text('تراجع')),
+            TextButton(onPressed: () { _play('click'); Navigator.pop(ctx); }, child: const Text('تراجع')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () {
                 final messenger = ScaffoldMessenger.of(context);
-                
-                wallet.deleteBankAccount(docId).then((_) {
-                  context.read<UiProvider>().playSound('success');
+                agentAdmin.deleteBankAccount(docId).then((_) {
+                  _play('success');
                 }).catchError((error) {
-                  context.read<UiProvider>().playSound('error');
+                  _play('error');
                   messenger.showSnackBar(SnackBar(content: Text('فشل الحذف ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
                 });
-                
                 Navigator.pop(ctx);
-                context.read<UiProvider>().playSound('click');
+                _play('click');
                 messenger.showSnackBar(const SnackBar(content: Text('جاري الحذف من السيرفر... 🗑️', textDirection: TextDirection.rtl), backgroundColor: Colors.red, duration: Duration(seconds: 2)));
               },
               child: const Text('نعم، احذف الحساب', style: TextStyle(color: Colors.white)),
@@ -232,7 +216,7 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
   }
 
   void _copyAccountDetails(Map<String, dynamic> account) {
-    context.read<UiProvider>().playSound('success');
+    _play('success');
     String data = '''
 🏦 ${account['bankName']}
 🔢 الحساب: ${account['accountNumber']}
@@ -247,7 +231,8 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
     final auth = context.watch<AuthProvider>();
     final settings = context.watch<SettingsProvider>();
     final wallet = context.watch<WalletProvider>();
-    final adminBalance = settings.adminMainBalance;
+    final agentAdmin = context.read<AgentAdminProvider>();
+
     final bankAccounts = wallet.bankAccounts;
 
     return Scaffold(
@@ -256,14 +241,14 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
         userName: wallet.currentUserName,
         phoneNumber: auth.activeUserPhone ?? '',
         role: 'مالك النظام (Super Admin)',
-        balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
+        balanceOrPoints: 'أرباح النظام: ${settings.adminMainBalance.toStringAsFixed(0)} ريال',
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: RefreshIndicator(
           onRefresh: () async {
             await Future.delayed(const Duration(milliseconds: 300));
-            context.read<UiProvider>().playSound('success');
+            _play('success');
           },
           child: Column(
             children: [
@@ -273,7 +258,7 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton.icon(
-                    onPressed: () => _showAddAccountDialog(wallet),
+                    onPressed: () => _showAddAccountDialog(agentAdmin),
                     icon: const Icon(Icons.add_card, color: Colors.white),
                     label: const Text('إضافة حساب بنكي جديد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                     style: ElevatedButton.styleFrom(
@@ -283,7 +268,6 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
                   ),
                 ),
               ),
-
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 color: Colors.yellow.shade50,
@@ -295,7 +279,6 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
                   ],
                 ),
               ),
-
               Expanded(
                 child: bankAccounts.isEmpty
                     ? ListView(
@@ -308,10 +291,10 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
                         padding: const EdgeInsets.all(16),
                         itemCount: bankAccounts.length,
                         onReorder: (oldIndex, newIndex) {
-                          context.read<UiProvider>().playSound('click');
+                          _play('click');
                           final messenger = ScaffoldMessenger.of(context);
-                          wallet.reorderBankAccounts(oldIndex, newIndex).catchError((error) {
-                            context.read<UiProvider>().playSound('error');
+                          agentAdmin.reorderBankAccounts(oldIndex, newIndex).catchError((error) {
+                            _play('error');
                             messenger.showSnackBar(SnackBar(content: Text('فشل المزامنة ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
                           });
                         },
@@ -373,14 +356,14 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           _buildSmallButton(Icons.copy, 'نسخ البيانات', Colors.blueGrey, () => _copyAccountDetails(account)),
-                                          _buildSmallButton(Icons.edit, 'تعديل', Colors.orange, () => _showEditAccountDialog(wallet, account)),
+                                          _buildSmallButton(Icons.edit, 'تعديل', Colors.orange, () => _showEditAccountDialog(agentAdmin, account)),
                                           _buildSmallButton(
                                             isActive ? Icons.visibility_off : Icons.visibility,
                                             isActive ? 'إيقاف' : 'تفعيل',
                                             isActive ? Colors.red : Colors.green,
-                                            () => _toggleAccountStatus(wallet, account),
+                                            () => _toggleAccountStatus(agentAdmin, account),
                                           ),
-                                          _buildSmallButton(Icons.delete, 'حذف', Colors.red.shade900, () => _deleteAccount(wallet, account['docId'])),
+                                          _buildSmallButton(Icons.delete, 'حذف', Colors.red.shade900, () => _deleteAccount(agentAdmin, account['docId'])),
                                         ],
                                       ),
                                     ],
