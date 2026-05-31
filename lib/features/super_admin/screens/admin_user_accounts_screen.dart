@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/settings_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
+import '../../../core/providers/agent_admin_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart';
@@ -26,13 +29,13 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
     _loadUsers();
   }
 
-  void _play(BuildContext context, String type) =>
-      Provider.of<UiProvider>(context, listen: false).playSound(type);
+  void _play(String type) =>
+      context.read<UiProvider>().playSound(type);
 
   void _loadUsers() {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final agentAdmin = context.read<AgentAdminProvider>();
     setState(() {
-      _allUsers = sys.getAllUsersWithAccountDetails();
+      _allUsers = agentAdmin.getAllUsersWithAccountDetails();
       _isLoading = false;
     });
   }
@@ -48,22 +51,20 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
     );
   }
 
-  // توليد أرقام حسابات جماعي
   Future<void> _generateMissingAccounts() async {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    _play(context, 'click');
+    final agentAdmin = context.read<AgentAdminProvider>();
+    _play('click');
     try {
-      int count = await sys.adminGenerateMissingAccountNumbers();
-      _play(context, 'success');
+      int count = await agentAdmin.adminGenerateMissingAccountNumbers();
+      _play('success');
       _showSnack('تم توليد $count رقم حساب جديد.');
       _loadUsers();
     } catch (e) {
-      _play(context, 'error');
+      _play('error');
       _showSnack('فشل: $e', error: true);
     }
   }
 
-  // تعديل رقم حساب لمستخدم
   Future<void> _editAccountNumber(Map<String, dynamic> user) async {
     final controller = TextEditingController(text: user['accountNumber']);
     final formKey = GlobalKey<FormState>();
@@ -104,22 +105,21 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
     );
 
     if (result != null && result != user['accountNumber']) {
-      final sys = Provider.of<SystemProvider>(context, listen: false);
+      final agentAdmin = context.read<AgentAdminProvider>();
       try {
-        await sys.adminUpdateUserAccountNumber(user['phone'], result);
-        _play(context, 'success');
+        await agentAdmin.adminUpdateUserAccountNumber(user['phone'], result);
+        _play('success');
         _showSnack('تم تغيير الرقم إلى $result');
         _loadUsers();
       } catch (e) {
-        _play(context, 'error');
+        _play('error');
         _showSnack('$e', error: true);
       }
     }
   }
 
-  // حظر / فك حظر
   Future<void> _toggleBan(Map<String, dynamic> user) async {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final agentAdmin = context.read<AgentAdminProvider>();
     final bool ban = !(user['isBanned'] ?? false);
     final confirm = await showDialog<bool>(
       context: context,
@@ -148,26 +148,25 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
 
     if (confirm == true) {
       try {
-        await sys.adminToggleUserBan(user['phone'], ban);
-        _play(context, 'success');
+        await agentAdmin.adminToggleUserBan(user['phone'], ban);
+        _play('success');
         _showSnack(ban ? 'تم حظر الحساب' : 'تم فك الحظر');
         _loadUsers();
       } catch (e) {
-        _play(context, 'error');
+        _play('error');
         _showSnack('$e', error: true);
       }
     }
   }
 
-  // البحث الإداري المباشر
   Future<void> _searchAdmin(String query) async {
     if (query.trim().isEmpty) {
       _loadUsers();
       return;
     }
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final agentAdmin = context.read<AgentAdminProvider>();
     try {
-      final result = await sys.searchUserByAdmin(query);
+      final result = await agentAdmin.searchUserByAdmin(query);
       if (!mounted) return;
       setState(() {
         if (result != null) {
@@ -193,7 +192,10 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
+    final auth = context.watch<AuthProvider>();
+    final settings = context.watch<SettingsProvider>();
+    final wallet = context.watch<WalletProvider>();
+
     final filteredUsers = _searchQuery.isEmpty
         ? _allUsers
         : _allUsers.where((u) {
@@ -207,154 +209,161 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
     return Scaffold(
       appBar: const CustomHeader(title: 'إدارة أرقام الحسابات'),
       drawer: CustomDrawer(
-        userName: sys.currentUserName,
-        phoneNumber: sys.currentUserPhone,
+        userName: wallet.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
         role: 'مالك النظام (Super Admin)',
-        balanceOrPoints: 'أرباح النظام: ${sys.adminMainBalance.toStringAsFixed(0)} ريال',
+        balanceOrPoints: 'أرباح النظام: ${settings.adminMainBalance.toStringAsFixed(0)} ريال',
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      onChanged: (v) => setState(() => _searchQuery = v),
-                      decoration: InputDecoration(
-                        hintText: 'بحث بالاسم أو رقم الحساب أو الهاتف',
-                        prefixIcon: const Icon(Icons.search),
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        contentPadding:
-                            const EdgeInsets.symmetric(vertical: 8),
+        child: RefreshIndicator(
+          onRefresh: () async {
+            _loadUsers();
+            await Future.delayed(const Duration(milliseconds: 300));
+            _play('success');
+          },
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        onChanged: (v) => setState(() => _searchQuery = v),
+                        decoration: InputDecoration(
+                          hintText: 'بحث بالاسم أو رقم الحساب أو الهاتف',
+                          prefixIcon: const Icon(Icons.search),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 8),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: () => _searchAdmin(_searchQuery),
-                    child: const Text('بحث إداري'),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () => _searchAdmin(_searchQuery),
+                      child: const Text('بحث إداري'),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12.0),
-              child: Row(
-                children: [
-                  ElevatedButton.icon(
-                    onPressed: _generateMissingAccounts,
-                    icon: const Icon(Icons.generating_tokens),
-                    label: const Text('توليد الأرقام المفقودة'),
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange.shade700),
-                  ),
-                  const Spacer(),
-                  Text('${filteredUsers.length} مستخدم'),
-                ],
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                child: Row(
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: _generateMissingAccounts,
+                      icon: const Icon(Icons.generating_tokens),
+                      label: const Text('توليد الأرقام المفقودة'),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange.shade700),
+                    ),
+                    const Spacer(),
+                    Text('${filteredUsers.length} مستخدم'),
+                  ],
+                ),
               ),
-            ),
-            const Divider(),
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : filteredUsers.isEmpty
-                      ? const Center(
-                          child: Text('لا توجد نتائج',
-                              style: TextStyle(color: Colors.grey)))
-                      : ListView.builder(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          itemCount: filteredUsers.length,
-                          itemBuilder: (context, index) {
-                            final user = filteredUsers[index];
-                            final isBanned = user['isBanned'] == true;
+              const Divider(),
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : filteredUsers.isEmpty
+                        ? const Center(
+                            child: Text('لا توجد نتائج',
+                                style: TextStyle(color: Colors.grey)))
+                        : ListView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            itemCount: filteredUsers.length,
+                            itemBuilder: (context, index) {
+                              final user = filteredUsers[index];
+                              final isBanned = user['isBanned'] == true;
 
-                            return Card(
-                              color: isBanned
-                                  ? Colors.red.shade50
-                                  : Theme.of(context).cardColor,
-                              margin: const EdgeInsets.only(bottom: 8),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12)),
-                              child: ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor:
-                                      isBanned ? Colors.red : Colors.teal,
-                                  child: Icon(
-                                    isBanned ? Icons.block : Icons.person,
-                                    color: Colors.white,
+                              return Card(
+                                color: isBanned
+                                    ? Colors.red.shade50
+                                    : Theme.of(context).cardColor,
+                                margin: const EdgeInsets.only(bottom: 8),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12)),
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor:
+                                        isBanned ? Colors.red : Colors.teal,
+                                    child: Icon(
+                                      isBanned ? Icons.block : Icons.person,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    user['name'] ?? '',
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        decoration: isBanned
+                                            ? TextDecoration.lineThrough
+                                            : null),
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                          'الحساب: ${user['accountNumber']}  |  الهاتف: ${user['phone']}'),
+                                      Text(
+                                        'الدور: ${user['role']}',
+                                        style: const TextStyle(fontSize: 11),
+                                      ),
+                                    ],
+                                  ),
+                                  trailing: PopupMenuButton<String>(
+                                    onSelected: (action) {
+                                      if (action == 'edit') {
+                                        _editAccountNumber(user);
+                                      } else if (action == 'ban') {
+                                        _toggleBan(user);
+                                      }
+                                    },
+                                    itemBuilder: (context) => [
+                                      const PopupMenuItem(
+                                        value: 'edit',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.edit,
+                                                color: Colors.blue),
+                                            SizedBox(width: 8),
+                                            Text('تعديل رقم الحساب'),
+                                          ],
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'ban',
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              isBanned
+                                                  ? Icons.lock_open
+                                                  : Icons.block,
+                                              color: isBanned
+                                                  ? Colors.green
+                                                  : Colors.red,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(isBanned
+                                                ? 'فك الحظر'
+                                                : 'حظر'),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                title: Text(
-                                  user['name'] ?? '',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      decoration: isBanned
-                                          ? TextDecoration.lineThrough
-                                          : null),
-                                ),
-                                subtitle: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                        'الحساب: ${user['accountNumber']}  |  الهاتف: ${user['phone']}'),
-                                    Text(
-                                      'الدور: ${user['role']}',
-                                      style: const TextStyle(fontSize: 11),
-                                    ),
-                                  ],
-                                ),
-                                trailing: PopupMenuButton<String>(
-                                  onSelected: (action) {
-                                    if (action == 'edit') {
-                                      _editAccountNumber(user);
-                                    } else if (action == 'ban') {
-                                      _toggleBan(user);
-                                    }
-                                  },
-                                  itemBuilder: (context) => [
-                                    const PopupMenuItem(
-                                      value: 'edit',
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.edit,
-                                              color: Colors.blue),
-                                          SizedBox(width: 8),
-                                          Text('تعديل رقم الحساب'),
-                                        ],
-                                      ),
-                                    ),
-                                    PopupMenuItem(
-                                      value: 'ban',
-                                      child: Row(
-                                        children: [
-                                          Icon(
-                                            isBanned
-                                                ? Icons.lock_open
-                                                : Icons.block,
-                                            color: isBanned
-                                                ? Colors.green
-                                                : Colors.red,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Text(isBanned
-                                              ? 'فك الحظر'
-                                              : 'حظر'),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-            ),
-          ],
+                              );
+                            },
+                          ),
+              ),
+            ],
+          ),
         ),
       ),
     );
