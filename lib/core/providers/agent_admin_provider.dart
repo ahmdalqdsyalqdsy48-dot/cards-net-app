@@ -55,7 +55,6 @@ class AgentAdminProvider extends ChangeNotifier {
             details: 'تم إضافة وكيل جديد باسم "$name" ورقم $phone',
             severity: 'medium');
 
-        // تم التصحيح: sendNotification (عامة)
         _wallet.sendNotification(
             targetPhones: [phone],
             title: 'أهلاً بك كوكيل جديد! 🎉',
@@ -324,7 +323,6 @@ class AgentAdminProvider extends ChangeNotifier {
             'subStatus': 'نشط'
           });
         }
-        // تم التصحيح
         _wallet.sendNotification(
             targetPhones: ['all_agents'],
             title: 'تحديث الباقة 🎁',
@@ -337,7 +335,6 @@ class AgentAdminProvider extends ChangeNotifier {
           'subExpiry': formattedExpiry,
           'subStatus': 'نشط'
         });
-        // تم التصحيح
         _wallet.sendNotification(
             targetPhones: [targetAgentPhone],
             title: 'تحديث الباقة 🎁',
@@ -355,7 +352,6 @@ class AgentAdminProvider extends ChangeNotifier {
         'subExpiry': newExpiryDate,
         'subStatus': 'إنذار'
       });
-      // تم التصحيح
       _wallet.sendNotification(
           targetPhones: [agentPhone],
           title: 'تنبيه فترة السماح ⚠️',
@@ -369,13 +365,141 @@ class AgentAdminProvider extends ChangeNotifier {
     try {
       String newStatus = currentStatus == 'موقوف مؤقتاً' ? 'نشط' : 'موقوف مؤقتاً';
       await _db.collection('users').doc(agentPhone).update({'subStatus': newStatus});
-      // تم التصحيح
       _wallet.sendNotification(
           targetPhones: [agentPhone],
           title: 'حالة الحساب',
           body: 'تم تحويل حالة حسابك إلى: $newStatus');
     } catch (e) {
       throw 'فشل التغيير: $e';
+    }
+  }
+
+  // ---------- تسوية يدوية ----------
+  Future<void> manualSettlement({
+    required String agentPhone,
+    required String agentName,
+    required double amount,
+    required String reason,
+  }) async {
+    try {
+      WriteBatch batch = _db.batch();
+      DocumentReference agentRef = _db.collection('users').doc(agentPhone);
+      batch.update(agentRef, {'balance': FieldValue.increment(amount)});
+
+      final agentDoc = await _db.collection('users').doc(agentPhone).get();
+      final agentData = agentDoc.data() ?? {};
+
+      DocumentReference transactionRef = _db.collection('transactions').doc();
+      batch.set(transactionRef, {
+        'fromPhone': '774578241',
+        'toPhone': agentPhone,
+        'agentPhone': agentPhone,
+        'agentName': agentName,
+        'targetName': 'المركز الرئيسي',
+        'networkName': agentData['networkName'] ?? 'غير محدد',
+        'type': amount > 0 ? 'deposit' : 'expense',
+        'title': amount > 0
+            ? 'تسوية يدوية للحصة (إضافة)'
+            : 'تسوية يدوية للحصة (خصم)',
+        'amount': amount.abs(),
+        'fee': 0.0,
+        'paymentMethod': 'تسوية إدارية',
+        'reason': reason,
+        'reference': 'SET-${DateTime.now().millisecondsSinceEpoch}',
+        'timestamp': FieldValue.serverTimestamp()
+      });
+
+      DocumentReference notifRef = _db.collection('notifications').doc();
+      batch.set(notifRef, {
+        'targetPhones': [agentPhone],
+        'title': 'تسوية يدوية لحصتك ⚙️',
+        'body':
+            'تم ${amount > 0 ? "إضافة" : "خصم"} مبلغ ${amount.abs()} ريال.\nالسبب: $reason',
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'readBy': [],
+      });
+
+      await batch.commit();
+    } catch (e) {
+      throw 'فشل التسوية اليدوية: $e';
+    }
+  }
+
+  // ---------- حد الخطر ----------
+  Future<void> updateDangerLimit(String phone, double newLimit) async {
+    await _db.collection('users').doc(phone).update({'dangerLimit': newLimit});
+  }
+
+  // ---------- قبول شحن مشرف ----------
+  Future<void> adminAcceptSaaSRecharge(String requestId, String agentPhone,
+      double quotaAmount, double feeAmount) async {
+    final batch = _db.batch();
+
+    batch.update(_db.collection('recharge_requests').doc(requestId), {
+      'status': 'approved',
+      'processedAt': FieldValue.serverTimestamp(),
+    });
+
+    batch.update(_db.collection('users').doc(agentPhone), {
+      'balance': FieldValue.increment(quotaAmount),
+    });
+
+    final txnRef = _db.collection('transactions').doc();
+    batch.set(txnRef, {
+      'fromPhone': '774578241',
+      'toPhone': agentPhone,
+      'agentPhone': agentPhone,
+      'agentName': '',
+      'targetName': 'وكيل',
+      'networkName': 'النظام',
+      'type': 'deposit',
+      'title': 'توريد حصة مبيعات (موافقة طلب)',
+      'amount': quotaAmount,
+      'fee': feeAmount,
+      'paymentMethod': 'نظام SaaS',
+      'reference': 'REQ-$requestId',
+      'timestamp': FieldValue.serverTimestamp()
+    });
+
+    final notifRef = _db.collection('notifications').doc();
+    batch.set(notifRef, {
+      'targetPhones': [agentPhone],
+      'title': 'تم شحن رصيدك! 🎉',
+      'body': 'تمت الموافقة على طلبك وإضافة $quotaAmount ريال إلى محفظتك.',
+      'timestamp': FieldValue.serverTimestamp(),
+      'isRead': false,
+      'readBy': [],
+    });
+
+    await batch.commit();
+  }
+
+  // ---------- رفض طلب شحن ----------
+  Future<void> rejectRechargeRequest(String requestId, String reason) async {
+    final reqDoc = await _db.collection('recharge_requests').doc(requestId).get();
+    if (reqDoc.exists) {
+      final reqData = reqDoc.data() as Map<String, dynamic>;
+      String agentPhone = reqData['userPhone'] ?? reqData['agentPhone'];
+
+      final batch = _db.batch();
+      batch.update(reqDoc.reference, {
+        'status': 'rejected',
+        'rejectReason': reason,
+        'processedAt': FieldValue.serverTimestamp(),
+      });
+
+      final notifRef = _db.collection('notifications').doc();
+      batch.set(notifRef, {
+        'targetPhones': [agentPhone],
+        'title': 'عذراً، تم رفض طلب الشحن ❌',
+        'body': 'تم رفض طلب الشحن. السبب: $reason',
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'readBy': [],
+      });
+
+      await batch.commit();
     }
   }
 
@@ -436,7 +560,6 @@ class AgentAdminProvider extends ChangeNotifier {
       for (var doc in usersSnapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
         if (data['accountNumber'] == null) {
-          // تم التصحيح
           final newAcc = await _wallet.generateNextAccountNumber();
           await doc.reference.update({'accountNumber': newAcc});
           generated++;
