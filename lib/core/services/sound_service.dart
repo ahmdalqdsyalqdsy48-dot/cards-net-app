@@ -5,7 +5,7 @@ import '../providers/settings_provider.dart';
 class SoundService {
   final SettingsProvider _settings;
 
-  // عدة مشغلات لكل نوع
+  // عدة مشغلات لكل نوع لمنع تداخل الأصوات
   final List<AudioPlayer> _clickPlayers = [];
   final List<AudioPlayer> _successPlayers = [];
   final List<AudioPlayer> _errorPlayers = [];
@@ -16,9 +16,11 @@ class SoundService {
   int _clickIdx = 0, _succIdx = 0, _errIdx = 0, _warnIdx = 0, _tapIdx = 0, _notifIdx = 0;
 
   SoundService(this._settings) {
+    // 3 مشغلات للأصوات المتكررة جداً (النقر)
     for (int i = 0; i < 3; i++) {
       _clickPlayers.add(AudioPlayer());
     }
+    // مشغلان لكل نوع آخر
     for (int i = 0; i < 2; i++) {
       _successPlayers.add(AudioPlayer());
       _errorPlayers.add(AudioPlayer());
@@ -28,6 +30,7 @@ class SoundService {
     }
   }
 
+  /// تشغيل صوت حسب النوع. لا يفعل شيئاً إذا كان الصوت معطلاً في الإعدادات.
   Future<void> play(String type) async {
     if (!_settings.isSoundEnabled) return;
 
@@ -67,11 +70,11 @@ class SoundService {
         fileName = 'notification.mp3';
         break;
       default:
-        return;
+        return; // نوع غير معروف، لا يفعل شيئاً
     }
 
     try {
-      // ✅ الحل: إعادة تعيين المصدر قبل كل تشغيل (ضروري للويب)
+      // إيقاف المشغل أولاً (ضروري للويب)، ثم تعيين المصدر وتشغيله
       await player.stop();
       await player.setSource(AssetSource('sounds/$fileName'));
       await player.play(AssetSource('sounds/$fileName'), volume: volume);
@@ -80,8 +83,16 @@ class SoundService {
     }
   }
 
+  /// تنظيف جميع المشغلات عند عدم الحاجة للخدمة
   void dispose() {
-    for (final list in [_clickPlayers, _successPlayers, _errorPlayers, _warningPlayers, _tapPlayers, _notifPlayers]) {
+    for (final list in [
+      _clickPlayers,
+      _successPlayers,
+      _errorPlayers,
+      _warningPlayers,
+      _tapPlayers,
+      _notifPlayers
+    ]) {
       for (final p in list) {
         p.dispose();
       }
