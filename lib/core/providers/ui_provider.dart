@@ -14,20 +14,25 @@ class UiProvider extends ChangeNotifier {
   String get globalSearchQuery => _globalSearchQuery;
 
   // ---------- حالة الاتصال ----------
-  void toggleOfflineModeForTesting(bool isOffline) {
-    _isOnline = !isOffline;
-    notifyListeners();
+  /// تعيين حالة الاتصال بالإنترنت مباشرة للاستخدام الإنتاجي.
+  void setOnlineStatus(bool online) {
+    if (_isOnline != online) {
+      _isOnline = online;
+      notifyListeners();
+    }
   }
 
-  // ---------- البحث ----------
+  // ---------- البحث العالمي ----------
+  /// تحديث عبارة البحث العامة في التطبيق.
   void updateSearchQuery(String query) {
-    _globalSearchQuery = query;
-    notifyListeners();
+    if (_globalSearchQuery != query) {
+      _globalSearchQuery = query;
+      notifyListeners();
+    }
   }
 
-  // ---------- صوت (جسر مؤقت للشاشات القديمة) ----------
-  /// يُشغّل صوتاً باستخدام [SoundService] إن وُجد.
-  /// الشاشات القديمة التي تستدعي uiProvider.playSound(...) ستستمر بالعمل.
+  // ---------- الصوت ----------
+  /// تشغيل مؤثر صوتي باستخدام [SoundService] إن تم توفيره.
   void playSound(String type) {
     _soundService?.play(type);
   }
