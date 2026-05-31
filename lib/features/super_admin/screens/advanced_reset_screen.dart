@@ -1,10 +1,11 @@
-// lib/features/super_admin/screens/advanced_reset_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/agent_admin_provider.dart';
+import '../../../core/providers/settings_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../../../core/widgets/custom_drawer.dart';
@@ -17,14 +18,12 @@ class AdvancedResetScreen extends StatefulWidget {
 }
 
 class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
-  // ========== البحث ==========
   final TextEditingController _searchController = TextEditingController();
   Map<String, dynamic>? _targetData;
   String? _targetPhone;
   String? _targetRole;
   bool _isSearching = false;
 
-  // ========== خيارات الإجراء ==========
   bool _resetBalance = false;
   bool _resetNetworks = false;
   bool _resetTransactions = false;
@@ -36,14 +35,10 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
   bool _mergeRecords = false;
   bool _exportBeforeDelete = false;
 
-  // ========== إعادة تسمية ==========
   final TextEditingController _renameController = TextEditingController();
-
-  // ========== دمج ==========
   final TextEditingController _mergeFromController = TextEditingController();
   final TextEditingController _mergeToController = TextEditingController();
 
-  // ========== حالة التحقق ==========
   bool _obscurePassword = true;
   bool _obscurePin = true;
   bool _usePinInstead = true;
@@ -51,12 +46,8 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
   bool _isProcessing = false;
   String? _previewResult;
 
-  // ========== معلومات إضافية ==========
   List<Map<String, dynamic>> _lastTransactions = [];
-  Map<String, dynamic>? _extraData; // شبكات، فئات، نقاط بيع...إلخ
-
-  void _play(String type) =>
-      Provider.of<UiProvider>(context, listen: false).playSound(type);
+  Map<String, dynamic>? _extraData;
 
   @override
   void dispose() {
@@ -67,9 +58,17 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
     super.dispose();
   }
 
-  // ==========================================
-  // البحث التلقائي أثناء الكتابة
-  // ==========================================
+  void _showSnack(String msg, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg, textDirection: TextDirection.rtl),
+        backgroundColor: error ? Colors.red.shade800 : Colors.green.shade800,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   Future<void> _search(String query) async {
     if (query.trim().isEmpty) {
       setState(() {
@@ -84,8 +83,8 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
 
     setState(() => _isSearching = true);
     try {
-      final sys = Provider.of<SystemProvider>(context, listen: false);
-      final result = await sys.searchUserByAdmin(query.trim());
+      final agentAdmin = context.read<AgentAdminProvider>();
+      final result = await agentAdmin.searchUserByAdmin(query.trim());
       if (!mounted) return;
 
       if (result != null) {
@@ -96,11 +95,7 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
           _targetPhone = phone;
           _targetRole = role;
         });
-
-        // جلب آخر 7 عمليات
         _loadLastTransactions(phone);
-
-        // جلب بيانات إضافية حسب الدور
         _loadExtraData(phone, role);
       } else {
         setState(() {
@@ -137,7 +132,6 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
   Future<void> _loadExtraData(String phone, String role) async {
     Map<String, dynamic> extra = {};
     if (role == 'agent') {
-      // الشبكات
       final netsSnap = await FirebaseFirestore.instance
           .collection('networks')
           .where('agentPhone', isEqualTo: phone)
@@ -149,7 +143,6 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
       extra['activeNetworks'] = activeNets;
       extra['stoppedNetworks'] = stoppedNets;
 
-      // نقاط البيع
       final posSnap = await FirebaseFirestore.instance
           .collection('users')
           .where('pos_agents', arrayContains: phone)
@@ -169,19 +162,16 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
     if (mounted) setState(() => _extraData = extra);
   }
 
-  // ==========================================
-  // معاينة التأثير
-  // ==========================================
   Future<void> _preview() async {
-    _play('click');
+    context.read<UiProvider>().playSound('click');
     if (_targetPhone == null) {
       _showSnack('الرجاء البحث عن مستخدم أولاً', error: true);
       return;
     }
     setState(() => _previewResult = null);
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final agentAdmin = context.read<AgentAdminProvider>();
     try {
-      final res = await sys.previewResetImpact(
+      final res = await agentAdmin.previewResetImpact(
         phone: _targetPhone!,
         accountNumber: '',
         targetType: _targetRole == 'agent' ? 'agent' : 'user',
@@ -193,11 +183,8 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
     }
   }
 
-  // ==========================================
-  // نافذة التحقق المزدوج (PIN أو كلمة مرور)
-  // ==========================================
   Future<bool> _showAuthDialog() async {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final auth = context.read<AuthProvider>();
     final pinController = TextEditingController();
     final passController = TextEditingController();
 
@@ -237,9 +224,7 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
                       labelText: 'رمز PIN (6 أرقام)',
                       prefixIcon: const Icon(Icons.lock),
                       suffixIcon: IconButton(
-                        icon: Icon(_obscurePin
-                            ? Icons.visibility_off
-                            : Icons.visibility),
+                        icon: Icon(_obscurePin ? Icons.visibility_off : Icons.visibility),
                         onPressed: () {
                           setState(() => _obscurePin = !_obscurePin);
                           setDialogState(() => _obscurePin = !_obscurePin);
@@ -256,14 +241,10 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
                       labelText: 'كلمة المرور',
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
-                        icon: Icon(_obscurePassword
-                            ? Icons.visibility_off
-                            : Icons.visibility),
+                        icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
                         onPressed: () {
-                          setState(() =>
-                              _obscurePassword = !_obscurePassword);
-                          setDialogState(() =>
-                              _obscurePassword = !_obscurePassword);
+                          setState(() => _obscurePassword = !_obscurePassword);
+                          setDialogState(() => _obscurePassword = !_obscurePassword);
                         },
                       ),
                       border: const OutlineInputBorder(),
@@ -280,14 +261,13 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
                 onPressed: () async {
                   bool ok = false;
                   if (_usePinInstead) {
-                    ok = sys.validatePin(pinController.text);
+                    ok = auth.validatePin(pinController.text);
                   } else {
                     final doc = await FirebaseFirestore.instance
                         .collection('users')
-                        .doc(sys.currentUserPhone)
+                        .doc(auth.activeUserPhone)
                         .get();
-                    ok = (doc.data()?['password'] ?? '') ==
-                        passController.text;
+                    ok = (doc.data()?['password'] ?? '') == passController.text;
                   }
                   Navigator.pop(ctx, ok);
                 },
@@ -300,16 +280,12 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
     ) == true;
   }
 
-  // ==========================================
-  // تنفيذ الإجراء
-  // ==========================================
   Future<void> _execute() async {
-    _play('click');
+    context.read<UiProvider>().playSound('click');
     if (_targetPhone == null) {
       _showSnack('الرجاء البحث عن مستخدم أولاً', error: true);
       return;
     }
-    final sys = Provider.of<SystemProvider>(context, listen: false);
 
     final bool verified = await _showAuthDialog();
     if (!verified) {
@@ -319,7 +295,8 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
 
     setState(() => _isProcessing = true);
     try {
-      await sys.executeReset(
+      final agentAdmin = context.read<AgentAdminProvider>();
+      await agentAdmin.executeReset(
         phone: _targetPhone!,
         accountNumber: '',
         targetType: _targetRole == 'agent' ? 'agent' : 'user',
@@ -330,11 +307,11 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
         mergeTo: _mergeRecords ? _mergeToController.text.trim() : null,
         exportBeforeDelete: _exportBeforeDelete,
       );
-      _play('success');
+      context.read<UiProvider>().playSound('success');
       _showSnack('تم تنفيذ الإجراء بنجاح');
       _clearForm();
     } catch (e) {
-      _play('error');
+      context.read<UiProvider>().playSound('error');
       _showSnack('فشل: $e', error: true);
     } finally {
       setState(() => _isProcessing = false);
@@ -380,154 +357,147 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
     });
   }
 
-  void _showSnack(String msg, {bool error = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg, textDirection: TextDirection.rtl),
-        backgroundColor: error ? Colors.red : Colors.green,
-      ),
-    );
-  }
-
-  // ==========================================
-  // بناء الواجهة
-  // ==========================================
   @override
   Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
+    final auth = context.watch<AuthProvider>();
+    final settings = context.watch<SettingsProvider>();
+    final wallet = context.watch<WalletProvider>();
     final colors = Theme.of(context).colorScheme;
 
     return Scaffold(
       backgroundColor: colors.surface,
-      appBar: CustomHeader(title: 'التحكم الشامل – المحقق الذكي'),
-      // ✅ القائمة الجانبية لتظهر أيقونتها ويمكن التنقل
+      appBar: const CustomHeader(title: 'التحكم الشامل – المحقق الذكي'),
       drawer: CustomDrawer(
-        userName: sys.currentUserName,
-        phoneNumber: sys.currentUserPhone,
+        userName: wallet.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
         role: 'مالك النظام',
-        balanceOrPoints: 'أرباح: ${sys.adminMainBalance.toStringAsFixed(0)} ريال',
+        balanceOrPoints: 'أرباح: ${settings.adminMainBalance.toStringAsFixed(0)} ريال',
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ========== حقل البحث ==========
-              Text('ابحث عن المستهدف', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: 'رقم الهاتف أو رقم الحساب...',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(
-                          icon: Icon(Icons.clear, color: colors.error),
-                          onPressed: () {
-                            _searchController.clear();
-                            _search('');
-                          },
-                        )
-                      : null,
-                  border: const OutlineInputBorder(),
-                ),
-                onChanged: (v) => _search(v),
-              ),
-              if (_isSearching)
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-              const SizedBox(height: 16),
-
-              // ========== بطاقة المعلومات ==========
-              if (_targetData != null) ...[
-                _buildInfoCard(colors),
-                const SizedBox(height: 20),
-
-                // ========== آخر 7 عمليات ==========
-                if (_lastTransactions.isNotEmpty) ...[
-                  Text('آخر العمليات', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface)),
-                  const SizedBox(height: 8),
-                  ..._lastTransactions.take(7).map((txn) => Card(
-                        child: ListTile(
-                          title: Text(txn['title'] ?? 'عملية'),
-                          subtitle: Text('${txn['amount']} ريال'),
-                          trailing: Text(txn['timestamp'] != null
-                              ? (txn['timestamp'] as Timestamp).toDate().toString().substring(0, 10)
-                              : ''),
-                        ),
-                      )),
-                  const SizedBox(height: 20),
-                ],
-
-                // ========== خيارات الإجراءات الخاصة بالدور ==========
-                Text('الإجراءات المتاحة', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface)),
+        child: RefreshIndicator(
+          onRefresh: () async {
+            if (_searchController.text.isNotEmpty) {
+              await _search(_searchController.text);
+            }
+            await Future.delayed(const Duration(milliseconds: 300));
+            context.read<UiProvider>().playSound('success');
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('ابحث عن المستهدف', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface)),
                 const SizedBox(height: 8),
-                _buildActionCheckboxes(),
-                const SizedBox(height: 20),
-
-                // ========== خيارات متقدمة ==========
-                Text('خيارات متقدمة', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface)),
-                const SizedBox(height: 8),
-                _buildCheckbox('إعادة تسمية الحساب', _renameAccount, (v) => setState(() => _renameAccount = v!)),
-                if (_renameAccount)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: TextField(
-                      controller: _renameController,
-                      decoration: const InputDecoration(labelText: 'الاسم الجديد', border: OutlineInputBorder()),
-                    ),
+                TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'رقم الهاتف أو رقم الحساب...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(Icons.clear, color: colors.error),
+                            onPressed: () {
+                              _searchController.clear();
+                              _search('');
+                            },
+                          )
+                        : null,
+                    border: const OutlineInputBorder(),
                   ),
-                _buildCheckbox('دمج سجلات', _mergeRecords, (v) => setState(() => _mergeRecords = v!)),
-                if (_mergeRecords) ...[
-                  TextField(controller: _mergeFromController, decoration: const InputDecoration(labelText: 'رقم هاتف المصدر', border: OutlineInputBorder())),
-                  const SizedBox(height: 8),
-                  TextField(controller: _mergeToController, decoration: const InputDecoration(labelText: 'رقم هاتف الهدف', border: OutlineInputBorder())),
-                ],
-                _buildCheckbox('تصدير البيانات قبل الحذف', _exportBeforeDelete, (v) => setState(() => _exportBeforeDelete = v!)),
-
-                const SizedBox(height: 20),
-
-                // ========== أزرار التحكم ==========
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _preview,
-                        icon: const Icon(Icons.preview),
-                        label: const Text('معاينة التأثير'),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: _isProcessing ? null : _execute,
-                        icon: _isProcessing
-                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.warning),
-                        label: Text(_isProcessing ? 'جاري التنفيذ...' : 'تنفيذ الإجراء'),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                      ),
-                    ),
-                  ],
+                  onChanged: (v) => _search(v),
                 ),
+                if (_isSearching)
+                  const Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
                 const SizedBox(height: 16),
-                if (_previewResult != null)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: colors.surfaceVariant,
-                      borderRadius: BorderRadius.circular(10),
+
+                if (_targetData != null) ...[
+                  _buildInfoCard(colors),
+                  const SizedBox(height: 20),
+
+                  if (_lastTransactions.isNotEmpty) ...[
+                    Text('آخر العمليات', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface)),
+                    const SizedBox(height: 8),
+                    ..._lastTransactions.take(7).map((txn) => Card(
+                          child: ListTile(
+                            title: Text(txn['title'] ?? 'عملية'),
+                            subtitle: Text('${txn['amount']} ريال'),
+                            trailing: Text(txn['timestamp'] != null
+                                ? (txn['timestamp'] as Timestamp).toDate().toString().substring(0, 10)
+                                : ''),
+                          ),
+                        )),
+                    const SizedBox(height: 20),
+                  ],
+
+                  Text('الإجراءات المتاحة', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface)),
+                  const SizedBox(height: 8),
+                  _buildActionCheckboxes(),
+                  const SizedBox(height: 20),
+
+                  Text('خيارات متقدمة', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface)),
+                  const SizedBox(height: 8),
+                  _buildCheckbox('إعادة تسمية الحساب', _renameAccount, (v) => setState(() => _renameAccount = v!)),
+                  if (_renameAccount)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: TextField(
+                        controller: _renameController,
+                        decoration: const InputDecoration(labelText: 'الاسم الجديد', border: OutlineInputBorder()),
+                      ),
                     ),
-                    child: Text(_previewResult!, style: TextStyle(color: colors.onSurfaceVariant)),
+                  _buildCheckbox('دمج سجلات', _mergeRecords, (v) => setState(() => _mergeRecords = v!)),
+                  if (_mergeRecords) ...[
+                    TextField(controller: _mergeFromController, decoration: const InputDecoration(labelText: 'رقم هاتف المصدر', border: OutlineInputBorder())),
+                    const SizedBox(height: 8),
+                    TextField(controller: _mergeToController, decoration: const InputDecoration(labelText: 'رقم هاتف الهدف', border: OutlineInputBorder())),
+                  ],
+                  _buildCheckbox('تصدير البيانات قبل الحذف', _exportBeforeDelete, (v) => setState(() => _exportBeforeDelete = v!)),
+
+                  const SizedBox(height: 20),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _preview,
+                          icon: const Icon(Icons.preview),
+                          label: const Text('معاينة التأثير'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _isProcessing ? null : _execute,
+                          icon: _isProcessing
+                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.warning),
+                          label: Text(_isProcessing ? 'جاري التنفيذ...' : 'تنفيذ الإجراء'),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                        ),
+                      ),
+                    ],
                   ),
-              ] else if (!_isSearching && _searchController.text.isNotEmpty)
-                Text('لم يتم العثور على المستخدم', style: TextStyle(color: colors.error)),
-            ],
+                  const SizedBox(height: 16),
+                  if (_previewResult != null)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: colors.surfaceVariant,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(_previewResult!, style: TextStyle(color: colors.onSurfaceVariant)),
+                    ),
+                ] else if (!_isSearching && _searchController.text.isNotEmpty)
+                  Text('لم يتم العثور على المستخدم', style: TextStyle(color: colors.error)),
+              ],
+            ),
           ),
         ),
       ),
