@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; 
-import 'package:provider/provider.dart'; 
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
-import '../../../core/providers/system_provider.dart'; 
-import '../../../core/providers/ui_provider.dart'; // 👈 استدعاء محرك الصوت
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/settings_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
+import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart';
 
@@ -16,21 +18,18 @@ class BankAccountsScreen extends StatefulWidget {
 
 class _BankAccountsScreenState extends State<BankAccountsScreen> {
   
-  void _play(BuildContext context, String type) => 
-      Provider.of<UiProvider>(context, listen: false).playSound(type);
-
   // ==========================================
   // 1. نافذة إضافة حساب بنكي جديد ➕
   // ==========================================
-  void _showAddAccountDialog(SystemProvider provider) {
-    _play(context, 'click');
+  void _showAddAccountDialog(WalletProvider wallet) {
+    context.read<UiProvider>().playSound('click');
     final bankNameController = TextEditingController();
     final accountNumberController = TextEditingController();
     final beneficiaryController = TextEditingController();
 
     showDialog(
       context: context,
-      builder: (context) => Directionality(
+      builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           title: const Row(
@@ -67,7 +66,7 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
                       const SizedBox(height: 10),
                       ElevatedButton.icon(
                         onPressed: () {
-                          _play(context, 'click');
+                          context.read<UiProvider>().playSound('click');
                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ميزة رفع الصور ستتوفر قريباً 📸', textDirection: TextDirection.rtl)));
                         },
                         icon: const Icon(Icons.upload_file, size: 16),
@@ -81,28 +80,28 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () { _play(context, 'click'); Navigator.pop(context); }, child: const Text('إلغاء')),
+            TextButton(onPressed: () { context.read<UiProvider>().playSound('click'); Navigator.pop(ctx); }, child: const Text('إلغاء')),
             ElevatedButton(
               onPressed: () {
                 if (bankNameController.text.isNotEmpty && accountNumberController.text.isNotEmpty) {
                   final messenger = ScaffoldMessenger.of(context);
                   
-                  provider.addBankAccount(
+                  wallet.addBankAccount(
                     bankNameController.text,
                     accountNumberController.text,
                     beneficiaryController.text,
                   ).then((_) {
-                    _play(context, 'success');
+                    context.read<UiProvider>().playSound('success');
                   }).catchError((error) {
-                    _play(context, 'error');
+                    context.read<UiProvider>().playSound('error');
                     messenger.showSnackBar(SnackBar(content: Text('فشل الحفظ ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red, duration: const Duration(seconds: 6)));
                   });
 
-                  Navigator.pop(context);
-                  _play(context, 'click');
+                  Navigator.pop(ctx);
+                  context.read<UiProvider>().playSound('click');
                   messenger.showSnackBar(const SnackBar(content: Text('جاري الحفظ في السحابة... ☁️', textDirection: TextDirection.rtl), backgroundColor: Colors.blueGrey, duration: Duration(seconds: 2)));
                 } else {
-                  _play(context, 'error');
+                  context.read<UiProvider>().playSound('error');
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال اسم البنك ورقم الحساب على الأقل ❌', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
                 }
               },
@@ -117,15 +116,15 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
   // ==========================================
   // 2. نافذة تعديل حساب موجود ✏️
   // ==========================================
-  void _showEditAccountDialog(SystemProvider provider, Map<String, dynamic> account) {
-    _play(context, 'click');
+  void _showEditAccountDialog(WalletProvider wallet, Map<String, dynamic> account) {
+    context.read<UiProvider>().playSound('click');
     final bankNameController = TextEditingController(text: account['bankName']);
     final accountNumberController = TextEditingController(text: account['accountNumber']);
     final beneficiaryController = TextEditingController(text: account['beneficiary']);
 
     showDialog(
       context: context,
-      builder: (context) => Directionality(
+      builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           title: const Row(
@@ -146,26 +145,26 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () { _play(context, 'click'); Navigator.pop(context); }, child: const Text('إلغاء')),
+            TextButton(onPressed: () { context.read<UiProvider>().playSound('click'); Navigator.pop(ctx); }, child: const Text('إلغاء')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
               onPressed: () {
                 final messenger = ScaffoldMessenger.of(context);
                 
-                provider.updateBankAccount(
+                wallet.updateBankAccount(
                   account['docId'],
                   bankNameController.text,
                   accountNumberController.text,
                   beneficiaryController.text,
                 ).then((_) {
-                  _play(context, 'success');
+                  context.read<UiProvider>().playSound('success');
                 }).catchError((error) {
-                  _play(context, 'error');
+                  context.read<UiProvider>().playSound('error');
                   messenger.showSnackBar(SnackBar(content: Text('فشل التعديل ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red, duration: const Duration(seconds: 6)));
                 });
 
-                Navigator.pop(context);
-                _play(context, 'click');
+                Navigator.pop(ctx);
+                context.read<UiProvider>().playSound('click');
                 messenger.showSnackBar(const SnackBar(content: Text('جاري تطبيق التعديلات... ☁️', textDirection: TextDirection.rtl), backgroundColor: Colors.orange, duration: Duration(seconds: 2)));
               },
               child: const Text('حفظ التعديلات', style: TextStyle(color: Colors.white)),
@@ -179,14 +178,14 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
   // ==========================================
   // 3. دوال التحكم (تغيير حالة، حذف، نسخ)
   // ==========================================
-  void _toggleAccountStatus(SystemProvider provider, Map<String, dynamic> account) {
-    _play(context, 'click');
+  void _toggleAccountStatus(WalletProvider wallet, Map<String, dynamic> account) {
+    context.read<UiProvider>().playSound('click');
     final messenger = ScaffoldMessenger.of(context);
     
-    provider.toggleBankAccountStatus(account['docId'], account['status']).then((_) {
-        _play(context, 'success');
+    wallet.toggleBankAccountStatus(account['docId'], account['status']).then((_) {
+        context.read<UiProvider>().playSound('success');
     }).catchError((error) {
-      _play(context, 'error');
+      context.read<UiProvider>().playSound('error');
       messenger.showSnackBar(SnackBar(content: Text('فشل تغيير الحالة ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
     });
     
@@ -197,31 +196,31 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
     ));
   }
 
-  void _deleteAccount(SystemProvider provider, String docId) {
-    _play(context, 'click');
+  void _deleteAccount(WalletProvider wallet, String docId) {
+    context.read<UiProvider>().playSound('click');
     showDialog(
       context: context,
-      builder: (context) => Directionality(
+      builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           title: const Text('تحذير الحذف ⚠️', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
           content: const Text('هل أنت متأكد من حذف هذا الحساب نهائياً من قاعدة البيانات؟'),
           actions: [
-            TextButton(onPressed: () { _play(context, 'click'); Navigator.pop(context); }, child: const Text('تراجع')),
+            TextButton(onPressed: () { context.read<UiProvider>().playSound('click'); Navigator.pop(ctx); }, child: const Text('تراجع')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () {
                 final messenger = ScaffoldMessenger.of(context);
                 
-                provider.deleteBankAccount(docId).then((_) {
-                  _play(context, 'success');
+                wallet.deleteBankAccount(docId).then((_) {
+                  context.read<UiProvider>().playSound('success');
                 }).catchError((error) {
-                  _play(context, 'error');
+                  context.read<UiProvider>().playSound('error');
                   messenger.showSnackBar(SnackBar(content: Text('فشل الحذف ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
                 });
                 
-                Navigator.pop(context);
-                _play(context, 'click');
+                Navigator.pop(ctx);
+                context.read<UiProvider>().playSound('click');
                 messenger.showSnackBar(const SnackBar(content: Text('جاري الحذف من السيرفر... 🗑️', textDirection: TextDirection.rtl), backgroundColor: Colors.red, duration: Duration(seconds: 2)));
               },
               child: const Text('نعم، احذف الحساب', style: TextStyle(color: Colors.white)),
@@ -233,7 +232,7 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
   }
 
   void _copyAccountDetails(Map<String, dynamic> account) {
-    _play(context, 'success');
+    context.read<UiProvider>().playSound('success');
     String data = '''
 🏦 ${account['bankName']}
 🔢 الحساب: ${account['accountNumber']}
@@ -245,143 +244,156 @@ class _BankAccountsScreenState extends State<BankAccountsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final systemProvider = Provider.of<SystemProvider>(context);
-    final adminBalance = systemProvider.adminMainBalance;
-    final bankAccounts = systemProvider.bankAccounts; 
+    final auth = context.watch<AuthProvider>();
+    final settings = context.watch<SettingsProvider>();
+    final wallet = context.watch<WalletProvider>();
+    final adminBalance = settings.adminMainBalance;
+    final bankAccounts = wallet.bankAccounts;
 
     return Scaffold(
       appBar: const CustomHeader(title: 'الحسابات البنكية'),
       drawer: CustomDrawer(
-        userName: systemProvider.currentUserName,
-        phoneNumber: systemProvider.currentUserPhone,
+        userName: wallet.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
         role: 'مالك النظام (Super Admin)',
         balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton.icon(
-                  onPressed: () => _showAddAccountDialog(systemProvider), 
-                  icon: const Icon(Icons.add_card, color: Colors.white),
-                  label: const Text('إضافة حساب بنكي جديد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueAccent,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        child: RefreshIndicator(
+          onRefresh: () async {
+            await Future.delayed(const Duration(milliseconds: 300));
+            context.read<UiProvider>().playSound('success');
+          },
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showAddAccountDialog(wallet),
+                    icon: const Icon(Icons.add_card, color: Colors.white),
+                    label: const Text('إضافة حساب بنكي جديد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blueAccent,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
                   ),
                 ),
               ),
-            ),
 
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: Colors.yellow.shade50,
-              child: const Row(
-                children: [
-                  Icon(Icons.info_outline, color: Colors.orange, size: 20),
-                  SizedBox(width: 8),
-                  Expanded(child: Text('يمكنك الضغط مطولاً على أي حساب وسحبه للأعلى ↕️ لجعله الخيار الأول والأهم لدى الوكلاء.', style: TextStyle(fontSize: 12, color: Colors.brown))),
-                ],
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                color: Colors.yellow.shade50,
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.orange, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(child: Text('يمكنك الضغط مطولاً على أي حساب وسحبه للأعلى ↕️ لجعله الخيار الأول والأهم لدى الوكلاء.', style: TextStyle(fontSize: 12, color: Colors.brown))),
+                  ],
+                ),
               ),
-            ),
 
-            Expanded(
-              child: bankAccounts.isEmpty
-                  ? const Center(child: Text('لا توجد حسابات مضافة حالياً. اضغط على الزر أعلاه لإضافة حساب.', style: TextStyle(color: Colors.grey)))
-                  : ReorderableListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: bankAccounts.length,
-                      onReorder: (oldIndex, newIndex) {
-                        _play(context, 'click'); // صوت خفيف عند إعادة الترتيب
-                        final messenger = ScaffoldMessenger.of(context);
-                        systemProvider.reorderBankAccounts(oldIndex, newIndex).catchError((error) {
-                          _play(context, 'error');
-                          messenger.showSnackBar(SnackBar(content: Text('فشل المزامنة ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
-                        });
-                      },
-                      itemBuilder: (context, index) {
-                        final account = bankAccounts[index];
-                        final isActive = account['status'] == 'نشط';
+              Expanded(
+                child: bankAccounts.isEmpty
+                    ? ListView(
+                        children: const [
+                          SizedBox(height: 150),
+                          Center(child: Text('لا توجد حسابات مضافة حالياً. اضغط على الزر أعلاه لإضافة حساب.', style: TextStyle(color: Colors.grey))),
+                        ],
+                      )
+                    : ReorderableListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: bankAccounts.length,
+                        onReorder: (oldIndex, newIndex) {
+                          context.read<UiProvider>().playSound('click');
+                          final messenger = ScaffoldMessenger.of(context);
+                          wallet.reorderBankAccounts(oldIndex, newIndex).catchError((error) {
+                            context.read<UiProvider>().playSound('error');
+                            messenger.showSnackBar(SnackBar(content: Text('فشل المزامنة ❌: $error', textDirection: TextDirection.rtl), backgroundColor: Colors.red));
+                          });
+                        },
+                        itemBuilder: (context, index) {
+                          final account = bankAccounts[index];
+                          final isActive = account['status'] == 'نشط';
 
-                        return Card(
-                          key: ValueKey(account['docId']),
-                          elevation: 2,
-                          margin: const EdgeInsets.only(bottom: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
-                            side: BorderSide(color: isActive ? Colors.transparent : Colors.red.withOpacity(0.5), width: 2),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12.0),
-                            child: Column(
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Expanded(
-                                      child: Row(
-                                        children: [
-                                          const Icon(Icons.drag_indicator, color: Colors.grey),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(account['bankName'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueAccent)),
-                                                Text(account['accountNumber'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18), textDirection: TextDirection.ltr),
-                                              ],
+                          return Card(
+                            key: ValueKey(account['docId']),
+                            elevation: 2,
+                            margin: const EdgeInsets.only(bottom: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              side: BorderSide(color: isActive ? Colors.transparent : Colors.red.withOpacity(0.5), width: 2),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12.0),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Row(
+                                          children: [
+                                            const Icon(Icons.drag_indicator, color: Colors.grey),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(account['bankName'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueAccent)),
+                                                  Text(account['accountNumber'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18), textDirection: TextDirection.ltr),
+                                                ],
+                                              ),
                                             ),
+                                          ],
+                                        ),
+                                      ),
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        children: [
+                                          Chip(
+                                            label: Text(account['status'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 11)),
+                                            backgroundColor: isActive ? Colors.green : Colors.red,
+                                            padding: EdgeInsets.zero,
                                           ),
+                                          if (account['hasQR'] == true) const Icon(Icons.qr_code_2, color: Colors.blueGrey, size: 20),
                                         ],
                                       ),
-                                    ),
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.end,
-                                      children: [
-                                        Chip(
-                                          label: Text(account['status'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 11)),
-                                          backgroundColor: isActive ? Colors.green : Colors.red,
-                                          padding: EdgeInsets.zero,
-                                        ),
-                                        if (account['hasQR'] == true) const Icon(Icons.qr_code_2, color: Colors.blueGrey, size: 20),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                const Divider(),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Expanded(child: Text('المستفيد: ${account['beneficiary']}', style: const TextStyle(color: Colors.blueGrey, fontSize: 12), overflow: TextOverflow.ellipsis)),
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        _buildSmallButton(Icons.copy, 'نسخ البيانات', Colors.blueGrey, () => _copyAccountDetails(account)),
-                                        _buildSmallButton(Icons.edit, 'تعديل', Colors.orange, () => _showEditAccountDialog(systemProvider, account)),
-                                        _buildSmallButton(
-                                          isActive ? Icons.visibility_off : Icons.visibility,
-                                          isActive ? 'إيقاف' : 'تفعيل',
-                                          isActive ? Colors.red : Colors.green,
-                                          () => _toggleAccountStatus(systemProvider, account),
-                                        ),
-                                        _buildSmallButton(Icons.delete, 'حذف', Colors.red.shade900, () => _deleteAccount(systemProvider, account['docId'])),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ],
+                                    ],
+                                  ),
+                                  const Divider(),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(child: Text('المستفيد: ${account['beneficiary']}', style: const TextStyle(color: Colors.blueGrey, fontSize: 12), overflow: TextOverflow.ellipsis)),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          _buildSmallButton(Icons.copy, 'نسخ البيانات', Colors.blueGrey, () => _copyAccountDetails(account)),
+                                          _buildSmallButton(Icons.edit, 'تعديل', Colors.orange, () => _showEditAccountDialog(wallet, account)),
+                                          _buildSmallButton(
+                                            isActive ? Icons.visibility_off : Icons.visibility,
+                                            isActive ? 'إيقاف' : 'تفعيل',
+                                            isActive ? Colors.red : Colors.green,
+                                            () => _toggleAccountStatus(wallet, account),
+                                          ),
+                                          _buildSmallButton(Icons.delete, 'حذف', Colors.red.shade900, () => _deleteAccount(wallet, account['docId'])),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ],
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
