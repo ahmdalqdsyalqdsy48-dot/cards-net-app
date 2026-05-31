@@ -21,7 +21,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
   String _searchQuery = '';
 
   void _play(BuildContext context, String type) =>
-      Provider.of<UiProvider>(context, listen: false).playSound(type);
+      context.read<UiProvider>().playSound(type);
 
   // ==========================================
   // 1. نافذة إضافة وكيل جديد
@@ -37,8 +37,8 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) {
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) {
           bool isLoading = false;
 
           return Directionality(
@@ -71,7 +71,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
               actions: [
                 if (!isLoading)
                   TextButton(
-                    onPressed: () { _play(context, 'click'); Navigator.pop(context); },
+                    onPressed: () { _play(context, 'click'); Navigator.pop(ctx); },
                     child: const Text('إلغاء', style: TextStyle(color: Colors.red)),
                   ),
 
@@ -100,7 +100,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
 
                         if (mounted) {
                           _play(context, 'success');
-                          Navigator.pop(context);
+                          Navigator.pop(ctx);
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('تم إضافة الوكيل بنجاح! ✅'), backgroundColor: Colors.green),
                           );
@@ -148,8 +148,8 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) {
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) {
           bool isLoading = false;
 
           return Directionality(
@@ -176,7 +176,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
               ),
               actions: [
                 if (!isLoading)
-                  TextButton(onPressed: () { _play(context, 'click'); Navigator.pop(context); }, child: const Text('إلغاء')),
+                  TextButton(onPressed: () { _play(context, 'click'); Navigator.pop(ctx); }, child: const Text('إلغاء')),
 
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
@@ -196,7 +196,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
 
                       if (mounted) {
                         _play(context, 'success');
-                        Navigator.pop(context);
+                        Navigator.pop(ctx);
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تطبيق التعديلات بنجاح ✅'), backgroundColor: Colors.green));
                       }
                     } catch (error) {
@@ -220,7 +220,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
   }
 
   // ==========================================
-  // 3. تجميد الوكيل
+  // 3. تجميد / تنشيط الوكيل
   // ==========================================
   void _toggleFreeze(Map<String, dynamic> agent, AgentAdminProvider agentAdmin) {
     _play(context, 'click');
@@ -246,24 +246,24 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
     _play(context, 'click');
     showDialog(
       context: context,
-      builder: (context) => Directionality(
+      builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           title: const Text('تأكيد الحذف النهائي', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
           content: Text('هل أنت متأكد من مسح بيانات الوكيل (${agent['name']}) نهائياً؟'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('تراجع')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('تراجع')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () {
                 try {
                   agentAdmin.deleteAgent(agent['phone']);
                   _play(context, 'success');
-                  Navigator.pop(context);
+                  Navigator.pop(ctx);
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم الحذف النهائي من السيرفر 🗑️'), backgroundColor: Colors.red));
                 } catch (e) {
                   _play(context, 'error');
-                  Navigator.pop(context);
+                  Navigator.pop(ctx);
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل الحذف ❌: $e'), backgroundColor: Colors.red));
                 }
               },
@@ -309,6 +309,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
         onRefresh: () async {
           setState(() {});
           await Future.delayed(const Duration(milliseconds: 300));
+          _play(context, 'success');
         },
         child: Column(
           children: [
