@@ -6,10 +6,10 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/providers/theme_provider.dart';
-import 'core/providers/system_provider.dart';
 import 'core/providers/auth_provider.dart';
 import 'core/providers/settings_provider.dart';
 import 'core/providers/wallet_provider.dart';
+import 'core/providers/transactions_provider.dart';
 import 'core/providers/notification_provider.dart';
 import 'core/providers/backup_provider.dart';
 import 'core/providers/coupon_provider.dart';
@@ -86,30 +86,43 @@ void main() async {
       providers: [
         ChangeNotifierProvider(create: (context) => ThemeProvider()),
         ChangeNotifierProvider(create: (context) => AuthProvider()),
-        // ✅ SettingsProvider مع قيمة صوت محملة مسبقاً
+
+        // SettingsProvider مع قيمة صوت محملة مسبقاً
         ChangeNotifierProvider(
           create: (context) => SettingsProvider.withSoundPref(savedSoundEnabled),
         ),
 
-        // ✅ SoundService جاهز الآن بالإعدادات الصحيحة
+        // SoundService جاهز الآن بالإعدادات الصحيحة
         Provider<SoundService>(
           create: (context) => SoundService(context.read<SettingsProvider>()),
           dispose: (context, service) => service.dispose(),
         ),
 
+        // TransactionsProvider (جديد)
+        ChangeNotifierProvider<TransactionsProvider>(
+          create: (context) {
+            final auth = context.read<AuthProvider>();
+            return TransactionsProvider(auth);
+          },
+        ),
+
+        // WalletProvider (مُحدَّث)
         ChangeNotifierProvider<WalletProvider>(
           create: (context) {
             final auth = context.read<AuthProvider>();
             final settings = context.read<SettingsProvider>();
-            return WalletProvider(auth, settings: settings);
+            final transactions = context.read<TransactionsProvider>();
+            return WalletProvider(auth, settings: settings, transactions: transactions);
           },
         ),
+
         ChangeNotifierProvider<NotificationProvider>(
           create: (context) => NotificationProvider(
             context.read<AuthProvider>(),
             context.read<SoundService>(),
           ),
         ),
+
         ChangeNotifierProvider<AgentAdminProvider>(
           create: (context) {
             final auth = context.read<AuthProvider>();
@@ -128,8 +141,7 @@ void main() async {
           ),
         ),
 
-        // القديم (مؤقت)
-        ChangeNotifierProvider(create: (context) => SystemProvider()),
+        // ❌ تمت إزالة SystemProvider بالكامل
       ],
       child: MyApp(initialLang: savedLang),
     ),
@@ -156,7 +168,6 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    final systemProvider = Provider.of<SystemProvider>(context);
     final settingsProvider = Provider.of<SettingsProvider>(context);
 
     final newLang = settingsProvider.getLanguageSync();
