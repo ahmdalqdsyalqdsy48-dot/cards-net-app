@@ -261,13 +261,27 @@ class _AdvancedResetScreenState extends State<AdvancedResetScreen> {
                 onPressed: () async {
                   bool ok = false;
                   if (_usePinInstead) {
-                    ok = auth.validatePin(pinController.text);
+                    // التحقق من PIN مباشرة من Firestore (بدلاً من auth.validatePin)
+                    try {
+                      final doc = await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(auth.activeUserPhone)
+                          .get();
+                      final storedPin = doc.data()?['pin'] ?? '123456';
+                      ok = storedPin == pinController.text;
+                    } catch (e) {
+                      ok = false;
+                    }
                   } else {
-                    final doc = await FirebaseFirestore.instance
-                        .collection('users')
-                        .doc(auth.activeUserPhone)
-                        .get();
-                    ok = (doc.data()?['password'] ?? '') == passController.text;
+                    try {
+                      final doc = await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(auth.activeUserPhone)
+                          .get();
+                      ok = (doc.data()?['password'] ?? '') == passController.text;
+                    } catch (e) {
+                      ok = false;
+                    }
                   }
                   Navigator.pop(ctx, ok);
                 },
