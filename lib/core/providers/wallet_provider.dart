@@ -12,13 +12,19 @@ import '../constants.dart';
 import '../services/api_service.dart';
 import 'auth_provider.dart';
 import 'settings_provider.dart';
+import 'transactions_provider.dart';
 
 class WalletProvider extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final AuthProvider? _auth;
   final SettingsProvider? _settings;
+  final TransactionsProvider? _transactions;
 
-  WalletProvider(this._auth, {SettingsProvider? settings}) : _settings = settings {
+  WalletProvider(this._auth, {
+    SettingsProvider? settings,
+    TransactionsProvider? transactions,
+  })  : _settings = settings,
+        _transactions = transactions {
     _auth?.addListener(_onAuthChanged);
     if (_auth?.activeUserPhone != null) {
       _startListeners();
@@ -32,24 +38,16 @@ class WalletProvider extends ChangeNotifier {
     super.dispose();
   }
 
-  // ---------- جميع البيانات المخزنة محلياً ----------
+  // ---------- بيانات مخزنة محلياً ----------
   List<Map<String, dynamic>> _usersDatabase = [];
   List<Map<String, dynamic>> _rechargeRequests = [];
-  List<Map<String, dynamic>> _transactionsLedger = [];
-  List<Map<String, dynamic>> _salesList = [];
-  List<Map<String, dynamic>> _supportTickets = [];
   List<Map<String, dynamic>> _myAgentBankAccounts = [];
   List<Map<String, dynamic>> _bankAccounts = [];
 
   StreamSubscription? _usersSub;
   StreamSubscription? _rechargeSub;
-  StreamSubscription? _transactionsSub;
-  StreamSubscription? _salesSub;
-  StreamSubscription? _supportSub;
   StreamSubscription? _bankAccountsSub;
   StreamSubscription? _agentBankSub;
-
-  DateTimeRange? _dashboardDateRange;
 
   void _onAuthChanged() {
     if (_auth?.activeUserPhone != null) {
@@ -78,31 +76,6 @@ class WalletProvider extends ChangeNotifier {
         .snapshots()
         .listen((snapshot) {
       _rechargeRequests = snapshot.docs
-          .map((doc) => {'docId': doc.id, ...doc.data()})
-          .toList();
-      notifyListeners();
-    });
-
-    _transactionsSub = _db
-        .collection('transactions')
-        .orderBy('timestamp', descending: true)
-        .snapshots()
-        .listen((snapshot) {
-      _transactionsLedger = snapshot.docs
-          .map((doc) => {'docId': doc.id, ...doc.data()})
-          .toList();
-      notifyListeners();
-    });
-
-    _salesSub = _db.collection('sales').snapshots().listen((snapshot) {
-      _salesList = snapshot.docs
-          .map((doc) => {'docId': doc.id, ...doc.data()})
-          .toList();
-      notifyListeners();
-    });
-
-    _supportSub = _db.collection('support_tickets').snapshots().listen((snapshot) {
-      _supportTickets = snapshot.docs
           .map((doc) => {'docId': doc.id, ...doc.data()})
           .toList();
       notifyListeners();
@@ -138,21 +111,14 @@ class WalletProvider extends ChangeNotifier {
   void _cancelListeners() {
     _usersSub?.cancel();
     _rechargeSub?.cancel();
-    _transactionsSub?.cancel();
-    _salesSub?.cancel();
-    _supportSub?.cancel();
     _bankAccountsSub?.cancel();
     _agentBankSub?.cancel();
     _usersSub = null;
     _rechargeSub = null;
-    _transactionsSub = null;
-    _salesSub = null;
-    _supportSub = null;
     _bankAccountsSub = null;
     _agentBankSub = null;
   }
 
-  // ---------- الرادار التلقائي ----------
   void _runAutoRadar(List<Map<String, dynamic>> users) {
     final now = DateTime.now();
     WriteBatch batch = _db.batch();
@@ -184,93 +150,72 @@ class WalletProvider extends ChangeNotifier {
           .where((user) => user['role'] == 'user' || user['role'] == 'pos')
           .toList();
   List<Map<String, dynamic>> get pendingRechargeRequests => _rechargeRequests;
-  List<Map<String, dynamic>> get transactionsLedger => _transactionsLedger;
-  List<Map<String, dynamic>> get salesList => _salesList;
-  List<Map<String, dynamic>> get supportTickets => _supportTickets;
   List<Map<String, dynamic>> get bankAccounts => _bankAccounts;
   List<Map<String, dynamic>> get myAgentBankAccounts => _myAgentBankAccounts;
 
-  DateTimeRange? get dashboardDateRange => _dashboardDateRange;
+  // ---------- وسائط إلى TransactionsProvider ----------
+  List<Map<String, dynamic>> get transactionsLedger =>
+      _transactions?.transactionsLedger ?? [];
+  List<Map<String, dynamic>> get salesList =>
+      _transactions?.salesList ?? [];
+  List<Map<String, dynamic>> get supportTickets =>
+      _transactions?.supportTickets ?? [];
+
+  DateTimeRange? get dashboardDateRange =>
+      _transactions?.dashboardDateRange;
   void setDashboardDateRange(DateTimeRange? range) {
-    _dashboardDateRange = range;
+    _transactions?.setDashboardDateRange(range);
     notifyListeners();
   }
 
-  double get currentUserBalance {
-    if (_auth?.activeUserPhone == null) return 0.0;
-    final user = _usersDatabase.firstWhere(
-        (u) => u['phone'] == _auth!.activeUserPhone,
-        orElse: () => {'balance': 0.0});
-    if (user['role'] == 'user' || user['role'] == 'pos') {
-      Map<String, dynamic> wallets = user['wallets'] ?? {};
-      return wallets.values.fold(0.0, (sum, val) => sum + (val as num).toDouble());
-    }
-    return (user['balance'] ?? 0.0).toDouble();
-  }
+  double get filteredSales =>
+      _transactions?.filteredSales ?? 0.0;
+  double get filteredProfit =>
+      _transactions?.filteredProfit ?? 0.0;
+  int get openTicketsCount =>
+      _transactions?.openTicketsCount ?? 0;
+  int get criticalTicketsCount =>
+      _transactions?.criticalTicketsCount ?? 0;
 
-  double get availableBalance => currentUserBalance - heldBalance;
-
-  double get heldBalance {
-    if (_auth?.activeUserPhone == null) return 0.0;
-    final user = _usersDatabase.firstWhere(
-      (u) => u['phone'] == _auth!.activeUserPhone,
-      orElse: () => {'heldBalance': 0.0},
-    );
-    return (user['heldBalance'] ?? 0.0).toDouble();
-  }
-
-  // ---------- دوال وسيطة للملف الشخصي (تفويض إلى AuthProvider) ----------
-  Future<bool> changeUserName(String newName) async =>
-      await _auth?.changeUserName(newName) ?? false;
-
-  Future<bool> changeUserPin(String oldPin, String newPin) async =>
-      await _auth?.changeUserPin(oldPin, newPin) ?? false;
-
-  Future<String> changeUserPinWithOld(String oldPin, String newPin, String confirmPin) async {
-    if (_auth == null) return 'خطأ في المصادقة';
-    return await _auth!.changeUserPinWithOld(oldPin, newPin, confirmPin);
-  }
-
-  bool changeUserPassword(String oldPassword, String newPassword) =>
-      _auth?.changeUserPassword(oldPassword, newPassword) ?? false;
-
-  void toggleBiometric(bool isEnabled) =>
-      _auth?.toggleBiometric(isEnabled);
-
-  Future<void> updatePrivacySettings({required bool showPhone}) async =>
-      await _auth?.updatePrivacySettings(showPhone: showPhone);
-
-  Future<void> updatePrivacySetting(String key, bool value) async =>
-      await _auth?.updatePrivacySetting(key, value);
-
-  Future<void> updateUserDailyLimit(double limit) async =>
-      await _auth?.updateUserDailyLimit(limit);
-
-  Future<void> updateUserMonthlyLimit(double limit) async =>
-      await _auth?.updateUserMonthlyLimit(limit);
-
-  Future<bool> deleteUserAccount(String password) async =>
-      await _auth?.deleteUserAccount(password) ?? false;
-
-  Future<void> saveUserPreferredColor(Color color) async =>
-      await _auth?.saveUserPreferredColor(color);
-
-  Future<Color?> getUserPreferredColor() async =>
-      await _auth?.getUserPreferredColor();
-
-  Future<void> updateLastSeen() async =>
-      await _auth?.updateLastSeen();
-
-  Future<void> togglePinEnabled(bool value) async =>
-      await _auth?.togglePinEnabled(value);
-
-  // ---------- Getters وسيطة للجلسة والملف الشخصي ----------
+  // ---------- وسائط إلى AuthProvider (الملف الشخصي) ----------
   String? get activeUserPhone => _auth?.activeUserPhone;
   String get currentUserPhone => _auth?.activeUserPhone ?? '';
   String get currentUserRole => _auth?.currentUserRole ?? 'guest';
   bool hasPermission(String permissionName) =>
       _auth?.hasPermission(permissionName) ?? false;
 
+  Future<bool> changeUserName(String newName) async =>
+      await _auth?.changeUserName(newName) ?? false;
+  Future<bool> changeUserPin(String oldPin, String newPin) async =>
+      await _auth?.changeUserPin(oldPin, newPin) ?? false;
+  Future<String> changeUserPinWithOld(String oldPin, String newPin, String confirmPin) async {
+    if (_auth == null) return 'خطأ في المصادقة';
+    return await _auth!.changeUserPinWithOld(oldPin, newPin, confirmPin);
+  }
+  bool changeUserPassword(String oldPassword, String newPassword) =>
+      _auth?.changeUserPassword(oldPassword, newPassword) ?? false;
+  void toggleBiometric(bool isEnabled) =>
+      _auth?.toggleBiometric(isEnabled);
+  Future<void> updatePrivacySettings({required bool showPhone}) async =>
+      await _auth?.updatePrivacySettings(showPhone: showPhone);
+  Future<void> updatePrivacySetting(String key, bool value) async =>
+      await _auth?.updatePrivacySetting(key, value);
+  Future<void> updateUserDailyLimit(double limit) async =>
+      await _auth?.updateUserDailyLimit(limit);
+  Future<void> updateUserMonthlyLimit(double limit) async =>
+      await _auth?.updateUserMonthlyLimit(limit);
+  Future<bool> deleteUserAccount(String password) async =>
+      await _auth?.deleteUserAccount(password) ?? false;
+  Future<void> saveUserPreferredColor(Color color) async =>
+      await _auth?.saveUserPreferredColor(color);
+  Future<Color?> getUserPreferredColor() async =>
+      await _auth?.getUserPreferredColor();
+  Future<void> updateLastSeen() async =>
+      await _auth?.updateLastSeen();
+  Future<void> togglePinEnabled(bool value) async =>
+      await _auth?.togglePinEnabled(value);
+
+  // ---------- Getters من الجلسة والملف الشخصي ----------
   String get currentUserName {
     if (_auth?.activeUserPhone == null) return '';
     final user = _usersDatabase.firstWhere(
@@ -280,7 +225,6 @@ class WalletProvider extends ChangeNotifier {
   }
 
   String get currentUserPin => _auth?.currentUserPin ?? '';
-
   String get currentUserNetwork {
     if (_auth?.activeUserPhone == null) return 'غير محدد';
     final user = _usersDatabase.firstWhere(
@@ -328,6 +272,29 @@ class WalletProvider extends ChangeNotifier {
       orElse: () => {'pinEnabled': false},
     );
     return user['pinEnabled'] == true;
+  }
+
+  double get currentUserBalance {
+    if (_auth?.activeUserPhone == null) return 0.0;
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {'balance': 0.0});
+    if (user['role'] == 'user' || user['role'] == 'pos') {
+      Map<String, dynamic> wallets = user['wallets'] ?? {};
+      return wallets.values.fold(0.0, (sum, val) => sum + (val as num).toDouble());
+    }
+    return (user['balance'] ?? 0.0).toDouble();
+  }
+
+  double get availableBalance => currentUserBalance - heldBalance;
+
+  double get heldBalance {
+    if (_auth?.activeUserPhone == null) return 0.0;
+    final user = _usersDatabase.firstWhere(
+      (u) => u['phone'] == _auth!.activeUserPhone,
+      orElse: () => {'heldBalance': 0.0},
+    );
+    return (user['heldBalance'] ?? 0.0).toDouble();
   }
 
   double getWalletBalance(String agentPhone) {
@@ -1183,54 +1150,7 @@ class WalletProvider extends ChangeNotifier {
     await _db.collection('recharge_requests').doc(docId).delete();
   }
 
-  // ---------- تقارير وإحصائيات ----------
-  double get filteredSales {
-    return _salesList.where((sale) {
-      final dateStr = sale['date'] ?? DateTime.now().toIso8601String();
-      try {
-        final date = DateTime.parse(dateStr);
-        if (_dashboardDateRange != null) {
-          return date.isAfter(_dashboardDateRange!.start
-                  .subtract(const Duration(days: 1))) &&
-              date.isBefore(
-                  _dashboardDateRange!.end.add(const Duration(days: 1)));
-        }
-        return date.year == DateTime.now().year &&
-            date.month == DateTime.now().month &&
-            date.day == DateTime.now().day;
-      } catch (e) {
-        return false;
-      }
-    }).fold(0.0, (sum, sale) => sum + ((sale['amount'] ?? 0.0) as num));
-  }
-
-  double get filteredProfit {
-    return _salesList.where((sale) {
-      final dateStr = sale['date'] ?? DateTime.now().toIso8601String();
-      try {
-        final date = DateTime.parse(dateStr);
-        if (_dashboardDateRange != null) {
-          return date.isAfter(_dashboardDateRange!.start
-                  .subtract(const Duration(days: 1))) &&
-              date.isBefore(
-                  _dashboardDateRange!.end.add(const Duration(days: 1)));
-        }
-        return date.year == DateTime.now().year &&
-            date.month == DateTime.now().month &&
-            date.day == DateTime.now().day;
-      } catch (e) {
-        return false;
-      }
-    }).fold(0.0, (sum, sale) => sum + ((sale['profit'] ?? 0.0) as num));
-  }
-
-  int get openTicketsCount =>
-      _supportTickets.where((ticket) => ticket['status'] == 'مفتوحة').length;
-  int get criticalTicketsCount => _supportTickets
-      .where((ticket) =>
-          ticket['status'] == 'مفتوحة' && ticket['priority'] == 'عالية')
-      .length;
-
+  // ---------- اشتراكات الوكلاء (مؤقتة هنا) ----------
   Map<String, dynamic> get subscriptionStats {
     int active = 0, expiringSoon = 0, frozen = 0;
     double realExpectedRevenue = 0.0;
