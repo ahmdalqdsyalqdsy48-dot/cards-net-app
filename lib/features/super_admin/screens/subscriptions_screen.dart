@@ -8,6 +8,7 @@ import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/agent_admin_provider.dart';
 import '../../../core/providers/coupon_provider.dart';
 import '../../../core/providers/audit_provider.dart';
+import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart';
 
@@ -21,10 +22,14 @@ class SubscriptionsScreen extends StatefulWidget {
 class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   String _selectedFilter = 'الكل';
 
+  void _play(String type) =>
+      context.read<UiProvider>().playSound(type);
+
   // ==========================================
   // 1. تطبيق خطة / اشتراك
   // ==========================================
   void _showCreatePlanDialog(AgentAdminProvider agentAdmin) {
+    _play('click');
     int targetingFilter = 1;
     final planNameController = TextEditingController();
     final planPriceController = TextEditingController();
@@ -65,15 +70,19 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                     title: const Text('تطبيق على جميع الوكلاء'),
                     value: 1,
                     groupValue: targetingFilter,
-                    onChanged: (val) =>
-                        setStateDialog(() => targetingFilter = val as int),
+                    onChanged: (val) {
+                      _play('click');
+                      setStateDialog(() => targetingFilter = val as int);
+                    },
                   ),
                   RadioListTile(
                     title: const Text('تطبيق على وكيل محدد'),
                     value: 2,
                     groupValue: targetingFilter,
-                    onChanged: (val) =>
-                        setStateDialog(() => targetingFilter = val as int),
+                    onChanged: (val) {
+                      _play('click');
+                      setStateDialog(() => targetingFilter = val as int);
+                    },
                   ),
                   if (targetingFilter == 2)
                     _buildTextField('رقم الوكيل المستهدف', Icons.phone,
@@ -83,7 +92,10 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
             ),
             actions: [
               TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () {
+                    _play('click');
+                    Navigator.pop(context);
+                  },
                   child: const Text('إلغاء',
                       style: TextStyle(color: Colors.red))),
               ElevatedButton(
@@ -91,6 +103,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                   if (planNameController.text.isNotEmpty &&
                       durationController.text.isNotEmpty &&
                       planPriceController.text.isNotEmpty) {
+                    _play('click');
                     final messenger = ScaffoldMessenger.of(context);
                     int months = int.tryParse(durationController.text) ?? 1;
                     double price =
@@ -104,8 +117,13 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                       durationMonths: months,
                       targetAgentPhone: phoneController.text,
                     )
-                        .catchError((e) => messenger.showSnackBar(
-                            SnackBar(content: Text('خطأ: $e'))));
+                        .then((_) {
+                      _play('success');
+                    }).catchError((e) {
+                      _play('error');
+                      messenger.showSnackBar(
+                          SnackBar(content: Text('خطأ: $e')));
+                    });
 
                     Navigator.pop(context);
                     messenger.showSnackBar(const SnackBar(
@@ -126,6 +144,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   // 2. نافذة الكوبونات
   // ==========================================
   void _showCouponsManagerDialog(CouponProvider couponProvider) {
+    _play('click');
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -147,10 +166,11 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
               length: 2,
               child: Column(
                 children: [
-                  const TabBar(
+                  TabBar(
                     labelColor: Colors.orange,
                     indicatorColor: Colors.orange,
-                    tabs: [
+                    onTap: (index) => _play('click'),
+                    tabs: const [
                       Tab(text: 'توليد جديد ➕'),
                       Tab(text: 'الكوبونات النشطة 📊')
                     ],
@@ -169,7 +189,10 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () {
+                  _play('click');
+                  Navigator.pop(context);
+                },
                 child: const Text('إغلاق')),
           ],
         ),
@@ -200,6 +223,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                   icon: const Icon(Icons.casino, color: Colors.orange),
                   tooltip: 'توليد آلي 🎲',
                   onPressed: () {
+                    _play('click');
                     const chars =
                         'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
                     final rnd = Random();
@@ -221,8 +245,10 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
               items: ['تمديد أيام مجانية', 'خصم نسبة مئوية %']
                   .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                   .toList(),
-              onChanged: (val) =>
-                  setStateTab(() => discountType = val!),
+              onChanged: (val) {
+                _play('click');
+                setStateTab(() => discountType = val!);
+              },
             ),
             const SizedBox(height: 15),
             _buildTextField('قيمة الخصم (رقم فقط)', Icons.numbers,
@@ -244,8 +270,10 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
               ]
                   .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                   .toList(),
-              onChanged: (val) =>
-                  setStateTab(() => sendMethod = val!),
+              onChanged: (val) {
+                _play('click');
+                setStateTab(() => sendMethod = val!);
+              },
             ),
             const SizedBox(height: 15),
             SizedBox(
@@ -258,6 +286,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                   if (codeController.text.isNotEmpty &&
                       discountValueController.text.isNotEmpty &&
                       maxUsesController.text.isNotEmpty) {
+                    _play('click');
                     final messenger =
                         ScaffoldMessenger.of(parentContext);
 
@@ -267,7 +296,13 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                           '$discountType: ${discountValueController.text}',
                       maxUses: int.parse(maxUsesController.text),
                       sendMethod: sendMethod,
-                    );
+                    ).then((_) {
+                      _play('success');
+                    }).catchError((e) {
+                      _play('error');
+                      messenger.showSnackBar(SnackBar(
+                          content: Text('خطأ: $e')));
+                    });
 
                     Navigator.pop(parentContext);
                     messenger.showSnackBar(SnackBar(
@@ -316,8 +351,10 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                       color: Colors.red),
                   tooltip: 'إعدام الكوبون فوراً',
                   onPressed: () {
+                    _play('click');
                     couponProvider.deactivateCoupon(
                         coupon['docId'], coupon['code']);
+                    _play('success');
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                           content: Text(
@@ -341,6 +378,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   // ==========================================
   Future<void> _showEditGracePeriodDialog(
       String agentName, String agentPhone, AgentAdminProvider agentAdmin) async {
+    _play('click');
     DateTime? pickedDate = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
@@ -366,12 +404,16 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
 
       agentAdmin
           .updateAgentGracePeriod(agentPhone, formattedDate)
+          .then((_) {
+            _play('success');
+          })
           .catchError((error) {
-        messenger.showSnackBar(SnackBar(
-            content: Text('فشل التعديل ❌: $error',
-                textDirection: TextDirection.rtl),
-            backgroundColor: Colors.red));
-      });
+            _play('error');
+            messenger.showSnackBar(SnackBar(
+                content: Text('فشل التعديل ❌: $error',
+                    textDirection: TextDirection.rtl),
+                backgroundColor: Colors.red));
+          });
 
       messenger.showSnackBar(SnackBar(
           content: Text(
@@ -386,6 +428,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   // ==========================================
   void _showHistoryLog(
       String agentName, String agentPhone, AuditProvider auditProvider) {
+    _play('click');
     final agentLogs = auditProvider.auditLogs
         .where((log) =>
             log['targetPhone'] == agentPhone || log['phone'] == agentPhone)
@@ -474,7 +517,10 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () {
+                  _play('click');
+                  Navigator.pop(context);
+                },
                 child: const Text('إغلاق'))
           ],
         ),
@@ -484,14 +530,19 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
 
   void _togglePausePlan(
       String agentPhone, String currentStatus, AgentAdminProvider agentAdmin) {
+    _play('click');
     final messenger = ScaffoldMessenger.of(context);
     agentAdmin
         .toggleSubscriptionStatus(agentPhone, currentStatus)
+        .then((_) {
+          _play('success');
+        })
         .catchError((error) {
-      messenger.showSnackBar(SnackBar(
-          content: Text('خطأ: $error',
-              textDirection: TextDirection.rtl)));
-    });
+          _play('error');
+          messenger.showSnackBar(SnackBar(
+              content: Text('خطأ: $error',
+                  textDirection: TextDirection.rtl)));
+        });
     messenger.showSnackBar(SnackBar(
         content: Text(
             currentStatus == 'موقوف مؤقتاً'
@@ -537,6 +588,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         onRefresh: () async {
           setState(() {});
           await Future.delayed(const Duration(milliseconds: 300));
+          _play('success');
         },
         child: Column(
           children: [
@@ -628,8 +680,10 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                       selectedColor: Colors.blueAccent,
                       backgroundColor:
                           Colors.grey.withOpacity(0.2),
-                      onSelected: (val) =>
-                          setState(() => _selectedFilter = filter),
+                      onSelected: (val) {
+                        _play('click');
+                        setState(() => _selectedFilter = filter);
+                      },
                     ),
                   );
                 }).toList(),
