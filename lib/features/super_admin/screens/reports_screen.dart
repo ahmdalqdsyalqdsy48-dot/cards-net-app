@@ -19,6 +19,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/providers/wallet_provider.dart';
+import '../../../core/providers/transactions_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/widgets/custom_drawer.dart';
@@ -40,11 +41,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
   DateTime? _endDate;
   bool _showChart = false;
 
-  // متغيرات الجدولة
   String _scheduleFrequency = 'شهرياً';
   int _scheduleDay = 1;
   int _scheduleHour = 8;
-  int _scheduleMinute = 0;   // ✅ جديد
+  int _scheduleMinute = 0;
   String _scheduleAmPm = 'صباحاً';
   String _scheduleEmail = '';
   bool _hasSchedule = false;
@@ -55,9 +55,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     super.initState();
     _loadSchedule();
   }
-
-  void _play(String type) =>
-      Provider.of<UiProvider>(context, listen: false).playSound(type);
 
   void _showSnack(String m, {bool isErr = false}) {
     if (!mounted) return;
@@ -74,7 +71,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   String _formatDate(DateTime d) => '${d.year}/${d.month}/${d.day}';
 
-  // ========== تحميل الجدولة الحالية ==========
   Future<void> _loadSchedule() async {
     final auth = context.read<AuthProvider>();
     final phone = auth.activeUserPhone ?? 'admin';
@@ -99,9 +95,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
-  // ========== فلترة البيانات ==========
-  List<Map<String, dynamic>> _getFilteredData(WalletProvider wallet) {
-    List<Map<String, dynamic>> data = List.from(wallet.transactionsLedger);
+  List<Map<String, dynamic>> _getFilteredData(TransactionsProvider transactions) {
+    List<Map<String, dynamic>> data = List.from(transactions.transactionsLedger);
 
     if (_startDate != null || _endDate != null) {
       data = data.where((tx) {
@@ -142,9 +137,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return total;
   }
 
-  // ========== نافذة الجدولة (مُضافة الدقائق) ==========
   void _showScheduleDialog() {
-    _play('click');
+    context.read<UiProvider>().playSound('click');
     String freq = _scheduleFrequency;
     int day = _scheduleDay;
     int hour = _scheduleHour;
@@ -154,8 +148,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) => Directionality(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
             title: const Row(
@@ -231,7 +225,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     ],
                   ),
                   const SizedBox(height: 10),
-                  // ✅ حقل الدقائق
                   TextField(
                     controller: TextEditingController(
                         text: minute.toString()),
@@ -263,7 +256,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
             actions: [
               TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => Navigator.pop(ctx),
                   child: const Text('إلغاء')),
               ElevatedButton(
                 onPressed: () async {
@@ -287,7 +280,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         'frequency': freq,
                         'day': day,
                         'hour': hour,
-                        'minute': minute,   // ✅ حفظ الدقيقة
+                        'minute': minute,
                         'amPm': amPm,
                         'email': email,
                         'updatedAt': FieldValue.serverTimestamp(),
@@ -298,7 +291,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         'frequency': freq,
                         'day': day,
                         'hour': hour,
-                        'minute': minute,   // ✅ حفظ الدقيقة
+                        'minute': minute,
                         'amPm': amPm,
                         'email': email,
                         'createdAt': FieldValue.serverTimestamp(),
@@ -310,13 +303,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       _scheduleFrequency = freq;
                       _scheduleDay = day;
                       _scheduleHour = hour;
-                      _scheduleMinute = minute;   // ✅ تحديث الحالة
+                      _scheduleMinute = minute;
                       _scheduleAmPm = amPm;
                       _scheduleEmail = email;
                     });
 
                     if (mounted) {
-                      Navigator.pop(context);
+                      context.read<UiProvider>().playSound('success');
+                      Navigator.pop(ctx);
                       _showSnack('تم حفظ الجدولة بنجاح! ✅');
                     }
                   } catch (e) {
@@ -334,13 +328,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _buildDayOfWeekPicker(int current, Function(int) onChanged) {
     final days = [
-      'السبت',
-      'الأحد',
-      'الإثنين',
-      'الثلاثاء',
-      'الأربعاء',
-      'الخميس',
-      'الجمعة'
+      'السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'
     ];
     return DropdownButtonFormField<int>(
       value: current,
@@ -350,8 +338,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       ),
       items: List.generate(
           7,
-          (i) =>
-              DropdownMenuItem(value: i + 1, child: Text(days[i]))),
+          (i) => DropdownMenuItem(value: i + 1, child: Text(days[i]))),
       onChanged: (val) => onChanged(val!),
     );
   }
@@ -365,16 +352,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
       ),
       items: List.generate(
           28,
-          (i) =>
-              DropdownMenuItem(value: i + 1, child: Text('${i + 1}'))),
+          (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}'))),
       onChanged: (val) => onChanged(val!),
     );
   }
 
-  // ========== تصدير PDF ==========
   Future<void> _exportToPDF(
       List<Map<String, dynamic>> data, double totalAmount) async {
-    _play('click');
+    context.read<UiProvider>().playSound('click');
     _showSnack('جاري تجهيز ملف PDF... ⏳');
     try {
       final pdf = pw.Document();
@@ -384,8 +369,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       pdf.addPage(pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         textDirection: pw.TextDirection.rtl,
-        theme:
-            pw.ThemeData.withFont(base: arabicFont, bold: arabicFontBold),
+        theme: pw.ThemeData.withFont(base: arabicFont, bold: arabicFontBold),
         build: (pw.Context context) {
           return [
             pw.Header(
@@ -444,15 +428,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
           bytes: await pdf.save(),
           filename:
               'CardsNet_Report_${DateTime.now().millisecondsSinceEpoch}.pdf');
+      context.read<UiProvider>().playSound('success');
       _showSnack('تم فتح نافذة الطباعة/المشاركة ✅');
     } catch (e) {
+      context.read<UiProvider>().playSound('error');
       _showSnack('حدث خطأ أثناء التصدير: $e', isErr: true);
     }
   }
 
-  // ========== تصدير Excel ==========
   Future<void> _exportToExcel(List<Map<String, dynamic>> data) async {
-    _play('click');
+    context.read<UiProvider>().playSound('click');
     _showSnack('جاري إعداد ملف الإكسل... 📊');
     try {
       var excel = Excel.createExcel();
@@ -488,20 +473,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
         File(filePath)
           ..createSync(recursive: true)
           ..writeAsBytesSync(fileBytes!);
+        context.read<UiProvider>().playSound('success');
         _showSnack('تم حفظ الملف بنجاح في المسار:\n$filePath');
       } else {
         _showSnack(
             'بيانات الإكسل جاهزة! استخدم PDF للحفظ على الويب.');
       }
     } catch (e) {
+      context.read<UiProvider>().playSound('error');
       _showSnack('حدث خطأ أثناء تصدير الإكسل: $e', isErr: true);
     }
   }
 
-  // ========== نافذة تفاصيل العملية (إيصال ذكي) ==========
   void _showTransactionReceipt(
       Map<String, dynamic> log, SettingsProvider settings) {
-    _play('click');
+    context.read<UiProvider>().playSound('click');
     final GlobalKey receiptKey = GlobalKey();
 
     final double amount =
@@ -623,7 +609,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               icon: const Icon(Icons.copy, color: Colors.blue),
               tooltip: 'نسخ كنص',
               onPressed: () {
-                _play('click');
+                context.read<UiProvider>().playSound('click');
                 String text =
                     "🧾 *إشعار عملية - ${settings.appName}*\n";
                 text +=
@@ -652,7 +638,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         borderRadius:
                             BorderRadius.circular(10))),
                 onPressed: () async {
-                  _play('click');
+                  context.read<UiProvider>().playSound('click');
                   _showSnack('جاري تجهيز الصورة... ⏳');
                   try {
                     RenderRepaintBoundary boundary = receiptKey
@@ -673,9 +659,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         ],
                         text:
                             'إيصال عملية مالية - ${settings.appName}');
-                    _play('success');
+                    context.read<UiProvider>().playSound('success');
                   } catch (e) {
-                    _play('error');
+                    context.read<UiProvider>().playSound('error');
                     _showSnack(
                         'حدث خطأ أثناء التقاط الصورة',
                         isErr: true);
@@ -715,15 +701,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  // ========== البناء الرئيسي ==========
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final settings = context.watch<SettingsProvider>();
     final wallet = context.watch<WalletProvider>();
+    final transactions = context.watch<TransactionsProvider>();
     final themeProvider = context.watch<ThemeProvider>();
 
-    final filteredData = _getFilteredData(wallet);
+    final filteredData = _getFilteredData(transactions);
     final currentTotalAmount = _calculateTotalAmount(filteredData);
 
     List<String> agentNames = ['الكل'];
@@ -745,6 +731,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         onRefresh: () async {
           setState(() {});
           await Future.delayed(const Duration(milliseconds: 300));
+          context.read<UiProvider>().playSound('success');
         },
         child: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) {
@@ -752,7 +739,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
               SliverToBoxAdapter(
                 child: Column(
                   children: [
-                    // أزرار التصدير والجدولة
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 8),
@@ -780,7 +766,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         ],
                       ),
                     ),
-                    // ملخص الجدولة
                     if (_hasSchedule)
                       Container(
                         margin:
@@ -824,7 +809,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           ],
                         ),
                       ),
-                    // الفلاتر
                     Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(
@@ -944,7 +928,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  // ========== عرض الجدول ==========
   Widget _buildTableView(
       List<Map<String, dynamic>> data, SettingsProvider settings) {
     return ListView.builder(
@@ -1030,7 +1013,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  // ========== عرض الرسم البياني ==========
   Widget _buildChartView(List<Map<String, dynamic>> data) {
     Map<String, double> agentTotals = {};
     for (var tx in data) {
