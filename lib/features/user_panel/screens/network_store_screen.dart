@@ -12,7 +12,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:gal/gal.dart';
+import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
 import 'dart:html' as html;
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -1672,11 +1672,7 @@ ${unitPrice != (finalPrice / (originalPrice / unitPrice)) ? 'السعر المخ
       ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return;
       if (!kIsWeb) {
-        // استخدام المكتبة الجديدة Gal لحفظ الصورة في المعرض
-        final tempDir = await getTemporaryDirectory();
-        final file = File('${tempDir.path}/card_$pin.png');
-        await file.writeAsBytes(byteData.buffer.asUint8List());
-        await Gal.putImage(file.path);
+        await ImageGallerySaverPlus.saveImage(byteData.buffer.asUint8List());
       } else {
         final blob = html.Blob([byteData.buffer.asUint8List()], 'image/png');
         final url = html.Url.createObjectUrlFromBlob(blob);
