@@ -9,7 +9,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:gal/gal.dart';
+import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:html' as html;
 import 'package:intl/intl.dart' as intl;
 
@@ -191,10 +192,7 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
       ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return;
       if (!kIsWeb) {
-        final tempDir = await getTemporaryDirectory();
-        final file = File('${tempDir.path}/card_${card['pin']}.png');
-        await file.writeAsBytes(byteData.buffer.asUint8List());
-        await Gal.putImage(file.path);
+        await ImageGallerySaverPlus.saveImage(byteData.buffer.asUint8List());
       } else {
         final blob = html.Blob([byteData.buffer.asUint8List()], 'image/png');
         final url = html.Url.createObjectUrlFromBlob(blob);
@@ -212,6 +210,17 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
       return intl.DateFormat('yyyy/MM/dd - hh:mm a').format(date);
     } catch (_) {
       return dateStr;
+    }
+  }
+
+  Future<void> _launchURL(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri != null) {
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {
+        _showToast('تعذر فتح الرابط', error: true);
+      }
     }
   }
 
@@ -467,9 +476,7 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: GestureDetector(
-                          onTap: () {
-                            _launchURL(loginUrl);
-                          },
+                          onTap: () => _launchURL(loginUrl),
                           child: Row(
                             children: [
                               const Icon(Icons.language, size: 14, color: Colors.indigo),
@@ -530,12 +537,6 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
     );
   }
 
-  void _launchURL(String url) {
-    try {
-      launch(url);
-    } catch (_) {}
-  }
-
   Widget _smallButton(IconData icon, String label, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
@@ -545,8 +546,4 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
       ]),
     );
   }
-}
-
-void launch(String url) {
-  // تنفيذ فعلي موجود عبر url_launcher
 }
