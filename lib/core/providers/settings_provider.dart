@@ -71,12 +71,29 @@ class SettingsProvider extends ChangeNotifier {
 
   // ---------- متنوع ----------
   int _smsBalance = 0;
-
-  // ---------- إعداد الصوت ----------
   bool _soundEnabled = true;
-
-  // ---------- تفضيلات محلية (لغة وطابعة وصوت) ----------
   SharedPreferences? _prefs;
+
+  // ========== 🆕 الخصائص الجديدة للإعدادات الموسعة ==========
+  double _transferFeeRate = 0.0;
+  double _dailyTransferLimit = 5000.0;
+  double _monthlyTransferLimit = 50000.0;
+  int _sessionTimeoutMinutes = 30;
+  int _maxLoginAttempts = 5;
+  int _lowStockThreshold = 10;
+  String _reportEmail = '';
+  bool _notifyOnRecharge = true;
+  bool _notifyOnCoupon = true;
+  bool _notifyOnUpdate = true;
+  bool _notifyOnTicket = true;
+  bool _twoFactorEnabled = false;
+  bool _autoPurchaseEnabled = false;
+  bool _hideSoldCards = false;
+  bool _weeklyReportsEnabled = false;
+  bool _logProfitAsExpense = true;
+  bool _pullToRefreshEnabled = true;
+  bool _animationsEnabled = true;
+  bool _forceDarkMode = false;
 
   // ---------- المُنشئ الأساسي ----------
   SettingsProvider() {
@@ -84,7 +101,6 @@ class SettingsProvider extends ChangeNotifier {
     _initPrefs();
   }
 
-  // ✅ مُنشئ إضافي يستقبل قيمة الصوت المحملة مسبقاً من main.dart
   SettingsProvider.withSoundPref(bool soundEnabled) {
     _soundEnabled = soundEnabled;
     _initSettingsSync();
@@ -96,6 +112,10 @@ class SettingsProvider extends ChangeNotifier {
     if (!skipSound) {
       _soundEnabled = _prefs?.getBool('sound_enabled') ?? true;
     }
+    // تحميل الإعدادات المحلية الجديدة
+    _pullToRefreshEnabled = _prefs?.getBool('pull_to_refresh') ?? true;
+    _animationsEnabled = _prefs?.getBool('animations_enabled') ?? true;
+    _forceDarkMode = _prefs?.getBool('force_dark_mode') ?? false;
     notifyListeners();
   }
 
@@ -107,10 +127,8 @@ class SettingsProvider extends ChangeNotifier {
         _appName = data['appName'] ?? 'كروت نت';
         _appLogoUrl = data['appLogoUrl'] ?? '';
         _loginBgColor = data['loginBgColor'] ?? 0xFFFFFFFF;
-        _loginCarouselImages =
-            List<String>.from(data['loginCarouselImages'] ?? []);
-        _loginWelcomeMessage =
-            data['loginWelcomeMessage'] ?? 'مرحباً بك في نظام كروت نت';
+        _loginCarouselImages = List<String>.from(data['loginCarouselImages'] ?? []);
+        _loginWelcomeMessage = data['loginWelcomeMessage'] ?? 'مرحباً بك في نظام كروت نت';
         _carouselIntervalSeconds = data['carouselIntervalSeconds'] ?? 5;
         _marqueeDirection = data['marqueeDirection'] ?? 'rtl';
         _marqueeTextColor = data['marqueeTextColor'] ?? 0xFFFFFFFF;
@@ -132,14 +150,12 @@ class SettingsProvider extends ChangeNotifier {
         _adminMainBalance = (data['adminMainBalance'] ?? 0.0).toDouble();
         _totalSystemCards = data['totalSystemCards'] ?? 0;
 
-        _agentUniversalHiddenSections =
-            List<String>.from(data['agentUniversalHiddenSections'] ?? []);
+        _agentUniversalHiddenSections = List<String>.from(data['agentUniversalHiddenSections'] ?? []);
         _hideProfitEnabled = data['hideProfitEnabled'] ?? false;
         _leaderboardEnabled = data['leaderboardEnabled'] ?? false;
         _forceAgentTheme = data['forceAgentTheme'] ?? false;
 
-        _userUniversalHiddenSections =
-            List<String>.from(data['userUniversalHiddenSections'] ?? []);
+        _userUniversalHiddenSections = List<String>.from(data['userUniversalHiddenSections'] ?? []);
         _guestModeEnabled = data['guestModeEnabled'] ?? false;
         _kycRequired = data['kycRequired'] ?? false;
         _loyaltySystemEnabled = data['loyaltySystemEnabled'] ?? false;
@@ -148,31 +164,46 @@ class SettingsProvider extends ChangeNotifier {
           _socialLinks = Map<String, dynamic>.from(data['socialLinks']);
         }
         if (data['agentEmergencyAlert'] != null) {
-          _agentEmergencyAlert =
-              Map<String, dynamic>.from(data['agentEmergencyAlert']);
+          _agentEmergencyAlert = Map<String, dynamic>.from(data['agentEmergencyAlert']);
         }
         if (data['userPromoPopup'] != null) {
           _userPromoPopup = Map<String, dynamic>.from(data['userPromoPopup']);
         }
         if (data['agentBanners'] != null) {
-          _agentBanners =
-              List<Map<String, dynamic>>.from(data['agentBanners']);
+          _agentBanners = List<Map<String, dynamic>>.from(data['agentBanners']);
         }
         if (data['targetedNews'] != null) {
-          _targetedNews =
-              List<Map<String, dynamic>>.from(data['targetedNews']);
+          _targetedNews = List<Map<String, dynamic>>.from(data['targetedNews']);
         }
 
         _announcements = List<String>.from(data['announcements'] ?? []);
         _newsScrollSpeed = (data['newsScrollSpeed'] ?? 40.0).toDouble();
         _smsBalance = data['smsBalance'] ?? 0;
 
+        // 🆕 تحميل الإعدادات الجديدة من Firestore
+        _transferFeeRate = (data['transferFeeRate'] ?? 0.0).toDouble();
+        _dailyTransferLimit = (data['dailyTransferLimit'] ?? 5000.0).toDouble();
+        _monthlyTransferLimit = (data['monthlyTransferLimit'] ?? 50000.0).toDouble();
+        _sessionTimeoutMinutes = data['sessionTimeoutMinutes'] ?? 30;
+        _maxLoginAttempts = data['maxLoginAttempts'] ?? 5;
+        _lowStockThreshold = data['lowStockThreshold'] ?? 10;
+        _reportEmail = data['reportEmail'] ?? '';
+        _notifyOnRecharge = data['notifyOnRecharge'] ?? true;
+        _notifyOnCoupon = data['notifyOnCoupon'] ?? true;
+        _notifyOnUpdate = data['notifyOnUpdate'] ?? true;
+        _notifyOnTicket = data['notifyOnTicket'] ?? true;
+        _twoFactorEnabled = data['twoFactorEnabled'] ?? false;
+        _autoPurchaseEnabled = data['autoPurchaseEnabled'] ?? false;
+        _hideSoldCards = data['hideSoldCards'] ?? false;
+        _weeklyReportsEnabled = data['weeklyReportsEnabled'] ?? false;
+        _logProfitAsExpense = data['logProfitAsExpense'] ?? true;
+
         notifyListeners();
       }
     });
   }
 
-  // ---------- Getters ----------
+  // ========== Getters الأساسية ==========
   String get appName => _appName;
   String get appLogoUrl => _appLogoUrl;
   int get loginBgColor => _loginBgColor;
@@ -218,24 +249,34 @@ class SettingsProvider extends ChangeNotifier {
   double get newsScrollSpeed => _newsScrollSpeed;
   int get smsBalance => _smsBalance;
 
-  // ---------- إعداد الصوت ----------
   bool get isSoundEnabled => _soundEnabled;
 
-  Future<void> setSoundEnabled(bool value) async {
-    _soundEnabled = value;
-    if (_prefs != null) await _prefs!.setBool('sound_enabled', value);
-    notifyListeners();
-  }
+  // ========== 🆕 Getters للخصائص الجديدة ==========
+  double get transferFeeRate => _transferFeeRate;
+  double get dailyTransferLimit => _dailyTransferLimit;
+  double get monthlyTransferLimit => _monthlyTransferLimit;
+  int get sessionTimeoutMinutes => _sessionTimeoutMinutes;
+  int get maxLoginAttempts => _maxLoginAttempts;
+  int get lowStockThreshold => _lowStockThreshold;
+  String get reportEmail => _reportEmail;
+  bool get notifyOnRecharge => _notifyOnRecharge;
+  bool get notifyOnCoupon => _notifyOnCoupon;
+  bool get notifyOnUpdate => _notifyOnUpdate;
+  bool get notifyOnTicket => _notifyOnTicket;
+  bool get twoFactorEnabled => _twoFactorEnabled;
+  bool get autoPurchaseEnabled => _autoPurchaseEnabled;
+  bool get hideSoldCards => _hideSoldCards;
+  bool get weeklyReportsEnabled => _weeklyReportsEnabled;
+  bool get logProfitAsExpense => _logProfitAsExpense;
+  bool get pullToRefreshEnabled => _pullToRefreshEnabled;
+  bool get animationsEnabled => _animationsEnabled;
+  bool get forceDarkMode => _forceDarkMode;
 
-  // ---------- دوال التحديث ----------
+  // ========== دوال التحديث الأساسية ==========
   Future<void> updateGlobalAppName(String newName) async {
-    await _db
-        .collection('system')
-        .doc('main_info')
-        .update({'appName': newName});
+    await _db.collection('system').doc('main_info').update({'appName': newName});
     _appName = newName;
     notifyListeners();
-    _logAction('تغيير هوية النظام', 'تم تغيير اسم النظام إلى: $newName', 'critical');
   }
 
   Future<void> updateAdvancedLoginSettings({
@@ -280,7 +321,6 @@ class SettingsProvider extends ChangeNotifier {
       'appNameFont': appNameFont,
       'appNameColor': appNameColor,
     });
-    _logAction('تحديث بوابة الدخول', 'تحديث المظهر واسم التطبيق', 'critical');
   }
 
   Future<void> updateAgentPortalSettings({
@@ -301,7 +341,6 @@ class SettingsProvider extends ChangeNotifier {
       'forceAgentTheme': forceTheme,
       'agentUniversalHiddenSections': universalHidden
     });
-    _logAction('تحديث بوابة الوكلاء', 'تم تعديل سياسات لوحة الوكلاء', 'medium');
   }
 
   Future<void> updateUserPortalSettings({
@@ -325,7 +364,6 @@ class SettingsProvider extends ChangeNotifier {
       'userUniversalHiddenSections': universalHidden,
       'socialLinks': social
     });
-    _logAction('تحديث بوابة المستخدمين', 'تم تعديل سياسات لوحة المستخدمين', 'medium');
   }
 
   Future<void> toggleSectionForSpecificUsers({
@@ -337,18 +375,12 @@ class SettingsProvider extends ChangeNotifier {
     for (String phone in targetPhones) {
       DocumentReference ref = _db.collection('users').doc(phone);
       if (hide) {
-        batch.update(
-            ref, {'hiddenSections': FieldValue.arrayUnion([sectionId])});
+        batch.update(ref, {'hiddenSections': FieldValue.arrayUnion([sectionId])});
       } else {
-        batch.update(
-            ref, {'hiddenSections': FieldValue.arrayRemove([sectionId])});
+        batch.update(ref, {'hiddenSections': FieldValue.arrayRemove([sectionId])});
       }
     }
     await batch.commit();
-    _logAction(
-        'استهداف الأقسام',
-        'تم ${hide ? "إخفاء" : "إظهار"} قسم $sectionId لعدد ${targetPhones.length} مستخدم',
-        'critical');
   }
 
   Future<void> postTargetedBanner({
@@ -365,7 +397,6 @@ class SettingsProvider extends ChangeNotifier {
     await _db.collection('system').doc('main_info').update({
       'agentBanners': FieldValue.arrayUnion([newBanner])
     });
-    _logAction('إعلان موجه', 'تم نشر بانر إعلاني بنظام الاستهداف: $targetType', 'normal');
   }
 
   Future<void> setEmergencyAlert({
@@ -382,10 +413,6 @@ class SettingsProvider extends ChangeNotifier {
         'targetPhones': targetPhones
       }
     });
-    _logAction(
-        'تنبيه طوارئ',
-        'حالة الطوارئ: $isActive | الاستهداف: $targetType',
-        'critical');
   }
 
   Future<void> updateSystemStatusSettings({
@@ -448,10 +475,86 @@ class SettingsProvider extends ChangeNotifier {
   Future<void> updateNewsSpeed(double newSpeed) async {
     _newsScrollSpeed = newSpeed;
     notifyListeners();
-    await _db
-        .collection('system')
-        .doc('main_info')
-        .update({'newsScrollSpeed': newSpeed});
+    await _db.collection('system').doc('main_info').update({'newsScrollSpeed': newSpeed});
+  }
+
+  // ========== 🆕 دوال التحكم في الخصائص الجديدة ==========
+  Future<void> setSoundEnabled(bool value) async {
+    _soundEnabled = value;
+    if (_prefs != null) await _prefs!.setBool('sound_enabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setTwoFactorEnabled(bool value) async {
+    _twoFactorEnabled = value;
+    notifyListeners();
+    await _db.collection('system').doc('main_info').update({'twoFactorEnabled': value});
+  }
+
+  Future<void> setAutoPurchaseEnabled(bool value) async {
+    _autoPurchaseEnabled = value;
+    notifyListeners();
+    await _db.collection('system').doc('main_info').update({'autoPurchaseEnabled': value});
+  }
+
+  Future<void> setHideSoldCards(bool value) async {
+    _hideSoldCards = value;
+    notifyListeners();
+    await _db.collection('system').doc('main_info').update({'hideSoldCards': value});
+  }
+
+  Future<void> setWeeklyReportsEnabled(bool value) async {
+    _weeklyReportsEnabled = value;
+    notifyListeners();
+    await _db.collection('system').doc('main_info').update({'weeklyReportsEnabled': value});
+  }
+
+  Future<void> setLogProfitAsExpense(bool value) async {
+    _logProfitAsExpense = value;
+    notifyListeners();
+    await _db.collection('system').doc('main_info').update({'logProfitAsExpense': value});
+  }
+
+  Future<void> setPullToRefreshEnabled(bool value) async {
+    _pullToRefreshEnabled = value;
+    if (_prefs != null) await _prefs!.setBool('pull_to_refresh', value);
+    notifyListeners();
+  }
+
+  Future<void> setAnimationsEnabled(bool value) async {
+    _animationsEnabled = value;
+    if (_prefs != null) await _prefs!.setBool('animations_enabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setForceDarkMode(bool value) async {
+    _forceDarkMode = value;
+    if (_prefs != null) await _prefs!.setBool('force_dark_mode', value);
+    notifyListeners();
+  }
+
+  Future<void> setNotifyOnRecharge(bool value) async {
+    _notifyOnRecharge = value;
+    notifyListeners();
+    await _db.collection('system').doc('main_info').update({'notifyOnRecharge': value});
+  }
+
+  Future<void> setNotifyOnCoupon(bool value) async {
+    _notifyOnCoupon = value;
+    notifyListeners();
+    await _db.collection('system').doc('main_info').update({'notifyOnCoupon': value});
+  }
+
+  Future<void> setNotifyOnUpdate(bool value) async {
+    _notifyOnUpdate = value;
+    notifyListeners();
+    await _db.collection('system').doc('main_info').update({'notifyOnUpdate': value});
+  }
+
+  Future<void> setNotifyOnTicket(bool value) async {
+    _notifyOnTicket = value;
+    notifyListeners();
+    await _db.collection('system').doc('main_info').update({'notifyOnTicket': value});
   }
 
   // ---------- إعدادات اللغة ----------
@@ -482,22 +585,5 @@ class SettingsProvider extends ChangeNotifier {
   Future<bool> isPrinterConnected() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool('agent_printer_connected') ?? false;
-  }
-
-  // ---------- تسجيل الأحداث (مؤقت) ----------
-  void _logAction(String action, String details, String severity) {
-    try {
-      _db.collection('audit_logs').add({
-        'action': action,
-        'details': details,
-        'severity': severity,
-        'timestamp': FieldValue.serverTimestamp(),
-        'role': 'system',
-        'phone': 'settings',
-        'name': 'إعدادات النظام',
-      });
-    } catch (e) {
-      debugPrint('فشل تسجيل حدث: $e');
-    }
   }
 }
