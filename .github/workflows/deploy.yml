@@ -26,11 +26,8 @@ jobs:
       - name: تحميل المكاتب والإضافات
         run: flutter pub get
 
-      - name: تفعيل دعم الويب
-        run: flutter create . --platforms web
-
       - name: بناء نسخة الويب
-        run: flutter build web --base-href "/cards-net-app/" --no-wasm-dry-run
+        run: flutter build web --base-href "/cards-net-app/"
 
       - name: النشر على رابط جيت هاب
         uses: peaceiris/actions-gh-pages@v3
