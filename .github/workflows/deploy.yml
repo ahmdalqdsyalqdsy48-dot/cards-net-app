@@ -17,6 +17,7 @@ jobs:
       - name: تجهيز بيئة فلاتر
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.27.0'
           channel: 'stable'
 
       - name: تنظيف بيئة العمل
