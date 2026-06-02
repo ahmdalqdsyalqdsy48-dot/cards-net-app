@@ -12,12 +12,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:image_gallery_saver/image_gallery_saver.dart';
+import 'package:gal/gal.dart';
 import 'dart:html' as html;
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_user_drawer.dart';
@@ -245,7 +246,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
   final Map<String, GlobalKey> _cardKeys = {};
 
   void _play(String type) =>
-      Provider.of<UiProvider>(context, listen: false).playSound(type);
+      context.read<UiProvider>().playSound(type);
 
   void _showToast(String msg, {bool error = false}) {
     if (!mounted) return;
@@ -285,10 +286,9 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     required double couponDiscountAmount,
     String? appliedCouponId,
   }) async {
+    final wallet = context.read<WalletProvider>();
     try {
-      final systemProvider = Provider.of<SystemProvider>(context, listen: false);
-
-      final pins = await systemProvider.executeBulkPurchase(
+      final pins = await wallet.executeBulkPurchase(
         totalPrice: finalPrice,
         unitPrice: unitPrice,
         quantity: quantity,
@@ -398,9 +398,11 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
     String categoryId,
   ) {
     _play('click');
-    final systemProvider = Provider.of<SystemProvider>(context, listen: false);
+    final wallet = context.read<WalletProvider>();
+    final auth = context.read<AuthProvider>();
     final theme = Theme.of(context);
     final double originalPrice = unitPrice * quantity;
+    final String currentPhone = auth.activeUserPhone ?? '';
 
     bool isPurchased = false;
     bool isSubmittingPurchase = false;
@@ -434,7 +436,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
 
     Future<void> loadDiscount() async {
       final discount = await _discountHelper.fetchAutoDiscount(
-          agentPhone, systemProvider.currentUserPhone, isPos);
+          agentPhone, currentPhone, isPos);
       if (!mounted) return;
       updateState(() {
         autoDiscount = discount;
@@ -446,11 +448,11 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
       });
     }
 
-    double walletBalance = systemProvider.getWalletBalance(agentPhone);
+    double walletBalance = wallet.getWalletBalance(agentPhone);
     double creditLimit = 0.0;
     if (isPos) {
-      final currentUserData = systemProvider.usersList.firstWhere(
-          (u) => u['phone'] == systemProvider.currentUserPhone,
+      final currentUserData = wallet.usersList.firstWhere(
+          (u) => u['phone'] == currentPhone,
           orElse: () => {});
       final relations = currentUserData['agent_relations'] ?? {};
       final myRel = relations[agentPhone] ?? {};
@@ -492,7 +494,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
               final result = await _discountHelper.validateCoupon(
                 code: code,
                 agentPhone: agentPhone,
-                currentPhone: systemProvider.currentUserPhone,
+                currentPhone: currentPhone,
                 networkName: networkName,
                 basePrice: originalPrice,
                 autoDiscountAmount: autoDiscountAmount,
@@ -768,8 +770,7 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
                                           isPos: isPos,
                                           networkName: networkName,
                                           categoryId: categoryId,
-                                          currentPhone:
-                                              systemProvider.currentUserPhone,
+                                          currentPhone: currentPhone,
                                           finalPrice: finalPrice,
                                           autoDiscountAmount:
                                               autoDiscountAmount,
@@ -1399,7 +1400,6 @@ class _NetworkStoreScreenState extends State<NetworkStoreScreen> {
         ),
       );
 
-      // لضمان بناء العنصر في الشجرة بدون أن يظهر للمستخدم
       OverlayEntry? entry;
       entry = OverlayEntry(
         builder: (context) => Positioned(
@@ -1672,7 +1672,11 @@ ${unitPrice != (finalPrice / (originalPrice / unitPrice)) ? 'السعر المخ
       ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return;
       if (!kIsWeb) {
-        await ImageGallerySaver.saveImage(byteData.buffer.asUint8List());
+        // استخدام المكتبة الجديدة Gal لحفظ الصورة في المعرض
+        final tempDir = await getTemporaryDirectory();
+        final file = File('${tempDir.path}/card_$pin.png');
+        await file.writeAsBytes(byteData.buffer.asUint8List());
+        await Gal.putImage(file.path);
       } else {
         final blob = html.Blob([byteData.buffer.asUint8List()], 'image/png');
         final url = html.Url.createObjectUrlFromBlob(blob);
@@ -1690,10 +1694,10 @@ ${unitPrice != (finalPrice / (originalPrice / unitPrice)) ? 'السعر المخ
     super.dispose();
   }
 
-  Widget _buildUserSummaryTile(SystemProvider sys,
+  Widget _buildUserSummaryTile(WalletProvider wallet,
       Map<String, dynamic> agentRelations, ThemeData theme) {
     if (agentRelations.isEmpty) return const SizedBox();
-    double displayedBalance = sys.currentUserBalance;
+    double displayedBalance = wallet.currentUserBalance;
     if (agentRelations.isNotEmpty) {
       displayedBalance =
           (agentRelations.values.first['balance'] ?? displayedBalance)
@@ -1723,11 +1727,11 @@ ${unitPrice != (finalPrice / (originalPrice / unitPrice)) ? 'السعر المخ
     );
   }
 
-  Widget _buildPosSummaryTile(SystemProvider sys,
+  Widget _buildPosSummaryTile(WalletProvider wallet,
       Map<String, dynamic> agentRelations, ThemeData theme) {
     if (agentRelations.isEmpty) return const SizedBox();
     final firstRel = agentRelations.values.first;
-    final double balance = sys.currentUserBalance;
+    final double balance = wallet.currentUserBalance;
     final double credit = (firstRel['creditLimit'] ?? 0.0).toDouble();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -1755,14 +1759,15 @@ ${unitPrice != (finalPrice / (originalPrice / unitPrice)) ? 'السعر المخ
 
   @override
   Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
+    final wallet = context.watch<WalletProvider>();
+    final auth = context.watch<AuthProvider>();
     final theme = Theme.of(context);
-    final bool isPos = sys.currentUserRole == 'pos';
+    final bool isPos = auth.currentUserRole == 'pos';
 
     Map<String, dynamic> currentUserData = {};
-    if (sys.currentUserPhone.isNotEmpty) {
-      currentUserData = sys.usersList.firstWhere(
-          (u) => u['phone'] == sys.currentUserPhone,
+    if (auth.activeUserPhone != null && auth.activeUserPhone!.isNotEmpty) {
+      currentUserData = wallet.usersList.firstWhere(
+          (u) => u['phone'] == auth.activeUserPhone,
           orElse: () => {});
     }
     final List<dynamic> posAgents = currentUserData['pos_agents'] ?? [];
@@ -1775,13 +1780,13 @@ ${unitPrice != (finalPrice / (originalPrice / unitPrice)) ? 'السعر المخ
         backgroundColor: theme.scaffoldBackgroundColor,
         appBar: const CustomHeader(title: 'سوق الشبكات ونقاط البيع'),
         drawer: CustomUserDrawer(
-            userName: sys.currentUserName,
-            phoneNumber: sys.currentUserPhone),
+            userName: wallet.currentUserName,
+            phoneNumber: auth.activeUserPhone ?? ''),
         body: Directionality(
           textDirection: TextDirection.rtl,
           child: Column(children: [
-            if (!isPos) _buildUserSummaryTile(sys, agentRelations, theme),
-            if (isPos) _buildPosSummaryTile(sys, agentRelations, theme),
+            if (!isPos) _buildUserSummaryTile(wallet, agentRelations, theme),
+            if (isPos) _buildPosSummaryTile(wallet, agentRelations, theme),
             Container(
               color: isPos ? const Color(0xFF7B1FA2) : const Color(0xFF1565C0),
               padding: const EdgeInsets.all(16),
