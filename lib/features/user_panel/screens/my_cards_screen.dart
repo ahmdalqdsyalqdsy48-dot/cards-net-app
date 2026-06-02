@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -8,12 +9,12 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:image_gallery_saver/image_gallery_saver.dart';
+import 'package:gal/gal.dart';
 import 'dart:html' as html;
-import 'dart:convert';
 import 'package:intl/intl.dart' as intl;
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_user_drawer.dart';
@@ -29,7 +30,7 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
   String _searchQuery = '';
 
   void _play(String type) =>
-      Provider.of<UiProvider>(context, listen: false).playSound(type);
+      context.read<UiProvider>().playSound(type);
 
   void _showToast(String msg, {bool error = false}) {
     if (!mounted) return;
@@ -190,7 +191,10 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
       ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return;
       if (!kIsWeb) {
-        await ImageGallerySaver.saveImage(byteData.buffer.asUint8List());
+        final tempDir = await getTemporaryDirectory();
+        final file = File('${tempDir.path}/card_${card['pin']}.png');
+        await file.writeAsBytes(byteData.buffer.asUint8List());
+        await Gal.putImage(file.path);
       } else {
         final blob = html.Blob([byteData.buffer.asUint8List()], 'image/png');
         final url = html.Url.createObjectUrlFromBlob(blob);
@@ -213,11 +217,12 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
-    final isPos = sys.currentUserRole == 'pos';
+    final wallet = context.watch<WalletProvider>();
+    final auth = context.watch<AuthProvider>();
+    final isPos = auth.currentUserRole == 'pos';
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final cards = sys.userPurchasedCards.reversed.toList();
+    final cards = wallet.userPurchasedCards.reversed.toList();
 
     // فلترة
     final filtered = _searchQuery.isEmpty
@@ -248,102 +253,109 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
     return Scaffold(
       appBar: CustomHeader(title: isPos ? 'سجل المبيعات' : 'كروتي ومشترياتي'),
       drawer: CustomUserDrawer(
-        userName: sys.currentUserName,
-        phoneNumber: sys.currentUserPhone,
+        userName: wallet.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: Column(
-          children: [
-            // بحث
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: TextField(
-                onChanged: (v) => setState(() => _searchQuery = v.trim()),
-                decoration: InputDecoration(
-                  hintText: 'ابحث برقم الكرت أو اسم الشبكة...',
-                  prefixIcon: const Icon(Icons.search),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                ),
-              ),
-            ),
-            if (filtered.isNotEmpty)
+        child: RefreshIndicator(
+          onRefresh: () async {
+            setState(() {});
+            await Future.delayed(const Duration(milliseconds: 300));
+            _play('success');
+          },
+          child: Column(
+            children: [
+              // بحث
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Card(
-                        color: theme.colorScheme.primary.withOpacity(0.1),
-                        child: Padding(
-                          padding: const EdgeInsets.all(8),
-                          child: Column(
-                            children: [
-                              const Text('عدد الكروت', style: TextStyle(fontSize: 11)),
-                              Text('${filtered.length}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Card(
-                        color: Colors.green.withOpacity(0.1),
-                        child: Padding(
-                          padding: const EdgeInsets.all(8),
-                          child: Column(
-                            children: [
-                              const Text('إجمالي المدفوع', style: TextStyle(fontSize: 11)),
-                              Text('${totalPaid.toStringAsFixed(0)} ريال',
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                padding: const EdgeInsets.all(12),
+                child: TextField(
+                  onChanged: (v) => setState(() => _searchQuery = v.trim()),
+                  decoration: InputDecoration(
+                    hintText: 'ابحث برقم الكرت أو اسم الشبكة...',
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
                 ),
               ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: filtered.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.receipt_long, size: 80, color: Colors.grey.shade400),
-                          const SizedBox(height: 16),
-                          Text(
-                            isPos ? 'لم تقم ببيع أي كروت حتى الآن.' : 'لم تقم بشراء أي كروت حتى الآن.',
-                            style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: sortedDates.length,
-                      itemBuilder: (context, index) {
-                        final dateKey = sortedDates[index];
-                        final cardsOfDay = grouped[dateKey]!;
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                              color: theme.colorScheme.primary.withOpacity(0.08),
-                              child: Text(dateKey,
-                                  style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
+              if (filtered.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Card(
+                          color: theme.colorScheme.primary.withOpacity(0.1),
+                          child: Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Column(
+                              children: [
+                                const Text('عدد الكروت', style: TextStyle(fontSize: 11)),
+                                Text('${filtered.length}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              ],
                             ),
-                            ...cardsOfDay.map((card) => _buildCardItem(card)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Card(
+                          color: Colors.green.withOpacity(0.1),
+                          child: Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Column(
+                              children: [
+                                const Text('إجمالي المدفوع', style: TextStyle(fontSize: 11)),
+                                Text('${totalPaid.toStringAsFixed(0)} ريال',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: filtered.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.receipt_long, size: 80, color: Colors.grey.shade400),
+                            const SizedBox(height: 16),
+                            Text(
+                              isPos ? 'لم تقم ببيع أي كروت حتى الآن.' : 'لم تقم بشراء أي كروت حتى الآن.',
+                              style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
+                            ),
                           ],
-                        );
-                      },
-                    ),
-            ),
-          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: sortedDates.length,
+                        itemBuilder: (context, index) {
+                          final dateKey = sortedDates[index];
+                          final cardsOfDay = grouped[dateKey]!;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                                color: theme.colorScheme.primary.withOpacity(0.08),
+                                child: Text(dateKey,
+                                    style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
+                              ),
+                              ...cardsOfDay.map((card) => _buildCardItem(card)),
+                            ],
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -394,7 +406,6 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // معاينة القالب إن وجد
                     if (templateBytes != null)
                       Container(
                         constraints: const BoxConstraints(maxHeight: 200),
@@ -404,7 +415,6 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
                         ),
                       ),
                     const SizedBox(height: 8),
-                    // اسم الشبكة والفئة
                     Row(
                       children: [
                         Icon(Icons.wifi, size: 18, color: Colors.blue),
@@ -458,7 +468,7 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
                         padding: const EdgeInsets.only(top: 4),
                         child: GestureDetector(
                           onTap: () {
-                            if (loginUrl.isNotEmpty) _launchURL(loginUrl);
+                            _launchURL(loginUrl);
                           },
                           child: Row(
                             children: [
@@ -521,9 +531,7 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
   }
 
   void _launchURL(String url) {
-    // يمكن استخدام url_launcher لكنه قد يكون مستورداً بالفعل
     try {
-      // ignore: avoid_dynamic_calls
       launch(url);
     } catch (_) {}
   }
@@ -540,5 +548,5 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
 }
 
 void launch(String url) {
-  // تنفيذ فعلي
+  // تنفيذ فعلي موجود عبر url_launcher
 }
