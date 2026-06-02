@@ -11,7 +11,6 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:html' as html;
 import 'package:intl/intl.dart' as intl;
 
 import '../../../core/providers/auth_provider.dart';
@@ -193,10 +192,6 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
       if (byteData == null) return;
       if (!kIsWeb) {
         await ImageGallerySaverPlus.saveImage(byteData.buffer.asUint8List());
-      } else {
-        final blob = html.Blob([byteData.buffer.asUint8List()], 'image/png');
-        final url = html.Url.createObjectUrlFromBlob(blob);
-        html.window.open(url, '_blank');
       }
       _showToast('تم حفظ الصورة');
     } catch (_) {
