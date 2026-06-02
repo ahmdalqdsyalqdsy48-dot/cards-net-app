@@ -24,7 +24,7 @@ if (flutterVersionName == null) {
 
 android {
     namespace "com.example.cards_net_app"
-    compileSdk 35          // تم رفعه إلى 35 لتلبية تحذيرات المكتبات
+    compileSdk 35
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
@@ -42,7 +42,7 @@ android {
     defaultConfig {
         applicationId "com.example.cards_net_app"
         minSdk 21
-        targetSdk 35      // تم رفعه إلى 35
+        targetSdk 35
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
     }
@@ -59,14 +59,3 @@ flutter {
 }
 
 dependencies {}
-
-// ✅ إصلاح مشكلة image_gallery_saver القديمة
-subprojects {
-    afterEvaluate { project ->
-        if (project.name == 'image_gallery_saver') {
-            project.android {
-                namespace 'com.example.image_gallery_saver'
-            }
-        }
-    }
-}
