@@ -12,7 +12,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
+import 'package:gal/gal.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -1663,21 +1663,24 @@ ${unitPrice != (finalPrice / (originalPrice / unitPrice)) ? 'السعر المخ
   }
 
   Future<void> _saveCardImage(GlobalKey cardKey, String pin) async {
-    try {
-      RenderRepaintBoundary boundary =
-          cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary;
-      if (boundary == null) return;
-      ui.Image image = await boundary.toImage(pixelRatio: 3.0);
-      ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      if (byteData == null) return;
-      if (!kIsWeb) {
-        await ImageGallerySaverPlus.saveImage(byteData.buffer.asUint8List());
-      }
-      _showToast('تم حفظ الصورة');
-    } catch (e) {
-      _showToast('فشل الحفظ', error: true);
+  try {
+    RenderRepaintBoundary boundary =
+        cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary;
+    if (boundary == null) return;
+    ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+    ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    if (byteData == null) return;
+    if (!kIsWeb) {
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/card_$pin.png');
+      await file.writeAsBytes(byteData.buffer.asUint8List());
+      await Gal.putImage(file.path);
     }
+    _showToast('تم حفظ الصورة');
+  } catch (e) {
+    _showToast('فشل الحفظ', error: true);
   }
+}
 
   @override
   void dispose() {
