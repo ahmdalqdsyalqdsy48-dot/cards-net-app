@@ -8,6 +8,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:local_auth/local_auth.dart';
 
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/providers/settings_provider.dart';
@@ -29,6 +30,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   bool _isLoading = true;
+  final LocalAuthentication _localAuth = LocalAuthentication();
 
   // ---------- تبويب الطباعة ----------
   bool _autoPrintEnabled = false;
@@ -54,6 +56,11 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   bool _obsOldPass = true;
   bool _obsNewPass = true;
   bool _obsConfPass = true;
+
+  // ---------- خصوصية ----------
+  bool _hideBalance = false;
+  bool _showFullName = true;
+  bool _showPhone = true;
 
   // ---------- تبويب الإشعارات ----------
   bool _notificationsEnabled = true;
@@ -83,20 +90,14 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     super.dispose();
   }
 
-  void _play(String type) =>
-      Provider.of<UiProvider>(context, listen: false).playSound(type);
+  void _play(String type) => context.read<UiProvider>().playSound(type);
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    final auth = context.read<AuthProvider>();
     final wallet = context.read<WalletProvider>();
     final settings = context.read<SettingsProvider>();
 
-    // تحميل البريد الإلكتروني من السحابة
     await wallet.loadUserEmail();
-
-    // قراءة إعداد الصوت من SettingsProvider
-    final soundsEnabled = settings.isSoundEnabled;
 
     setState(() {
       // طباعة
@@ -104,8 +105,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
       _defaultQty = prefs.getDouble('agent_defaultQty') ?? 1.0;
       _receiptFooterController.text =
           prefs.getString('agent_receiptFooter') ?? 'شكراً لتعاملكم معنا';
-      _isPrinterConnected =
-          prefs.getBool('agent_printer_connected') ?? false;
+      _isPrinterConnected = prefs.getBool('agent_printer_connected') ?? false;
       _paperSize = prefs.getString('agent_paperSize') ?? '80mm';
 
       // أمان
@@ -115,18 +115,19 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
       _userEmail = wallet.currentUserEmail ?? '';
       _emailController.text = _userEmail;
 
+      // خصوصية
+      _hideBalance = wallet.privacyHideBalance;
+      _showFullName = wallet.privacyShowFullName;
+      _showPhone = wallet.currentUserPrivacyShowPhone;
+
       // إشعارات
-      _notificationsEnabled =
-          prefs.getBool('agent_notifications_enabled') ?? true;
-      _salesNotifications =
-          prefs.getBool('agent_sales_notifications') ?? true;
-      _stockNotifications =
-          prefs.getBool('agent_stock_notifications') ?? true;
-      _offerNotifications =
-          prefs.getBool('agent_offer_notifications') ?? true;
+      _notificationsEnabled = prefs.getBool('agent_notifications_enabled') ?? true;
+      _salesNotifications = prefs.getBool('agent_sales_notifications') ?? true;
+      _stockNotifications = prefs.getBool('agent_stock_notifications') ?? true;
+      _offerNotifications = prefs.getBool('agent_offer_notifications') ?? true;
 
       // مظهر
-      _appSounds = soundsEnabled;
+      _appSounds = settings.isSoundEnabled;
       _appLanguage = settings.getLanguageSync();
 
       _isLoading = false;
@@ -272,6 +273,36 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     }
   }
 
+  // ========== تفعيل البصمة الحقيقية ==========
+  Future<void> _toggleBiometric(bool value, WalletProvider wallet) async {
+    if (value) {
+      try {
+        final authenticated = await _localAuth.authenticate(
+          localizedReason: 'يرجى تأكيد هويتك لتفعيل الدخول بالبصمة',
+          options: const AuthenticationOptions(
+            biometricOnly: true,
+            stickyAuth: true,
+          ),
+        );
+        if (authenticated) {
+          wallet.toggleBiometric(true);
+          setState(() => _biometricsEnabled = true);
+          _play('success');
+          _showToast('تم تفعيل الدخول بالبصمة بنجاح! 🔒');
+        } else {
+          _showToast('فشل التحقق من البصمة');
+        }
+      } catch (e) {
+        _showToast('جهازك لا يدعم البصمة أو أنها غير معدّة.');
+      }
+    } else {
+      wallet.toggleBiometric(false);
+      setState(() => _biometricsEnabled = false);
+      _play('success');
+      _showToast('تم إيقاف الدخول بالبصمة.');
+    }
+  }
+
   // ========== طباعة اختبار PDF ==========
   Future<void> _printTestPage() async {
     _play('click');
@@ -308,7 +339,6 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     final auth = context.watch<AuthProvider>();
     final wallet = context.watch<WalletProvider>();
     final settings = context.watch<SettingsProvider>();
-    final ui = context.watch<UiProvider>();
     final theme = context.watch<ThemeProvider>();
     final colorScheme = Theme.of(context).colorScheme;
     final primaryColor = theme.primaryColor;
@@ -360,7 +390,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                   _buildSecurityTab(wallet, settings, primaryColor, colorScheme),
                   _buildPrinterTab(settings, primaryColor, colorScheme),
                   _buildNotificationsTab(primaryColor, colorScheme),
-                  _buildAppearanceTab(theme, ui, settings, primaryColor, colorScheme),
+                  _buildAppearanceTab(theme, settings, primaryColor, colorScheme),
                   _buildSystemTab(wallet, primaryColor, colorScheme),
                 ],
               ),
@@ -371,7 +401,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     );
   }
 
-  // ---------- تبويب الأمان والجلسة ----------
+  // ---------- تبويب الأمان والجلسة (مُحدَّث بالخصوصية) ----------
   Widget _buildSecurityTab(WalletProvider wallet, SettingsProvider settings,
       Color primaryColor, ColorScheme colorScheme) {
     return ListView(
@@ -483,12 +513,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                     style: TextStyle(color: colorScheme.onSurfaceVariant)),
                 value: _biometricsEnabled,
                 activeColor: primaryColor,
-                onChanged: (val) {
-                  _play('click');
-                  wallet.toggleBiometric(val);
-                  setState(() => _biometricsEnabled = val);
-                  _showToast(val ? 'تم تفعيل الدخول بالبصمة' : 'تم تعطيل الدخول بالبصمة');
-                },
+                onChanged: (val) => _toggleBiometric(val, wallet),
               ),
               const Divider(height: 1),
               ListTile(
@@ -533,6 +558,62 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                 style: TextStyle(color: colorScheme.onSurfaceVariant)),
             trailing: Icon(Icons.edit, color: colorScheme.onSurfaceVariant),
             onTap: () => _showEmailDialog(wallet),
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // 🆕 قسم الخصوصية
+        _sectionTitle('الخصوصية', colorScheme.onSurface),
+        Card(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          color: colorScheme.surface,
+          child: Column(
+            children: [
+              SwitchListTile(
+                secondary: Icon(Icons.visibility_off, color: primaryColor),
+                title: Text('إخفاء الرصيد عن المستخدمين',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text('لن يظهر رصيدك عند البحث عنك للتحويل',
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                value: _hideBalance,
+                activeColor: primaryColor,
+                onChanged: (val) async {
+                  _play('click');
+                  await wallet.updatePrivacySetting('hideBalance', val);
+                  setState(() => _hideBalance = val);
+                },
+              ),
+              const Divider(height: 1),
+              SwitchListTile(
+                secondary: Icon(Icons.badge, color: primaryColor),
+                title: Text('إخفاء الاسم الكامل',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text('سيظهر اسمك الأول فقط أو "وكيل معتمد"',
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                value: !_showFullName,
+                activeColor: primaryColor,
+                onChanged: (val) async {
+                  _play('click');
+                  await wallet.updatePrivacySetting('showFullName', !val);
+                  setState(() => _showFullName = !val);
+                },
+              ),
+              const Divider(height: 1),
+              SwitchListTile(
+                secondary: Icon(Icons.phone_disabled, color: primaryColor),
+                title: Text('إخفاء رقم الهاتف',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text('لن يظهر رقم هاتفك للمستخدمين الآخرين',
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                value: !_showPhone,
+                activeColor: primaryColor,
+                onChanged: (val) async {
+                  _play('click');
+                  await wallet.updatePrivacySetting('showPhone', !val);
+                  setState(() => _showPhone = !val);
+                },
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 20),
@@ -769,7 +850,6 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   // ---------- تبويب المظهر واللغة ----------
   Widget _buildAppearanceTab(
       ThemeProvider theme,
-      UiProvider ui,
       SettingsProvider settings,
       Color primaryColor,
       ColorScheme colorScheme) {
@@ -979,7 +1059,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                       context: context,
                       barrierDismissible: false,
                       builder: (c) => const Center(child: CircularProgressIndicator()));
-                  await wallet.loadUserEmail(); // تحديث البيانات
+                  await wallet.loadUserEmail();
                   if (mounted) Navigator.pop(context);
                   _showToast('تمت مزامنة البيانات بنجاح 🔄');
                 },
