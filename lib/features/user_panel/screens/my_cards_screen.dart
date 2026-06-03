@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
@@ -7,7 +8,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:gal/gal.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart' as intl;
 
@@ -189,7 +191,10 @@ class _MyCardsScreenState extends State<MyCardsScreen> {
       ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) return;
       if (!kIsWeb) {
-        await ImageGallerySaverPlus.saveImage(byteData.buffer.asUint8List());
+        final tempDir = await getTemporaryDirectory();
+        final file = File('${tempDir.path}/card_${card['pin']}.png');
+        await file.writeAsBytes(byteData.buffer.asUint8List());
+        await Gal.putImage(file.path);
       }
       _showToast('تم حفظ الصورة');
     } catch (_) {
