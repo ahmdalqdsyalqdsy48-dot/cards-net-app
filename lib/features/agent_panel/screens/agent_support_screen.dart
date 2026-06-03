@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart' hide TextDirection;
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/settings_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/widgets/custom_header.dart';
@@ -17,7 +18,8 @@ class AgentSupportScreen extends StatefulWidget {
   State<AgentSupportScreen> createState() => _AgentSupportScreenState();
 }
 
-class _AgentSupportScreenState extends State<AgentSupportScreen> with SingleTickerProviderStateMixin {
+class _AgentSupportScreenState extends State<AgentSupportScreen>
+    with SingleTickerProviderStateMixin {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   late TabController _tabController;
 
@@ -26,7 +28,9 @@ class _AgentSupportScreenState extends State<AgentSupportScreen> with SingleTick
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
-      if (_tabController.indexIsChanging) _play('click');
+      if (_tabController.indexIsChanging) {
+        context.read<UiProvider>().playSound('click');
+      }
     });
   }
 
@@ -36,25 +40,23 @@ class _AgentSupportScreenState extends State<AgentSupportScreen> with SingleTick
     super.dispose();
   }
 
-  void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
-
   void _showSnack(String m, {bool isErr = false}) {
-    if(!mounted) return;
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(m, textDirection: TextDirection.rtl), backgroundColor: isErr ? Colors.red : Colors.green)
+      SnackBar(
+        content: Text(m, textDirection: TextDirection.rtl),
+        backgroundColor: isErr ? Colors.red : Colors.green,
+      ),
     );
   }
 
-  // ==========================================
-  // 1. فتح الروابط الخارجية (للإدارة)
-  // ==========================================
   Future<void> _launchURL(String urlString, String fallbackMsg) async {
-    _play('click');
+    context.read<UiProvider>().playSound('click');
     if (urlString.isEmpty) {
       _showSnack(fallbackMsg, isErr: true);
       return;
     }
-    
+
     final Uri url = Uri.parse(urlString);
     try {
       if (await canLaunchUrl(url)) {
@@ -67,11 +69,9 @@ class _AgentSupportScreenState extends State<AgentSupportScreen> with SingleTick
     }
   }
 
-  // ==========================================
-  // 2. نافذة فتح تذكرة جديدة للإدارة 🎫
-  // ==========================================
-  void _showCreateTicketDialog(SystemProvider sys) {
-    _play('click');
+  void _showCreateTicketDialog() {
+    context.read<UiProvider>().playSound('click');
+    final auth = context.read<AuthProvider>();
     String subject = '';
     String description = '';
     bool isSubmitting = false;
@@ -79,17 +79,20 @@ class _AgentSupportScreenState extends State<AgentSupportScreen> with SingleTick
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) => Directionality(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
             backgroundColor: Theme.of(context).cardColor,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15)),
             title: const Row(
               children: [
                 Icon(Icons.support_agent, color: Colors.blueAccent),
                 SizedBox(width: 8),
-                Text('فتح تذكرة للإدارة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text('فتح تذكرة للإدارة',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 16)),
               ],
             ),
             content: SingleChildScrollView(
@@ -98,62 +101,87 @@ class _AgentSupportScreenState extends State<AgentSupportScreen> with SingleTick
                 children: [
                   TextField(
                     onChanged: (val) => subject = val,
-                    decoration: InputDecoration(labelText: 'عنوان المشكلة', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
+                    decoration: InputDecoration(
+                        labelText: 'عنوان المشكلة',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10))),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     onChanged: (val) => description = val,
                     maxLines: 4,
-                    decoration: InputDecoration(labelText: 'تفاصيل المشكلة', alignLabelWithHint: true, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
+                    decoration: InputDecoration(
+                        labelText: 'تفاصيل المشكلة',
+                        alignLabelWithHint: true,
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10))),
                   ),
                 ],
               ),
             ),
             actions: [
               if (!isSubmitting)
-                TextButton(onPressed: () { _play('click'); Navigator.pop(context); }, child: const Text('إلغاء')),
+                TextButton(
+                    onPressed: () {
+                      context.read<UiProvider>().playSound('click');
+                      Navigator.pop(ctx);
+                    },
+                    child: const Text('إلغاء')),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
-                onPressed: isSubmitting ? null : () async {
-                  if (subject.isNotEmpty && description.isNotEmpty) {
-                    setStateDialog(() => isSubmitting = true);
-                    try {
-                      await _db.collection('support_tickets').add({
-                        'agentPhone': sys.currentUserPhone,
-                        'agentName': sys.currentUserName,
-                        'subject': subject,
-                        'description': description,
-                        'status': 'مفتوحة',
-                        'priority': 'عادية',
-                        'role': 'agent',
-                        'timestamp': FieldValue.serverTimestamp(),
-                        'replies': [],
-                      });
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueAccent),
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        if (subject.isNotEmpty && description.isNotEmpty) {
+                          setStateDialog(() => isSubmitting = true);
+                          try {
+                            await _db.collection('support_tickets').add({
+                              'agentPhone': auth.activeUserPhone,
+                              'agentName': auth.currentUserName,
+                              'subject': subject,
+                              'description': description,
+                              'status': 'مفتوحة',
+                              'priority': 'عادية',
+                              'role': 'agent',
+                              'timestamp': FieldValue.serverTimestamp(),
+                              'replies': [],
+                            });
 
-                      await _db.collection('notifications').add({
-                        'targetPhones': ['774578241', 'all_staff'], 
-                        'title': 'تذكرة وكيل جديدة 🎫',
-                        'body': 'من الوكيل: ${sys.currentUserName}\nالعنوان: $subject',
-                        'timestamp': FieldValue.serverTimestamp(),
-                        'isRead': false,
-                        'readBy': [],
-                      });
+                            await _db
+                                .collection('notifications')
+                                .add({
+                              'targetPhones': ['774578241', 'all_staff'],
+                              'title': 'تذكرة وكيل جديدة 🎫',
+                              'body':
+                                  'من الوكيل: ${auth.currentUserName}\nالعنوان: $subject',
+                              'timestamp': FieldValue.serverTimestamp(),
+                              'isRead': false,
+                              'readBy': [],
+                            });
 
-                      _play('success');
-                      if (mounted) {
-                        Navigator.pop(context);
-                        _showSnack('تم إرسال تذكرتك للإدارة بنجاح!');
-                      }
-                    } catch (e) {
-                      setStateDialog(() => isSubmitting = false);
-                      _play('error');
-                      _showSnack('حدث خطأ أثناء الإرسال!', isErr: true);
-                    }
-                  } else {
-                    _showSnack('يرجى تعبئة جميع الحقول!', isErr: true);
-                  }
-                },
-                child: isSubmitting ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('إرسال التذكرة', style: TextStyle(color: Colors.white)),
+                            context.read<UiProvider>().playSound('success');
+                            if (mounted) {
+                              Navigator.pop(ctx);
+                              _showSnack('تم إرسال تذكرتك للإدارة بنجاح!');
+                            }
+                          } catch (e) {
+                            setStateDialog(() => isSubmitting = false);
+                            context.read<UiProvider>().playSound('error');
+                            _showSnack('حدث خطأ أثناء الإرسال!', isErr: true);
+                          }
+                        } else {
+                          _showSnack('يرجى تعبئة جميع الحقول!', isErr: true);
+                        }
+                      },
+                child: isSubmitting
+                    ? const SizedBox(
+                        width: 15,
+                        height: 15,
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2))
+                    : const Text('إرسال التذكرة',
+                        style: TextStyle(color: Colors.white)),
               ),
             ],
           ),
@@ -162,21 +190,23 @@ class _AgentSupportScreenState extends State<AgentSupportScreen> with SingleTick
     );
   }
 
-  // ==========================================
-  // 3. دردشة الوكيل مع الإدارة (تذاكره الخاصة) 💬
-  // ==========================================
-  void _showAdminTicketChat(Map<String, dynamic> ticket, String docId, SystemProvider sys) {
-    _play('click');
+  void _showAdminTicketChat(
+      Map<String, dynamic> ticket, String docId) {
+    context.read<UiProvider>().playSound('click');
+    final auth = context.read<AuthProvider>();
     final replyController = TextEditingController();
     final isClosed = ticket['status'] == 'مغلقة';
 
     showDialog(
       context: context,
-      builder: (context) => Directionality(
+      builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           backgroundColor: Theme.of(context).cardColor,
-          title: Text('تذكرتي للإدارة - ${docId.substring(0, 5).toUpperCase()}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          title: Text(
+              'تذكرتي للإدارة - ${docId.substring(0, 5).toUpperCase()}',
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 14)),
           content: SizedBox(
             width: double.maxFinite,
             child: Column(
@@ -185,74 +215,120 @@ class _AgentSupportScreenState extends State<AgentSupportScreen> with SingleTick
                 Align(
                   alignment: Alignment.centerRight,
                   child: Container(
-                    padding: const EdgeInsets.all(10), margin: const EdgeInsets.only(bottom: 10),
-                    decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-                    child: Text('أنت: ${ticket['subject']}\n${ticket['description']}', style: TextStyle(color: Provider.of<ThemeProvider>(context).adaptiveTextColor, fontSize: 13)),
+                    padding: const EdgeInsets.all(10),
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10)),
+                    child: Text(
+                        'أنت: ${ticket['subject']}\n${ticket['description']}',
+                        style: TextStyle(
+                            color: context
+                                .read<ThemeProvider>()
+                                .adaptiveTextColor,
+                            fontSize: 13)),
                   ),
                 ),
-                
                 if (ticket['replies'] != null)
-                  ...List.generate((ticket['replies'] as List).length, (index) {
+                  ...List.generate((ticket['replies'] as List).length,
+                      (index) {
                     var reply = ticket['replies'][index];
-                    if (reply['isInternal'] ?? false) return const SizedBox.shrink(); // إخفاء ردود الإدارة السرية
+                    if (reply['isInternal'] ?? false)
+                      return const SizedBox.shrink();
 
                     bool isMe = reply['sender'] == 'agent';
 
                     return Align(
-                      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                      alignment: isMe
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
                       child: Container(
-                        padding: const EdgeInsets.all(10), margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.all(10),
+                        margin: const EdgeInsets.only(bottom: 10),
                         decoration: BoxDecoration(
-                          color: isMe ? Colors.blue.withOpacity(0.1) : Colors.green.withOpacity(0.15), 
-                          borderRadius: BorderRadius.circular(10), 
+                          color: isMe
+                              ? Colors.blue.withOpacity(0.1)
+                              : Colors.green.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Text('${isMe ? "أنت:" : "الدعم الفني:"}\n${reply['text']}', style: TextStyle(fontSize: 13, color: Provider.of<ThemeProvider>(context).adaptiveTextColor)),
+                        child: Text(
+                            '${isMe ? "أنت:" : "الدعم الفني:"}\n${reply['text']}',
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: context
+                                    .read<ThemeProvider>()
+                                    .adaptiveTextColor)),
                       ),
                     );
                   }),
-
                 const Divider(),
                 if (isClosed)
-                  const Text('تم إغلاق هذه التذكرة من قبل الإدارة.', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))
+                  const Text('تم إغلاق هذه التذكرة من قبل الإدارة.',
+                      style: TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold))
                 else
                   TextField(
                     controller: replyController,
                     decoration: InputDecoration(
                       hintText: 'اكتب ردك للإدارة هنا...',
                       suffixIcon: IconButton(
-                        icon: const Icon(Icons.send, color: Colors.blue), 
+                        icon: const Icon(Icons.send, color: Colors.blue),
                         onPressed: () async {
                           if (replyController.text.isEmpty) return;
-                          _play('click');
-                          await _db.collection('support_tickets').doc(docId).update({
-                            'replies': FieldValue.arrayUnion([{'text': replyController.text, 'isInternal': false, 'sender': 'agent', 'timestamp': DateTime.now().toIso8601String()}])
+                          context.read<UiProvider>().playSound('click');
+                          await _db
+                              .collection('support_tickets')
+                              .doc(docId)
+                              .update({
+                            'replies': FieldValue.arrayUnion([
+                              {
+                                'text': replyController.text,
+                                'isInternal': false,
+                                'sender': 'agent',
+                                'timestamp':
+                                    DateTime.now().toIso8601String()
+                              }
+                            ])
                           });
-                          await _db.collection('notifications').add({
+                          await _db
+                              .collection('notifications')
+                              .add({
                             'targetPhones': ['774578241', 'all_staff'],
                             'title': 'رد جديد من الوكيل 💬',
-                            'body': 'الوكيل ${sys.currentUserName} قام بالرد على تذكرته.',
-                            'timestamp': FieldValue.serverTimestamp(), 'isRead': false, 'readBy': [],
+                            'body':
+                                'الوكيل ${auth.currentUserName} قام بالرد على تذكرته.',
+                            'timestamp': FieldValue.serverTimestamp(),
+                            'isRead': false,
+                            'readBy': [],
                           });
-                          if (mounted) Navigator.pop(context);
-                        }
+                          if (mounted) Navigator.pop(ctx);
+                        },
                       ),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15)),
                     ),
                   ),
               ],
             ),
           ),
-          actions: [TextButton(onPressed: () { _play('click'); Navigator.pop(context); }, child: const Text('إغلاق الدردشة'))],
+          actions: [
+            TextButton(
+                onPressed: () {
+                  context.read<UiProvider>().playSound('click');
+                  Navigator.pop(ctx);
+                },
+                child: const Text('إغلاق الدردشة'))
+          ],
         ),
       ),
     );
   }
 
-  // ==========================================
-  // 4. دردشة الوكيل مع الزبون (تذاكر الزبائن) 👥💬
-  // ==========================================
-  void _showCustomerTicketChat(Map<String, dynamic> ticket, String docId, SystemProvider sys) {
-    _play('click');
+  void _showCustomerTicketChat(
+      Map<String, dynamic> ticket, String docId) {
+    context.read<UiProvider>().playSound('click');
+    final auth = context.read<AuthProvider>();
     final replyController = TextEditingController();
     final isClosed = ticket['status'] == 'مغلقة';
     final String customerName = ticket['creatorName'] ?? 'زبون';
@@ -260,11 +336,15 @@ class _AgentSupportScreenState extends State<AgentSupportScreen> with SingleTick
 
     showDialog(
       context: context,
-      builder: (context) => Directionality(
+      builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           backgroundColor: Theme.of(context).cardColor,
-          title: Text('شكوى من: $customerName', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.purple)),
+          title: Text('شكوى من: $customerName',
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                  color: Colors.purple)),
           content: SizedBox(
             width: double.maxFinite,
             child: Column(
@@ -273,63 +353,105 @@ class _AgentSupportScreenState extends State<AgentSupportScreen> with SingleTick
                 Align(
                   alignment: Alignment.centerRight,
                   child: Container(
-                    padding: const EdgeInsets.all(10), margin: const EdgeInsets.only(bottom: 10),
-                    decoration: BoxDecoration(color: Colors.purple.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-                    child: Text('الزبون: ${ticket['subject']}\n${ticket['description']}', style: TextStyle(color: Provider.of<ThemeProvider>(context).adaptiveTextColor, fontSize: 13)),
+                    padding: const EdgeInsets.all(10),
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(
+                        color: Colors.purple.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10)),
+                    child: Text(
+                        'الزبون: ${ticket['subject']}\n${ticket['description']}',
+                        style: TextStyle(
+                            color: context
+                                .read<ThemeProvider>()
+                                .adaptiveTextColor,
+                            fontSize: 13)),
                   ),
                 ),
-                
                 if (ticket['replies'] != null)
-                  ...List.generate((ticket['replies'] as List).length, (index) {
+                  ...List.generate((ticket['replies'] as List).length,
+                      (index) {
                     var reply = ticket['replies'][index];
-                    bool isMe = reply['sender'] == 'support'; // الوكيل هنا يمثل الـ support للزبون
+                    bool isMe = reply['sender'] == 'support';
 
                     return Align(
-                      alignment: isMe ? Alignment.centerLeft : Alignment.centerRight,
+                      alignment: isMe
+                          ? Alignment.centerLeft
+                          : Alignment.centerRight,
                       child: Container(
-                        padding: const EdgeInsets.all(10), margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.all(10),
+                        margin: const EdgeInsets.only(bottom: 10),
                         decoration: BoxDecoration(
-                          color: isMe ? Colors.green.withOpacity(0.15) : Colors.purple.withOpacity(0.1), 
-                          borderRadius: BorderRadius.circular(10), 
+                          color: isMe
+                              ? Colors.green.withOpacity(0.15)
+                              : Colors.purple.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Text('${isMe ? "أنت (الدعم):" : "الزبون:"}\n${reply['text']}', style: TextStyle(fontSize: 13, color: Provider.of<ThemeProvider>(context).adaptiveTextColor)),
+                        child: Text(
+                            '${isMe ? "أنت (الدعم):" : "الزبون:"}\n${reply['text']}',
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: context
+                                    .read<ThemeProvider>()
+                                    .adaptiveTextColor)),
                       ),
                     );
                   }),
-
                 const Divider(),
                 if (isClosed)
-                  const Text('لقد قمت بإغلاق هذه التذكرة.', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))
+                  const Text('لقد قمت بإغلاق هذه التذكرة.',
+                      style: TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold))
                 else
                   TextField(
                     controller: replyController,
                     decoration: InputDecoration(
                       hintText: 'اكتب ردك للزبون هنا...',
                       suffixIcon: IconButton(
-                        icon: const Icon(Icons.send, color: Colors.purple), 
+                        icon:
+                            const Icon(Icons.send, color: Colors.purple),
                         onPressed: () async {
                           if (replyController.text.isEmpty) return;
-                          _play('click');
-                          
+                          context.read<UiProvider>().playSound('click');
+
                           WriteBatch batch = _db.batch();
-                          batch.update(_db.collection('support_tickets').doc(docId), {
-                            'status': 'قيد المعالجة',
-                            'replies': FieldValue.arrayUnion([{'text': replyController.text, 'isInternal': false, 'sender': 'support', 'timestamp': DateTime.now().toIso8601String()}])
-                          });
-                          
+                          batch.update(
+                              _db
+                                  .collection('support_tickets')
+                                  .doc(docId),
+                              {
+                                'status': 'قيد المعالجة',
+                                'replies': FieldValue.arrayUnion([
+                                  {
+                                    'text': replyController.text,
+                                    'isInternal': false,
+                                    'sender': 'support',
+                                    'timestamp': DateTime.now()
+                                        .toIso8601String()
+                                  }
+                                ])
+                              });
+
                           if (customerPhone.isNotEmpty) {
-                            batch.set(_db.collection('notifications').doc(), {
-                              'targetPhones': [customerPhone],
-                              'title': 'رد من وكيل الشبكة 💬',
-                              'body': 'قام وكيل الشبكة بالرد على شكواك.',
-                              'timestamp': FieldValue.serverTimestamp(), 'isRead': false, 'readBy': [],
-                            });
+                            batch.set(
+                                _db.collection('notifications').doc(),
+                                {
+                                  'targetPhones': [customerPhone],
+                                  'title': 'رد من وكيل الشبكة 💬',
+                                  'body':
+                                      'قام وكيل الشبكة بالرد على شكواك.',
+                                  'timestamp':
+                                      FieldValue.serverTimestamp(),
+                                  'isRead': false,
+                                  'readBy': [],
+                                });
                           }
                           await batch.commit();
-                          if (mounted) Navigator.pop(context);
-                        }
+                          if (mounted) Navigator.pop(ctx);
+                        },
                       ),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15)),
                     ),
                   ),
               ],
@@ -339,14 +461,23 @@ class _AgentSupportScreenState extends State<AgentSupportScreen> with SingleTick
             if (!isClosed)
               TextButton(
                 onPressed: () async {
-                  _play('click');
-                  await _db.collection('support_tickets').doc(docId).update({'status': 'مغلقة'});
-                  if (mounted) Navigator.pop(context);
+                  context.read<UiProvider>().playSound('click');
+                  await _db
+                      .collection('support_tickets')
+                      .doc(docId)
+                      .update({'status': 'مغلقة'});
+                  if (mounted) Navigator.pop(ctx);
                   _showSnack('تم إغلاق تذكرة الزبون.');
-                }, 
-                child: const Text('إغلاق التذكرة نهائياً', style: TextStyle(color: Colors.red))
+                },
+                child: const Text('إغلاق التذكرة نهائياً',
+                    style: TextStyle(color: Colors.red)),
               ),
-            TextButton(onPressed: () { _play('click'); Navigator.pop(context); }, child: const Text('رجوع')),
+            TextButton(
+                onPressed: () {
+                  context.read<UiProvider>().playSound('click');
+                  Navigator.pop(ctx);
+                },
+                child: const Text('رجوع')),
           ],
         ),
       ),
@@ -355,15 +486,22 @@ class _AgentSupportScreenState extends State<AgentSupportScreen> with SingleTick
 
   @override
   Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
+    final wallet = context.watch<WalletProvider>();
+    final auth = context.watch<AuthProvider>();
+    final settings = context.watch<SettingsProvider>();
+
+    final String whatsappLink = settings.socialLinks['whatsapp'] ?? '';
+    final String supportNumbers = settings.supportNumbers;
+    final String cleanPhone =
+        supportNumbers.replaceAll(RegExp(r'[^0-9+]'), '');
 
     return Scaffold(
       appBar: const CustomHeader(title: 'مركز الدعم والمساعدة'),
       drawer: CustomAgentDrawer(
-        agentName: sys.currentUserName,
-        phoneNumber: sys.currentUserPhone,
+        agentName: wallet.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
         role: 'وكيل معتمد',
-        currentBalance: sys.currentUserBalance,
+        currentBalance: wallet.currentUserBalance,
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
@@ -378,7 +516,9 @@ class _AgentSupportScreenState extends State<AgentSupportScreen> with SingleTick
                 indicatorColor: Colors.blueAccent,
                 indicatorWeight: 3,
                 tabs: const [
-                  Tab(icon: Icon(Icons.admin_panel_settings), text: 'تذاكري مع الإدارة'),
+                  Tab(
+                      icon: Icon(Icons.admin_panel_settings),
+                      text: 'تذاكري مع الإدارة'),
                   Tab(icon: Icon(Icons.people), text: 'شكاوى زبائني'),
                 ],
               ),
@@ -387,8 +527,8 @@ class _AgentSupportScreenState extends State<AgentSupportScreen> with SingleTick
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildAdminSupportTab(sys),
-                  _buildCustomerSupportTab(sys),
+                  _buildAdminSupportTab(whatsappLink, cleanPhone),
+                  _buildCustomerSupportTab(),
                 ],
               ),
             ),
@@ -398,13 +538,8 @@ class _AgentSupportScreenState extends State<AgentSupportScreen> with SingleTick
     );
   }
 
-  // ==========================================
-  // واجهة التبويب الأول (تذاكر الوكيل مع الإدارة)
-  // ==========================================
-  Widget _buildAdminSupportTab(SystemProvider sys) {
-    final String whatsappLink = sys.socialLinks['whatsapp'] ?? '';
-    final String cleanPhone = sys.supportNumbers.replaceAll(RegExp(r'[^0-9+]'), '');
-
+  Widget _buildAdminSupportTab(
+      String whatsappLink, String cleanPhone) {
     return Column(
       children: [
         Padding(
@@ -413,17 +548,30 @@ class _AgentSupportScreenState extends State<AgentSupportScreen> with SingleTick
             children: [
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () => _launchURL(whatsappLink.isNotEmpty && !whatsappLink.startsWith('http') ? 'https://wa.me/$whatsappLink' : whatsappLink, 'رقم الواتساب للإدارة غير مضاف.'),
-                  icon: const Icon(Icons.chat, color: Colors.white, size: 18), label: const Text('واتساب', style: TextStyle(color: Colors.white)),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+                  onPressed: () => _launchURL(
+                      whatsappLink.isNotEmpty &&
+                              !whatsappLink.startsWith('http')
+                          ? 'https://wa.me/$whatsappLink'
+                          : whatsappLink,
+                      'رقم الواتساب للإدارة غير مضاف.'),
+                  icon: const Icon(Icons.chat,
+                      color: Colors.white, size: 18),
+                  label: const Text('واتساب',
+                      style: TextStyle(color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () => _showCreateTicketDialog(sys),
-                  icon: const Icon(Icons.add, color: Colors.white, size: 18), label: const Text('تذكرة للإدارة', style: TextStyle(color: Colors.white)),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+                  onPressed: _showCreateTicketDialog,
+                  icon: const Icon(Icons.add,
+                      color: Colors.white, size: 18),
+                  label: const Text('تذكرة للإدارة',
+                      style: TextStyle(color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blueAccent),
                 ),
               ),
             ],
@@ -432,32 +580,70 @@ class _AgentSupportScreenState extends State<AgentSupportScreen> with SingleTick
         const Divider(height: 1),
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
-            stream: _db.collection('support_tickets').where('agentPhone', isEqualTo: sys.currentUserPhone).orderBy('timestamp', descending: true).snapshots(),
+            stream: _db
+                .collection('support_tickets')
+                .where('agentPhone',
+                    isEqualTo: context.read<AuthProvider>().activeUserPhone)
+                .orderBy('timestamp', descending: true)
+                .snapshots(),
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text('لا توجد تذاكر مع الإدارة حالياً.', style: TextStyle(color: Colors.grey)));
+              if (snapshot.connectionState == ConnectionState.waiting)
+                return const Center(child: CircularProgressIndicator());
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
+                return const Center(
+                    child: Text('لا توجد تذاكر مع الإدارة حالياً.',
+                        style: TextStyle(color: Colors.grey)));
 
               var tickets = snapshot.data!.docs;
-              return ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: tickets.length,
-                itemBuilder: (context, index) {
-                  var docId = tickets[index].id;
-                  var ticket = tickets[index].data() as Map<String, dynamic>;
-                  bool isClosed = ticket['status'] == 'مغلقة';
-
-                  return Card(
-                    elevation: 2, margin: const EdgeInsets.only(bottom: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    child: ListTile(
-                      onTap: () => _showAdminTicketChat(ticket, docId, sys),
-                      leading: CircleAvatar(backgroundColor: isClosed ? Colors.grey.withOpacity(0.2) : Colors.blue.withOpacity(0.2), child: Icon(Icons.receipt, color: isClosed ? Colors.grey : Colors.blue)),
-                      title: Text(ticket['subject'] ?? 'بدون عنوان', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                      subtitle: Text(ticket['status'] ?? '', style: TextStyle(color: isClosed ? Colors.grey : Colors.orange, fontSize: 12, fontWeight: FontWeight.bold)),
-                      trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
-                    ),
-                  );
+              return RefreshIndicator(
+                onRefresh: () async {
+                  await Future.delayed(
+                      const Duration(milliseconds: 300));
+                  context.read<UiProvider>().playSound('success');
                 },
+                child: ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  itemCount: tickets.length,
+                  itemBuilder: (context, index) {
+                    var docId = tickets[index].id;
+                    var ticket = tickets[index].data()
+                        as Map<String, dynamic>;
+                    bool isClosed = ticket['status'] == 'مغلقة';
+
+                    return Card(
+                      elevation: 2,
+                      margin: const EdgeInsets.only(bottom: 10),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                      child: ListTile(
+                        onTap: () =>
+                            _showAdminTicketChat(ticket, docId),
+                        leading: CircleAvatar(
+                            backgroundColor: isClosed
+                                ? Colors.grey.withOpacity(0.2)
+                                : Colors.blue.withOpacity(0.2),
+                            child: Icon(Icons.receipt,
+                                color: isClosed
+                                    ? Colors.grey
+                                    : Colors.blue)),
+                        title: Text(ticket['subject'] ?? 'بدون عنوان',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14)),
+                        subtitle: Text(ticket['status'] ?? '',
+                            style: TextStyle(
+                                color: isClosed
+                                    ? Colors.grey
+                                    : Colors.orange,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold)),
+                        trailing: const Icon(Icons.arrow_forward_ios,
+                            size: 14, color: Colors.grey),
+                      ),
+                    );
+                  },
+                ),
               );
             },
           ),
@@ -466,43 +652,91 @@ class _AgentSupportScreenState extends State<AgentSupportScreen> with SingleTick
     );
   }
 
-  // ==========================================
-  // واجهة التبويب الثاني (شكاوى الزبائن الموجهة للوكيل)
-  // ==========================================
-  Widget _buildCustomerSupportTab(SystemProvider sys) {
+  Widget _buildCustomerSupportTab() {
+    final auth = context.read<AuthProvider>();
     return StreamBuilder<QuerySnapshot>(
-      // 👈 هنا نجلب التذاكر التي وضع الزبون فيها رقم هذا الوكيل كهدف
-      stream: _db.collection('support_tickets').where('targetAgentPhone', isEqualTo: sys.currentUserPhone).orderBy('timestamp', descending: true).snapshots(),
+      stream: _db
+          .collection('support_tickets')
+          .where('targetAgentPhone', isEqualTo: auth.activeUserPhone)
+          .orderBy('timestamp', descending: true)
+          .snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.sentiment_very_satisfied, size: 50, color: Colors.grey), SizedBox(height: 10), Text('لا توجد شكاوى من زبائنك، عمل رائع!', style: TextStyle(color: Colors.grey))]));
+        if (snapshot.connectionState == ConnectionState.waiting)
+          return const Center(child: CircularProgressIndicator());
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
+          return const Center(
+              child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                Icon(Icons.sentiment_very_satisfied,
+                    size: 50, color: Colors.grey),
+                SizedBox(height: 10),
+                Text('لا توجد شكاوى من زبائنك، عمل رائع!',
+                    style: TextStyle(color: Colors.grey))
+              ]));
 
         var tickets = snapshot.data!.docs;
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: tickets.length,
-          itemBuilder: (context, index) {
-            var docId = tickets[index].id;
-            var ticket = tickets[index].data() as Map<String, dynamic>;
-            bool isClosed = ticket['status'] == 'مغلقة';
-
-            return Card(
-              elevation: 2, margin: const EdgeInsets.only(bottom: 10),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.purple.withOpacity(0.2))),
-              child: ListTile(
-                onTap: () => _showCustomerTicketChat(ticket, docId, sys),
-                leading: CircleAvatar(backgroundColor: isClosed ? Colors.grey.withOpacity(0.2) : Colors.purple.withOpacity(0.2), child: Icon(Icons.person, color: isClosed ? Colors.grey : Colors.purple)),
-                title: Text(ticket['creatorName'] ?? 'زبون', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                subtitle: Text('${ticket['subject']}\nالحالة: ${ticket['status']}', style: TextStyle(color: isClosed ? Colors.grey : Colors.orange, fontSize: 12)),
-                isThreeLine: true,
-                trailing: ElevatedButton(
-                  onPressed: () => _showCustomerTicketChat(ticket, docId, sys),
-                  style: ElevatedButton.styleFrom(backgroundColor: isClosed ? Colors.grey : Colors.purple, padding: const EdgeInsets.symmetric(horizontal: 10), minimumSize: const Size(60, 30)),
-                  child: const Text('رد', style: TextStyle(color: Colors.white, fontSize: 12)),
-                ),
-              ),
-            );
+        return RefreshIndicator(
+          onRefresh: () async {
+            await Future.delayed(const Duration(milliseconds: 300));
+            context.read<UiProvider>().playSound('success');
           },
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            itemCount: tickets.length,
+            itemBuilder: (context, index) {
+              var docId = tickets[index].id;
+              var ticket =
+                  tickets[index].data() as Map<String, dynamic>;
+              bool isClosed = ticket['status'] == 'مغلقة';
+
+              return Card(
+                elevation: 2,
+                margin: const EdgeInsets.only(bottom: 10),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(
+                        color: Colors.purple.withOpacity(0.2))),
+                child: ListTile(
+                  onTap: () =>
+                      _showCustomerTicketChat(ticket, docId),
+                  leading: CircleAvatar(
+                      backgroundColor: isClosed
+                          ? Colors.grey.withOpacity(0.2)
+                          : Colors.purple.withOpacity(0.2),
+                      child: Icon(Icons.person,
+                          color: isClosed
+                              ? Colors.grey
+                              : Colors.purple)),
+                  title: Text(ticket['creatorName'] ?? 'زبون',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 14)),
+                  subtitle: Text(
+                      '${ticket['subject']}\nالحالة: ${ticket['status']}',
+                      style: TextStyle(
+                          color: isClosed
+                              ? Colors.grey
+                              : Colors.orange,
+                          fontSize: 12)),
+                  isThreeLine: true,
+                  trailing: ElevatedButton(
+                    onPressed: () =>
+                        _showCustomerTicketChat(ticket, docId),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                            isClosed ? Colors.grey : Colors.purple,
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 10),
+                        minimumSize: const Size(60, 30)),
+                    child: const Text('رد',
+                        style: TextStyle(
+                            color: Colors.white, fontSize: 12)),
+                  ),
+                ),
+              );
+            },
+          ),
         );
       },
     );
