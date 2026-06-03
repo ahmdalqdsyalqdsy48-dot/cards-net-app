@@ -3,7 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart' as intl;
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart';
@@ -25,21 +26,19 @@ class _AgentClientListScreenState extends State<AgentClientListScreen> {
     super.dispose();
   }
 
-  void _playSound() {
-    Provider.of<UiProvider>(context, listen: false).playSound('click');
-  }
+  void _play(String type) => context.read<UiProvider>().playSound(type);
 
   void _showClientDetails(Map<String, dynamic> client) {
-    _playSound();
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+    _play('click');
+    final wallet = context.read<WalletProvider>();
+    final auth = context.read<AuthProvider>();
 
-    // استخراج البيانات قبل فتح النافذة لضمان عدم فقدانها
     final String clientPhone = client['phone'] ?? '';
     final String clientName = client['name'] ?? 'غير معروف';
     final String accountNumber =
         client['accountNumber']?.toString() ?? 'غير متوفر';
     final double balance = (client['wallets'] is Map
-            ? (client['wallets'] as Map)[sys.currentUserPhone] ?? 0.0
+            ? (client['wallets'] as Map)[auth.activeUserPhone] ?? 0.0
             : 0.0)
         .toDouble();
     final String? storeName = client['role'] == 'pos'
@@ -52,7 +51,6 @@ class _AgentClientListScreenState extends State<AgentClientListScreen> {
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
-        // استخدام StatefulBuilder منفصل لتجنب تداخل الحالة
         return StatefulBuilder(
           builder: (context, setModalState) {
             return Directionality(
@@ -90,12 +88,11 @@ class _AgentClientListScreenState extends State<AgentClientListScreen> {
                     const SizedBox(height: 8),
                     Expanded(
                       child: StreamBuilder<QuerySnapshot>(
-                        // استخدام بيانات ثابتة لضمان استقرار الـ Stream
                         stream: FirebaseFirestore.instance
                             .collection('transactions')
                             .where('fromPhone', isEqualTo: clientPhone)
                             .where('agentPhone',
-                                isEqualTo: sys.currentUserPhone)
+                                isEqualTo: auth.activeUserPhone)
                             .orderBy('timestamp', descending: true)
                             .limit(20)
                             .snapshots(),
@@ -182,21 +179,22 @@ class _AgentClientListScreenState extends State<AgentClientListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
+    final wallet = context.watch<WalletProvider>();
+    final auth = context.watch<AuthProvider>();
 
-    final List<Map<String, dynamic>> clients = sys.usersList.where((user) {
+    final List<Map<String, dynamic>> clients = wallet.usersList.where((user) {
       final wallets = user['wallets'] as Map<String, dynamic>? ?? {};
-      return wallets.containsKey(sys.currentUserPhone);
+      return wallets.containsKey(auth.activeUserPhone);
     }).toList();
 
     final List<Map<String, dynamic>> posWithoutWallet =
-        sys.usersList.where((user) {
+        wallet.usersList.where((user) {
       if (user['role'] != 'pos') return false;
       final agentRel =
           user['agent_relations'] as Map<String, dynamic>? ?? {};
-      return agentRel.containsKey(sys.currentUserPhone) &&
+      return agentRel.containsKey(auth.activeUserPhone) &&
           !(user['wallets'] as Map<String, dynamic>? ?? {})
-              .containsKey(sys.currentUserPhone);
+              .containsKey(auth.activeUserPhone);
     }).toList();
 
     final Map<String, Map<String, dynamic>> mergedMap = {};
@@ -223,108 +221,115 @@ class _AgentClientListScreenState extends State<AgentClientListScreen> {
     return Scaffold(
       appBar: const CustomHeader(title: 'عملائي'),
       drawer: CustomAgentDrawer(
-        agentName: sys.currentUserName,
-        phoneNumber: sys.currentUserPhone,
+        agentName: wallet.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
         role: 'وكيل معتمد',
-        currentBalance: sys.currentUserBalance,
+        currentBalance: wallet.currentUserBalance,
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: TextField(
-                controller: _searchController,
-                onChanged: (v) => setState(() => _searchQuery = v),
-                decoration: InputDecoration(
-                  hintText: 'ابحث عن عميل بالاسم أو رقم الحساب',
-                  prefixIcon: const Icon(Icons.search),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  contentPadding: const EdgeInsets.symmetric(
-                      vertical: 8, horizontal: 12),
+        child: RefreshIndicator(
+          onRefresh: () async {
+            setState(() {});
+            await Future.delayed(const Duration(milliseconds: 300));
+            _play('success');
+          },
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (v) => setState(() => _searchQuery = v),
+                  decoration: InputDecoration(
+                    hintText: 'ابحث عن عميل بالاسم أو رقم الحساب',
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    contentPadding: const EdgeInsets.symmetric(
+                        vertical: 8, horizontal: 12),
+                  ),
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                children: [
-                  Text('عدد العملاء: ${filtered.length}',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey)),
-                  const Spacer(),
-                ],
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    Text('عدد العملاء: ${filtered.length}',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey)),
+                    const Spacer(),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: filtered.isEmpty
-                  ? const Center(
-                      child: Text('لا يوجد عملاء مرتبطون بك بعد',
-                          style: TextStyle(color: Colors.grey)))
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      itemCount: filtered.length,
-                      itemBuilder: (context, index) {
-                        final client = filtered[index];
-                        final clientName =
-                            client['name'] ?? 'بدون اسم';
-                        final accountNumber =
-                            client['accountNumber']?.toString() ??
-                                'غير متوفر';
-                        final bool isPos = client['role'] == 'pos';
-                        final double walletBalance =
-                            (client['wallets'] is Map
-                                    ? (client['wallets'] as Map)[sys
-                                            .currentUserPhone] ??
-                                        0.0
-                                    : 0.0)
-                                .toDouble();
+              const SizedBox(height: 8),
+              Expanded(
+                child: filtered.isEmpty
+                    ? const Center(
+                        child: Text('لا يوجد عملاء مرتبطون بك بعد',
+                            style: TextStyle(color: Colors.grey)))
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        itemCount: filtered.length,
+                        itemBuilder: (context, index) {
+                          final client = filtered[index];
+                          final clientName =
+                              client['name'] ?? 'بدون اسم';
+                          final accountNumber =
+                              client['accountNumber']?.toString() ??
+                                  'غير متوفر';
+                          final bool isPos = client['role'] == 'pos';
+                          final double walletBalance =
+                              (client['wallets'] is Map
+                                      ? (client['wallets'] as Map)[auth
+                                              .activeUserPhone] ??
+                                          0.0
+                                      : 0.0)
+                                  .toDouble();
 
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor:
-                                  isPos ? Colors.teal : Colors.blue,
-                              child: Icon(
-                                isPos
-                                    ? Icons.storefront
-                                    : Icons.person,
-                                color: Colors.white,
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor:
+                                    isPos ? Colors.teal : Colors.blue,
+                                child: Icon(
+                                  isPos
+                                      ? Icons.storefront
+                                      : Icons.person,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              title: Text(clientName,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold)),
+                              subtitle: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text('الحساب: $accountNumber'),
+                                  Text(
+                                    'الرصيد لديّ: ${walletBalance.toStringAsFixed(0)} ريال',
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                ],
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.info_outline,
+                                    color: Colors.teal),
+                                onPressed: () =>
+                                    _showClientDetails(client),
                               ),
                             ),
-                            title: Text(clientName,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold)),
-                            subtitle: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                              children: [
-                                Text('الحساب: $accountNumber'),
-                                Text(
-                                  'الرصيد لديّ: ${walletBalance.toStringAsFixed(0)} ريال',
-                                  style: const TextStyle(fontSize: 11),
-                                ),
-                              ],
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.info_outline,
-                                  color: Colors.teal),
-                              onPressed: () =>
-                                  _showClientDetails(client),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ],
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
