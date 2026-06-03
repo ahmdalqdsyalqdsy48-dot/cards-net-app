@@ -563,7 +563,8 @@ class _AdvancedStatementScreenState extends State<AdvancedStatementScreen> {
               ),
               finalData.isEmpty
                   ? SliverFillRemaining(
-                      child: Center(child: Text('لا توجد عمليات مطابقة في هذه الفترة.', style: TextStyle(color: Colors.grey)))),
+                      child: Center(child: Text('لا توجد عمليات مطابقة في هذه الفترة.', style: TextStyle(color: Colors.grey))),
+                    )
                   : SliverList(
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
