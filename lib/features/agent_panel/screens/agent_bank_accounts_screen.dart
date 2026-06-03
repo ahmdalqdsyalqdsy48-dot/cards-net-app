@@ -1,12 +1,11 @@
-// lib/features/agent_panel/screens/agent_bank_accounts_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // ✅ استيراد Timestamp
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart';
@@ -22,8 +21,7 @@ class AgentBankAccountsScreen extends StatefulWidget {
 class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
   String _searchQuery = '';
 
-  void _play(BuildContext context, String type) =>
-      Provider.of<UiProvider>(context, listen: false).playSound(type);
+  void _play(String type) => context.read<UiProvider>().playSound(type);
 
   void _showSnack(String msg, {bool error = false}) {
     if (!mounted) return;
@@ -38,8 +36,8 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
   }
 
   // ==================== 1. نافذة إضافة حساب جديد ====================
-  void _showAddAccountDialog(SystemProvider provider) {
-    _play(context, 'click');
+  void _showAddAccountDialog(WalletProvider wallet) {
+    _play('click');
     final bankNameController = TextEditingController();
     final accountNumberController = TextEditingController();
     final beneficiaryController = TextEditingController();
@@ -68,9 +66,8 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // اختيار الشبكات المرتبطة (قائمة أزرار متعددة)
                   FutureBuilder<List<Map<String, dynamic>>>(
-                    future: provider.getAgentNetworkNames(),
+                    future: wallet.getAgentNetworkNames(),
                     builder: (context, snapshot) {
                       final networks = snapshot.data ?? [];
                       if (networks.isEmpty) {
@@ -148,7 +145,7 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
             actions: [
               TextButton(
                   onPressed: () {
-                    _play(context, 'click');
+                    _play('click');
                     Navigator.pop(ctx);
                   },
                   child: const Text('إلغاء')),
@@ -159,14 +156,15 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                   if (bankNameController.text.isNotEmpty &&
                       accountNumberController.text.isNotEmpty) {
                     Navigator.pop(ctx);
-                    _play(context, 'click');
+                    _play('click');
                     final networkName = selectedNetworkNames.isNotEmpty
                         ? selectedNetworkNames.join("، ")
-                        : provider.currentUserNetwork;
-                    provider
+                        : '';
+                    final auth = context.read<AuthProvider>();
+                    wallet
                         .addAgentBankAccount(
                       networkName,
-                      provider.currentUserName,
+                      auth.activeUserPhone ?? '',
                       bankNameController.text.trim(),
                       accountNumberController.text.trim(),
                       noteController.text.trim(),
@@ -174,8 +172,10 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                     )
                         .then((_) {
                       _showSnack('تم حفظ الحساب بنجاح ✅');
+                      _play('success');
                     }).catchError((e) {
                       _showSnack('فشل الحفظ: $e', error: true);
+                      _play('error');
                     });
                   } else {
                     _showSnack('يرجى إدخال اسم البنك ورقم الحساب',
@@ -195,8 +195,8 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
 
   // ==================== 2. نافذة تعديل حساب ====================
   void _showEditAccountDialog(
-      SystemProvider provider, Map<String, dynamic> account) {
-    _play(context, 'click');
+      WalletProvider wallet, Map<String, dynamic> account) {
+    _play('click');
     final bankNameController =
         TextEditingController(text: account['bankName']);
     final accountNumberController =
@@ -209,10 +209,9 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
     List<String> currentNetworkIds =
         List<String>.from(account['networkIds'] ?? []);
     List<String> selectedNetworkIds = List.from(currentNetworkIds);
-    // ✅ تعريف selectedNetworkNames
     List<String> selectedNetworkNames = [];
-    // ملء الأسماء الحالية من الشبكات
-    provider.getAgentNetworkNames().then((nets) {
+
+    wallet.getAgentNetworkNames().then((nets) {
       for (var net in nets) {
         if (selectedNetworkIds.contains(net['networkId'])) {
           selectedNetworkNames.add(net['networkName'] ?? '');
@@ -239,9 +238,8 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // اختيار الشبكات المرتبطة
                   FutureBuilder<List<Map<String, dynamic>>>(
-                    future: provider.getAgentNetworkNames(),
+                    future: wallet.getAgentNetworkNames(),
                     builder: (context, snapshot) {
                       final networks = snapshot.data ?? [];
                       if (networks.isNotEmpty) {
@@ -309,7 +307,7 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
             actions: [
               TextButton(
                   onPressed: () {
-                    _play(context, 'click');
+                    _play('click');
                     Navigator.pop(ctx);
                   },
                   child: const Text('إلغاء')),
@@ -318,14 +316,14 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                     backgroundColor: Theme.of(ctx).colorScheme.primary),
                 onPressed: () {
                   Navigator.pop(ctx);
-                  _play(context, 'click');
-                  provider
+                  _play('click');
+                  wallet
                       .updateAgentBankAccount(
                     account['docId'],
                     selectedNetworkNames.isNotEmpty
                         ? selectedNetworkNames.join("، ")
                         : (account['networkName'] ?? ''),
-                    provider.currentUserName,
+                    account['agentName'] ?? '',
                     bankNameController.text.trim(),
                     accountNumberController.text.trim(),
                     noteController.text.trim(),
@@ -333,8 +331,10 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                   )
                       .then((_) {
                     _showSnack('تم التعديل بنجاح ✏️');
+                    _play('success');
                   }).catchError((e) {
                     _showSnack('فشل التعديل: $e', error: true);
+                    _play('error');
                   });
                 },
                 child: Text('حفظ التعديلات',
@@ -350,19 +350,21 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
 
   // ==================== 3. دوال التحكم (حالة / حذف / نسخ / مشاركة) ====================
   void _toggleAccountStatus(
-      SystemProvider provider, Map<String, dynamic> account) {
-    _play(context, 'click');
-    provider
+      WalletProvider wallet, Map<String, dynamic> account) {
+    _play('click');
+    wallet
         .toggleAgentBankAccountStatus(account['docId'], account['status'])
         .then((_) {
       _showSnack('تم تغيير الحالة');
+      _play('success');
     }).catchError((e) {
       _showSnack('فشل تغيير الحالة: $e', error: true);
+      _play('error');
     });
   }
 
-  void _deleteAccount(SystemProvider provider, String docId) {
-    _play(context, 'click');
+  void _deleteAccount(WalletProvider wallet, String docId) {
+    _play('click');
     final colors = Theme.of(context).colorScheme;
     showDialog(
       context: context,
@@ -377,7 +379,7 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
           actions: [
             TextButton(
                 onPressed: () {
-                  _play(context, 'click');
+                  _play('click');
                   Navigator.pop(ctx);
                 },
                 child: const Text('تراجع')),
@@ -386,11 +388,13 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                   backgroundColor: colors.error),
               onPressed: () {
                 Navigator.pop(ctx);
-                _play(context, 'click');
-                provider.deleteAgentBankAccount(docId).then((_) {
+                _play('click');
+                wallet.deleteAgentBankAccount(docId).then((_) {
                   _showSnack('تم الحذف بنجاح 🗑️');
+                  _play('success');
                 }).catchError((e) {
                   _showSnack('فشل الحذف: $e', error: true);
+                  _play('error');
                 });
               },
               child: Text('نعم، احذف الحساب',
@@ -403,7 +407,7 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
   }
 
   void _copyAccountDetails(Map<String, dynamic> account) {
-    _play(context, 'success');
+    _play('success');
     final buffer = StringBuffer();
     buffer.writeln('🏦 ${account['bankName']}');
     buffer.writeln('🔢 الحساب: ${account['accountNumber']}');
@@ -420,7 +424,7 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
   }
 
   void _shareAccountDetails(Map<String, dynamic> account) {
-    _play(context, 'click');
+    _play('click');
     final buffer = StringBuffer();
     buffer.writeln('🏦 ${account['bankName']}');
     buffer.writeln('🔢 الحساب: ${account['accountNumber']}');
@@ -437,13 +441,12 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
+    final wallet = context.watch<WalletProvider>();
+    final auth = context.watch<AuthProvider>();
     final colors = Theme.of(context).colorScheme;
 
-    // ✅ القائمة تأتي مباشرة من SystemProvider (مثل كود مالك النظام)
-    List<Map<String, dynamic>> accounts = sys.myAgentBankAccounts;
+    List<Map<String, dynamic>> accounts = wallet.myAgentBankAccounts;
 
-    // تصفية حسب البحث
     if (_searchQuery.isNotEmpty) {
       accounts = accounts.where((a) {
         return (a['bankName'] ?? '').toString().contains(_searchQuery) ||
@@ -457,10 +460,10 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
     return Scaffold(
       appBar: const CustomHeader(title: 'حساباتي البنكية'),
       drawer: CustomAgentDrawer(
-        agentName: sys.currentUserName,
-        phoneNumber: sys.currentUserPhone,
+        agentName: wallet.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
         role: 'وكيل معتمد',
-        currentBalance: sys.currentUserBalance,
+        currentBalance: wallet.currentUserBalance,
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
@@ -472,7 +475,7 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton.icon(
-                  onPressed: () => _showAddAccountDialog(sys),
+                  onPressed: () => _showAddAccountDialog(wallet),
                   icon: Icon(Icons.add_card, color: colors.onPrimary),
                   label: Text('إضافة حساب بنكي جديد',
                       style: TextStyle(
@@ -487,7 +490,6 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                 ),
               ),
             ),
-            // حقل البحث
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: TextField(
@@ -528,14 +530,16 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                               color: colors.onSurfaceVariant)))
                   : RefreshIndicator(
                       onRefresh: () async {
-                        await sys.loadUserData(sys.currentUserPhone);
                         setState(() {});
+                        await Future.delayed(const Duration(milliseconds: 300));
+                        _play('success');
                       },
                       child: ReorderableListView.builder(
                         padding: const EdgeInsets.all(16),
                         itemCount: accounts.length,
                         onReorder: (oldIndex, newIndex) {
-                          sys.reorderAgentBankAccounts(
+                          _play('click');
+                          wallet.reorderAgentBankAccounts(
                               oldIndex, newIndex);
                         },
                         itemBuilder: (context, index) {
@@ -688,7 +692,7 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                                             'تعديل',
                                             colors.primary,
                                             () => _showEditAccountDialog(
-                                                sys, account),
+                                                wallet, account),
                                           ),
                                           _buildSmallButton(
                                             isActive
@@ -701,14 +705,14 @@ class _AgentBankAccountsScreenState extends State<AgentBankAccountsScreen> {
                                                 ? colors.error
                                                 : Colors.green,
                                             () => _toggleAccountStatus(
-                                                sys, account),
+                                                wallet, account),
                                           ),
                                           _buildSmallButton(
                                             Icons.delete,
                                             'حذف',
                                             colors.error,
                                             () => _deleteAccount(
-                                                sys,
+                                                wallet,
                                                 account['docId']),
                                           ),
                                         ],
