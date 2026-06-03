@@ -1132,6 +1132,25 @@ class WalletProvider extends ChangeNotifier {
             }).toList());
   }
 
+  // *********************************************************
+  // 🆕 تمت إضافة هذه الدالة المفقودة
+  // *********************************************************
+  Stream<List<Map<String, dynamic>>> getMyPendingQuotaRequests() {
+    if (_auth?.activeUserPhone == null) return Stream.value([]);
+    return _db
+        .collection('recharge_requests')
+        .where('userPhone', isEqualTo: _auth!.activeUserPhone)
+        .where('type', isEqualTo: 'saas_quota')
+        .where('status', isEqualTo: 'قيد الانتظار')
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) {
+              final data = doc.data();
+              data['docId'] = doc.id;
+              return data;
+            }).toList());
+  }
+  // *********************************************************
+
   Stream<List<Map<String, dynamic>>> getPendingPosRechargeRequests() {
     if (_auth?.activeUserPhone == null) return Stream.value([]);
     return _db
