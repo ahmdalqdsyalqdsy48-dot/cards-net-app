@@ -4,11 +4,12 @@ import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/widgets/custom_header.dart';
-import '../widgets/custom_agent_drawer.dart';  // <--- تمت الإضافة
+import '../widgets/custom_agent_drawer.dart';
 
 class DiscountScreen extends StatefulWidget {
   const DiscountScreen({super.key});
@@ -19,7 +20,6 @@ class DiscountScreen extends StatefulWidget {
 
 class _DiscountScreenState extends State<DiscountScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  bool _isProcessing = false;
 
   String _draftTierTitle = '';
   String _draftTierCondition = '';
@@ -37,8 +37,7 @@ class _DiscountScreenState extends State<DiscountScreen> {
     super.dispose();
   }
 
-  void _play(String type) =>
-      Provider.of<UiProvider>(context, listen: false).playSound(type);
+  void _play(String type) => context.read<UiProvider>().playSound(type);
 
   void _showToast(String message, {bool isError = false}) {
     if (!mounted) return;
@@ -102,9 +101,8 @@ class _DiscountScreenState extends State<DiscountScreen> {
                     style: ElevatedButton.styleFrom(backgroundColor: color),
                     onPressed: () {
                       if (requirePassword) {
-                        final sys = Provider.of<SystemProvider>(context,
-                            listen: false);
-                        if (!sys.validatePin(
+                        final auth = context.read<AuthProvider>();
+                        if (!auth.validatePin(
                                 passwordController.text.trim()) &&
                             passwordController.text.trim() != '123456') {
                           _play('error');
@@ -154,9 +152,11 @@ class _DiscountScreenState extends State<DiscountScreen> {
   }
 
   // ---------- نافذة إضافة/تعديل شريحة خصم ----------
-  void _showDiscountTierBottomSheet(SystemProvider sys,
+  void _showDiscountTierBottomSheet(
       {Map<String, dynamic>? existingTier, String? docId}) {
     _play('click');
+    final wallet = context.read<WalletProvider>();
+    final auth = context.read<AuthProvider>();
     String title = existingTier?['title'] ?? _draftTierTitle;
     String condition =
         existingTier?['condition']?.toString() ?? _draftTierCondition;
@@ -296,7 +296,7 @@ class _DiscountScreenState extends State<DiscountScreen> {
                                           _showTargetInfoDialog(
                                               phone,
                                               searchResults[phone]!,
-                                              sys.currentUserPhone),
+                                              auth.activeUserPhone ?? ''),
                                     )
                                   : null,
                             ),
@@ -305,7 +305,7 @@ class _DiscountScreenState extends State<DiscountScreen> {
                             keyboardType: TextInputType.phone,
                             onChanged: (v) {
                               targetPhones[idx] = v;
-                              _debounceSearch(v, sys, setModalState,
+                              _debounceSearch(v, setModalState,
                                   searchResults, phone);
                             },
                           ),
@@ -323,7 +323,7 @@ class _DiscountScreenState extends State<DiscountScreen> {
                       ]),
                       if (searchResults[phone] != null)
                         _buildTargetInfoCard(
-                            phone, searchResults[phone]!, sys),
+                            phone, searchResults[phone]!),
                       const SizedBox(height: 8),
                     ]);
                   }).toList(),
@@ -390,7 +390,7 @@ class _DiscountScreenState extends State<DiscountScreen> {
                               try {
                                 Map<String, dynamic> tierData = {
                                   'agentPhone':
-                                      sys.currentUserPhone,
+                                      auth.activeUserPhone ?? '',
                                   'title': title,
                                   'condition':
                                       int.parse(condition),
@@ -496,13 +496,14 @@ class _DiscountScreenState extends State<DiscountScreen> {
     );
   }
 
-  void _debounceSearch(String phone, SystemProvider sys,
+  void _debounceSearch(String phone,
       StateSetter setModalState, Map<String, dynamic?> results,
       String currentPhone) {
+    final wallet = context.read<WalletProvider>();
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 600), () async {
       if (phone.length >= 9) {
-        final userData = await sys.searchUserForTransfer(phone);
+        final userData = await wallet.searchUserForTransfer(phone);
         setModalState(() => results[currentPhone] = userData);
         if (userData != null) {
           _play('success');
@@ -512,7 +513,7 @@ class _DiscountScreenState extends State<DiscountScreen> {
   }
 
   Widget _buildTargetInfoCard(
-      String phone, Map<String, dynamic> data, SystemProvider sys) {
+      String phone, Map<String, dynamic> data) {
     return Card(
       color: Colors.teal.shade50,
       elevation: 2,
@@ -535,7 +536,7 @@ class _DiscountScreenState extends State<DiscountScreen> {
           Row(mainAxisAlignment: MainAxisAlignment.end, children: [
             TextButton.icon(
               onPressed: () => _showTargetTransactionsDialog(
-                  phone, sys.currentUserPhone, data['name'] ?? ''),
+                  phone, data['name'] ?? ''),
               icon: const Icon(Icons.history, size: 18),
               label: const Text('آخر العمليات'),
             ),
@@ -575,7 +576,7 @@ class _DiscountScreenState extends State<DiscountScreen> {
                       onPressed: () {
                         Navigator.pop(ctx);
                         _showTargetTransactionsDialog(
-                            phone, agentPhone, data['name'] ?? '');
+                            phone, data['name'] ?? '');
                       },
                       icon: const Icon(Icons.receipt),
                       label: const Text('عرض آخر العمليات'),
@@ -615,7 +616,8 @@ class _DiscountScreenState extends State<DiscountScreen> {
   }
 
   void _showTargetTransactionsDialog(
-      String phone, String agentPhone, String userName) async {
+      String phone, String userName) async {
+    final auth = context.read<AuthProvider>();
     showDialog(
       context: context,
       builder: (_) => Directionality(
@@ -626,7 +628,7 @@ class _DiscountScreenState extends State<DiscountScreen> {
             width: double.maxFinite,
             height: 300,
             child: FutureBuilder<List<Map<String, dynamic>>>(
-              future: _fetchTargetTransactions(phone, agentPhone),
+              future: _fetchTargetTransactions(phone, auth.activeUserPhone ?? ''),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting)
                   return const Center(child: CircularProgressIndicator());
@@ -674,186 +676,193 @@ class _DiscountScreenState extends State<DiscountScreen> {
   // ---------- البناء الرئيسي ----------
   @override
   Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
+    final wallet = context.watch<WalletProvider>();
+    final auth = context.watch<AuthProvider>();
     final theme = Theme.of(context);
     final textColor = theme.textTheme.bodyMedium?.color ?? Colors.black87;
 
     return Scaffold(
-      appBar: CustomHeader(title: 'الخصومات'),
+      appBar: const CustomHeader(title: 'الخصومات'),
       drawer: CustomAgentDrawer(
-        agentName: sys.currentUserName,
-        phoneNumber: sys.currentUserPhone,
+        agentName: wallet.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
         role: 'وكيل معتمد (Agent)',
-        currentBalance: sys.currentUserBalance,
+        currentBalance: wallet.currentUserBalance,
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: _db
-            .collection('discount_tiers')
-            .where('agentPhone', isEqualTo: sys.currentUserPhone)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting)
-            return const Center(child: CircularProgressIndicator());
-          List<QueryDocumentSnapshot> tiers =
-              snapshot.hasData ? snapshot.data!.docs : [];
-          tiers.sort((a, b) =>
-              ((b.data() as Map)['condition'] as int)
-                  .compareTo((a.data() as Map)['condition'] as int));
-
-          return Directionality(
-            textDirection: TextDirection.rtl,
-            child: Column(children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                margin: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                    color: Colors.amber.shade100,
-                    borderRadius: BorderRadius.circular(10)),
-                child: const Text(
-                    '💡 الخصم يُطبق تلقائياً على المشتريات عند تحقيق شرط السحب.',
-                    style: TextStyle(
-                        color: Colors.brown,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12)),
-              ),
-              Expanded(
-                child: tiers.isEmpty
-                    ? const Center(
-                        child: Text('لم تقم بإضافة أي شرائح خصم حتى الآن.',
-                            style: TextStyle(color: Colors.grey)))
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: tiers.length,
-                        itemBuilder: (context, index) {
-                          var tier =
-                              tiers[index].data() as Map<String, dynamic>;
-                          bool isActive = tier['isActive'] ?? true;
-                          Color tColor = Color(
-                              tier['color'] ?? Colors.amber.shade700.value);
-                          String dType = tier['discountType'] == 'percentage'
-                              ? '%'
-                              : 'ريال';
-
-                          return Card(
-                            color: isActive
-                                ? Theme.of(context).cardColor
-                                : Colors.grey.shade200,
-                            elevation: 2,
-                            margin: const EdgeInsets.only(bottom: 12),
-                            child: ListTile(
-                              leading: Icon(
-                                  isActive ? Icons.stars : Icons.block,
-                                  color: isActive ? tColor : Colors.grey,
-                                  size: 35),
-                              title: Text(tier['title'],
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: isActive ? tColor : Colors.grey,
-                                      decoration: isActive
-                                          ? null
-                                          : TextDecoration.lineThrough)),
-                              subtitle: Text(
-                                  'شرط السحب: ${tier['condition']} ريال\nالخصم: ${tier['discountValue']}$dType',
-                                  style: TextStyle(
-                                      fontSize: 12, color: textColor)),
-                              trailing: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                        color: isActive
-                                            ? tColor.withOpacity(0.1)
-                                            : Colors.grey.withOpacity(0.1),
-                                        borderRadius:
-                                            BorderRadius.circular(20)),
-                                    child: Text(
-                                        tier['targetType'] == 'all'
-                                            ? 'للجميع'
-                                            : tier['targetType'] == 'pos'
-                                                ? 'نقاط البيع'
-                                                : tier['targetType'] == 'user'
-                                                    ? 'المستخدمين'
-                                                    : 'محدد',
-                                        style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color:
-                                                isActive ? tColor : Colors.grey,
-                                            fontSize: 10)),
-                                  ),
-                                  const SizedBox(height: 5),
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      GestureDetector(
-                                          onTap: () async {
-                                            bool confirm =
-                                                await _confirmAction(
-                                                    isActive
-                                                        ? "تجميد الشريحة"
-                                                        : "تنشيط الشريحة",
-                                                    "تغيير حالة العرض؟",
-                                                    Colors.orange);
-                                            if (confirm)
-                                              _db
-                                                  .collection(
-                                                      'discount_tiers')
-                                                  .doc(tiers[index].id)
-                                                  .update({
-                                                'isActive': !isActive
-                                              });
-                                          },
-                                          child: Icon(
-                                              isActive
-                                                  ? Icons.pause_circle_filled
-                                                  : Icons.play_circle_fill,
-                                              color: Colors.orange,
-                                              size: 20)),
-                                      const SizedBox(width: 10),
-                                      GestureDetector(
-                                          onTap: () =>
-                                              _showDiscountTierBottomSheet(
-                                                  sys,
-                                                  existingTier: tier,
-                                                  docId: tiers[index].id),
-                                          child: const Icon(Icons.edit,
-                                              color: Colors.blue, size: 20)),
-                                      const SizedBox(width: 10),
-                                      GestureDetector(
-                                          onTap: () async {
-                                            bool confirm =
-                                                await _confirmAction(
-                                                    "حذف الشريحة",
-                                                    "سيتم إلغاء الخصم عن البقالات المنضمة، متأكد؟",
-                                                    Colors.red,
-                                                    requirePassword: true);
-                                            if (confirm) {
-                                              _play('click');
-                                              await _db
-                                                  .collection(
-                                                      'discount_tiers')
-                                                  .doc(tiers[index].id)
-                                                  .delete();
-                                              _showToast('تم حذف الشريحة');
-                                            }
-                                          },
-                                          child: const Icon(Icons.delete,
-                                              color: Colors.red, size: 20)),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }),
-              ),
-            ]),
-          );
+      body: RefreshIndicator(
+        onRefresh: () async {
+          setState(() {});
+          await Future.delayed(const Duration(milliseconds: 300));
+          _play('success');
         },
+        child: StreamBuilder<QuerySnapshot>(
+          stream: _db
+              .collection('discount_tiers')
+              .where('agentPhone', isEqualTo: auth.activeUserPhone)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting)
+              return const Center(child: CircularProgressIndicator());
+            List<QueryDocumentSnapshot> tiers =
+                snapshot.hasData ? snapshot.data!.docs : [];
+            tiers.sort((a, b) =>
+                ((b.data() as Map)['condition'] as int)
+                    .compareTo((a.data() as Map)['condition'] as int));
+
+            return Directionality(
+              textDirection: TextDirection.rtl,
+              child: Column(children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                      color: Colors.amber.shade100,
+                      borderRadius: BorderRadius.circular(10)),
+                  child: const Text(
+                      '💡 الخصم يُطبق تلقائياً على المشتريات عند تحقيق شرط السحب.',
+                      style: TextStyle(
+                          color: Colors.brown,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12)),
+                ),
+                Expanded(
+                  child: tiers.isEmpty
+                      ? const Center(
+                          child: Text('لم تقم بإضافة أي شرائح خصم حتى الآن.',
+                              style: TextStyle(color: Colors.grey)))
+                      : ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: tiers.length,
+                          itemBuilder: (context, index) {
+                            var tier =
+                                tiers[index].data() as Map<String, dynamic>;
+                            bool isActive = tier['isActive'] ?? true;
+                            Color tColor = Color(
+                                tier['color'] ?? Colors.amber.shade700.value);
+                            String dType = tier['discountType'] == 'percentage'
+                                ? '%'
+                                : 'ريال';
+
+                            return Card(
+                              color: isActive
+                                  ? Theme.of(context).cardColor
+                                  : Colors.grey.shade200,
+                              elevation: 2,
+                              margin: const EdgeInsets.only(bottom: 12),
+                              child: ListTile(
+                                leading: Icon(
+                                    isActive ? Icons.stars : Icons.block,
+                                    color: isActive ? tColor : Colors.grey,
+                                    size: 35),
+                                title: Text(tier['title'],
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: isActive ? tColor : Colors.grey,
+                                        decoration: isActive
+                                            ? null
+                                            : TextDecoration.lineThrough)),
+                                subtitle: Text(
+                                    'شرط السحب: ${tier['condition']} ريال\nالخصم: ${tier['discountValue']}$dType',
+                                    style: TextStyle(
+                                        fontSize: 12, color: textColor)),
+                                trailing: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                          color: isActive
+                                              ? tColor.withOpacity(0.1)
+                                              : Colors.grey.withOpacity(0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(20)),
+                                      child: Text(
+                                          tier['targetType'] == 'all'
+                                              ? 'للجميع'
+                                              : tier['targetType'] == 'pos'
+                                                  ? 'نقاط البيع'
+                                                  : tier['targetType'] == 'user'
+                                                      ? 'المستخدمين'
+                                                      : 'محدد',
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color:
+                                                  isActive ? tColor : Colors.grey,
+                                              fontSize: 10)),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        GestureDetector(
+                                            onTap: () async {
+                                              bool confirm =
+                                                  await _confirmAction(
+                                                      isActive
+                                                          ? "تجميد الشريحة"
+                                                          : "تنشيط الشريحة",
+                                                      "تغيير حالة العرض؟",
+                                                      Colors.orange);
+                                              if (confirm)
+                                                _db
+                                                    .collection(
+                                                        'discount_tiers')
+                                                    .doc(tiers[index].id)
+                                                    .update({
+                                                  'isActive': !isActive
+                                                });
+                                            },
+                                            child: Icon(
+                                                isActive
+                                                    ? Icons.pause_circle_filled
+                                                    : Icons.play_circle_fill,
+                                                color: Colors.orange,
+                                                size: 20)),
+                                        const SizedBox(width: 10),
+                                        GestureDetector(
+                                            onTap: () =>
+                                                _showDiscountTierBottomSheet(
+                                                    existingTier: tier,
+                                                    docId: tiers[index].id),
+                                            child: const Icon(Icons.edit,
+                                                color: Colors.blue, size: 20)),
+                                        const SizedBox(width: 10),
+                                        GestureDetector(
+                                            onTap: () async {
+                                              bool confirm =
+                                                  await _confirmAction(
+                                                      "حذف الشريحة",
+                                                      "سيتم إلغاء الخصم عن البقالات المنضمة، متأكد؟",
+                                                      Colors.red,
+                                                      requirePassword: true);
+                                              if (confirm) {
+                                                _play('click');
+                                                await _db
+                                                    .collection(
+                                                        'discount_tiers')
+                                                    .doc(tiers[index].id)
+                                                    .delete();
+                                                _showToast('تم حذف الشريحة');
+                                              }
+                                            },
+                                            child: const Icon(Icons.delete,
+                                                color: Colors.red, size: 20)),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }),
+                ),
+              ]),
+            );
+          },
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showDiscountTierBottomSheet(sys),
+        onPressed: () => _showDiscountTierBottomSheet(),
         backgroundColor: Colors.amber.shade700,
         icon: const Icon(Icons.add_moderator, color: Colors.white),
         label: const Text('إضافة شريحة',
