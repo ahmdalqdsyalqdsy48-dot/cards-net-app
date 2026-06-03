@@ -8,7 +8,8 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart' as intl;
 import 'package:share_plus/share_plus.dart';
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/widgets/custom_header.dart';
@@ -24,39 +25,48 @@ class MarketingOffersScreen extends StatefulWidget {
 class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
+  void _play(String type) => context.read<UiProvider>().playSound(type);
 
   // ==========================================
-  // 🎟️ نافذة إنشاء عرض / كوبون جديد (المطورة)
+  // 🎟️ نافذة إنشاء عرض / كوبون جديد
   // ==========================================
-  void _showCreateOfferDialog(SystemProvider sys, ThemeProvider theme) async {
+  void _showCreateOfferDialog() async {
     _play('click');
-    
-    // 1. جلب شبكات الوكيل أولاً قبل فتح النافذة
-    showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
+    final auth = context.read<AuthProvider>();
+    final wallet = context.read<WalletProvider>();
+    final theme = context.read<ThemeProvider>();
+
+    // 1. جلب شبكات الوكيل
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (c) => const Center(child: CircularProgressIndicator()));
     List<String> agentNetworks = ['الكل'];
     try {
-      var netsQuery = await _db.collection('networks').where('agentPhone', isEqualTo: sys.currentUserPhone).get();
-      for(var doc in netsQuery.docs) {
-         agentNetworks.add(doc.data()['name'] ?? 'شبكة بدون اسم');
+      var netsQuery = await _db
+          .collection('networks')
+          .where('agentPhone', isEqualTo: auth.activeUserPhone)
+          .get();
+      for (var doc in netsQuery.docs) {
+        agentNetworks.add(doc.data()['name'] ?? 'شبكة بدون اسم');
       }
-    } catch(e) {
+    } catch (e) {
       debugPrint('خطأ في جلب الشبكات: $e');
     }
-    if (mounted) Navigator.pop(context); // إغلاق التحميل
+    if (mounted) Navigator.pop(context);
 
     final formKey = GlobalKey<FormState>();
-    
+
     String newCode = '';
-    String discountType = 'percent'; // percent, fixed, combo, referral
+    String discountType = 'percent';
     double discountValue = 0.0;
     String comboDesc = '';
     double referrerReward = 0.0;
     double refereeReward = 0.0;
     int maxUsage = 50;
     String targetPhone = '';
-    String targetNetwork = 'الكل'; // 👈 المتغير الجديد لتخصيص الشبكة
-    
+    String targetNetwork = 'الكل';
+
     DateTime expiryDate = DateTime.now().add(const Duration(days: 7));
     bool isHappyHour = false;
     TimeOfDay startTime = const TimeOfDay(hour: 2, minute: 0);
@@ -87,7 +97,6 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // 1. كود الكوبون
                           TextFormField(
                             decoration: InputDecoration(labelText: 'كود الكوبون (مثال: VIP26)', prefixIcon: Icon(Icons.local_offer, color: theme.primaryColor == Colors.white ? Colors.blue : theme.primaryColor), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
                             textCapitalization: TextCapitalization.characters,
@@ -99,8 +108,6 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                             onSaved: (val) => newCode = val!.toUpperCase().trim(),
                           ),
                           const SizedBox(height: 12),
-
-                          // 👈 2. تحديد الشبكة المستهدفة
                           DropdownButtonFormField<String>(
                             value: targetNetwork,
                             decoration: InputDecoration(labelText: 'تخصيص لشبكة معينة (اختياري)', prefixIcon: const Icon(Icons.wifi, color: Colors.purple), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
@@ -108,8 +115,6 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                             onChanged: (val) => setStateDialog(() => targetNetwork = val!),
                           ),
                           const SizedBox(height: 12),
-
-                          // 3. نوع الخصم المطور (تم إضافة الإحالة)
                           DropdownButtonFormField<String>(
                             value: discountType,
                             decoration: InputDecoration(labelText: 'نوع الخصم', prefixIcon: const Icon(Icons.discount, color: Colors.green), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
@@ -122,8 +127,6 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                             onChanged: (val) => setStateDialog(() => discountType = val!),
                           ),
                           const SizedBox(height: 12),
-
-                          // 4. المدخلات الديناميكية بناءً على نوع الخصم
                           if (discountType == 'combo')
                             TextFormField(
                               decoration: InputDecoration(labelText: 'تفاصيل الباقة (مثال: اشتر 10 واحصل على 1 مجاناً)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
@@ -160,8 +163,6 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                               onSaved: (val) => discountValue = double.tryParse(val!) ?? 0.0,
                             ),
                           const SizedBox(height: 12),
-
-                          // 5. الفئة المستهدفة
                           if (discountType != 'referral')
                             TextFormField(
                               keyboardType: TextInputType.phone,
@@ -169,8 +170,6 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                               onSaved: (val) => targetPhone = val?.trim() ?? '',
                             ),
                           if (discountType != 'referral') const SizedBox(height: 12),
-
-                          // 6. الحد الأقصى للاستخدام
                           TextFormField(
                             initialValue: '50',
                             keyboardType: TextInputType.number,
@@ -178,8 +177,6 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                             onSaved: (val) => maxUsage = int.tryParse(val!) ?? 50,
                           ),
                           const Divider(height: 25),
-
-                          // 7. تاريخ الانتهاء
                           ListTile(
                             contentPadding: EdgeInsets.zero,
                             leading: const Icon(Icons.calendar_month, color: Colors.redAccent),
@@ -194,8 +191,6 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                             ),
                           ),
                           const Divider(height: 10),
-
-                          // 8. الساعات السعيدة (Happy Hour)
                           SwitchListTile(
                             contentPadding: EdgeInsets.zero,
                             title: const Text('تفعيل الساعات السعيدة ⏳', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
@@ -223,28 +218,27 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                     onPressed: () async {
                       if (formKey.currentState!.validate()) {
                         formKey.currentState!.save();
-                        
+
                         _play('click');
                         showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
-                        
+
                         try {
-                          // التأكد من عدم تكرار الكود
-                          var check = await _db.collection('coupons').where('agentPhone', isEqualTo: sys.currentUserPhone).where('code', isEqualTo: newCode).get();
+                          var check = await _db.collection('coupons').where('agentPhone', isEqualTo: auth.activeUserPhone).where('code', isEqualTo: newCode).get();
                           if (check.docs.isNotEmpty) {
-                            Navigator.pop(context); 
+                            Navigator.pop(context);
                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('عفواً، هذا الكود موجود مسبقاً لديك!'), backgroundColor: Colors.red));
                             return;
                           }
 
                           await _db.collection('coupons').add({
-                            'agentPhone': sys.currentUserPhone,
+                            'agentPhone': auth.activeUserPhone,
                             'code': newCode,
                             'discountType': discountType,
                             'discountValue': discountValue,
                             'comboDesc': comboDesc,
                             'referrerReward': referrerReward,
                             'refereeReward': refereeReward,
-                            'targetNetwork': targetNetwork == 'الكل' ? '' : targetNetwork, // 👈 حفظ الشبكة المستهدفة
+                            'targetNetwork': targetNetwork == 'الكل' ? '' : targetNetwork,
                             'maxUsage': maxUsage,
                             'currentUsage': 0,
                             'expiryDate': Timestamp.fromDate(expiryDate),
@@ -256,8 +250,8 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                             'createdAt': FieldValue.serverTimestamp(),
                           });
 
-                          Navigator.pop(context); 
-                          Navigator.pop(context); 
+                          Navigator.pop(context);
+                          Navigator.pop(context);
                           _play('success');
                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إطلاق الحملة التسويقية بنجاح! 🚀'), backgroundColor: Colors.green));
                         } catch (e) {
@@ -272,14 +266,14 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                 ],
               ),
             );
-          }
+          },
         );
       },
     );
   }
 
   // ==========================================
-  // 📲 وظائف المشاركة المتقدمة (نص + صورة بوستر)
+  // 📲 وظائف المشاركة المتقدمة
   // ==========================================
   void _showSharePosterDialog(Map<String, dynamic> offer, ThemeProvider theme) {
     _play('click');
@@ -287,7 +281,7 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
 
     String discountTitle = '';
     String subTitle = '';
-    
+
     if (offer['discountType'] == 'percent') {
       discountTitle = 'خصم ${offer['discountValue']}%';
       subTitle = 'على مشترياتك من الكروت';
@@ -312,7 +306,6 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 🖼️ البوستر (الذي سيتم التقاطه كصورة)
               RepaintBoundary(
                 key: posterKey,
                 child: Container(
@@ -333,14 +326,11 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                       Text(discountTitle, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 5),
                       Text(subTitle, style: const TextStyle(color: Colors.white70, fontSize: 16), textAlign: TextAlign.center),
-                      
-                      // 👈 إظهار الشبكة المخصصة في البوستر إن وجدت
                       if (offer['targetNetwork'] != null && offer['targetNetwork'] != '')
                         Padding(
                           padding: const EdgeInsets.only(top: 8.0),
                           child: Text('صالح فقط لشبكة: ${offer['targetNetwork']}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 14, fontWeight: FontWeight.bold)),
                         ),
-                        
                       const SizedBox(height: 20),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -355,7 +345,6 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                   ),
                 ),
               ),
-              // أزرار المشاركة
               Padding(
                 padding: const EdgeInsets.all(15.0),
                 child: Row(
@@ -410,7 +399,7 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
     }
 
     if (offer['isHappyHour'] == true) msg += "⏳ *ملاحظة:* العرض يعمل فقط خلال الساعات السعيدة.\n";
-    
+
     String exp = intl.DateFormat('yyyy-MM-dd').format((offer['expiryDate'] as Timestamp).toDate());
     msg += "\n⚠️ العرض ساري حتى: $exp\nسارع الآن وقم بزيادة أرباحك! 🚀";
 
@@ -426,7 +415,7 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
       ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData != null) {
         Uint8List pngBytes = byteData.buffer.asUint8List();
-        Navigator.pop(context); // إغلاق التحميل
+        Navigator.pop(context);
         await Share.shareXFiles([XFile.fromData(pngBytes, mimeType: 'image/png', name: 'coupon_$code.png')], text: 'استخدم هذا الكود الآن! 🎉');
       }
     } catch (e) {
@@ -448,7 +437,7 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () => Navigator.pop(context, true), 
+              onPressed: () => Navigator.pop(context, true),
               child: const Text('حذف', style: TextStyle(color: Colors.white)),
             ),
           ],
@@ -462,30 +451,32 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
     }
   }
 
-  Future<void> _broadcastNotification(Map<String, dynamic> offer, SystemProvider sys) async {
+  Future<void> _broadcastNotification(Map<String, dynamic> offer) async {
     _play('click');
+    final auth = context.read<AuthProvider>();
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('جاري إرسال إشعار للبقالات... 🔔'), backgroundColor: Colors.teal));
-    
+
     await _db.collection('notifications').add({
-      'targetUserId': 'all', // لجميع مستخدمي الوكيل
-      'agentPhone': sys.currentUserPhone,
+      'targetPhones': ['all'],
+      'agentPhone': auth.activeUserPhone,
       'title': 'عرض حصري جديد! 🎉',
       'body': 'تم إطلاق كود الخصم ${offer['code']}. افتح التطبيق للتفاصيل!',
       'timestamp': FieldValue.serverTimestamp(),
       'isRead': false
     });
-    
+
     await Future.delayed(const Duration(seconds: 1));
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم بث الإشعار لجميع زبائنك بنجاح! ✅'), backgroundColor: Colors.green));
   }
 
   // ==========================================
-  // واجهة المستخدم الأساسية (UI)
+  // واجهة المستخدم الأساسية
   // ==========================================
   @override
   Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
-    final theme = Provider.of<ThemeProvider>(context);
+    final auth = context.watch<AuthProvider>();
+    final wallet = context.watch<WalletProvider>();
+    final theme = context.watch<ThemeProvider>();
     final isDark = theme.isDarkMode;
     final mainColor = theme.primaryColor == Colors.white ? Colors.blue.shade900 : theme.primaryColor;
 
@@ -493,16 +484,15 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
       backgroundColor: isDark ? Colors.black87 : Colors.grey.shade50,
       appBar: const CustomHeader(title: 'التسويق والعروض'),
       drawer: CustomAgentDrawer(
-        agentName: sys.currentUserName,
-        phoneNumber: sys.currentUserPhone,
+        agentName: wallet.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
         role: 'وكيل معتمد (Agent)',
-        currentBalance: sys.currentUserBalance,
+        currentBalance: wallet.currentUserBalance,
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
           children: [
-            // 1. البانر الترحيبي وزر الإضافة والإحصائيات
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -516,10 +506,8 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                   const SizedBox(height: 5),
                   const Text('قم بإنشاء كوبونات وبطاقات إحالة لزيادة الولاء وتوسيع شبكتك.', style: TextStyle(color: Colors.white70, fontSize: 13)),
                   const SizedBox(height: 15),
-                  
-                  // الإحصائيات الحية
                   StreamBuilder<QuerySnapshot>(
-                    stream: _db.collection('coupons').where('agentPhone', isEqualTo: sys.currentUserPhone).snapshots(),
+                    stream: _db.collection('coupons').where('agentPhone', isEqualTo: auth.activeUserPhone).snapshots(),
                     builder: (context, snapshot) {
                       int activeCount = 0;
                       int totalUses = 0;
@@ -540,15 +528,14 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                           Expanded(child: _buildStatBox('إجمالي الاستخدام', '$totalUses', Colors.amberAccent)),
                         ],
                       );
-                    }
+                    },
                   ),
                   const SizedBox(height: 15),
-
                   SizedBox(
                     width: double.infinity,
                     height: 45,
                     child: ElevatedButton.icon(
-                      onPressed: () => _showCreateOfferDialog(sys, theme),
+                      onPressed: _showCreateOfferDialog,
                       icon: Icon(Icons.add_shopping_cart, color: mainColor),
                       label: Text('إنشاء عرض جديد الآن', style: TextStyle(color: mainColor, fontWeight: FontWeight.bold, fontSize: 16)),
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
@@ -557,10 +544,7 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                 ],
               ),
             ),
-            
             const SizedBox(height: 10),
-            
-            // 2. عنوان القائمة
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: Align(
@@ -568,122 +552,125 @@ class _MarketingOffersScreenState extends State<MarketingOffersScreen> {
                 child: Text('حملاتك التسويقية الحالية:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white70 : Colors.blueGrey)),
               ),
             ),
-
-            // 3. جلب وعرض الكوبونات (Coupons)
             Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: _db.collection('coupons').where('agentPhone', isEqualTo: sys.currentUserPhone).orderBy('createdAt', descending: true).snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) return Center(child: Text('خطأ: ${snapshot.error}', style: TextStyle(color: isDark ? Colors.white : Colors.black)));
-                  if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    return Center(child: Text('لا توجد عروض حالياً. ابدأ بإنشاء عرضك الأول!', style: TextStyle(color: isDark ? Colors.white54 : Colors.grey)));
-                  }
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  setState(() {});
+                  await Future.delayed(const Duration(milliseconds: 300));
+                  _play('success');
+                },
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: _db.collection('coupons').where('agentPhone', isEqualTo: auth.activeUserPhone).orderBy('createdAt', descending: true).snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) return Center(child: Text('خطأ: ${snapshot.error}', style: TextStyle(color: isDark ? Colors.white : Colors.black)));
+                    if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                      return Center(child: Text('لا توجد عروض حالياً. ابدأ بإنشاء عرضك الأول!', style: TextStyle(color: isDark ? Colors.white54 : Colors.grey)));
+                    }
 
-                  return ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: snapshot.data!.docs.length,
-                    itemBuilder: (context, index) {
-                      var doc = snapshot.data!.docs[index];
-                      var offer = doc.data() as Map<String, dynamic>;
-                      
-                      // الحساب الذكي لحالة الكوبون
-                      DateTime expiry = (offer['expiryDate'] as Timestamp).toDate();
-                      int current = offer['currentUsage'] ?? 0;
-                      int max = offer['maxUsage'] ?? 1;
-                      
-                      String statusText = 'نشط 🟢';
-                      Color statusColor = Colors.green;
+                    return ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: snapshot.data!.docs.length,
+                      itemBuilder: (context, index) {
+                        var doc = snapshot.data!.docs[index];
+                        var offer = doc.data() as Map<String, dynamic>;
 
-                      if (offer['isActive'] == false) {
-                        statusText = 'متوقف ⚪'; statusColor = Colors.grey;
-                      } else if (current >= max) {
-                        statusText = 'مستنفد 🔴'; statusColor = Colors.red;
-                      } else if (expiry.isBefore(DateTime.now())) {
-                        statusText = 'منتهي 🔴'; statusColor = Colors.red;
-                      } else if (expiry.difference(DateTime.now()).inDays <= 2) {
-                        statusText = 'ينتهي قريباً 🟠'; statusColor = Colors.orange;
-                      }
+                        DateTime expiry = (offer['expiryDate'] as Timestamp).toDate();
+                        int current = offer['currentUsage'] ?? 0;
+                        int max = offer['maxUsage'] ?? 1;
 
-                      // توليد نص الخصم
-                      String discountStr = '';
-                      if (offer['discountType'] == 'percent') discountStr = 'خصم ${offer['discountValue']}%';
-                      else if (offer['discountType'] == 'fixed') discountStr = 'خصم ${offer['discountValue']} ريال';
-                      else if (offer['discountType'] == 'referral') discountStr = 'إحالة: (الداعي ${offer['referrerReward']} / المدعو ${offer['refereeReward']})';
-                      else discountStr = offer['comboDesc'] ?? '';
+                        String statusText = 'نشط 🟢';
+                        Color statusColor = Colors.green;
 
-                      return Card(
-                        elevation: 2,
-                        color: isDark ? Colors.grey.shade800 : Colors.white,
-                        margin: const EdgeInsets.only(bottom: 15),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                          side: BorderSide(color: statusColor.withOpacity(0.5), width: 1.5),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(15.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                    decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8), border: Border.all(color: statusColor.withOpacity(0.5))),
-                                    child: Text(offer['code'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: statusColor, letterSpacing: 2)),
-                                  ),
-                                  Text(statusText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: statusColor)),
-                                ],
-                              ),
-                              if (offer['targetPhone'] != null && offer['targetPhone'] != '')
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8.0),
-                                  child: Text('🎯 مخصص للرقم: ${offer['targetPhone']}', style: const TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold)),
-                                ),
-                              
-                              // 👈 إظهار الشبكة المخصصة إن وجدت
-                              if (offer['targetNetwork'] != null && offer['targetNetwork'] != '')
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8.0),
-                                  child: Text('🌐 مخصص لشبكة: ${offer['targetNetwork']}', style: const TextStyle(color: Colors.purple, fontSize: 11, fontWeight: FontWeight.bold)),
-                                ),
-                                
-                              const Divider(height: 25),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(discountStr, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : Colors.black87)),
-                                        const SizedBox(height: 4),
-                                        Text('الاستخدام: $current / $max | الانتهاء: ${intl.DateFormat('yyyy-MM-dd').format(expiry)}', style: const TextStyle(color: Colors.grey, fontSize: 11)),
-                                        if (offer['isHappyHour'] == true)
-                                          Text('⏳ يعمل فقط من ${offer['startTime']} إلى ${offer['endTime']}', style: const TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              // أزرار التحكم
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                children: [
-                                  IconButton(onPressed: () => _showSharePosterDialog(offer, theme), icon: const Icon(Icons.share, color: Colors.blue), tooltip: 'مشاركة (بوستر)', style: IconButton.styleFrom(backgroundColor: Colors.blue.withOpacity(0.1))),
-                                  IconButton(onPressed: () => _broadcastNotification(offer, sys), icon: const Icon(Icons.notifications_active, color: Colors.orange), tooltip: 'بث إشعار للزبائن', style: IconButton.styleFrom(backgroundColor: Colors.orange.withOpacity(0.1))),
-                                  IconButton(onPressed: () => _deleteOffer(doc.id), icon: const Icon(Icons.delete_outline, color: Colors.red), tooltip: 'حذف العرض', style: IconButton.styleFrom(backgroundColor: Colors.red.withOpacity(0.1))),
-                                ],
-                              )
-                            ],
+                        if (offer['isActive'] == false) {
+                          statusText = 'متوقف ⚪';
+                          statusColor = Colors.grey;
+                        } else if (current >= max) {
+                          statusText = 'مستنفد 🔴';
+                          statusColor = Colors.red;
+                        } else if (expiry.isBefore(DateTime.now())) {
+                          statusText = 'منتهي 🔴';
+                          statusColor = Colors.red;
+                        } else if (expiry.difference(DateTime.now()).inDays <= 2) {
+                          statusText = 'ينتهي قريباً 🟠';
+                          statusColor = Colors.orange;
+                        }
+
+                        String discountStr = '';
+                        if (offer['discountType'] == 'percent') discountStr = 'خصم ${offer['discountValue']}%';
+                        else if (offer['discountType'] == 'fixed') discountStr = 'خصم ${offer['discountValue']} ريال';
+                        else if (offer['discountType'] == 'referral') discountStr = 'إحالة: (الداعي ${offer['referrerReward']} / المدعو ${offer['refereeReward']})';
+                        else discountStr = offer['comboDesc'] ?? '';
+
+                        return Card(
+                          elevation: 2,
+                          color: isDark ? Colors.grey.shade800 : Colors.white,
+                          margin: const EdgeInsets.only(bottom: 15),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                            side: BorderSide(color: statusColor.withOpacity(0.5), width: 1.5),
                           ),
-                        ),
-                      );
-                    },
-                  );
-                }
+                          child: Padding(
+                            padding: const EdgeInsets.all(15.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                      decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8), border: Border.all(color: statusColor.withOpacity(0.5))),
+                                      child: Text(offer['code'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: statusColor, letterSpacing: 2)),
+                                    ),
+                                    Text(statusText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: statusColor)),
+                                  ],
+                                ),
+                                if (offer['targetPhone'] != null && offer['targetPhone'] != '')
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8.0),
+                                    child: Text('🎯 مخصص للرقم: ${offer['targetPhone']}', style: const TextStyle(color: Colors.blueAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                                  ),
+                                if (offer['targetNetwork'] != null && offer['targetNetwork'] != '')
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8.0),
+                                    child: Text('🌐 مخصص لشبكة: ${offer['targetNetwork']}', style: const TextStyle(color: Colors.purple, fontSize: 11, fontWeight: FontWeight.bold)),
+                                  ),
+                                const Divider(height: 25),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(discountStr, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : Colors.black87)),
+                                          const SizedBox(height: 4),
+                                          Text('الاستخدام: $current / $max | الانتهاء: ${intl.DateFormat('yyyy-MM-dd').format(expiry)}', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                                          if (offer['isHappyHour'] == true)
+                                            Text('⏳ يعمل فقط من ${offer['startTime']} إلى ${offer['endTime']}', style: const TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    IconButton(onPressed: () => _showSharePosterDialog(offer, theme), icon: const Icon(Icons.share, color: Colors.blue), tooltip: 'مشاركة (بوستر)', style: IconButton.styleFrom(backgroundColor: Colors.blue.withOpacity(0.1))),
+                                    IconButton(onPressed: () => _broadcastNotification(offer), icon: const Icon(Icons.notifications_active, color: Colors.orange), tooltip: 'بث إشعار للزبائن', style: IconButton.styleFrom(backgroundColor: Colors.orange.withOpacity(0.1))),
+                                    IconButton(onPressed: () => _deleteOffer(doc.id), icon: const Icon(Icons.delete_outline, color: Colors.red), tooltip: 'حذف العرض', style: IconButton.styleFrom(backgroundColor: Colors.red.withOpacity(0.1))),
+                                  ],
+                                )
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
               ),
             ),
           ],
