@@ -31,7 +31,7 @@ dependencies:
   http: ^1.2.0 
   share_plus: ^10.1.2
   qr_flutter: ^4.1.0
-  image_gallery_saver_plus: ^3.0.0
+  gal: ^2.3.0
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
   expandable: ^5.0.1
