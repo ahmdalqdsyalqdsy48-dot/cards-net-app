@@ -13,11 +13,12 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/widgets/custom_header.dart';
-import '../widgets/custom_agent_drawer.dart';  // <--- تمت الإضافة
+import '../widgets/custom_agent_drawer.dart';
 
 class PreciseLayoutEngine {
   static const double mmToPx = 2.83465;
@@ -102,7 +103,7 @@ class _PrintScreenState extends State<PrintScreen> with SingleTickerProviderStat
     super.dispose();
   }
 
-  void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
+  void _play(String type) => context.read<UiProvider>().playSound(type);
 
   void _showToast(String message, {bool isError = false}) {
     if (!mounted) return;
@@ -154,8 +155,8 @@ class _PrintScreenState extends State<PrintScreen> with SingleTickerProviderStat
                     style: ElevatedButton.styleFrom(backgroundColor: color),
                     onPressed: () {
                       if (requirePassword) {
-                        final sys = Provider.of<SystemProvider>(context, listen: false);
-                        if (!sys.validatePin(passwordController.text.trim()) && passwordController.text.trim() != '123456') {
+                        final auth = context.read<AuthProvider>();
+                        if (!auth.validatePin(passwordController.text.trim()) && passwordController.text.trim() != '123456') {
                           _play('error');
                           _showToast('كلمة المرور غير صحيحة', isError: true);
                           return;
@@ -192,9 +193,9 @@ class _PrintScreenState extends State<PrintScreen> with SingleTickerProviderStat
   }
 
   Future<void> _logPrintAction(String type, int count, {String? details}) async {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final auth = context.read<AuthProvider>();
     await _db.collection('print_logs').add({
-      'agentPhone': sys.currentUserPhone,
+      'agentPhone': auth.activeUserPhone,
       'networkId': printSelectedNetworkId ?? '',
       'categoryIds': printSelectedCategoryIds.toList(),
       'count': count,
@@ -206,8 +207,8 @@ class _PrintScreenState extends State<PrintScreen> with SingleTickerProviderStat
   }
 
   Future<void> _loadInitialData() async {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    final snapshot = await _db.collection('networks').where('agentPhone', isEqualTo: sys.currentUserPhone).get();
+    final auth = context.read<AuthProvider>();
+    final snapshot = await _db.collection('networks').where('agentPhone', isEqualTo: auth.activeUserPhone).get();
     setState(() {
       printNetworks = snapshot.docs;
       for (var net in printNetworks) {
@@ -221,8 +222,8 @@ class _PrintScreenState extends State<PrintScreen> with SingleTickerProviderStat
   }
 
   Future<void> _loadAllPrintReadyCards() async {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    final netSnap = await _db.collection('networks').where('agentPhone', isEqualTo: sys.currentUserPhone).get();
+    final auth = context.read<AuthProvider>();
+    final netSnap = await _db.collection('networks').where('agentPhone', isEqualTo: auth.activeUserPhone).get();
     List<String> networkIds = netSnap.docs.map((d) => d.id).toList();
     if (networkIds.isEmpty) { setState(() => allPrintReadyCards = []); return; }
     final snapshot = await _db.collection('cards')
@@ -233,15 +234,15 @@ class _PrintScreenState extends State<PrintScreen> with SingleTickerProviderStat
   }
 
   Future<void> _loadPrintTemplates() async {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    final snap = await _db.collection('print_templates').where('agentPhone', isEqualTo: sys.currentUserPhone).get();
+    final auth = context.read<AuthProvider>();
+    final snap = await _db.collection('print_templates').where('agentPhone', isEqualTo: auth.activeUserPhone).get();
     setState(() => savedPrintTemplates = snap.docs.map((d) => d.data() as Map<String, dynamic>).toList());
   }
 
   Future<void> _loadPrintLogs() async {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final auth = context.read<AuthProvider>();
     final snap = await _db.collection('print_logs')
-        .where('agentPhone', isEqualTo: sys.currentUserPhone)
+        .where('agentPhone', isEqualTo: auth.activeUserPhone)
         .orderBy('timestamp', descending: true)
         .limit(20)
         .get();
@@ -253,7 +254,6 @@ class _PrintScreenState extends State<PrintScreen> with SingleTickerProviderStat
     return (r.nextInt(9000000) + 1000000).toString();
   }
 
-  // ---------- إعدادات الفئة ----------
   void _loadCategoryTemplate(String categoryId) {
     final cat = printSelectedCategories[categoryId];
     if (cat == null) { _categoryTemplates.remove(categoryId); return; }
@@ -337,7 +337,6 @@ class _PrintScreenState extends State<PrintScreen> with SingleTickerProviderStat
     printTotalCountCtrl.text = total.toString();
   }
 
-  // ---------- توليد PDF ----------
   Map<String, dynamic> _capturePrintSnapshot() {
     return {
       "x": textX.value,
@@ -416,7 +415,6 @@ class _PrintScreenState extends State<PrintScreen> with SingleTickerProviderStat
     return pdf.save();
   }
 
-  // ---------- حوار الطباعة ----------
   void _showPrintDialog() {
     final total = int.tryParse(printTotalCountCtrl.text) ?? 0;
     if (total <= 0) { _showToast("الرجاء تحديد عدد الكروت", isError: true); return; }
@@ -483,7 +481,6 @@ class _PrintScreenState extends State<PrintScreen> with SingleTickerProviderStat
     _showToast('تمت الطباعة ونقل الكروت للأرشيف');
   }
 
-  // ---------- توليد كروت الطباعة ----------
   List<Map<String, dynamic>> _collectOrders() {
     List<Map<String, dynamic>> orders = [];
     _multiGenControllers.forEach((key, controller) {
@@ -499,6 +496,7 @@ class _PrintScreenState extends State<PrintScreen> with SingleTickerProviderStat
   }
 
   Future<void> _simulateGenerate(String networkId, String categoryId, int amount) async {
+    final auth = context.read<AuthProvider>();
     final WriteBatch batch = _db.batch();
     for (int i = 0; i < amount; i++) {
       final pin = _generateFakePin();
@@ -506,7 +504,7 @@ class _PrintScreenState extends State<PrintScreen> with SingleTickerProviderStat
         'categoryId': categoryId, 'networkId': networkId, 'pin': pin,
         'status': 'print_ready', 'isSimulated': true,
         'createdAt': FieldValue.serverTimestamp(),
-        'agentPhone': Provider.of<SystemProvider>(context, listen: false).currentUserPhone,
+        'agentPhone': auth.activeUserPhone,
       });
     }
     final netDoc = await _db.collection('networks').doc(networkId).get();
@@ -522,13 +520,13 @@ class _PrintScreenState extends State<PrintScreen> with SingleTickerProviderStat
   }
 
   Future<void> _realGenerate(String networkId, String categoryId, int amount) async {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final auth = context.read<AuthProvider>();
     final response = await http.post(
       Uri.parse("$_renderUrl/generateMikrotikCards"),
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({
         "networkId": networkId, "categoryId": categoryId, "amount": amount,
-        "agentPhone": sys.currentUserPhone, "forPrint": true,
+        "agentPhone": auth.activeUserPhone, "forPrint": true,
       }),
     );
     if (response.statusCode == 200) {
@@ -569,22 +567,22 @@ class _PrintScreenState extends State<PrintScreen> with SingleTickerProviderStat
     setState(() => _isProcessing = false);
   }
 
-  // ---------- البناء ----------
   @override
   Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
+    final wallet = context.watch<WalletProvider>();
+    final auth = context.watch<AuthProvider>();
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final primaryColor = theme.colorScheme.primary;
     final textColor = theme.textTheme.bodyMedium?.color ?? Colors.black87;
 
     return Scaffold(
-      appBar: CustomHeader(title: 'طباعة الكروت'),
+      appBar: const CustomHeader(title: 'طباعة الكروت'),
       drawer: CustomAgentDrawer(
-        agentName: sys.currentUserName,
-        phoneNumber: sys.currentUserPhone,
+        agentName: wallet.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
         role: 'وكيل معتمد (Agent)',
-        currentBalance: sys.currentUserBalance,
+        currentBalance: wallet.currentUserBalance,
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
@@ -619,30 +617,37 @@ class _PrintScreenState extends State<PrintScreen> with SingleTickerProviderStat
   }
 
   Widget _buildManageTab(Color textColor, bool isDark) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _section('اختيار الكروت', Icons.list_alt, _buildCardSelection(textColor)),
-        _section('المعاينة', Icons.view_compact, _buildPreview()),
-        _section('التعديل والتحكم', Icons.tune, _buildPrintControls(textColor)),
-        _section('قوالب الطباعة', Icons.bookmark, _buildTemplateManager(textColor)),
-        _section('التخطيط', Icons.grid_on, _buildLayoutSettings(textColor)),
-        _section('الهوامش', Icons.space_bar, _buildMarginSettings(textColor)),
-        Center(
-          child: ElevatedButton.icon(
-            onPressed: _showPrintDialog,
-            icon: const Icon(Icons.print),
-            label: const Text('بدء الطباعة'),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadAllPrintReadyCards();
+        _play('success');
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _section('اختيار الكروت', Icons.list_alt, _buildCardSelection(textColor)),
+          _section('المعاينة', Icons.view_compact, _buildPreview()),
+          _section('التعديل والتحكم', Icons.tune, _buildPrintControls(textColor)),
+          _section('قوالب الطباعة', Icons.bookmark, _buildTemplateManager(textColor)),
+          _section('التخطيط', Icons.grid_on, _buildLayoutSettings(textColor)),
+          _section('الهوامش', Icons.space_bar, _buildMarginSettings(textColor)),
+          Center(
+            child: ElevatedButton.icon(
+              onPressed: _showPrintDialog,
+              icon: const Icon(Icons.print),
+              label: const Text('بدء الطباعة'),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
+            ),
           ),
-        ),
-        _section('سجل العمليات', Icons.history, _buildPrintLogs(textColor)),
-      ]),
+          _section('سجل العمليات', Icons.history, _buildPrintLogs(textColor)),
+        ]),
+      ),
     );
   }
 
   Widget _buildGenerateTab(Color textColor, bool isDark) {
-    final sys = Provider.of<SystemProvider>(context);
+    final auth = context.watch<AuthProvider>();
     if (printNetworks.isEmpty) return const Center(child: Text('لا توجد شبكات'));
     List<Map<String, dynamic>> allCategories = [];
     for (var net in printNetworks) {
@@ -652,37 +657,43 @@ class _PrintScreenState extends State<PrintScreen> with SingleTickerProviderStat
       }
     }
     if (allCategories.isEmpty) return const Center(child: Text('لا توجد فئات نشطة'));
-    return Column(children: [
-      Container(padding: const EdgeInsets.all(12), margin: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Text('توليد كروت للطباعة', style: TextStyle(fontWeight: FontWeight.bold, color: textColor))),
-      Expanded(
-        child: ListView.builder(
-          itemCount: allCategories.length,
-          itemBuilder: (context, index) {
-            var item = allCategories[index];
-            String key = "${item['networkId']}_${item['category']['id']}";
-            _multiGenControllers.putIfAbsent(key, () => TextEditingController());
-            return Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(children: [
-                  Expanded(child: Text('${item['networkName']} - ${item['category']['name']}')),
-                  SizedBox(width: 100, child: TextField(controller: _multiGenControllers[key], keyboardType: TextInputType.number, textAlign: TextAlign.center, decoration: const InputDecoration(hintText: 'الكمية'))),
-                ]),
-              ),
-            );
-          },
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadAllPrintReadyCards();
+        _play('success');
+      },
+      child: Column(children: [
+        Container(padding: const EdgeInsets.all(12), margin: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Text('توليد كروت للطباعة', style: TextStyle(fontWeight: FontWeight.bold, color: textColor))),
+        Expanded(
+          child: ListView.builder(
+            itemCount: allCategories.length,
+            itemBuilder: (context, index) {
+              var item = allCategories[index];
+              String key = "${item['networkId']}_${item['category']['id']}";
+              _multiGenControllers.putIfAbsent(key, () => TextEditingController());
+              return Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(children: [
+                    Expanded(child: Text('${item['networkName']} - ${item['category']['name']}')),
+                    SizedBox(width: 100, child: TextField(controller: _multiGenControllers[key], keyboardType: TextInputType.number, textAlign: TextAlign.center, decoration: const InputDecoration(hintText: 'الكمية'))),
+                  ]),
+                ),
+              );
+            },
+          ),
         ),
-      ),
-      Padding(
-        padding: const EdgeInsets.all(16),
-        child: ElevatedButton.icon(
-          onPressed: _isProcessing ? null : () => _startPrintGeneration(orders: _collectOrders()),
-          icon: const Icon(Icons.autorenew),
-          label: const Text('توليد للطباعة'),
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: ElevatedButton.icon(
+            onPressed: _isProcessing ? null : () => _startPrintGeneration(orders: _collectOrders()),
+            icon: const Icon(Icons.autorenew),
+            label: const Text('توليد للطباعة'),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
+          ),
         ),
-      ),
-    ]);
+      ]),
+    );
   }
 
   Widget _section(String title, IconData icon, Widget child) {
@@ -877,9 +888,9 @@ class _PrintScreenState extends State<PrintScreen> with SingleTickerProviderStat
   }
 
   Future<void> _saveCurrentAsPrintTemplate(String name) async {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final auth = context.read<AuthProvider>();
     await _db.collection('print_templates').add({
-      'agentPhone': sys.currentUserPhone, 'name': name,
+      'agentPhone': auth.activeUserPhone, 'name': name,
       'textXPercent': textX.value, 'textYPercent': textY.value, 'fontSize': fontSize.value, 'textColor': textColor.value.value,
       'copiesPerCard': copiesPerCardCtrl.text, 'perRow': perRowCtrl.text, 'perColumn': perColumnCtrl.text,
       'widthMM': widthMMCtrl.text, 'heightMM': heightMMCtrl.text,
@@ -902,8 +913,8 @@ class _PrintScreenState extends State<PrintScreen> with SingleTickerProviderStat
   void _deleteTemplate(Map<String, dynamic> tmpl) async {
     bool confirm = await _confirmAction('حذف القالب', 'هل تريد حذف هذا القالب؟', Colors.red);
     if (!confirm) return;
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    final snap = await _db.collection('print_templates').where('agentPhone', isEqualTo: sys.currentUserPhone).where('name', isEqualTo: tmpl['name']).get();
+    final auth = context.read<AuthProvider>();
+    final snap = await _db.collection('print_templates').where('agentPhone', isEqualTo: auth.activeUserPhone).where('name', isEqualTo: tmpl['name']).get();
     for (var doc in snap.docs) { await doc.reference.delete(); }
     _loadPrintTemplates();
     _showToast('تم حذف القالب');
