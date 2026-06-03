@@ -202,7 +202,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
     );
   }
 
-  // ---------- تغذية المحفظة ----------
+  // ---------- تغذية المحفظة (تم إصلاحها) ----------
   void _showFeedWalletModal(
       AgentAdminProvider agentAdmin, WalletProvider wallet,
       String posPhone, String posName) {
@@ -281,7 +281,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                         }
                         setDialogState(() => isSubmitting = true);
                         try {
-                          await agentAdmin.fundSubAgent(posPhone, amount);
+                          await wallet.fundSubAgent(posPhone, amount); // ✅ تم الإصلاح
                           _play('success');
                           if (mounted) {
                             Navigator.pop(ctx);
@@ -802,7 +802,6 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
       final customThreshold =
           myRel?['warningThreshold'] as double? ?? _globalWarningThreshold;
 
-      // ignore: use_build_context_synchronously
       showDialog(
         context: context,
         builder: (ctx) => StatefulBuilder(
@@ -942,8 +941,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                   TabBar(
                     controller: _tabController,
                     labelColor: colors.onPrimaryContainer,
-                    unselectedLabelColor:
-                        colors.onSurfaceVariant,
+                    unselectedLabelColor: colors.onSurfaceVariant,
                     indicatorColor: colors.primary,
                     indicatorWeight: 4,
                     labelStyle: const TextStyle(
