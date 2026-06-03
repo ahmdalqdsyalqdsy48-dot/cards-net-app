@@ -13,6 +13,9 @@ class AuthProvider extends ChangeNotifier {
   String _currentUserRole = 'guest';
   Map<String, bool> _currentUserPermissions = {};
 
+  // بيانات المستخدم الحالي الكاملة
+  Map<String, dynamic> _currentUserData = {};
+
   SharedPreferences? _prefs;
 
   AuthProvider() {
@@ -115,8 +118,8 @@ class AuthProvider extends ChangeNotifier {
     try {
       final doc = await _db.collection('users').doc(phone).get();
       if (doc.exists && doc.data() != null) {
-        final data = doc.data() as Map<String, dynamic>;
-        _currentUserEmail = data['email'];
+        _currentUserData = doc.data() as Map<String, dynamic>;
+        _currentUserEmail = _currentUserData['email'];
         notifyListeners();
       }
     } catch (e) {
@@ -176,6 +179,7 @@ class AuthProvider extends ChangeNotifier {
     _currentUserEmail = null;
     _currentUserRole = 'guest';
     _currentUserPermissions = {};
+    _currentUserData = {};
     _prefs?.remove('authToken');
     notifyListeners();
   }
@@ -183,6 +187,13 @@ class AuthProvider extends ChangeNotifier {
   bool hasPermission(String permissionName) {
     if (_currentUserRole == 'super_admin') return true;
     return _currentUserPermissions[permissionName] ?? false;
+  }
+
+  // ---------- التحقق من PIN ----------
+  bool validatePin(String pin) {
+    if (_activeUserPhone == null) return false;
+    final storedPin = _currentUserData['pin'] ?? '123456';
+    return storedPin == pin;
   }
 
   Future<bool> checkUserExists(String phone) async {
@@ -223,12 +234,13 @@ class AuthProvider extends ChangeNotifier {
     await prefs.setInt('agent_lastActivity', DateTime.now().millisecondsSinceEpoch);
   }
 
-  // ---------- دوال الملف الشخصي (منقولة من WalletProvider) ----------
+  // ---------- دوال الملف الشخصي ----------
 
   Future<bool> changeUserName(String newName) async {
     if (_activeUserPhone == null) return false;
     try {
       await _db.collection('users').doc(_activeUserPhone).update({'name': newName});
+      _currentUserData['name'] = newName;
       notifyListeners();
       return true;
     } catch (e) {
@@ -238,9 +250,10 @@ class AuthProvider extends ChangeNotifier {
 
   Future<bool> changeUserPin(String oldPin, String newPin) async {
     if (_activeUserPhone == null) return false;
-    final currentPin = await _getCurrentPin();
+    final currentPin = _currentUserData['pin'] ?? '123456';
     if (currentPin == oldPin) {
       await _db.collection('users').doc(_activeUserPhone).update({'pin': newPin});
+      _currentUserData['pin'] = newPin;
       notifyListeners();
       return true;
     }
@@ -252,56 +265,61 @@ class AuthProvider extends ChangeNotifier {
     if (newPin.length != 6) return 'يجب أن يتكون رمز PIN من 6 أرقام.';
     if (newPin != confirmPin) return 'رمز PIN الجديد غير متطابق.';
 
-    final currentPin = await _getCurrentPin();
+    final currentPin = _currentUserData['pin'] ?? '123456';
     if (currentPin != oldPin) return 'رمز PIN القديم غير صحيح.';
 
     await _db.collection('users').doc(_activeUserPhone).update({'pin': newPin});
+    _currentUserData['pin'] = newPin;
     notifyListeners();
     return 'تم تحديث رمز PIN بنجاح.';
   }
 
-  Future<String> _getCurrentPin() async {
-    if (_activeUserPhone == null) return '123456';
-    try {
-      final doc = await _db.collection('users').doc(_activeUserPhone).get();
-      return doc.data()?['pin'] ?? '123456';
-    } catch (e) {
-      return '123456';
-    }
-  }
-
+  // --- تم إكمال هذه الدالة ---
   bool changeUserPassword(String oldPassword, String newPassword) {
     if (_activeUserPhone == null) return false;
-    // يجب الوصول إلى كلمة المرور الحالية، لكننا سنستخدم استدعاء Firestore مباشر
-    // سنفترض أن الكلمة تُقرأ من مكان آخر، لكننا نحتاج للوصول للبيانات.
-    // يمكننا تخزين كلمة المرور مؤقتًا أو إعادة جلبها. نكتفي بإرجاع false إن لم تتوفر.
-    // في التطبيق الحقيقي ستُقرأ من _usersDatabase. هنا نضع استدعاء async بسيط.
-    return false; // ستُستبدل بالاستدعاء الصحيح من واجهة المستخدم
+    final storedPassword = _currentUserData['password'] ?? '';
+    if (storedPassword == oldPassword) {
+      _db.collection('users').doc(_activeUserPhone).update({'password': newPassword});
+      _currentUserData['password'] = newPassword;
+      notifyListeners();
+      return true;
+    }
+    return false;
   }
 
   Future<void> toggleBiometric(bool isEnabled) async {
     if (_activeUserPhone == null) return;
     await _db.collection('users').doc(_activeUserPhone).update({'isBiometricEnabled': isEnabled});
+    _currentUserData['isBiometricEnabled'] = isEnabled;
+    notifyListeners();
   }
 
   Future<void> updatePrivacySettings({required bool showPhone}) async {
     if (_activeUserPhone == null) return;
     await _db.collection('users').doc(_activeUserPhone).update({'privacy_showPhone': showPhone});
+    _currentUserData['privacy_showPhone'] = showPhone;
+    notifyListeners();
   }
 
   Future<void> updatePrivacySetting(String key, bool value) async {
     if (_activeUserPhone == null) return;
     await _db.collection('users').doc(_activeUserPhone).update({'privacy_$key': value});
+    _currentUserData['privacy_$key'] = value;
+    notifyListeners();
   }
 
   Future<void> updateUserDailyLimit(double limit) async {
     if (_activeUserPhone == null) return;
     await _db.collection('users').doc(_activeUserPhone).update({'dailyLimit': limit});
+    _currentUserData['dailyLimit'] = limit;
+    notifyListeners();
   }
 
   Future<void> updateUserMonthlyLimit(double limit) async {
     if (_activeUserPhone == null) return;
     await _db.collection('users').doc(_activeUserPhone).update({'monthlyLimit': limit});
+    _currentUserData['monthlyLimit'] = limit;
+    notifyListeners();
   }
 
   Future<bool> deleteUserAccount(String password) async {
@@ -324,6 +342,8 @@ class AuthProvider extends ChangeNotifier {
   Future<void> saveUserPreferredColor(Color color) async {
     if (_activeUserPhone == null) return;
     await _db.collection('users').doc(_activeUserPhone).update({'preferredColor': color.value});
+    _currentUserData['preferredColor'] = color.value;
+    notifyListeners();
   }
 
   Future<Color?> getUserPreferredColor() async {
@@ -350,24 +370,33 @@ class AuthProvider extends ChangeNotifier {
   Future<void> togglePinEnabled(bool value) async {
     if (_activeUserPhone == null) return;
     await _db.collection('users').doc(_activeUserPhone).update({'pinEnabled': value});
+    _currentUserData['pinEnabled'] = value;
+    notifyListeners();
   }
 
+  // ---------- Getters الملف الشخصي (مكتملة الآن) ----------
+
+  // --- تم إكمال هذا الـ getter ---
   bool get isPinEnabled {
-    // هذا يحتاج إلى بيانات المستخدم، لكن يمكن جلبها عبر Future.
-    // للتبسيط سنعيد false مؤقتًا
-    return false;
+    return _currentUserData['pinEnabled'] == true;
   }
 
+  // --- تم إكمال هذا الـ getter ---
   String get currentUserName {
-    // سيُملأ من مكان آخر، لكن نعيد فارغًا
-    return '';
+    return _currentUserData['name'] ?? '';
   }
 
+  // --- تم إكمال هذا الـ getter ---
   double get currentUserBalance {
-    return 0.0;
+    if (_activeUserPhone == null) return 0.0;
+    if (_currentUserRole == 'user' || _currentUserRole == 'pos') {
+      Map<String, dynamic> wallets = _currentUserData['wallets'] ?? {};
+      return wallets.values.fold(0.0, (sum, val) => sum + (val as num).toDouble());
+    }
+    return (_currentUserData['balance'] ?? 0.0).toDouble();
   }
 
   String get currentUserPin {
-    return _activeUserPhone != null ? '123456' : '';
+    return _currentUserData['pin'] ?? '123456';
   }
 }
