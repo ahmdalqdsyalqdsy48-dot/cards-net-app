@@ -257,6 +257,23 @@ class WalletProvider extends ChangeNotifier {
     return user['privacy_showPhone'] ?? true;
   }
 
+  // 🆕 getters الخصوصية الجديدة
+  bool get privacyHideBalance {
+    if (_auth?.activeUserPhone == null) return false;
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {});
+    return user['privacy_hideBalance'] ?? false;
+  }
+
+  bool get privacyShowFullName {
+    if (_auth?.activeUserPhone == null) return true;
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {});
+    return user['privacy_showFullName'] ?? true;
+  }
+
   bool get isBiometricCurrentlyEnabled {
     if (_auth?.activeUserPhone == null) return false;
     final user = _usersDatabase.firstWhere(
