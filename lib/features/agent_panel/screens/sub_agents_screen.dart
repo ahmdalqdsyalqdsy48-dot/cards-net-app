@@ -9,7 +9,9 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:http/http.dart' as http;
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
+import '../../../core/providers/agent_admin_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart';
@@ -28,8 +30,6 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
 
   String _searchQuery = '';
   String _selectedFilter = 'الكل';
-
-  // إنذار مبكر عالمي (قيمة افتراضية 1000 ريال)
   double _globalWarningThreshold = 1000.0;
 
   @override
@@ -53,8 +53,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
     setState(() => _globalWarningThreshold = value);
   }
 
-  void _play(String type) =>
-      Provider.of<UiProvider>(context, listen: false).playSound(type);
+  void _play(String type) => context.read<UiProvider>().playSound(type);
 
   // ---------- نافذة إعدادات الحد الأدنى للإنذار ----------
   void _showGlobalThresholdDialog() {
@@ -99,8 +98,9 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
     );
   }
 
-  // ---------- نافذة استلام دفعة (يدوي) محسنة ----------
-  void _showRepaymentModal(SystemProvider sys, String posPhone, String posName,
+  // ---------- نافذة استلام دفعة ----------
+  void _showRepaymentModal(
+      AgentAdminProvider agentAdmin, String posPhone, String posName,
       double currentDebt) {
     _play('click');
     final amountController = TextEditingController();
@@ -138,7 +138,6 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                       labelText: 'ملاحظة (اختياري)',
                       border: OutlineInputBorder()),
                 ),
-                // عرض المبلغ المتبقي بعد السداد عند إدخال المبلغ
                 if (amountController.text.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
@@ -165,7 +164,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                         if (amount <= 0) return;
                         setDialogState(() => isSubmitting = true);
                         try {
-                          await sys.receivePosPayment(
+                          await agentAdmin.receivePosPayment(
                               posPhone, amount, noteController.text);
                           _play('success');
                           if (mounted) {
@@ -203,13 +202,15 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
     );
   }
 
-  // ---------- تغذية المحفظة (مع تسوية الديون التلقائية) ----------
+  // ---------- تغذية المحفظة ----------
   void _showFeedWalletModal(
-      SystemProvider sys, String posPhone, String posName) {
+      AgentAdminProvider agentAdmin, WalletProvider wallet,
+      String posPhone, String posName) {
     _play('click');
     final amountController = TextEditingController();
     bool isSubmitting = false;
     final colors = Theme.of(context).colorScheme;
+    final auth = context.read<AuthProvider>();
 
     showDialog(
       context: context,
@@ -222,11 +223,10 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'رصيدك الحالي: ${NumberFormat('#,##0').format(sys.currentUserBalance)} ريال',
+                  'رصيدك الحالي: ${NumberFormat('#,##0').format(wallet.currentUserBalance)} ريال',
                   style: TextStyle(
                       color: colors.primary, fontWeight: FontWeight.bold),
                 ),
-                // عرض رصيد البقالة الحالي (إن أمكن)
                 FutureBuilder<DocumentSnapshot>(
                   future: _db.collection('users').doc(posPhone).get(),
                   builder: (context, snap) {
@@ -235,7 +235,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                         (snap.data!.data() as Map<String, dynamic>)['wallets']
                             as Map<String, dynamic>?;
                     final bal =
-                        (wallets?[sys.currentUserPhone] ?? 0.0).toDouble();
+                        (wallets?[auth.activeUserPhone] ?? 0.0).toDouble();
                     return Text(
                       'رصيد البقالة الحالي: ${NumberFormat('#,##0').format(bal)} ريال',
                       style: TextStyle(
@@ -269,7 +269,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                         final amount =
                             double.tryParse(amountController.text) ?? 0;
                         if (amount <= 0) return;
-                        if (amount > sys.currentUserBalance) {
+                        if (amount > wallet.currentUserBalance) {
                           _play('error');
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
@@ -281,47 +281,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                         }
                         setDialogState(() => isSubmitting = true);
                         try {
-                          // جلب الرصيد الحالي للبقالة لتسجيل تسوية الدين
-                          final posDoc =
-                              await _db.collection('users').doc(posPhone).get();
-                          final wallets =
-                              (posDoc.data() as Map<String, dynamic>)['wallets']
-                                  as Map<String, dynamic>?;
-                          final oldBalance =
-                              (wallets?[sys.currentUserPhone] ?? 0.0)
-                                  .toDouble();
-                          final debt = oldBalance < 0 ? -oldBalance : 0.0;
-
-                          // تغذية المحفظة (تقلل الدين تلقائياً)
-                          await sys.fundSubAgent(posPhone, amount);
-
-                          // تسجيل معاملة تسوية الديون إن وجدت
-                          if (debt > 0 && amount >= debt) {
-                            _db.collection('transactions').add({
-                              'fromPhone': sys.currentUserPhone,
-                              'toPhone': posPhone,
-                              'agentPhone': sys.currentUserPhone,
-                              'agentName': sys.currentUserName,
-                              'targetName': posName,
-                              'amount': debt,
-                              'type': 'debt_settlement',
-                              'title': 'تسوية دين قديم تلقائياً',
-                              'timestamp': FieldValue.serverTimestamp(),
-                            });
-                          } else if (debt > 0 && amount < debt) {
-                            _db.collection('transactions').add({
-                              'fromPhone': sys.currentUserPhone,
-                              'toPhone': posPhone,
-                              'agentPhone': sys.currentUserPhone,
-                              'agentName': sys.currentUserName,
-                              'targetName': posName,
-                              'amount': amount,
-                              'type': 'debt_settlement_partial',
-                              'title': 'تسوية جزء من الدين تلقائياً',
-                              'timestamp': FieldValue.serverTimestamp(),
-                            });
-                          }
-
+                          await agentAdmin.fundSubAgent(posPhone, amount);
                           _play('success');
                           if (mounted) {
                             Navigator.pop(ctx);
@@ -358,10 +318,12 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
     );
   }
 
-  // ---------- إضافة / تعديل البقالة (مع خريطة) ----------
-  void _showAddOrEditPosModal(SystemProvider sys,
+  // ---------- إضافة / تعديل البقالة ----------
+  void _showAddOrEditPosModal(AgentAdminProvider agentAdmin,
       {Map<String, dynamic>? existingPos, String? initialPhone}) async {
     _play('click');
+    final auth = context.read<AuthProvider>();
+    final wallet = context.read<WalletProvider>();
     final isEdit = existingPos != null;
     String phone = initialPhone ?? existingPos?['phone'] ?? '';
     String name = existingPos?['storeName'] ?? '';
@@ -370,7 +332,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
     double? lng = existingPos?['longitude']?.toDouble();
 
     Map<String, dynamic> relations = existingPos?['agent_relations'] ?? {};
-    Map<String, dynamic> myRel = relations[sys.currentUserPhone] ?? {};
+    Map<String, dynamic> myRel = relations[auth.activeUserPhone] ?? {};
     String commission =
         myRel['commission']?.toString().replaceAll('%', '') ?? '0';
     double limit = (myRel['creditLimit'] ?? 0.0).toDouble();
@@ -380,10 +342,9 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
     bool isSubmitting = false;
     final colors = Theme.of(context).colorScheme;
 
-    // جلب الفئات المتاحة
     var netSnap = await _db
         .collection('networks')
-        .where('agentPhone', isEqualTo: sys.currentUserPhone)
+        .where('agentPhone', isEqualTo: auth.activeUserPhone)
         .get();
     List<Map<String, dynamic>> allAvailableCats = [];
     for (var doc in netSnap.docs) {
@@ -493,7 +454,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                           decoration: InputDecoration(
                             labelText: 'الحد الائتماني',
                             border: const OutlineInputBorder(),
-                            errorText: (limit > sys.currentUserBalance &&
+                            errorText: (limit > wallet.currentUserBalance &&
                                     !isEdit)
                                 ? 'أكبر من رصيدك!'
                                 : null,
@@ -565,7 +526,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                       style: ElevatedButton.styleFrom(
                           backgroundColor: colors.primary),
                       onPressed: (isSubmitting ||
-                              (!isEdit && limit > sys.currentUserBalance))
+                              (!isEdit && limit > wallet.currentUserBalance))
                           ? null
                           : () async {
                               if (phone.isEmpty ||
@@ -585,7 +546,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                               setModalState(() => isSubmitting = true);
                               try {
                                 if (isEdit) {
-                                  await sys.updatePosDetails(
+                                  await agentAdmin.updatePosDetails(
                                     posPhone: phone,
                                     storeName: name,
                                     location: location,
@@ -595,7 +556,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                                     oldCreditLimit: oldLimit,
                                   );
                                 } else {
-                                  await sys.upgradeUserToPos(
+                                  await agentAdmin.upgradeUserToPos(
                                     posPhone: phone,
                                     storeName: name,
                                     location: location,
@@ -605,7 +566,6 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                                     creditDeduction: limit,
                                   );
                                 }
-                                // تحديث الإحداثيات في وثيقة المستخدم
                                 if (lat != null && lng != null) {
                                   await _db
                                       .collection('users')
@@ -828,17 +788,17 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
     );
   }
 
-  // ---------- إرسال تذكير مع خيار تخصيص الحد لكل بقالة ----------
+  // ---------- إرسال تذكير ----------
   void _showNotificationAndThresholdDialog(
-      SystemProvider sys, String posPhone, String posName) {
+      AgentAdminProvider agentAdmin, String posPhone, String posName) {
     _play('click');
+    final auth = context.read<AuthProvider>();
     final colors = Theme.of(context).colorScheme;
-    // قراءة القيمة المخصصة الحالية لهذه البقالة
     _db.collection('users').doc(posPhone).get().then((doc) {
       final relations =
           (doc.data() as Map<String, dynamic>)['agent_relations']
               as Map<String, dynamic>?;
-      final myRel = relations?[sys.currentUserPhone] as Map<String, dynamic>?;
+      final myRel = relations?[auth.activeUserPhone] as Map<String, dynamic>?;
       final customThreshold =
           myRel?['warningThreshold'] as double? ?? _globalWarningThreshold;
 
@@ -861,9 +821,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                     onChanged: (v) {
                       final val = double.tryParse(v);
                       if (val != null) {
-                        // تحديث Firestore
                         _db.collection('users').doc(posPhone).update({
-                          'agent_relations.${sys.currentUserPhone}.warningThreshold':
+                          'agent_relations.${auth.activeUserPhone}.warningThreshold':
                               val,
                         });
                       }
@@ -878,7 +837,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                         'targetPhones': [posPhone],
                         'title': 'تذكير بالسداد ⏰',
                         'body':
-                            'الرجاء سداد المبلغ المستحق عليك إلى الوكيل ${sys.currentUserName}.',
+                            'الرجاء سداد المبلغ المستحق عليك إلى الوكيل ${auth.currentUserName}.',
                         'timestamp': FieldValue.serverTimestamp(),
                         'isRead': false,
                         'readBy': [],
@@ -908,19 +867,21 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
     });
   }
 
-  // ========== بناء الواجهة الرئيسية ==========
+  // ========== بناء الواجهة ==========
   @override
   Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
+    final wallet = context.watch<WalletProvider>();
+    final auth = context.watch<AuthProvider>();
+    final agentAdmin = context.read<AgentAdminProvider>();
     final colors = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: const CustomHeader(title: 'إدارة نقاط البيع الذكية'),
       drawer: CustomAgentDrawer(
-        agentName: sys.currentUserName,
-        phoneNumber: sys.currentUserPhone,
+        agentName: wallet.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
         role: 'وكيل',
-        currentBalance: sys.currentUserBalance,
+        currentBalance: wallet.currentUserBalance,
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
@@ -1006,9 +967,9 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildActivePosTab(sys, colors),
-                  _buildDebtTab(sys, colors),
-                  _buildOverviewTab(sys, colors),
+                  _buildActivePosTab(agentAdmin, wallet, colors),
+                  _buildDebtTab(agentAdmin, wallet, colors),
+                  _buildOverviewTab(agentAdmin, wallet, colors),
                 ],
               ),
             ),
@@ -1016,7 +977,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddOrEditPosModal(sys),
+        onPressed: () => _showAddOrEditPosModal(agentAdmin),
         backgroundColor: colors.primary,
         icon: const Icon(Icons.add_business, color: Colors.white),
         label: Text('إضافة بقالة',
@@ -1025,13 +986,15 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
     );
   }
 
-  // ---------- التبويب الأول: البقالات النشطة ----------
-  Widget _buildActivePosTab(SystemProvider sys, ColorScheme colors) {
+  // ---------- التبويب الأول ----------
+  Widget _buildActivePosTab(
+      AgentAdminProvider agentAdmin, WalletProvider wallet, ColorScheme colors) {
+    final auth = context.read<AuthProvider>();
     return StreamBuilder<QuerySnapshot>(
       stream: _db
           .collection('users')
           .where('role', isEqualTo: 'pos')
-          .where('pos_agents', arrayContains: sys.currentUserPhone)
+          .where('pos_agents', arrayContains: auth.activeUserPhone)
           .limit(50)
           .snapshots(),
       builder: (context, snapshot) {
@@ -1048,7 +1011,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
           final phone = data['phone'] ?? '';
           final wallets = data['wallets'] as Map<String, dynamic>? ?? {};
           final posWalletBal =
-              (wallets[sys.currentUserPhone] ?? 0.0).toDouble();
+              (wallets[auth.activeUserPhone] ?? 0.0).toDouble();
           final status = data['status'] ?? 'نشط';
 
           final matchesSearch = _searchQuery.isEmpty ||
@@ -1081,7 +1044,11 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
         }
 
         return RefreshIndicator(
-          onRefresh: () async => setState(() {}),
+          onRefresh: () async {
+            setState(() {});
+            await Future.delayed(const Duration(milliseconds: 300));
+            _play('success');
+          },
           child: ListView.builder(
             padding: const EdgeInsets.all(12),
             itemCount: docs.length,
@@ -1091,10 +1058,10 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
               final wallets =
                   pos['wallets'] as Map<String, dynamic>? ?? {};
               final posWalletBal =
-                  (wallets[sys.currentUserPhone] ?? 0.0).toDouble();
+                  (wallets[auth.activeUserPhone] ?? 0.0).toDouble();
               final relations =
                   pos['agent_relations'] as Map<String, dynamic>? ?? {};
-              final myRel = relations[sys.currentUserPhone]
+              final myRel = relations[auth.activeUserPhone]
                   as Map<String, dynamic>? ?? {};
               final creditLimit =
                   (myRel['creditLimit'] ?? 0.0).toDouble();
@@ -1169,7 +1136,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                           IconButton(
                             icon: Icon(Icons.edit,
                                 color: colors.primary),
-                            onPressed: () => _showAddOrEditPosModal(sys,
+                            onPressed: () => _showAddOrEditPosModal(agentAdmin,
                                 existingPos: pos),
                           ),
                         ],
@@ -1237,7 +1204,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                               onPressed: isFrozen
                                   ? null
                                   : () => _showFeedWalletModal(
-                                      sys,
+                                      agentAdmin, wallet,
                                       pos['phone'],
                                       pos['storeName'] ?? ''),
                               icon: const Icon(Icons.add_card,
@@ -1254,7 +1221,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                           Expanded(
                             child: OutlinedButton(
                               onPressed: () => _showRepaymentModal(
-                                  sys,
+                                  agentAdmin,
                                   pos['phone'],
                                   pos['storeName'] ?? '',
                                   -posWalletBal > 0
@@ -1307,11 +1274,12 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
     );
   }
 
-  // ---------- التبويب الثاني: الديون والإنذارات ----------
-  Widget _buildDebtTab(SystemProvider sys, ColorScheme colors) {
+  // ---------- التبويب الثاني ----------
+  Widget _buildDebtTab(
+      AgentAdminProvider agentAdmin, WalletProvider wallet, ColorScheme colors) {
+    final auth = context.read<AuthProvider>();
     return Column(
       children: [
-        // شريط إعدادات الإنذار
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           color: colors.primaryContainer,
@@ -1338,7 +1306,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
             stream: _db
                 .collection('users')
                 .where('role', isEqualTo: 'pos')
-                .where('pos_agents', arrayContains: sys.currentUserPhone)
+                .where('pos_agents', arrayContains: auth.activeUserPhone)
                 .limit(50)
                 .snapshots(),
             builder: (context, snapshot) {
@@ -1353,51 +1321,46 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                 final wallets =
                     data['wallets'] as Map<String, dynamic>? ?? {};
                 final bal =
-                    (wallets[sys.currentUserPhone] ?? 0.0).toDouble();
-                return bal < 0; // مدينة فقط
+                    (wallets[auth.activeUserPhone] ?? 0.0).toDouble();
+                return bal < 0;
               }).toList();
 
-              // دالة صغيرة لقراءة رصيد المستند داخل هذا السياق
               double docBalance(doc) {
                 final data = doc.data() as Map<String, dynamic>? ?? {};
                 final wallets = data['wallets'] as Map<String, dynamic>?;
                 return wallets != null
-                    ? (wallets[sys.currentUserPhone] ?? 0.0).toDouble()
+                    ? (wallets[auth.activeUserPhone] ?? 0.0).toDouble()
                     : 0.0;
               }
 
-              // فرز الديون حسب الأكبر (الأعلى ديناً أولاً)
               docs.sort((a, b) {
                 final balA = docBalance(a);
                 final balB = docBalance(b);
-                return balB.compareTo(balA); // من الأعلى ديناً للأقل
+                return balB.compareTo(balA);
               });
 
-              // ========== الإشعارات التلقائية ==========
-              // نتحقق من البقالات التي تجاوزت الحد ولم يتم إرسال تذكير حديث لها
+              // الإشعارات التلقائية
               for (var doc in docs) {
                 final data = doc.data() as Map<String, dynamic>? ?? {};
                 final wallets = data['wallets'] as Map<String, dynamic>?;
                 final balance = wallets != null
-                    ? (wallets[sys.currentUserPhone] ?? 0.0).toDouble()
+                    ? (wallets[auth.activeUserPhone] ?? 0.0).toDouble()
                     : 0.0;
                 final debtAmount = -balance;
                 final relations =
                     data['agent_relations'] as Map<String, dynamic>? ?? {};
                 final myRel =
-                    relations[sys.currentUserPhone] as Map<String, dynamic>? ?? {};
+                    relations[auth.activeUserPhone] as Map<String, dynamic>? ?? {};
                 final customThreshold =
                     myRel['warningThreshold'] as double? ?? _globalWarningThreshold;
                 final lastWarning =
                     myRel['lastWarningSent'] as Timestamp?;
 
-                // إذا تجاوز الدين ولم يتم إرسال تذكير خلال آخر 24 ساعة
                 if (debtAmount > customThreshold &&
                     (lastWarning == null ||
                         DateTime.now()
                             .difference(lastWarning.toDate())
                             .inHours >= 24)) {
-                  // إرسال إشعار
                   _db.collection('notifications').add({
                     'targetPhones': [data['phone']],
                     'title': 'تذكير تلقائي بالسداد ⏰',
@@ -1407,9 +1370,8 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                     'isRead': false,
                     'readBy': [],
                   });
-                  // تحديث حقل lastWarningSent
                   _db.collection('users').doc(data['phone']).update({
-                    'agent_relations.${sys.currentUserPhone}.lastWarningSent':
+                    'agent_relations.${auth.activeUserPhone}.lastWarningSent':
                         FieldValue.serverTimestamp(),
                   });
                 }
@@ -1424,7 +1386,11 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
               }
 
               return RefreshIndicator(
-                onRefresh: () async => setState(() {}),
+                onRefresh: () async {
+                  setState(() {});
+                  await Future.delayed(const Duration(milliseconds: 300));
+                  _play('success');
+                },
                 child: ListView.builder(
                   padding: const EdgeInsets.all(12),
                   itemCount: docs.length,
@@ -1434,17 +1400,16 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                     final wallets =
                         pos['wallets'] as Map<String, dynamic>? ?? {};
                     final debtAmount =
-                        -(wallets[sys.currentUserPhone] ?? 0.0)
+                        -(wallets[auth.activeUserPhone] ?? 0.0)
                             .toDouble();
                     final relations =
                         pos['agent_relations']
                             as Map<String, dynamic>? ?? {};
-                    final myRel = relations[sys.currentUserPhone]
+                    final myRel = relations[auth.activeUserPhone]
                         as Map<String, dynamic>? ?? {};
                     final customThreshold =
                         myRel['warningThreshold'] as double? ??
                             _globalWarningThreshold;
-                    // الإنذار إذا كان الدين > قيمة مخصصة (نقارن بالمبلغ الإيجابي)
                     final isWarning = debtAmount > customThreshold;
 
                     return Card(
@@ -1509,7 +1474,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                                   child: ElevatedButton.icon(
                                     onPressed: () =>
                                         _showRepaymentModal(
-                                            sys,
+                                            agentAdmin,
                                             pos['phone'],
                                             pos['storeName'] ??
                                                 '',
@@ -1536,7 +1501,7 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
                                       'إرسال تذكير وتحديد الإنذار',
                                   onPressed: () =>
                                       _showNotificationAndThresholdDialog(
-                                          sys,
+                                          agentAdmin,
                                           pos['phone'],
                                           pos['storeName'] ?? ''),
                                 ),
@@ -1556,13 +1521,15 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
     );
   }
 
-  // ---------- التبويب الثالث: نظرة عامة ----------
-  Widget _buildOverviewTab(SystemProvider sys, ColorScheme colors) {
+  // ---------- التبويب الثالث ----------
+  Widget _buildOverviewTab(
+      AgentAdminProvider agentAdmin, WalletProvider wallet, ColorScheme colors) {
+    final auth = context.read<AuthProvider>();
     return StreamBuilder<QuerySnapshot>(
       stream: _db
           .collection('users')
           .where('role', isEqualTo: 'pos')
-          .where('pos_agents', arrayContains: sys.currentUserPhone)
+          .where('pos_agents', arrayContains: auth.activeUserPhone)
           .limit(50)
           .snapshots(),
       builder: (context, snapshot) {
@@ -1576,7 +1543,6 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
         final List<Map<String, dynamic>> posList =
             docs.map((d) => d.data() as Map<String, dynamic>).toList();
 
-        // حساب الإحصاءات
         int totalPos = posList.length;
         double totalBalance = 0;
         double totalDebt = 0;
@@ -1584,29 +1550,23 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
           final wallets =
               pos['wallets'] as Map<String, dynamic>? ?? {};
           final bal =
-              (wallets[sys.currentUserPhone] ?? 0.0).toDouble();
+              (wallets[auth.activeUserPhone] ?? 0.0).toDouble();
           totalBalance += bal > 0 ? bal : 0;
           totalDebt += bal < 0 ? -bal : 0;
         }
         double avgBalance = totalPos > 0 ? totalBalance / totalPos : 0;
 
-        // دالة مساعدة لحساب الرصيد
         double balanceOf(Map<String, dynamic> pos) {
           final wallets = pos['wallets'] as Map<String, dynamic>?;
           return wallets != null
-              ? (wallets[sys.currentUserPhone] ?? 0.0).toDouble()
+              ? (wallets[auth.activeUserPhone] ?? 0.0).toDouble()
               : 0.0;
         }
 
-        // أفضل البقالات (أعلى رصيد) وأكثرها ديناً
         final sortedByBalance = List<Map<String, dynamic>>.from(posList)
-          ..sort((a, b) {
-            return balanceOf(b).compareTo(balanceOf(a));
-          });
+          ..sort((a, b) => balanceOf(b).compareTo(balanceOf(a)));
         final sortedByDebt = List<Map<String, dynamic>>.from(posList)
-          ..sort((a, b) {
-            return balanceOf(a).compareTo(balanceOf(b));
-          });
+          ..sort((a, b) => balanceOf(a).compareTo(balanceOf(b)));
 
         final topBalance = sortedByBalance.take(3).toList();
         final topDebt = sortedByDebt
@@ -1615,13 +1575,16 @@ class _SubAgentsScreenState extends State<SubAgentsScreen>
             .toList();
 
         return RefreshIndicator(
-          onRefresh: () async => setState(() {}),
+          onRefresh: () async {
+            setState(() {});
+            await Future.delayed(const Duration(milliseconds: 300));
+            _play('success');
+          },
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // بطاقات الإحصاءات
                 Row(
                   children: [
                     Expanded(
