@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/settings_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_header.dart'; 
 import '../widgets/custom_agent_drawer.dart'; 
@@ -19,7 +21,7 @@ class AgentDashboardScreen extends StatefulWidget {
 class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
   DateTimeRange? _selectedDateRange;
 
-  void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
+  void _play(String type) => context.read<UiProvider>().playSound(type);
 
   Future<void> _selectDateRange() async {
     _play('click');
@@ -44,14 +46,15 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
-    final ui = Provider.of<UiProvider>(context);
+    final wallet = context.watch<WalletProvider>();
+    final auth = context.watch<AuthProvider>();
+    final settings = context.watch<SettingsProvider>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // حساب إحصائيات اليوم الحقيقية من السيرفر
+    // حساب إحصائيات اليوم
     final today = DateTime.now();
-    final agentSales = sys.transactionsLedger.where((t) => 
-      t['agentPhone'] == sys.currentUserPhone && 
+    final agentSales = wallet.transactionsLedger.where((t) => 
+      t['agentPhone'] == auth.activeUserPhone && 
       t['timestamp'] != null && 
       (t['timestamp'] as dynamic).toDate().day == today.day
     ).toList();
@@ -59,117 +62,124 @@ class _AgentDashboardScreenState extends State<AgentDashboardScreen> {
     double todayProfit = agentSales.fold(0, (sum, item) => sum + (item['profit'] ?? 0));
     int todayCards = agentSales.length;
 
-    // تصفية الرسائل الإدارية الموجهة للوكلاء
-    final adminMessages = sys.targetedNews.where((n) => n['target'] == 'agent' || n['target'] == 'الكل').toList();
+    // تصفية الرسائل الإدارية
+    final adminMessages = settings.targetedNews.where((n) => n['target'] == 'agent' || n['target'] == 'الكل').toList();
 
     return Scaffold(
       appBar: const CustomHeader(title: 'لوحة تحكم الوكيل'),
       drawer: CustomAgentDrawer(
-        agentName: sys.currentUserName,
-        phoneNumber: sys.currentUserPhone,
+        agentName: wallet.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
         role: 'وكيل معتمد',
-        currentBalance: sys.currentUserBalance,
+        currentBalance: wallet.currentUserBalance,
       ), 
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: Column(
-          children: [
-            // 1. شريط الرسائل الإدارية (تطوير التبويب الثالث)
-            if (adminMessages.isNotEmpty)
+        child: RefreshIndicator(
+          onRefresh: () async {
+            setState(() {});
+            await Future.delayed(const Duration(milliseconds: 300));
+            _play('success');
+          },
+          child: Column(
+            children: [
+              // شريط الرسائل الإدارية
+              if (adminMessages.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade100,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.amber.shade800, width: 1),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.campaign, color: Colors.amber.shade900),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('إشعار من الإدارة:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87, fontSize: 13)),
+                            Text(adminMessages.last['text'], style: const TextStyle(color: Colors.black54, fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                      IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () { _play('click'); })
+                    ],
+                  ),
+                ),
+
+              // شريط الفلترة
               Container(
-                margin: const EdgeInsets.all(10),
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Colors.amber.shade100,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.amber.shade800, width: 1),
+                  color: isDark ? Colors.grey.shade900 : Colors.blue.shade800, 
+                  borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.campaign, color: Colors.amber.shade900),
-                    const SizedBox(width: 10),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('إشعار من الإدارة:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87, fontSize: 13)),
-                          Text(adminMessages.last['text'], style: const TextStyle(color: Colors.black54, fontSize: 12)),
-                        ],
+                      child: ElevatedButton.icon(
+                        onPressed: _selectDateRange,
+                        icon: const Icon(Icons.calendar_month, size: 18),
+                        label: Text(_selectedDateRange == null ? 'مبيعات اليوم' : 'من ${_selectedDateRange!.start.day} إلى ${_selectedDateRange!.end.day}'),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.blue.shade800),
                       ),
                     ),
-                    IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () { /* كود إخفاء محلي */ })
+                    const SizedBox(width: 10),
+                    CircleAvatar(
+                      backgroundColor: Colors.orange,
+                      child: IconButton(icon: const Icon(Icons.print, color: Colors.white), onPressed: () => _play('click')),
+                    )
                   ],
                 ),
               ),
 
-            // 2. شريط الفلترة
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.grey.shade900 : Colors.blue.shade800, 
-                borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _selectDateRange,
-                      icon: const Icon(Icons.calendar_month, size: 18),
-                      label: Text(_selectedDateRange == null ? 'مبيعات اليوم' : 'من ${_selectedDateRange!.start.day} إلى ${_selectedDateRange!.end.day}'),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.blue.shade800),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    const Text("الإحصائيات المالية", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    const SizedBox(height: 10),
+                    
+                    GridView.count(
+                      crossAxisCount: 2, 
+                      shrinkWrap: true, 
+                      physics: const NeverScrollableScrollPhysics(), 
+                      crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 1.3,
+                      children: [
+                        _buildStatCard('رصيدك الحالي', '${wallet.currentUserBalance.toStringAsFixed(0)} ر.ي', Icons.account_balance_wallet, Colors.green, () => _navigateTo(const AgentWalletScreen())),
+                        _buildStatCard('أرباح اليوم', '$todayProfit ر.ي', Icons.trending_up, Colors.blue, () {}),
+                        _buildStatCard('كروت مباعة', '$todayCards كرت', Icons.sell, Colors.purple, () {}),
+                        _buildStatCard('طلبات شحن', '2 طلب', Icons.notifications_active, Colors.orange, () => _navigateTo(const SubAgentsScreen()), hasAlert: true),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  CircleAvatar(
-                    backgroundColor: Colors.orange,
-                    child: IconButton(icon: const Icon(Icons.print, color: Colors.white), onPressed: () => _play('click')),
-                  )
-                ],
+
+                    const SizedBox(height: 25),
+                    const Text("إجراءات سريعة", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    const SizedBox(height: 15),
+
+                    GridView.count(
+                      crossAxisCount: 3,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      mainAxisSpacing: 15, crossAxisSpacing: 15,
+                      children: [
+                        _buildActionItem("بيع سريع", Icons.point_of_sale, Colors.blue, () => _navigateTo(const QuickPosScreen())),
+                        _buildActionItem("الفئات", Icons.category, Colors.teal, () => _navigateTo(const MikrotikCategoriesScreen())),
+                        _buildActionItem("البقالات", Icons.storefront, Colors.orange, () => _navigateTo(const SubAgentsScreen())),
+                        _buildActionItem("المحفظة", Icons.wallet, Colors.indigo, () => _navigateTo(const AgentWalletScreen())),
+                        _buildActionItem("التقارير", Icons.analytics, Colors.redAccent, () => _play('click')),
+                        _buildActionItem("الدعم", Icons.headset_mic, Colors.blueGrey, () => _play('click')),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  const Text("الإحصائيات المالية", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                  const SizedBox(height: 10),
-                  
-                  GridView.count(
-                    crossAxisCount: 2, 
-                    shrinkWrap: true, 
-                    physics: const NeverScrollableScrollPhysics(), 
-                    crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 1.3,
-                    children: [
-                      _buildStatCard('رصيدك الحالي', '${sys.currentUserBalance.toStringAsFixed(0)} ر.ي', Icons.account_balance_wallet, Colors.green, () => _navigateTo(const AgentWalletScreen())),
-                      _buildStatCard('أرباح اليوم', '$todayProfit ر.ي', Icons.trending_up, Colors.blue, () {}),
-                      _buildStatCard('كروت مباعة', '$todayCards كرت', Icons.sell, Colors.purple, () {}),
-                      _buildStatCard('طلبات شحن', '2 طلب', Icons.notifications_active, Colors.orange, () => _navigateTo(const SubAgentsScreen()), hasAlert: true),
-                    ],
-                  ),
-
-                  const SizedBox(height: 25),
-                  const Text("إجراءات سريعة", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                  const SizedBox(height: 15),
-
-                  GridView.count(
-                    crossAxisCount: 3,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    mainAxisSpacing: 15, crossAxisSpacing: 15,
-                    children: [
-                      _buildActionItem("بيع سريع", Icons.point_of_sale, Colors.blue, () => _navigateTo(const QuickPosScreen())),
-                      _buildActionItem("الفئات", Icons.category, Colors.teal, () => _navigateTo(const MikrotikCategoriesScreen())),
-                      _buildActionItem("البقالات", Icons.storefront, Colors.orange, () => _navigateTo(const SubAgentsScreen())),
-                      _buildActionItem("المحفظة", Icons.wallet, Colors.indigo, () => _navigateTo(const AgentWalletScreen())),
-                      _buildActionItem("التقارير", Icons.analytics, Colors.redAccent, () => _play('click')),
-                      _buildActionItem("الدعم", Icons.headset_mic, Colors.blueGrey, () => _play('click')),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
