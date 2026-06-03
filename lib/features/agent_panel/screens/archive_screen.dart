@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_agent_drawer.dart';
@@ -56,8 +57,6 @@ class _ArchiveScreenState extends State<ArchiveScreen>
     with SingleTickerProviderStateMixin {
   late TabController _mainTabController;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  late SystemProvider sys;
-  late UiProvider _ui;
 
   // ========== الأرشيف ==========
   List<QueryDocumentSnapshot> archivedCards = [];
@@ -95,7 +94,7 @@ class _ArchiveScreenState extends State<ArchiveScreen>
   // ========== سجل النشاطات ==========
   List<ActivityLogEntry> _activityLogs = [];
 
-  void _play(String type) => _ui.playSound(type);
+  void _play(String type) => context.read<UiProvider>().playSound(type);
 
   String _formatDate(DateTime dt) {
     return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} '
@@ -103,8 +102,9 @@ class _ArchiveScreenState extends State<ArchiveScreen>
   }
 
   Future<void> _logActivity(String action, String details) async {
+    final auth = context.read<AuthProvider>();
     await _firestore.collection('activity_logs').add({
-      'agentPhone': sys.currentUserPhone,
+      'agentPhone': auth.activeUserPhone,
       'action': action,
       'details': details,
       'timestamp': FieldValue.serverTimestamp(),
@@ -131,8 +131,6 @@ class _ArchiveScreenState extends State<ArchiveScreen>
   @override
   void initState() {
     super.initState();
-    sys = Provider.of<SystemProvider>(context, listen: false);
-    _ui = Provider.of<UiProvider>(context, listen: false);
     _mainTabController = TabController(length: 4, vsync: this);
     _scrollController.addListener(_onScroll);
     _loadInitialData();
@@ -145,7 +143,6 @@ class _ArchiveScreenState extends State<ArchiveScreen>
     super.dispose();
   }
 
-  // ========== هنا التعديل الأساسي ==========
   Future<void> _loadInitialData() async {
     setState(() => _isLoading = true);
     try {
@@ -170,11 +167,11 @@ class _ArchiveScreenState extends State<ArchiveScreen>
       }
     }
   }
-  // ========================================
 
   Future<void> _loadAvailableNetworks() async {
+    final auth = context.read<AuthProvider>();
     final snap = await _firestore.collection('networks')
-        .where('agentPhone', isEqualTo: sys.currentUserPhone)
+        .where('agentPhone', isEqualTo: auth.activeUserPhone)
         .get();
     setState(() {
       _availableNetworks = snap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
@@ -313,16 +310,18 @@ class _ArchiveScreenState extends State<ArchiveScreen>
   }
 
   Future<void> _loadRecycleBin() async {
+    final auth = context.read<AuthProvider>();
     final snap = await _firestore.collection('cards')
         .where('status', isEqualTo: 'recycle_bin')
-        .where('agentPhone', isEqualTo: sys.currentUserPhone)
+        .where('agentPhone', isEqualTo: auth.activeUserPhone)
         .get();
     setState(() => _recycleBinCards = snap.docs);
   }
 
   Future<void> _loadActivityLogs() async {
+    final auth = context.read<AuthProvider>();
     final snap = await _firestore.collection('activity_logs')
-        .where('agentPhone', isEqualTo: sys.currentUserPhone)
+        .where('agentPhone', isEqualTo: auth.activeUserPhone)
         .orderBy('timestamp', descending: true)
         .limit(50)
         .get();
@@ -643,13 +642,16 @@ class _ArchiveScreenState extends State<ArchiveScreen>
   // ========== بناء الواجهة ==========
   @override
   Widget build(BuildContext context) {
+    final wallet = context.watch<WalletProvider>();
+    final auth = context.watch<AuthProvider>();
+
     return Scaffold(
       appBar: const CustomHeader(title: 'الأرشيف المُتقدم'),
       drawer: CustomAgentDrawer(
-        agentName: sys.currentUserName,
-        phoneNumber: sys.currentUserPhone,
+        agentName: wallet.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
         role: 'وكيل معتمد (Agent)',
-        currentBalance: sys.currentUserBalance,
+        currentBalance: wallet.currentUserBalance,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -768,7 +770,10 @@ class _ArchiveScreenState extends State<ArchiveScreen>
         ),
         Expanded(
           child: RefreshIndicator(
-            onRefresh: () => _loadArchive(reset: true),
+            onRefresh: () async {
+              await _loadArchive(reset: true);
+              _play('success');
+            },
             child: archivedCards.isEmpty
                 ? ListView(children: const [Center(child: Padding(padding: EdgeInsets.all(32), child: Text('لا توجد كروت في الأرشيف')))])
                 : ListView.builder(
@@ -896,16 +901,22 @@ class _ArchiveScreenState extends State<ArchiveScreen>
   // ========== تبويب سجل النشاطات ==========
   Widget _buildActivityLogTab() {
     if (_activityLogs.isEmpty) return const Center(child: Text('لا يوجد سجل نشاطات'));
-    return ListView.builder(
-      itemCount: _activityLogs.length,
-      itemBuilder: (_, i) {
-        final log = _activityLogs[i];
-        return ListTile(
-          leading: Icon(_getActionIcon(log.action), color: _getActionColor(log.action)),
-          title: Text(_getActionName(log.action)),
-          subtitle: Text('${log.details} - ${_formatDate(log.timestamp)}'),
-        );
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadActivityLogs();
+        _play('success');
       },
+      child: ListView.builder(
+        itemCount: _activityLogs.length,
+        itemBuilder: (_, i) {
+          final log = _activityLogs[i];
+          return ListTile(
+            leading: Icon(_getActionIcon(log.action), color: _getActionColor(log.action)),
+            title: Text(_getActionName(log.action)),
+            subtitle: Text('${log.details} - ${_formatDate(log.timestamp)}'),
+          );
+        },
+      ),
     );
   }
 
@@ -942,39 +953,49 @@ class _ArchiveScreenState extends State<ArchiveScreen>
   // ========== تبويب سلة المهملات ==========
   Widget _buildRecycleBinTab() {
     if (_recycleBinCards.isEmpty) return const Center(child: Text('سلة المهملات فارغة'));
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: Text('الكروت في سلة المهملات (تحذف نهائياً بعد $_recycleBinDays يوم):', style: const TextStyle(fontWeight: FontWeight.bold)),
-        ),
-        Expanded(
-          child: ListView.builder(
-            itemCount: _recycleBinCards.length,
-            itemBuilder: (_, i) {
-              final card = _recycleBinCards[i];
-              return ListTile(
-                title: Text(card['pin'] ?? '---'),
-                subtitle: Text(card['categoryId'] ?? ''),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(icon: const Icon(Icons.restore), onPressed: () async {
-                      await card.reference.update({'status': 'archived'});
-                      _loadRecycleBin();
-                      _loadArchive(reset: true);
-                    }),
-                    IconButton(icon: const Icon(Icons.delete_forever, color: Colors.red), onPressed: () async {
-                      await card.reference.delete();
-                      _loadRecycleBin();
-                    }),
-                  ],
-                ),
-              );
-            },
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _loadRecycleBin();
+        _play('success');
+      },
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text('الكروت في سلة المهملات (تحذف نهائياً بعد $_recycleBinDays يوم):', style: const TextStyle(fontWeight: FontWeight.bold)),
           ),
-        ),
-      ],
+          Expanded(
+            child: ListView.builder(
+              itemCount: _recycleBinCards.length,
+              itemBuilder: (_, i) {
+                final card = _recycleBinCards[i];
+                return ListTile(
+                  title: Text(card['pin'] ?? '---'),
+                  subtitle: Text(card['categoryId'] ?? ''),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(icon: const Icon(Icons.restore), onPressed: () async {
+                        _play('click');
+                        await card.reference.update({'status': 'archived'});
+                        _loadRecycleBin();
+                        _loadArchive(reset: true);
+                        _play('success');
+                      }),
+                      IconButton(icon: const Icon(Icons.delete_forever, color: Colors.red), onPressed: () async {
+                        _play('click');
+                        await card.reference.delete();
+                        _loadRecycleBin();
+                        _play('success');
+                      }),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 
