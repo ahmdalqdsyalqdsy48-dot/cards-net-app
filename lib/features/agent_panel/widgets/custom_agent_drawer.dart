@@ -25,7 +25,8 @@ import '../screens/agent_client_list_screen.dart';
 
 import '../../auth/screens/sso_login_screen.dart';
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/agent_admin_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/providers/theme_provider.dart';
 
@@ -80,7 +81,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     return [darker, lighter];
   }
 
-  Future<void> _updateProfileImage(SystemProvider sys) async {
+  Future<void> _updateProfileImage(String phone) async {
     _play('click');
     final picker = ImagePicker();
     final XFile? pickedFile = await picker.pickImage(
@@ -96,7 +97,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
 
         await FirebaseFirestore.instance
             .collection('users')
-            .doc(sys.currentUserPhone)
+            .doc(phone)
             .update({
           'profileImageBase64': base64Image,
         });
@@ -121,12 +122,12 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     }
   }
 
-  Future<void> _deleteProfileImage(SystemProvider sys) async {
+  Future<void> _deleteProfileImage(String phone) async {
     _play('click');
     try {
       await FirebaseFirestore.instance
           .collection('users')
-          .doc(sys.currentUserPhone)
+          .doc(phone)
           .update({
         'profileImageBase64': FieldValue.delete(),
       });
@@ -144,7 +145,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
   }
 
   void _showProfileImageActionDialog(
-      BuildContext context, SystemProvider sys, String? currentBase64) {
+      BuildContext context, String phone, String? currentBase64) {
     _play('click');
     bool hasImage = currentBase64 != null && currentBase64.isNotEmpty;
 
@@ -189,7 +190,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   ElevatedButton.icon(
-                    onPressed: () => _updateProfileImage(sys),
+                    onPressed: () => _updateProfileImage(phone),
                     icon: Icon(
                         hasImage ? Icons.sync : Icons.add_photo_alternate,
                         color: Colors.white,
@@ -201,7 +202,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                   ),
                   if (hasImage)
                     ElevatedButton.icon(
-                      onPressed: () => _deleteProfileImage(sys),
+                      onPressed: () => _deleteProfileImage(phone),
                       icon: const Icon(Icons.delete_forever,
                           color: Colors.white, size: 16),
                       label: const Text('حذف',
@@ -220,7 +221,8 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
 
   @override
   Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
+    final auth = Provider.of<AuthProvider>(context);
+    final agentAdmin = Provider.of<AgentAdminProvider>(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
     final ColorScheme colors = Theme.of(context).colorScheme;
     final bool isDark = themeProvider.isDarkMode;
@@ -229,8 +231,9 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     final Color onSurfaceColor = colors.onSurface;
     final Color onSurfaceVariant = colors.onSurfaceVariant;
 
-    final myData = sys.agentsList.firstWhere(
-        (a) => a['phone'] == sys.currentUserPhone,
+    final String currentPhone = auth.currentUserPhone;
+    final myData = agentAdmin.agentsList.firstWhere(
+        (a) => a['phone'] == currentPhone,
         orElse: () => {});
     final double liveBalance =
         double.tryParse(myData['balance']?.toString() ?? '0') ?? 0.0;
@@ -263,7 +266,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
                         children: [
                           GestureDetector(
                             onTap: () => _showProfileImageActionDialog(
-                                context, sys, base64Image),
+                                context, currentPhone, base64Image),
                             child: Container(
                               width: 90,
                               height: 90,
