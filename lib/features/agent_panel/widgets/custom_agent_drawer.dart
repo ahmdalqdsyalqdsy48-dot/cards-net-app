@@ -26,7 +26,7 @@ import '../screens/agent_client_list_screen.dart';
 import '../../auth/screens/sso_login_screen.dart';
 
 import '../../../core/providers/auth_provider.dart';
-import '../../../core/providers/agent_admin_provider.dart';
+import '../../../core/providers/wallet_provider.dart';  // <-- تغيير
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/providers/theme_provider.dart';
 
@@ -222,7 +222,7 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
-    final agentAdmin = Provider.of<AgentAdminProvider>(context);
+    final wallet = Provider.of<WalletProvider>(context);  // <-- تغيير
     final themeProvider = Provider.of<ThemeProvider>(context);
     final ColorScheme colors = Theme.of(context).colorScheme;
     final bool isDark = themeProvider.isDarkMode;
@@ -231,8 +231,11 @@ class _CustomAgentDrawerState extends State<CustomAgentDrawer> {
     final Color onSurfaceColor = colors.onSurface;
     final Color onSurfaceVariant = colors.onSurfaceVariant;
 
-    final String currentPhone = auth.currentUserPhone;
-    final myData = agentAdmin.agentsList.firstWhere(
+    final String currentPhone = auth.activeUserPhone ?? '';  // <-- تصحيح
+
+    // استخدم agentsList من WalletProvider
+    final agentsList = wallet.agentsList;  // <-- تغيير
+    final myData = agentsList.firstWhere(
         (a) => a['phone'] == currentPhone,
         orElse: () => {});
     final double liveBalance =
