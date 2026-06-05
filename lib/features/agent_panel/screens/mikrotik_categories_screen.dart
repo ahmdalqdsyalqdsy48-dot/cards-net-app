@@ -1,3 +1,6 @@
+// lib/features/agent_panel/screens/mikrotik_categories_screen.dart
+// تم التحديث: استخدام AuthProvider، RefreshIndicator شامل، رأس متحرك يختفي مع التمرير، إصلاحات الأداء
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -12,7 +15,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';   // <-- التغيير الأساسي
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/widgets/custom_header.dart';
@@ -36,6 +39,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   bool _isProcessing = false;
   bool _simulationMode = false;
 
+  // متغيرات المسودة للإضافة
   String _draftServerName = '';
   String _draftServerLocation = '';
   String _draftServerIp = '';
@@ -60,12 +64,13 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   bool _draftAllowSellSim = false;
 
   final Map<String, TextEditingController> _multiGenControllers = {};
-  Timer? _debounceTimer;
+  Timer? _debounceTimer; // للبحث في الخريطة
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    // تحديث واجهة التبويب عند تغيير التبويب النشط
     _tabController.addListener(() {
       if (mounted) setState(() {});
     });
@@ -75,9 +80,11 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   void dispose() {
     _tabController.dispose();
     _multiGenControllers.forEach((_, ctrl) => ctrl.dispose());
+    _debounceTimer?.cancel();
     super.dispose();
   }
 
+  // ---------- دوال مساعدة صوتية وإشعارات ----------
   void _play(String type) =>
       Provider.of<UiProvider>(context, listen: false).playSound(type);
 
@@ -120,6 +127,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
+  // ---------- مربع حوار تأكيد (يدعم كلمة مرور) ----------
   Future<bool> _confirmAction(String title, String message, Color color,
       {bool requirePassword = false}) async {
     _play('warning');
@@ -170,13 +178,14 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                     style: ElevatedButton.styleFrom(backgroundColor: color),
                     onPressed: () {
                       if (requirePassword) {
-                        final sys = Provider.of<SystemProvider>(context,
+                        final auth = Provider.of<AuthProvider>(context,
                             listen: false);
-                        if (!sys.validatePin(
+                        if (!auth.validatePin(
                                 passwordController.text.trim()) &&
                             passwordController.text.trim() != '123456') {
                           _play('error');
-                          _showOverlayToast('كلمة المرور غير صحيحة', isError: true);
+                          _showOverlayToast('كلمة المرور غير صحيحة',
+                              isError: true);
                           return;
                         }
                       }
@@ -194,6 +203,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
         false;
   }
 
+  // ---------- أداة اختيار اللون ----------
   Future<Color?> _openColorPicker(Color currentColor) async {
     Color pickedColor = currentColor;
     return showDialog<Color>(
@@ -221,11 +231,12 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
+  // ---------- تسجيل النشاط ----------
   Future<void> _logAction(String action, int count,
       {String? details}) async {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final auth = Provider.of<AuthProvider>(context, listen: false);
     await _db.collection('activity_logs').add({
-      'agentPhone': sys.currentUserPhone,
+      'agentPhone': auth.activeUserPhone,
       'action': action,
       'details': details ?? '',
       'count': count,
@@ -233,6 +244,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     });
   }
 
+  // ---------- تفعيل/إلغاء المحاكاة ----------
   Future<void> _toggleSimulation() async {
     if (!_simulationMode) {
       bool firstConfirm = await _confirmAction(
@@ -256,11 +268,13 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     }
   }
 
+  // ---------- توليد رقم سري وهمي ----------
   String _generateFakePin() {
     final r = Random();
     return (r.nextInt(9000000) + 1000000).toString();
   }
 
+  // ---------- البوت الذكي (يتم استدعاؤه عند الحاجة) ----------
   Future<void> _checkAutoBot(List<QueryDocumentSnapshot> networks) async {
     for (var net in networks) {
       final data = net.data() as Map<String, dynamic>;
@@ -290,7 +304,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     }
   }
 
-  // ========== خريطة مع شريط بحث (HTTP) ==========
+  // ========== خريطة مع شريط بحث (HTTP) محسّن ==========
   Future<Map<String, dynamic>?> _pickLocationOnMap() async {
     LatLng selected = const LatLng(15.3694, 44.1910);
     String selectedAddress = '';
@@ -340,7 +354,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
             height: 500,
             child: Column(
               children: [
-                // شريط بحث
+                // شريط بحث مع debounce بسيط
                 Row(
                   children: [
                     Expanded(
@@ -350,16 +364,21 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                           hintText: 'ابحث عن مكان...',
                           prefixIcon: Icon(Icons.search),
                         ),
-                        onChanged: (v) async {
-                          if (v.trim().length < 3) {
-                            setMapState(() => searchResults = []);
-                            return;
-                          }
-                          setMapState(() => isSearching = true);
-                          final results = await _search(v.trim());
-                          setMapState(() {
-                            searchResults = results;
-                            isSearching = false;
+                        onChanged: (v) {
+                          if (_debounceTimer?.isActive ?? false)
+                            _debounceTimer!.cancel();
+                          _debounceTimer =
+                              Timer(const Duration(milliseconds: 500), () async {
+                            if (v.trim().length < 3) {
+                              setMapState(() => searchResults = []);
+                              return;
+                            }
+                            setMapState(() => isSearching = true);
+                            final results = await _search(v.trim());
+                            setMapState(() {
+                              searchResults = results;
+                              isSearching = false;
+                            });
                           });
                         },
                       ),
@@ -460,19 +479,19 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
-  // ========== زر الإضافة مع شرط الرصيد ==========
+  // ========== زر الإضافة العائم (FAB) مع شرط الرصيد ==========
   Widget? _buildCurrentFab() {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final auth = Provider.of<AuthProvider>(context, listen: false);
     switch (_tabController.index) {
       case 0:
         return FloatingActionButton.extended(
           onPressed: () {
-            if (sys.currentUserBalance <= 0) {
+            if (auth.currentUserBalance <= 0) {
               _play('error');
               _showBalanceRequiredDialog();
               return;
             }
-            _showAddServerBottomSheet(sys);
+            _showAddServerBottomSheet(auth);
           },
           backgroundColor: Colors.blue.shade800,
           icon: const Icon(Icons.add, color: Colors.white),
@@ -482,14 +501,14 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
       case 1:
         return FloatingActionButton.extended(
           onPressed: () async {
-            if (sys.currentUserBalance <= 0) {
+            if (auth.currentUserBalance <= 0) {
               _play('error');
               _showBalanceRequiredDialog();
               return;
             }
             final snap = await _db
                 .collection('networks')
-                .where('agentPhone', isEqualTo: sys.currentUserPhone)
+                .where('agentPhone', isEqualTo: auth.activeUserPhone)
                 .get();
             if (snap.docs.isNotEmpty) {
               _showAddCategoryBottomSheet(snap.docs);
@@ -543,96 +562,120 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
+  // ========== بناء الواجهة الرئيسية (باستخدام RefreshIndicator + CustomScrollView) ==========
   @override
   Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
+    final auth = Provider.of<AuthProvider>(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).primaryColor;
 
     return Scaffold(
       appBar: const CustomHeader(title: 'إدارة الميكروتك والفئات'),
       drawer: CustomAgentDrawer(
-        agentName: sys.currentUserName,
-        phoneNumber: sys.currentUserPhone,
+        agentName: auth.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
         role: 'وكيل معتمد (Agent)',
-        currentBalance: sys.currentUserBalance,
+        currentBalance: auth.currentUserBalance,
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: Column(
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.only(bottom: 5, top: 5),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? primaryColor.withOpacity(0.4).withAlpha(100)
-                    : Colors.blue.shade800,
-                borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(20),
-                    bottomRight: Radius.circular(20)),
+        child: RefreshIndicator(
+          onRefresh: () async {
+            // تحديث جميع التبويبات بإعادة بناء الشاشة
+            setState(() {});
+            // يمكن إضافة منطق إعادة تحميل إضافي هنا إذا لزم الأمر
+          },
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              // الرأس المتحرك (TabBar + Switch)
+              SliverToBoxAdapter(
+                child: Container(
+                  padding: const EdgeInsets.only(bottom: 5, top: 5),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? primaryColor.withOpacity(0.4).withAlpha(100)
+                        : Colors.blue.shade800,
+                    borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(20),
+                        bottomRight: Radius.circular(20)),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TabBar(
+                        controller: _tabController,
+                        isScrollable: true,
+                        labelColor: Colors.white,
+                        unselectedLabelColor: Colors.white54,
+                        indicatorColor: Colors.orange,
+                        indicatorWeight: 4,
+                        labelStyle: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 14),
+                        tabs: const [
+                          Tab(
+                              icon: Icon(Icons.dns, color: Colors.greenAccent),
+                              text: 'سيرفرات'),
+                          Tab(
+                              icon: Icon(Icons.category,
+                                  color: Colors.orangeAccent),
+                              text: 'المخزون والفئات'),
+                          Tab(
+                              icon: Icon(Icons.autorenew,
+                                  color: Colors.lightBlueAccent),
+                              text: 'توليد الكروت'),
+                        ],
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text('محاكاة: ',
+                              style:
+                                  TextStyle(color: Colors.white70, fontSize: 12)),
+                          Switch(
+                              value: _simulationMode,
+                              onChanged: (v) => _toggleSimulation(),
+                              activeColor: Colors.redAccent),
+                          Text(_simulationMode ? 'ON' : 'OFF',
+                              style: TextStyle(
+                                  color: _simulationMode
+                                      ? Colors.redAccent
+                                      : Colors.white54,
+                                  fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              child: Column(children: [
-                TabBar(
+              // مؤشر التقدم أثناء المعالجة
+              if (_isProcessing)
+                const SliverToBoxAdapter(
+                  child: LinearProgressIndicator(
+                      backgroundColor: Colors.orange, color: Colors.white),
+                ),
+              // محتوى التبويبات (يأخذ المساحة المتبقية)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: TabBarView(
                   controller: _tabController,
-                  isScrollable: true,
-                  labelColor: Colors.white,
-                  unselectedLabelColor: Colors.white54,
-                  indicatorColor: Colors.orange,
-                  indicatorWeight: 4,
-                  labelStyle: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 14),
-                  tabs: const [
-                    Tab(
-                        icon: Icon(Icons.dns, color: Colors.greenAccent),
-                        text: 'سيرفرات'),
-                    Tab(
-                        icon: Icon(Icons.category, color: Colors.orangeAccent),
-                        text: 'المخزون والفئات'),
-                    Tab(
-                        icon: Icon(Icons.autorenew,
-                            color: Colors.lightBlueAccent),
-                        text: 'توليد الكروت'),
+                  children: [
+                    ServersTab(parent: this),
+                    CategoriesTab(parent: this),
+                    GenerateTab(parent: this),
                   ],
                 ),
-                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  const Text('محاكاة: ',
-                      style: TextStyle(color: Colors.white70, fontSize: 12)),
-                  Switch(
-                      value: _simulationMode,
-                      onChanged: (v) => _toggleSimulation(),
-                      activeColor: Colors.redAccent),
-                  Text(_simulationMode ? 'ON' : 'OFF',
-                      style: TextStyle(
-                          color: _simulationMode
-                              ? Colors.redAccent
-                              : Colors.white54,
-                          fontWeight: FontWeight.bold)),
-                ]),
-              ]),
-            ),
-            if (_isProcessing)
-              const LinearProgressIndicator(
-                  backgroundColor: Colors.orange, color: Colors.white),
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  ServersTab(parent: this),
-                  CategoriesTab(parent: this),
-                  GenerateTab(parent: this),
-                ],
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
       floatingActionButton: _buildCurrentFab(),
     );
   }
 
-  // ========== نافذة إضافة/تعديل سيرفر ==========
-  void _showAddServerBottomSheet(SystemProvider sys,
+  // ========== نافذة إضافة/تعديل سيرفر (محدثة) ==========
+  void _showAddServerBottomSheet(AuthProvider auth,
       {Map<String, dynamic>? existingData, String? docId}) {
     _play('click');
     String name = existingData?['name'] ?? _draftServerName;
@@ -669,21 +712,18 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                     style: const TextStyle(
                         fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 10),
-                TextField(
-                    decoration: const InputDecoration(
-                        labelText: 'إسم شبكتك',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.dns, color: Colors.blue)),
-                    controller: TextEditingController(text: name),
+                _buildTextField(
+                    label: 'إسم شبكتك',
+                    icon: Icons.dns,
+                    color: Colors.blue,
+                    initialText: name,
                     onChanged: (v) => name = v),
                 const SizedBox(height: 12),
-                TextField(
-                    decoration: const InputDecoration(
-                        labelText: 'موقع الشبكة',
-                        border: OutlineInputBorder(),
-                        prefixIcon:
-                            Icon(Icons.location_on, color: Colors.orange)),
-                    controller: TextEditingController(text: location),
+                _buildTextField(
+                    label: 'موقع الشبكة',
+                    icon: Icons.location_on,
+                    color: Colors.orange,
+                    initialText: location,
                     onChanged: (v) => location = v),
                 const SizedBox(height: 6),
                 OutlinedButton.icon(
@@ -714,193 +754,141 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                     style: const TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                 const SizedBox(height: 12),
-                TextField(
-                    decoration: const InputDecoration(
-                        labelText: 'عنوان IP / الرابط (DDNS)',
-                        border: OutlineInputBorder(),
-                        prefixIcon:
-                            Icon(Icons.wifi, color: Colors.green)),
-                    controller: TextEditingController(text: ip),
+                _buildTextField(
+                    label: 'عنوان IP / الرابط (DDNS)',
+                    icon: Icons.wifi,
+                    color: Colors.green,
+                    initialText: ip,
                     onChanged: (v) => ip = v),
                 const SizedBox(height: 12),
-                TextField(
-                    decoration: const InputDecoration(
-                        labelText: 'رابط صفحة تسجيل الدخول للزبائن',
-                        border: OutlineInputBorder(),
-                        prefixIcon:
-                            Icon(Icons.link, color: Colors.indigo)),
-                    controller: TextEditingController(text: loginUrl),
+                _buildTextField(
+                    label: 'رابط صفحة تسجيل الدخول للزبائن',
+                    icon: Icons.link,
+                    color: Colors.indigo,
+                    initialText: loginUrl,
                     onChanged: (v) => loginUrl = v),
                 const SizedBox(height: 12),
                 Row(children: [
                   Expanded(
-                      child: TextField(
-                          decoration: const InputDecoration(
-                              labelText: 'مستخدم API',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.person,
-                                  color: Colors.deepPurple)),
-                          controller:
-                              TextEditingController(text: user),
-                          onChanged: (v) => user = v)),
+                    child: _buildTextField(
+                        label: 'مستخدم API',
+                        icon: Icons.person,
+                        color: Colors.deepPurple,
+                        initialText: user,
+                        onChanged: (v) => user = v),
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
-                      child: TextField(
-                          decoration: const InputDecoration(
-                              labelText: 'كلمة المرور',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.lock,
-                                  color: Colors.red)),
-                          controller:
-                              TextEditingController(text: pass),
-                          obscureText: true,
-                          onChanged: (v) => pass = v)),
+                    child: _buildTextField(
+                        label: 'كلمة المرور',
+                        icon: Icons.lock,
+                        color: Colors.red,
+                        initialText: pass,
+                        obscure: true,
+                        onChanged: (v) => pass = v),
+                  ),
                 ]),
                 const SizedBox(height: 12),
-                TextField(
-                    decoration: const InputDecoration(
-                        labelText: 'API Port (الافتراضي: 8728)',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.settings_ethernet,
-                            color: Colors.blueGrey)),
-                    controller: TextEditingController(text: port),
+                _buildTextField(
+                    label: 'API Port (الافتراضي: 8728)',
+                    icon: Icons.settings_ethernet,
+                    color: Colors.blueGrey,
+                    initialText: port,
                     onChanged: (v) => port = v),
                 const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue.shade800,
-                        shape: RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.circular(10))),
-                    onPressed: isSubmitting
-                        ? null
-                        : () async {
-                            if (name.isNotEmpty &&
-                                location.isNotEmpty &&
-                                ip.isNotEmpty) {
-                              if (lat == null || lng == null) {
-                                _play('error');
-                                _showOverlayToast(
-                                    'يجب تحديد الموقع على الخريطة',
-                                    isError: true);
-                                return;
-                              }
-                              if (docId != null) {
-                                bool confirm = await _confirmAction(
-                                    "حفظ التعديلات",
-                                    "هل أنت متأكد من حفظ التعديلات؟",
-                                    Colors.blue);
-                                if (!confirm) return;
-                              }
-                              _play('click');
-                              setModalState(
-                                  () => isSubmitting = true);
-                              try {
-                                Map<String, dynamic> networkData = {
-                                  'name': name,
-                                  'location': location,
-                                  'ip': ip,
-                                  'apiUser': user,
-                                  'apiPassword': pass,
-                                  'apiPort': port,
-                                  'loginUrl': loginUrl,
-                                  'agentPhone':
-                                      sys.currentUserPhone,
-                                  'agentName': sys.currentUserName,
-                                  'isActive':
-                                      existingData?['isActive'] ??
-                                          true,
-                                  'latitude': lat,
-                                  'longitude': lng,
-                                  'updatedAt':
-                                      FieldValue.serverTimestamp(),
-                                };
-                                if (docId == null) {
-                                  networkData['status'] =
-                                      'متصل نشط 🟢';
-                                  networkData['categories'] = [];
-                                  networkData['createdAt'] =
-                                      FieldValue.serverTimestamp();
-                                  await _db
-                                      .collection('networks')
-                                      .add(networkData);
-                                  _draftServerName = '';
-                                  _draftServerLocation = '';
-                                  _draftServerIp = '';
-                                  _draftServerUser = '';
-                                  _draftServerPass = '';
-                                  _draftServerPort = '8728';
-                                  _draftServerLoginUrl = '';
-                                  _draftServerLat = null;
-                                  _draftServerLng = null;
-                                } else {
-                                  await _db
-                                      .collection('networks')
-                                      .doc(docId)
-                                      .update(networkData);
-                                }
-                                _play('success');
-                                if (mounted) {
-                                  Navigator.pop(ctx);
-                                  _showOverlayToast(docId == null
-                                      ? 'تمت إضافة الشبكة بنجاح! 🟢'
-                                      : 'تم التعديل بنجاح! ✏️');
-                                }
-                              } catch (e) {
-                                setModalState(
-                                    () => isSubmitting = false);
-                                _play('error');
-                                _showOverlayToast('فشل حفظ البيانات',
-                                    isError: true);
-                              }
-                            } else {
-                              _play('error');
-                              _showOverlayToast(
-                                  'يرجى تعبئة الحقول الأساسية',
-                                  isError: true);
-                            }
-                          },
-                    child: isSubmitting
-                        ? const CircularProgressIndicator(
-                            color: Colors.white)
-                        : const Text('حفظ واتصال',
-                            style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold)),
-                  ),
+                _buildSubmitButton(
+                  label: 'حفظ واتصال',
+                  isLoading: isSubmitting,
+                  color: Colors.blue.shade800,
+                  onPressed: () async {
+                    if (name.isEmpty || location.isEmpty || ip.isEmpty) {
+                      _play('error');
+                      _showOverlayToast('يرجى تعبئة الحقول الأساسية',
+                          isError: true);
+                      return;
+                    }
+                    if (lat == null || lng == null) {
+                      _play('error');
+                      _showOverlayToast('يجب تحديد الموقع على الخريطة',
+                          isError: true);
+                      return;
+                    }
+                    if (docId != null) {
+                      bool confirm = await _confirmAction(
+                          "حفظ التعديلات",
+                          "هل أنت متأكد من حفظ التعديلات؟",
+                          Colors.blue);
+                      if (!confirm) return;
+                    }
+                    _play('click');
+                    setModalState(() => isSubmitting = true);
+                    try {
+                      Map<String, dynamic> networkData = {
+                        'name': name,
+                        'location': location,
+                        'ip': ip,
+                        'apiUser': user,
+                        'apiPassword': pass,
+                        'apiPort': port,
+                        'loginUrl': loginUrl,
+                        'agentPhone': auth.activeUserPhone,
+                        'agentName': auth.currentUserName,
+                        'isActive': existingData?['isActive'] ?? true,
+                        'latitude': lat,
+                        'longitude': lng,
+                        'updatedAt': FieldValue.serverTimestamp(),
+                      };
+                      if (docId == null) {
+                        networkData['status'] = 'متصل نشط 🟢';
+                        networkData['categories'] = [];
+                        networkData['createdAt'] =
+                            FieldValue.serverTimestamp();
+                        await _db.collection('networks').add(networkData);
+                        _draftServerName = '';
+                        _draftServerLocation = '';
+                        _draftServerIp = '';
+                        _draftServerUser = '';
+                        _draftServerPass = '';
+                        _draftServerPort = '8728';
+                        _draftServerLoginUrl = '';
+                        _draftServerLat = null;
+                        _draftServerLng = null;
+                      } else {
+                        await _db
+                            .collection('networks')
+                            .doc(docId)
+                            .update(networkData);
+                      }
+                      _play('success');
+                      if (mounted) {
+                        Navigator.pop(ctx);
+                        _showOverlayToast(docId == null
+                            ? 'تمت إضافة الشبكة بنجاح! 🟢'
+                            : 'تم التعديل بنجاح! ✏️');
+                      }
+                    } catch (e) {
+                      setModalState(() => isSubmitting = false);
+                      _play('error');
+                      _showOverlayToast('فشل حفظ البيانات', isError: true);
+                    }
+                  },
                 ),
                 const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.grey,
-                        side: const BorderSide(color: Colors.grey),
-                        shape: RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.circular(10))),
-                    onPressed: () {
-                      _draftServerName = name;
-                      _draftServerLocation = location;
-                      _draftServerIp = ip;
-                      _draftServerUser = user;
-                      _draftServerPass = pass;
-                      _draftServerPort = port;
-                      _draftServerLoginUrl = loginUrl;
-                      _draftServerLat = lat;
-                      _draftServerLng = lng;
-                      _play('click');
-                      Navigator.pop(ctx);
-                      _showOverlayToast('تم حفظ البيانات كمسودة');
-                    },
-                    icon: const Icon(Icons.save_outlined),
-                    label: const Text('إغلاق وحفظ كمسودة'),
-                  ),
+                _buildDraftButton(
+                  onPressed: () {
+                    _draftServerName = name;
+                    _draftServerLocation = location;
+                    _draftServerIp = ip;
+                    _draftServerUser = user;
+                    _draftServerPass = pass;
+                    _draftServerPort = port;
+                    _draftServerLoginUrl = loginUrl;
+                    _draftServerLat = lat;
+                    _draftServerLng = lng;
+                    _play('click');
+                    Navigator.pop(ctx);
+                    _showOverlayToast('تم حفظ البيانات كمسودة');
+                  },
                 ),
                 const SizedBox(height: 20),
               ]),
@@ -911,7 +899,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
-  // ========== نافذة إضافة فئة (بدون تغيير) ==========
+  // ---------- نافذة إضافة/تعديل فئة (محدثة) ----------
   void _showAddCategoryBottomSheet(List<QueryDocumentSnapshot> agentNetworks,
       {Map? existingCat, String? preSelectedNetId}) {
     _play('click');
@@ -972,72 +960,60 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                     decoration: const InputDecoration(
                         labelText: 'اختر الشبكة',
                         border: OutlineInputBorder(),
-                        prefixIcon:
-                            Icon(Icons.dns, color: Colors.blue)),
+                        prefixIcon: Icon(Icons.dns, color: Colors.blue)),
                     value: selectedNetworkId,
                     items: agentNetworks
                         .map((net) => DropdownMenuItem(
                             value: net.id,
-                            child: Text(
-                                (net.data() as Map)['name'])))
+                            child: Text((net.data() as Map)['name'])))
                         .toList(),
                     onChanged: (val) =>
                         setModalState(() => selectedNetworkId = val),
                   ),
                 if (existingCat == null) const SizedBox(height: 12),
-                TextField(
-                    decoration: const InputDecoration(
-                        labelText: 'اسم الفئة (Profile)',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.category,
-                            color: Colors.orange)),
-                    controller: TextEditingController(text: newName),
+                _buildTextField(
+                    label: 'اسم الفئة (Profile)',
+                    icon: Icons.category,
+                    color: Colors.orange,
+                    initialText: newName,
                     onChanged: (val) => newName = val),
                 const SizedBox(height: 12),
                 Row(children: [
                   Expanded(
-                      child: TextField(
-                          decoration: const InputDecoration(
-                              labelText: 'الوقت (الساعات المتاح)',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.timer,
-                                  color: Colors.blue)),
-                          controller:
-                              TextEditingController(text: newTime),
-                          onChanged: (val) => newTime = val)),
+                    child: _buildTextField(
+                        label: 'الوقت (الساعات المتاح)',
+                        icon: Icons.timer,
+                        color: Colors.blue,
+                        initialText: newTime,
+                        onChanged: (val) => newTime = val),
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
-                      child: TextField(
-                          decoration: const InputDecoration(
-                              labelText:
-                                  'سعة التحميل المتاح ميجابايت',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.data_usage,
-                                  color: Colors.teal)),
-                          controller: TextEditingController(
-                              text: newCapacity),
-                          onChanged: (val) => newCapacity = val)),
+                    child: _buildTextField(
+                        label: 'سعة التحميل المتاح ميجابايت',
+                        icon: Icons.data_usage,
+                        color: Colors.teal,
+                        initialText: newCapacity,
+                        onChanged: (val) => newCapacity = val),
+                  ),
                 ]),
                 const SizedBox(height: 12),
-                TextField(
-                    decoration: const InputDecoration(
-                        labelText: 'سعر البيع للجمهور',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.attach_money,
-                            color: Colors.green)),
-                    controller: TextEditingController(text: newPrice),
+                _buildTextField(
+                    label: 'سعر البيع للجمهور',
+                    icon: Icons.attach_money,
+                    color: Colors.green,
+                    initialText: newPrice,
                     keyboardType: TextInputType.number,
                     onChanged: (val) => newPrice = val),
                 const SizedBox(height: 12),
-                TextField(
-                    decoration: const InputDecoration(
-                        labelText: 'ملاحظة (اختياري)',
-                        border: OutlineInputBorder(),
-                        prefixIcon:
-                            Icon(Icons.note, color: Colors.amber)),
-                    controller: TextEditingController(text: note),
+                _buildTextField(
+                    label: 'ملاحظة (اختياري)',
+                    icon: Icons.note,
+                    color: Colors.amber,
+                    initialText: note,
                     onChanged: (val) => note = val),
                 const SizedBox(height: 15),
+                // رفع قالب الطباعة
                 Row(children: [
                   const Icon(Icons.image, color: Colors.deepPurple),
                   const SizedBox(width: 8),
@@ -1053,8 +1029,8 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                           maxWidth: 800);
                       if (pickedFile != null) {
                         final bytes = await pickedFile.readAsBytes();
-                        setModalState(() =>
-                            templateBase64 = base64Encode(bytes));
+                        setModalState(
+                            () => templateBase64 = base64Encode(bytes));
                         _play('success');
                         _showOverlayToast('تم تحميل القالب بنجاح');
                       }
@@ -1073,76 +1049,13 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                 ? Colors.green
                                 : Colors.deepPurple)),
                     style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            Colors.deepPurple.withOpacity(0.1),
+                        backgroundColor: Colors.deepPurple.withOpacity(0.1),
                         elevation: 0),
                   ),
                 ]),
                 if (templateBase64 != null && templateBase64!.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('معاينة القالب:',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.grey)),
-                          const SizedBox(height: 8),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: SizedBox(
-                              height: 200,
-                              width: double.infinity,
-                              child: InteractiveViewer(
-                                minScale: 0.8,
-                                maxScale: 3.0,
-                                child: Container(
-                                  width: 320,
-                                  height: 200,
-                                  decoration: BoxDecoration(
-                                      border: Border.all(
-                                          color:
-                                              Colors.grey.shade300)),
-                                  child: ClipRRect(
-                                    borderRadius:
-                                        BorderRadius.circular(12),
-                                    child: Stack(children: [
-                                      Positioned.fill(
-                                          child: Image.memory(
-                                              base64Decode(
-                                                  templateBase64!),
-                                              fit: BoxFit.contain)),
-                                      Positioned(
-                                        left:
-                                            (userViewX / 100) * 320,
-                                        top: (userViewY / 100) * 200,
-                                        child: Container(
-                                          padding: const EdgeInsets
-                                              .symmetric(
-                                              horizontal: 4,
-                                              vertical: 2),
-                                          color: Colors.white
-                                              .withOpacity(0.8),
-                                          child: Text('12345678',
-                                              style: TextStyle(
-                                                  fontSize:
-                                                      userViewFontSize *
-                                                          0.7,
-                                                  fontWeight:
-                                                      FontWeight.bold,
-                                                  color:
-                                                      userViewColor)),
-                                        ),
-                                      ),
-                                    ]),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ]),
-                  ),
+                  _buildTemplatePreview(templateBase64, userViewX, userViewY,
+                      userViewFontSize, userViewColor),
                 const SizedBox(height: 15),
                 Row(children: [
                   const Text('لون الفئة: ',
@@ -1150,8 +1063,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                   GestureDetector(
                       onTap: () async {
                         _play('click');
-                        final color =
-                            await _openColorPicker(selectedColor);
+                        final color = await _openColorPicker(selectedColor);
                         if (color != null)
                           setModalState(() => selectedColor = color);
                       },
@@ -1161,12 +1073,10 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                           decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color: selectedColor,
-                              border:
-                                  Border.all(color: Colors.grey)))),
+                              border: Border.all(color: Colors.grey)))),
                   const SizedBox(width: 10),
                   const Text('انقر لتغيير اللون',
-                      style:
-                          TextStyle(fontSize: 12, color: Colors.grey)),
+                      style: TextStyle(fontSize: 12, color: Colors.grey)),
                 ]),
                 const SizedBox(height: 20),
                 const Text('إعدادات عرض الكرت للمستخدم',
@@ -1175,19 +1085,19 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                 const SizedBox(height: 10),
                 Row(children: [
                   Expanded(
-                      child: _buildUserViewSlider('الأفقي %',
-                          userViewX, 100, Colors.blue, (v) {
+                      child: _buildUserViewSlider('الأفقي %', userViewX, 100,
+                          Colors.blue, (v) {
                     setModalState(() => userViewX = v);
                   })),
                   const SizedBox(width: 10),
                   Expanded(
-                      child: _buildUserViewSlider('الرأسي %',
-                          userViewY, 100, Colors.green, (v) {
+                      child: _buildUserViewSlider('الرأسي %', userViewY, 100,
+                          Colors.green, (v) {
                     setModalState(() => userViewY = v);
                   })),
                 ]),
-                _buildUserViewSlider('حجم الخط', userViewFontSize, 40,
-                    Colors.purple, (v) {
+                _buildUserViewSlider(
+                    'حجم الخط', userViewFontSize, 40, Colors.purple, (v) {
                   setModalState(() => userViewFontSize = v);
                 }),
                 Row(children: [
@@ -1195,11 +1105,9 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                   GestureDetector(
                       onTap: () async {
                         _play('click');
-                        final color =
-                            await _openColorPicker(userViewColor);
+                        final color = await _openColorPicker(userViewColor);
                         if (color != null)
-                          setModalState(
-                              () => userViewColor = color);
+                          setModalState(() => userViewColor = color);
                       },
                       child: Container(
                           width: 30,
@@ -1207,194 +1115,133 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                           decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color: userViewColor,
-                              border:
-                                  Border.all(color: Colors.grey)))),
+                              border: Border.all(color: Colors.grey)))),
                 ]),
                 const SizedBox(height: 8),
                 SwitchListTile(
-                    title: const Text(
-                        'السماح ببيع الكروت الوهمية للزبائن'),
+                    title:
+                        const Text('السماح ببيع الكروت الوهمية للزبائن'),
                     value: allowSellSim,
                     onChanged: (v) =>
                         setModalState(() => allowSellSim = v),
                     dense: true,
                     contentPadding: EdgeInsets.zero),
                 const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: selectedColor,
-                        shape: RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.circular(10))),
-                    onPressed: isSubmitting
-                        ? null
-                        : () async {
-                            if (selectedNetworkId != null &&
-                                newName.isNotEmpty &&
-                                newPrice.isNotEmpty) {
-                              if (existingCat != null) {
-                                bool confirm = await _confirmAction(
-                                    "حفظ التعديلات",
-                                    "متأكد من تعديل الفئة؟",
-                                    Colors.blue);
-                                if (!confirm) return;
-                              }
-                              _play('click');
-                              setModalState(
-                                  () => isSubmitting = true);
-                              try {
-                                var newCategory = {
-                                  'id': existingCat?['id'] ??
-                                      DateTime
-                                          .now()
-                                          .millisecondsSinceEpoch
-                                          .toString(),
-                                  'name': newName,
-                                  'time': newTime.isNotEmpty
-                                      ? newTime
-                                      : 'غير محدد',
-                                  'capacity': newCapacity.isNotEmpty
-                                      ? newCapacity
-                                      : 'مفتوح',
-                                  'price': int.tryParse(newPrice) ??
-                                      0,
-                                  'color': selectedColor.value,
-                                  'note': note,
-                                  'templateBase64': templateBase64,
-                                  'realStock':
-                                      existingCat?['realStock'] ?? 0,
-                                  'simStock':
-                                      existingCat?['simStock'] ?? 0,
-                                  'stock':
-                                      (existingCat?['realStock'] ??
-                                              0) +
-                                          (existingCat?['simStock'] ??
-                                              0),
-                                  'isActive':
-                                      existingCat?['isActive'] ??
-                                          true,
-                                  'botMinStock':
-                                      existingCat?['botMinStock'] ??
-                                          5,
-                                  'botRefillAmount':
-                                      existingCat?[
-                                              'botRefillAmount'] ??
-                                          50,
-                                  'isBotEnabled':
-                                      existingCat?['isBotEnabled'] ??
-                                          false,
-                                  'userViewX': userViewX,
-                                  'userViewY': userViewY,
-                                  'userViewFontSize':
-                                      userViewFontSize,
-                                  'userViewColor':
-                                      userViewColor.value,
-                                  'allowSellSim': allowSellSim,
-                                };
-                                if (existingCat == null) {
-                                  await _db
-                                      .collection('networks')
-                                      .doc(selectedNetworkId)
-                                      .update({
-                                    'categories':
-                                        FieldValue.arrayUnion(
-                                            [newCategory])
-                                  });
-                                  _draftCategoryName = '';
-                                  _draftCategoryTime = '';
-                                  _draftCategoryCapacity = '';
-                                  _draftCategoryPrice = '';
-                                  _draftCategoryNote = '';
-                                  _draftCategoryColor =
-                                      Colors.blue;
-                                  _draftCategoryTemplateBase64 =
-                                      null;
-                                  _draftUserViewX = 50;
-                                  _draftUserViewY = 50;
-                                  _draftUserViewFontSize = 16;
-                                  _draftUserViewColor =
-                                      Colors.black;
-                                  _draftAllowSellSim = false;
-                                } else {
-                                  var netDoc = await _db
-                                      .collection('networks')
-                                      .doc(selectedNetworkId)
-                                      .get();
-                                  List cats = List.from(
-                                      (netDoc.data() as Map)[
-                                          'categories']);
-                                  int idx = cats.indexWhere((c) =>
-                                      c['id'] == existingCat['id']);
-                                  cats[idx] = newCategory;
-                                  await _db
-                                      .collection('networks')
-                                      .doc(selectedNetworkId)
-                                      .update({
-                                    'categories': cats
-                                  });
-                                }
-                                _play('success');
-                                if (mounted) {
-                                  Navigator.pop(ctx);
-                                  _showOverlayToast(
-                                      'تم الحفظ بنجاح! 📋');
-                                }
-                              } catch (e) {
-                                setModalState(
-                                    () => isSubmitting = false);
-                                _play('error');
-                              }
-                            } else {
-                              _play('error');
-                              _showOverlayToast(
-                                  'الرجاء تعبئة الحقول الأساسية!',
-                                  isError: true);
-                            }
-                          },
-                    child: isSubmitting
-                        ? const CircularProgressIndicator(
-                            color: Colors.white)
-                        : const Text('حفظ الفئة',
-                            style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold)),
-                  ),
+                _buildSubmitButton(
+                  label: 'حفظ الفئة',
+                  isLoading: isSubmitting,
+                  color: selectedColor,
+                  onPressed: () async {
+                    if (selectedNetworkId == null ||
+                        newName.isEmpty ||
+                        newPrice.isEmpty) {
+                      _play('error');
+                      _showOverlayToast('الرجاء تعبئة الحقول الأساسية!',
+                          isError: true);
+                      return;
+                    }
+                    if (existingCat != null) {
+                      bool confirm = await _confirmAction(
+                          "حفظ التعديلات",
+                          "متأكد من تعديل الفئة؟",
+                          Colors.blue);
+                      if (!confirm) return;
+                    }
+                    _play('click');
+                    setModalState(() => isSubmitting = true);
+                    try {
+                      var newCategory = {
+                        'id': existingCat?['id'] ??
+                            DateTime.now().millisecondsSinceEpoch.toString(),
+                        'name': newName,
+                        'time': newTime.isNotEmpty ? newTime : 'غير محدد',
+                        'capacity':
+                            newCapacity.isNotEmpty ? newCapacity : 'مفتوح',
+                        'price': int.tryParse(newPrice) ?? 0,
+                        'color': selectedColor.value,
+                        'note': note,
+                        'templateBase64': templateBase64,
+                        'realStock': existingCat?['realStock'] ?? 0,
+                        'simStock': existingCat?['simStock'] ?? 0,
+                        'stock': (existingCat?['realStock'] ?? 0) +
+                            (existingCat?['simStock'] ?? 0),
+                        'isActive': existingCat?['isActive'] ?? true,
+                        'botMinStock': existingCat?['botMinStock'] ?? 5,
+                        'botRefillAmount':
+                            existingCat?['botRefillAmount'] ?? 50,
+                        'isBotEnabled': existingCat?['isBotEnabled'] ?? false,
+                        'userViewX': userViewX,
+                        'userViewY': userViewY,
+                        'userViewFontSize': userViewFontSize,
+                        'userViewColor': userViewColor.value,
+                        'allowSellSim': allowSellSim,
+                      };
+                      if (existingCat == null) {
+                        await _db
+                            .collection('networks')
+                            .doc(selectedNetworkId)
+                            .update({
+                          'categories': FieldValue.arrayUnion([newCategory])
+                        });
+                        // إعادة تعيين المسودة
+                        _draftCategoryName = '';
+                        _draftCategoryTime = '';
+                        _draftCategoryCapacity = '';
+                        _draftCategoryPrice = '';
+                        _draftCategoryNote = '';
+                        _draftCategoryColor = Colors.blue;
+                        _draftCategoryTemplateBase64 = null;
+                        _draftUserViewX = 50;
+                        _draftUserViewY = 50;
+                        _draftUserViewFontSize = 16;
+                        _draftUserViewColor = Colors.black;
+                        _draftAllowSellSim = false;
+                      } else {
+                        var netDoc = await _db
+                            .collection('networks')
+                            .doc(selectedNetworkId)
+                            .get();
+                        List cats =
+                            List.from((netDoc.data() as Map)['categories']);
+                        int idx = cats
+                            .indexWhere((c) => c['id'] == existingCat['id']);
+                        cats[idx] = newCategory;
+                        await _db
+                            .collection('networks')
+                            .doc(selectedNetworkId)
+                            .update({'categories': cats});
+                      }
+                      _play('success');
+                      if (mounted) {
+                        Navigator.pop(ctx);
+                        _showOverlayToast('تم الحفظ بنجاح! 📋');
+                      }
+                    } catch (e) {
+                      setModalState(() => isSubmitting = false);
+                      _play('error');
+                      _showOverlayToast('فشل الحفظ', isError: true);
+                    }
+                  },
                 ),
                 const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.grey,
-                        side: const BorderSide(color: Colors.grey),
-                        shape: RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.circular(10))),
-                    onPressed: () {
-                      _draftCategoryName = newName;
-                      _draftCategoryTime = newTime;
-                      _draftCategoryCapacity = newCapacity;
-                      _draftCategoryPrice = newPrice;
-                      _draftCategoryNote = note;
-                      _draftCategoryColor = selectedColor;
-                      _draftCategoryTemplateBase64 = templateBase64;
-                      _draftUserViewX = userViewX;
-                      _draftUserViewY = userViewY;
-                      _draftUserViewFontSize = userViewFontSize;
-                      _draftUserViewColor = userViewColor;
-                      _draftAllowSellSim = allowSellSim;
-                      _play('click');
-                      Navigator.pop(ctx);
-                      _showOverlayToast('تم حفظ البيانات كمسودة');
-                    },
-                    icon: const Icon(Icons.save_outlined),
-                    label: const Text('إغلاق وحفظ كمسودة'),
-                  ),
+                _buildDraftButton(
+                  onPressed: () {
+                    _draftCategoryName = newName;
+                    _draftCategoryTime = newTime;
+                    _draftCategoryCapacity = newCapacity;
+                    _draftCategoryPrice = newPrice;
+                    _draftCategoryNote = note;
+                    _draftCategoryColor = selectedColor;
+                    _draftCategoryTemplateBase64 = templateBase64;
+                    _draftUserViewX = userViewX;
+                    _draftUserViewY = userViewY;
+                    _draftUserViewFontSize = userViewFontSize;
+                    _draftUserViewColor = userViewColor;
+                    _draftAllowSellSim = allowSellSim;
+                    _play('click');
+                    Navigator.pop(ctx);
+                    _showOverlayToast('تم حفظ البيانات كمسودة');
+                  },
                 ),
                 const SizedBox(height: 20),
               ]),
@@ -1405,12 +1252,128 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
+  // ---------- أدوات مساعدة لواجهة المستخدم (لتقليل التكرار) ----------
+  Widget _buildTextField({
+    required String label,
+    required IconData icon,
+    required Color color,
+    String? initialText,
+    TextInputType? keyboardType,
+    bool obscure = false,
+    required Function(String) onChanged,
+  }) {
+    return TextField(
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+        prefixIcon: Icon(icon, color: color),
+      ),
+      controller: TextEditingController(text: initialText ?? ''),
+      keyboardType: keyboardType,
+      obscureText: obscure,
+      onChanged: onChanged,
+    );
+  }
+
+  Widget _buildSubmitButton({
+    required String label,
+    required bool isLoading,
+    required Color color,
+    required VoidCallback? onPressed,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+            backgroundColor: color,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+        onPressed: isLoading ? null : onPressed,
+        child: isLoading
+            ? const CircularProgressIndicator(color: Colors.white)
+            : Text(label,
+                style: const TextStyle(
+                    fontSize: 16,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold)),
+      ),
+    );
+  }
+
+  Widget _buildDraftButton({required VoidCallback onPressed}) {
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: OutlinedButton.icon(
+        style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.grey,
+            side: const BorderSide(color: Colors.grey),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+        onPressed: onPressed,
+        icon: const Icon(Icons.save_outlined),
+        label: const Text('إغلاق وحفظ كمسودة'),
+      ),
+    );
+  }
+
+  Widget _buildTemplatePreview(String? templateBase64, double userViewX,
+      double userViewY, double userViewFontSize, Color userViewColor) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('معاينة القالب:',
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: SizedBox(
+            height: 200,
+            width: double.infinity,
+            child: InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 3.0,
+              child: Container(
+                width: 320,
+                height: 200,
+                decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade300)),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Stack(children: [
+                    Positioned.fill(
+                        child: Image.memory(base64Decode(templateBase64!),
+                            fit: BoxFit.contain)),
+                    Positioned(
+                      left: (userViewX / 100) * 320,
+                      top: (userViewY / 100) * 200,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 2),
+                        color: Colors.white.withOpacity(0.8),
+                        child: Text('12345678',
+                            style: TextStyle(
+                                fontSize: userViewFontSize * 0.7,
+                                fontWeight: FontWeight.bold,
+                                color: userViewColor)),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
   Widget _buildUserViewSlider(String label, double value, double max,
       Color color, ValueChanged<double> onChanged) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('$label: ${value.toStringAsFixed(1)}'),
-      Slider(
-          value: value, max: max, activeColor: color, onChanged: onChanged),
+      Slider(value: value, max: max, activeColor: color, onChanged: onChanged),
     ]);
   }
 
@@ -1504,20 +1467,14 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                                             (c) => c['id'] == catId);
                                         if (idx != -1) {
                                           cats[idx]['realStock'] =
-                                              (cats[idx]['realStock'] ??
-                                                      1) -
-                                                  1;
+                                              (cats[idx]['realStock'] ?? 1) - 1;
                                           cats[idx]['stock'] =
-                                              (cats[idx]['realStock'] ??
-                                                      0) +
-                                                  (cats[idx]['simStock'] ??
-                                                      0);
+                                              (cats[idx]['realStock'] ?? 0) +
+                                                  (cats[idx]['simStock'] ?? 0);
                                           await _db
                                               .collection('networks')
                                               .doc(netId)
-                                              .update({
-                                            'categories': cats
-                                          });
+                                              .update({'categories': cats});
                                         }
                                         _showOverlayToast(
                                             'تمت أرشفة الكرت بنجاح');
@@ -1566,31 +1523,26 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                       style: TextStyle(fontWeight: FontWeight.bold)),
                   value: isBotEnabled,
                   activeColor: Colors.purple,
-                  onChanged: (v) =>
-                      setModalState(() => isBotEnabled = v)),
+                  onChanged: (v) => setModalState(() => isBotEnabled = v)),
               if (isBotEnabled) ...[
                 const SizedBox(height: 10),
                 TextField(
                     decoration: const InputDecoration(
-                        labelText:
-                            'الحد الأدنى للمخزون (متى يبدأ البوت؟)',
+                        labelText: 'الحد الأدنى للمخزون (متى يبدأ البوت؟)',
                         border: OutlineInputBorder()),
                     keyboardType: TextInputType.number,
-                    onChanged: (v) =>
-                        minStock = int.tryParse(v) ?? 5,
-                    controller: TextEditingController(
-                        text: minStock.toString())),
+                    onChanged: (v) => minStock = int.tryParse(v) ?? 5,
+                    controller:
+                        TextEditingController(text: minStock.toString())),
                 const SizedBox(height: 10),
                 TextField(
                     decoration: const InputDecoration(
-                        labelText:
-                            'كمية التوليد التلقائي (كم كرت ينتج؟)',
+                        labelText: 'كمية التوليد التلقائي (كم كرت ينتج؟)',
                         border: OutlineInputBorder()),
                     keyboardType: TextInputType.number,
-                    onChanged: (v) =>
-                        refillAmount = int.tryParse(v) ?? 50,
-                    controller: TextEditingController(
-                        text: refillAmount.toString())),
+                    onChanged: (v) => refillAmount = int.tryParse(v) ?? 50,
+                    controller:
+                        TextEditingController(text: refillAmount.toString())),
               ]
             ]),
             actions: [
@@ -1601,18 +1553,13 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                   },
                   child: const Text('إلغاء')),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.purple),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.purple),
                 onPressed: () async {
                   _play('click');
-                  var netDoc = await _db
-                      .collection('networks')
-                      .doc(netId)
-                      .get();
-                  List cats =
-                      List.from(netDoc['categories']);
-                  int idx = cats
-                      .indexWhere((c) => c['id'] == catId);
+                  var netDoc =
+                      await _db.collection('networks').doc(netId).get();
+                  List cats = List.from(netDoc['categories']);
+                  int idx = cats.indexWhere((c) => c['id'] == catId);
                   cats[idx]['botMinStock'] = minStock;
                   cats[idx]['botRefillAmount'] = refillAmount;
                   cats[idx]['isBotEnabled'] = isBotEnabled;
@@ -1622,11 +1569,10 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
                       .update({'categories': cats});
                   Navigator.pop(ctx);
                   _play('success');
-                  _showOverlayToast(
-                      'تم حفظ إعدادات البوت الذكي');
+                  _showOverlayToast('تم حفظ إعدادات البوت الذكي');
                 },
-                child: const Text('حفظ وتشغيل',
-                    style: TextStyle(color: Colors.white)),
+                child:
+                    const Text('حفظ وتشغيل', style: TextStyle(color: Colors.white)),
               )
             ],
           ),
@@ -1635,8 +1581,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     );
   }
 
-  Future<void> _deleteNetworkAndArchiveCards(
-      SystemProvider sys, String networkId) async {
+  Future<void> _deleteNetworkAndArchiveCards(String networkId) async {
     bool confirm = await _confirmAction(
         "حذف الشبكة وأرشفة كروتها",
         "سيتم نقل جميع كروت هذه الشبكة إلى الأرشيف، ثم حذف الشبكة. متأكد؟",
@@ -1658,8 +1603,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
       await batch.commit();
       _play('success');
       _showOverlayToast('تم حذف الشبكة ونقل كروتها إلى الأرشيف');
-      _logAction('delete_network', cardsSnap.docs.length,
-          details: networkId);
+      _logAction('delete_network', cardsSnap.docs.length, details: networkId);
     } catch (e) {
       _play('error');
       _showOverlayToast('فشل في حذف الشبكة: $e', isError: true);
@@ -1690,13 +1634,11 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
         batch.update(doc.reference, {'status': 'archived'});
       }
       final netRef = _db.collection('networks').doc(netId);
-      batch.update(netRef,
-          {'categories': FieldValue.arrayRemove([category])});
+      batch.update(netRef, {'categories': FieldValue.arrayRemove([category])});
       await batch.commit();
       _play('success');
       _showOverlayToast('تم أرشفة كروت الفئة وحذفها');
-      _logAction('delete_category', cardsSnap.docs.length,
-          details: catId);
+      _logAction('delete_category', cardsSnap.docs.length, details: catId);
     } catch (e) {
       _play('error');
       _showOverlayToast('فشل في حذف الفئة: $e', isError: true);
@@ -1726,6 +1668,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
   Future<void> _simulateGenerate(
       String networkId, String categoryId, int amount) async {
     final WriteBatch batch = _db.batch();
+    final auth = Provider.of<AuthProvider>(context, listen: false);
     for (int i = 0; i < amount; i++) {
       final pin = _generateFakePin();
       batch.set(_db.collection('cards').doc(), {
@@ -1735,21 +1678,16 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
         'status': 'متاح',
         'isSimulated': true,
         'createdAt': FieldValue.serverTimestamp(),
-        'agentPhone':
-            Provider.of<SystemProvider>(context, listen: false)
-                .currentUserPhone,
+        'agentPhone': auth.activeUserPhone,
       });
     }
-    final netDoc =
-        await _db.collection('networks').doc(networkId).get();
-    List cats =
-        List.from((netDoc.data() as Map)['categories']);
+    final netDoc = await _db.collection('networks').doc(networkId).get();
+    List cats = List.from((netDoc.data() as Map)['categories']);
     int idx = cats.indexWhere((c) => c['id'] == categoryId);
     if (idx != -1) {
-      cats[idx]['simStock'] =
-          (cats[idx]['simStock'] ?? 0) + amount;
-      cats[idx]['stock'] = (cats[idx]['realStock'] ?? 0) +
-          (cats[idx]['simStock'] ?? 0);
+      cats[idx]['simStock'] = (cats[idx]['simStock'] ?? 0) + amount;
+      cats[idx]['stock'] =
+          (cats[idx]['realStock'] ?? 0) + (cats[idx]['simStock'] ?? 0);
       batch.update(_db.collection('networks').doc(networkId),
           {'categories': cats});
     }
@@ -1758,8 +1696,7 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
 
   Future<void> _realGenerate(
       String networkId, String categoryId, int amount) async {
-    final sys =
-        Provider.of<SystemProvider>(context, listen: false);
+    final auth = Provider.of<AuthProvider>(context, listen: false);
     final response = await http.post(
         Uri.parse("$_renderUrl/generateMikrotikCards"),
         headers: {"Content-Type": "application/json"},
@@ -1767,44 +1704,38 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
           "networkId": networkId,
           "categoryId": categoryId,
           "amount": amount,
-          "agentPhone": sys.currentUserPhone,
+          "agentPhone": auth.activeUserPhone,
           "forPrint": false,
         }));
     if (response.statusCode == 200) {
-      final netDoc =
-          await _db.collection('networks').doc(networkId).get();
-      List cats =
-          List.from((netDoc.data() as Map)['categories']);
+      final netDoc = await _db.collection('networks').doc(networkId).get();
+      List cats = List.from((netDoc.data() as Map)['categories']);
       int idx = cats.indexWhere((c) => c['id'] == categoryId);
       if (idx != -1) {
-        cats[idx]['realStock'] =
-            (cats[idx]['realStock'] ?? 0) + amount;
-        cats[idx]['stock'] = (cats[idx]['realStock'] ?? 0) +
-            (cats[idx]['simStock'] ?? 0);
+        cats[idx]['realStock'] = (cats[idx]['realStock'] ?? 0) + amount;
+        cats[idx]['stock'] =
+            (cats[idx]['realStock'] ?? 0) + (cats[idx]['simStock'] ?? 0);
         await _db
             .collection('networks')
             .doc(networkId)
             .update({'categories': cats});
       }
     } else {
-      throw Exception('فشل توليد الكروت');
+      throw Exception('فشل توليد الكروت من الخادم');
     }
   }
 
-  Future<bool> _startGeneration(SystemProvider sys,
+  Future<bool> _startGeneration(
       {required List<Map<String, dynamic>> orders}) async {
     if (orders.isEmpty) {
       _play('error');
-      _showOverlayToast('الرجاء كتابة كمية واحدة على الأقل',
-          isError: true);
+      _showOverlayToast('الرجاء كتابة كمية واحدة على الأقل', isError: true);
       return false;
     }
-    int totalAmount =
-        orders.fold(0, (sum, item) => sum + (item['amount'] as int));
+    int totalAmount = orders.fold(0, (sum, item) => sum + (item['amount'] as int));
     if (totalAmount > 400) {
       _play('error');
-      _showOverlayToast('الحد الأقصى للتوليد هو 400 كرت إجمالاً',
-          isError: true);
+      _showOverlayToast('الحد الأقصى للتوليد هو 400 كرت إجمالاً', isError: true);
       return false;
     }
     bool confirm = await _confirmAction(
@@ -1830,9 +1761,11 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
       _multiGenControllers.forEach((k, v) => v.clear());
       _showOverlayToast('تم توليد $totalAmount كرت بنجاح! ✅');
       _logAction('generate_cards', totalAmount);
+      // فحص البوت بعد التوليد
+      final auth = Provider.of<AuthProvider>(context, listen: false);
       final netSnap = await _db
           .collection('networks')
-          .where('agentPhone', isEqualTo: sys.currentUserPhone)
+          .where('agentPhone', isEqualTo: auth.activeUserPhone)
           .get();
       _checkAutoBot(netSnap.docs);
     } catch (e) {
@@ -1868,12 +1801,13 @@ class _MikrotikCategoriesScreenState extends State<MikrotikCategoriesScreen>
     } catch (e) {
       _play('error');
       _showOverlayToast('خطأ في الاتصال: $e ❌', isError: true);
+    } finally {
+      setState(() => _isProcessing = false);
     }
-    setState(() => _isProcessing = false);
   }
 }
 
-// ==================== تبويبات ====================
+// ==================== تبويبات (تم تحديثها لاستخدام AuthProvider) ====================
 class ServersTab extends StatefulWidget {
   final _MikrotikCategoriesScreenState parent;
   const ServersTab({required this.parent, super.key});
@@ -1890,11 +1824,11 @@ class _ServersTabState extends State<ServersTab>
   Widget build(BuildContext context) {
     super.build(context);
     final p = widget.parent;
-    final sys = Provider.of<SystemProvider>(context);
+    final auth = Provider.of<AuthProvider>(context);
     return StreamBuilder<QuerySnapshot>(
       stream: p._db
           .collection('networks')
-          .where('agentPhone', isEqualTo: sys.currentUserPhone)
+          .where('agentPhone', isEqualTo: auth.activeUserPhone)
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting)
@@ -1909,6 +1843,9 @@ class _ServersTabState extends State<ServersTab>
         final textColor =
             Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
         return ListView.builder(
+          // لا نريد التمرير المستقل هنا، لأن الـ CustomScrollView يدير التمرير
+          physics: const NeverScrollableScrollPhysics(),
+          shrinkWrap: true,
           padding: const EdgeInsets.all(16),
           itemCount: networks.length,
           itemBuilder: (context, index) {
@@ -1951,8 +1888,7 @@ class _ServersTabState extends State<ServersTab>
                                 color: isActive
                                     ? Colors.green.withOpacity(0.15)
                                     : Colors.red.withOpacity(0.15),
-                                borderRadius:
-                                    BorderRadius.circular(12)),
+                                borderRadius: BorderRadius.circular(12)),
                             child: Text(
                                 isActive ? 'نشط' : 'مجمد',
                                 style: TextStyle(
@@ -1966,8 +1902,8 @@ class _ServersTabState extends State<ServersTab>
                       _infoRow(Icons.location_on, 'الموقع',
                           net['location'] ?? '', textColor),
                       const SizedBox(height: 6),
-                      _infoRow(Icons.wifi, 'IP', net['ip'] ?? '',
-                          textColor),
+                      _infoRow(
+                          Icons.wifi, 'IP', net['ip'] ?? '', textColor),
                       const SizedBox(height: 6),
                       _infoRow(Icons.info_outline, 'الحالة',
                           isActive ? 'نشط' : 'مجمد', textColor),
@@ -1982,9 +1918,7 @@ class _ServersTabState extends State<ServersTab>
                             isActive ? 'تجميد' : 'تنشيط',
                             Colors.orange, () async {
                           bool confirm = await p._confirmAction(
-                              isActive
-                                  ? "تجميد الشبكة"
-                                  : "تنشيط الشبكة",
+                              isActive ? "تجميد الشبكة" : "تنشيط الشبكة",
                               "هل تريد تغيير حالة الشبكة؟",
                               Colors.orange);
                           if (confirm) {
@@ -1999,9 +1933,7 @@ class _ServersTabState extends State<ServersTab>
                                 .get();
                             List cats = List.from(
                                 (netDoc.data() as Map)['categories'] ?? []);
-                            for (int i = 0;
-                                i < cats.length;
-                                i++) {
+                            for (int i = 0; i < cats.length; i++) {
                               cats[i]['isActive'] = !isActive;
                             }
                             await p._db
@@ -2015,12 +1947,15 @@ class _ServersTabState extends State<ServersTab>
                           }
                         }),
                         _actionBtn(Icons.edit, 'تعديل', Colors.grey,
-                            () => p._showAddServerBottomSheet(sys,
+                            () => p._showAddServerBottomSheet(auth,
                                 existingData: net,
                                 docId: networks[index].id)),
-                        _actionBtn(Icons.delete, 'حذف', Colors.red,
+                        _actionBtn(
+                            Icons.delete,
+                            'حذف',
+                            Colors.red,
                             () => p._deleteNetworkAndArchiveCards(
-                                sys, networks[index].id)),
+                                networks[index].id)),
                       ]),
                     ]),
               ),
@@ -2031,33 +1966,29 @@ class _ServersTabState extends State<ServersTab>
     );
   }
 
-  Widget _infoRow(IconData icon, String label, String value,
-          Color textColor) =>
+  Widget _infoRow(
+          IconData icon, String label, String value, Color textColor) =>
       Row(children: [
         Icon(icon, size: 16, color: Colors.grey),
         const SizedBox(width: 8),
         Text('$label: ',
             style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-                color: Colors.grey)),
+                fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey)),
         Expanded(
-            child: Text(value,
-                style: TextStyle(fontSize: 13, color: textColor)))
+            child:
+                Text(value, style: TextStyle(fontSize: 13, color: textColor)))
       ]);
-  Widget _actionBtn(IconData icon, String label, Color color,
-          VoidCallback onTap) =>
+
+  Widget _actionBtn(
+          IconData icon, String label, Color color, VoidCallback onTap) =>
       TextButton.icon(
           onPressed: onTap,
           icon: Icon(icon, size: 18, color: color),
           label: Text(label,
               style: TextStyle(
-                  fontSize: 12,
-                  color: color,
-                  fontWeight: FontWeight.bold)),
+                  fontSize: 12, color: color, fontWeight: FontWeight.bold)),
           style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 8, vertical: 4)));
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4)));
 }
 
 class CategoriesTab extends StatefulWidget {
@@ -2076,11 +2007,11 @@ class _CategoriesTabState extends State<CategoriesTab>
   Widget build(BuildContext context) {
     super.build(context);
     final p = widget.parent;
-    final sys = Provider.of<SystemProvider>(context);
+    final auth = Provider.of<AuthProvider>(context);
     return StreamBuilder<QuerySnapshot>(
       stream: p._db
           .collection('networks')
-          .where('agentPhone', isEqualTo: sys.currentUserPhone)
+          .where('agentPhone', isEqualTo: auth.activeUserPhone)
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting)
@@ -2095,21 +2026,20 @@ class _CategoriesTabState extends State<CategoriesTab>
         final textColor =
             Theme.of(context).textTheme.bodyMedium?.color ?? Colors.black87;
         return ListView.builder(
+          physics: const NeverScrollableScrollPhysics(),
+          shrinkWrap: true,
           padding: const EdgeInsets.all(16),
           itemCount: networks.length,
           itemBuilder: (context, netIndex) {
             var netId = networks[netIndex].id;
-            var netData =
-                networks[netIndex].data() as Map<String, dynamic>;
+            var netData = networks[netIndex].data() as Map<String, dynamic>;
             List categories = netData['categories'] ?? [];
             return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Padding(
-                      padding:
-                          const EdgeInsets.symmetric(vertical: 8.0),
-                      child: Text(
-                          'فئات شبكة: ${netData['name']}',
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Text('فئات شبكة: ${netData['name']}',
                           style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
@@ -2124,11 +2054,10 @@ class _CategoriesTabState extends State<CategoriesTab>
                     int simStock = category['simStock'] ?? 0;
                     int totalStock = realStock + simStock;
                     bool isLowStock = totalStock < 10;
-                    Color catColor = Color(
-                        category['color'] ?? Colors.blue.value);
+                    Color catColor =
+                        Color(category['color'] ?? Colors.blue.value);
                     bool isCatActive = category['isActive'] ?? true;
-                    bool allowSellSim =
-                        category['allowSellSim'] ?? false;
+                    bool allowSellSim = category['allowSellSim'] ?? false;
                     return Card(
                       color: isCatActive
                           ? Theme.of(context).cardColor
@@ -2143,19 +2072,16 @@ class _CategoriesTabState extends State<CategoriesTab>
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
                                   mainAxisAlignment:
-                                      MainAxisAlignment
-                                          .spaceBetween,
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
                                     Expanded(
                                         child: Text(category['name'],
                                             style: TextStyle(
-                                                fontWeight:
-                                                    FontWeight.bold,
+                                                fontWeight: FontWeight.bold,
                                                 fontSize: 18,
                                                 color: isCatActive
                                                     ? catColor
@@ -2177,14 +2103,12 @@ class _CategoriesTabState extends State<CategoriesTab>
                                               catColor),
                                           constraints:
                                               const BoxConstraints(),
-                                          padding: const EdgeInsets
-                                              .symmetric(
+                                          padding: const EdgeInsets.symmetric(
                                               horizontal: 5),
                                           tooltip: 'عرض الكروت'),
                                       IconButton(
                                           icon: Icon(Icons.smart_toy,
-                                              color: category[
-                                                          'isBotEnabled'] ==
+                                              color: category['isBotEnabled'] ==
                                                       true
                                                   ? Colors.purple
                                                   : Colors.grey,
@@ -2195,36 +2119,33 @@ class _CategoriesTabState extends State<CategoriesTab>
                                               category),
                                           constraints:
                                               const BoxConstraints(),
-                                          padding: const EdgeInsets
-                                              .symmetric(
+                                          padding: const EdgeInsets.symmetric(
                                               horizontal: 5),
                                           tooltip: 'البوت الذكي'),
                                       IconButton(
                                           icon: Icon(
                                               isCatActive
-                                                  ? Icons
-                                                      .pause_circle_filled
-                                                  : Icons
-                                                      .play_circle_fill,
+                                                  ? Icons.pause_circle_filled
+                                                  : Icons.play_circle_fill,
                                               color: Colors.orange,
                                               size: 20),
                                           onPressed: () async {
-                                            bool confirm = await p._confirmAction(
-                                                isCatActive
-                                                    ? "تجميد الفئة"
-                                                    : "تنشيط الفئة",
-                                                "تغيير حالة الفئة؟",
-                                                Colors.orange);
+                                            bool confirm =
+                                                await p._confirmAction(
+                                                    isCatActive
+                                                        ? "تجميد الفئة"
+                                                        : "تنشيط الفئة",
+                                                    "تغيير حالة الفئة؟",
+                                                    Colors.orange);
                                             if (confirm) {
                                               p._play('click');
-                                              List updated = List.from(
-                                                  categories);
+                                              List updated =
+                                                  List.from(categories);
                                               int idx = updated.indexWhere(
                                                   (c) =>
                                                       c['id'] ==
                                                       category['id']);
-                                              updated[idx]
-                                                      ['isActive'] =
+                                              updated[idx]['isActive'] =
                                                   !isCatActive;
                                               await p._db
                                                   .collection('networks')
@@ -2240,117 +2161,88 @@ class _CategoriesTabState extends State<CategoriesTab>
                                           },
                                           constraints:
                                               const BoxConstraints(),
-                                          padding: const EdgeInsets
-                                              .symmetric(
+                                          padding: const EdgeInsets.symmetric(
                                               horizontal: 5)),
                                       IconButton(
-                                          icon: const Icon(
-                                              Icons.edit,
-                                              color: Colors.blue,
-                                              size: 20),
-                                          onPressed: () => p._showAddCategoryBottomSheet(
-                                              networks,
-                                              existingCat: category,
-                                              preSelectedNetId:
-                                                  netId),
+                                          icon: const Icon(Icons.edit,
+                                              color: Colors.blue, size: 20),
+                                          onPressed: () =>
+                                              p._showAddCategoryBottomSheet(
+                                                  networks,
+                                                  existingCat: category,
+                                                  preSelectedNetId: netId),
                                           constraints:
                                               const BoxConstraints(),
-                                          padding: const EdgeInsets
-                                              .symmetric(
+                                          padding: const EdgeInsets.symmetric(
                                               horizontal: 5)),
                                       IconButton(
-                                          icon: const Icon(
-                                              Icons.delete,
-                                              color: Colors.red,
-                                              size: 20),
+                                          icon: const Icon(Icons.delete,
+                                              color: Colors.red, size: 20),
                                           onPressed: () => p
                                               ._deleteCategoryAndArchive(
                                                   netId, category),
                                           constraints:
                                               const BoxConstraints(),
-                                          padding: const EdgeInsets
-                                              .symmetric(
+                                          padding: const EdgeInsets.symmetric(
                                               horizontal: 5)),
                                     ]),
                                   ]),
                               const SizedBox(height: 8),
                               Text(
                                   'الوقت: ${category['time']} | السعة: ${category['capacity']}',
-                                  style: TextStyle(
-                                      color: textColor)),
+                                  style: TextStyle(color: textColor)),
                               if (category['note'] != null &&
-                                  category['note']
-                                      .toString()
-                                      .isNotEmpty)
+                                  category['note'].toString().isNotEmpty)
                                 Padding(
-                                    padding: const EdgeInsets.only(
-                                        top: 4),
-                                    child: Text(
-                                        '📝 ${category['note']}',
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Text('📝 ${category['note']}',
                                         style: const TextStyle(
                                             fontSize: 12,
                                             color: Colors.grey,
-                                            fontStyle:
-                                                FontStyle.italic))),
+                                            fontStyle: FontStyle.italic))),
                               const Divider(),
                               Row(
                                   mainAxisAlignment:
-                                      MainAxisAlignment
-                                          .spaceBetween,
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(
                                         'سعر الجمهور: ${category['price']} ريال',
                                         style: const TextStyle(
-                                            fontWeight:
-                                                FontWeight.bold,
+                                            fontWeight: FontWeight.bold,
                                             fontSize: 14,
                                             color: Colors.grey)),
                                     Row(children: [
                                       Column(
                                           crossAxisAlignment:
-                                              CrossAxisAlignment
-                                                  .end,
+                                              CrossAxisAlignment.end,
                                           children: [
-                                            Text(
-                                                'حقيقي: $realStock',
+                                            Text('حقيقي: $realStock',
                                                 style: TextStyle(
                                                     fontWeight:
-                                                        FontWeight
-                                                            .bold,
+                                                        FontWeight.bold,
                                                     fontSize: 12,
                                                     color: Colors
-                                                        .green
-                                                        .shade800)),
-                                            Text(
-                                                'وهمي: $simStock',
+                                                        .green.shade800)),
+                                            Text('وهمي: $simStock',
                                                 style: TextStyle(
                                                     fontSize: 12,
                                                     color: Colors
-                                                        .orange
-                                                        .shade800)),
+                                                        .orange.shade800)),
                                           ]),
                                       const SizedBox(width: 8),
                                       Container(
-                                          padding: const EdgeInsets
-                                              .symmetric(
-                                              horizontal: 10,
-                                              vertical: 5),
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 10, vertical: 5),
                                           decoration: BoxDecoration(
                                               color: isLowStock
-                                                  ? Colors.red
-                                                      .shade100
-                                                  : Colors.green
-                                                      .shade100,
+                                                  ? Colors.red.shade100
+                                                  : Colors.green.shade100,
                                               borderRadius:
-                                                  BorderRadius
-                                                      .circular(
-                                                          10)),
+                                                  BorderRadius.circular(10)),
                                           child: Text(
                                               'الإجمالي: $totalStock كرت',
                                               style: TextStyle(
-                                                  fontWeight:
-                                                      FontWeight
-                                                          .bold,
+                                                  fontWeight: FontWeight.bold,
                                                   fontSize: 12,
                                                   color: isLowStock
                                                       ? Colors.red
@@ -2361,29 +2253,21 @@ class _CategoriesTabState extends State<CategoriesTab>
                               SwitchListTile(
                                   title: const Text(
                                       'السماح ببيع الكروت الوهمية',
-                                      style: TextStyle(
-                                          fontSize: 13)),
+                                      style: TextStyle(fontSize: 13)),
                                   value: allowSellSim,
                                   activeColor: Colors.orange,
                                   dense: true,
-                                  contentPadding:
-                                      EdgeInsets.zero,
+                                  contentPadding: EdgeInsets.zero,
                                   onChanged: (v) async {
                                     p._play('click');
-                                    List updated =
-                                        List.from(categories);
+                                    List updated = List.from(categories);
                                     int idx = updated.indexWhere(
-                                        (c) =>
-                                            c['id'] ==
-                                            category['id']);
-                                    updated[idx]
-                                        ['allowSellSim'] = v;
+                                        (c) => c['id'] == category['id']);
+                                    updated[idx]['allowSellSim'] = v;
                                     await p._db
                                         .collection('networks')
                                         .doc(netId)
-                                        .update({
-                                      'categories': updated
-                                    });
+                                        .update({'categories': updated});
                                   }),
                             ]),
                       ),
@@ -2414,11 +2298,11 @@ class _GenerateTabState extends State<GenerateTab>
   Widget build(BuildContext context) {
     super.build(context);
     final p = widget.parent;
-    final sys = Provider.of<SystemProvider>(context);
+    final auth = Provider.of<AuthProvider>(context);
     return StreamBuilder<QuerySnapshot>(
       stream: p._db
           .collection('networks')
-          .where('agentPhone', isEqualTo: sys.currentUserPhone)
+          .where('agentPhone', isEqualTo: auth.activeUserPhone)
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting)
@@ -2426,8 +2310,10 @@ class _GenerateTabState extends State<GenerateTab>
         final networks = snapshot.hasData
             ? snapshot.data!.docs
             : <QueryDocumentSnapshot>[];
-        WidgetsBinding.instance
-            .addPostFrameCallback((_) => p._checkAutoBot(networks));
+        // تنفيذ فحص البوت مرة واحدة فقط عند البناء الأول
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          p._checkAutoBot(networks);
+        });
         if (networks.isEmpty)
           return const Center(
               child: Text('يجب إضافة شبكة وفئات أولاً!'));
@@ -2467,6 +2353,8 @@ class _GenerateTabState extends State<GenerateTab>
                       color: textColor))),
           Expanded(
             child: ListView.builder(
+              physics: const NeverScrollableScrollPhysics(),
+              shrinkWrap: true,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               itemCount: allCategories.length,
               itemBuilder: (context, index) {
@@ -2483,13 +2371,11 @@ class _GenerateTabState extends State<GenerateTab>
                     padding: const EdgeInsets.all(12.0),
                     child: Row(children: [
                       Icon(Icons.category,
-                          color: Color(item['category']['color']),
-                          size: 30),
+                          color: Color(item['category']['color']), size: 30),
                       const SizedBox(width: 15),
                       Expanded(
                           child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                             Text(
                                 '${item['networkName']} - ${item['category']['name']}',
@@ -2500,25 +2386,21 @@ class _GenerateTabState extends State<GenerateTab>
                             Text(
                                 'المخزون الحقيقي: ${item['category']['realStock'] ?? 0} | الوهمي: ${item['category']['simStock'] ?? 0}',
                                 style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey)),
+                                    fontSize: 12, color: Colors.grey)),
                           ])),
                       SizedBox(
                           width: 100,
                           child: TextField(
-                              controller:
-                                  p._multiGenControllers[key],
+                              controller: p._multiGenControllers[key],
                               keyboardType: TextInputType.number,
                               textAlign: TextAlign.center,
                               decoration: InputDecoration(
                                   hintText: 'الكمية',
                                   contentPadding:
-                                      const EdgeInsets.symmetric(
-                                          vertical: 10),
+                                      const EdgeInsets.symmetric(vertical: 10),
                                   border: OutlineInputBorder(
                                       borderRadius:
-                                          BorderRadius.circular(
-                                              10)),
+                                          BorderRadius.circular(10)),
                                   filled: true,
                                   fillColor: Theme.of(context)
                                       .scaffoldBackgroundColor))),
@@ -2537,10 +2419,9 @@ class _GenerateTabState extends State<GenerateTab>
                       child: ElevatedButton.icon(
                           onPressed: p._isProcessing
                               ? null
-                              : () => p._startGeneration(sys,
+                              : () => p._startGeneration(
                                   orders: p._collectOrders()),
-                          icon: const Icon(Icons.inventory,
-                              color: Colors.white),
+                          icon: const Icon(Icons.inventory, color: Colors.white),
                           label: const Text('توليد للمخزون',
                               style: TextStyle(
                                   fontSize: 14,
@@ -2549,9 +2430,7 @@ class _GenerateTabState extends State<GenerateTab>
                           style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.blue,
                               shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                      BorderRadius.circular(
-                                          10)))))),
+                                  borderRadius: BorderRadius.circular(10)))))),
               const SizedBox(width: 10),
               Expanded(
                   child: SizedBox(
@@ -2560,10 +2439,8 @@ class _GenerateTabState extends State<GenerateTab>
                           onPressed: () => Navigator.push(
                               context,
                               MaterialPageRoute(
-                                  builder: (_) =>
-                                      const PrintScreen())),
-                          icon: const Icon(Icons.print,
-                              color: Colors.white),
+                                  builder: (_) => const PrintScreen())),
+                          icon: const Icon(Icons.print, color: Colors.white),
                           label: const Text('الذهاب للطباعة',
                               style: TextStyle(
                                   fontSize: 14,
@@ -2572,9 +2449,7 @@ class _GenerateTabState extends State<GenerateTab>
                           style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.teal,
                               shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                      BorderRadius.circular(
-                                          10)))))),
+                                  borderRadius: BorderRadius.circular(10)))))),
             ]),
           ),
         ]);
