@@ -857,6 +857,16 @@ class WalletProvider extends ChangeNotifier {
       }
     });
 
+    // 🆕 إضافة نقاط الولاء بعد إتمام الشراء
+    try {
+      await addLoyaltyPoints(
+        agentPhone: agentPhone,
+        purchaseAmount: totalPrice,
+      );
+    } catch (e) {
+      debugPrint('فشل إضافة نقاط الولاء: $e');
+    }
+
     return pins;
   }
 
@@ -1491,7 +1501,7 @@ class WalletProvider extends ChangeNotifier {
     await _db.collection('users').doc(phone).update({'dangerLimit': newLimit});
   }
 
-  // ========== 🆕 مستويات المستخدم (منقولة من system_provider القديم) ==========
+  // ========== مستويات المستخدم (منقولة من system_provider القديم) ==========
   Future<Map<String, dynamic>?> getUserTierForAgent(String agentPhone) async {
     if (_auth?.activeUserPhone == null) return null;
 
@@ -1543,5 +1553,40 @@ class WalletProvider extends ChangeNotifier {
       }
     }
     return bestTier;
+  }
+
+  // ========== 🆕 نظام نقاط الولاء لكل وكيل ==========
+
+  /// إضافة نقاط ولاء للمستخدم بعد الشراء من وكيل معين
+  Future<void> addLoyaltyPoints({
+    required String agentPhone,
+    required double purchaseAmount,
+  }) async {
+    if (_auth?.activeUserPhone == null) return;
+
+    // جلب إعدادات الولاء الخاصة بالوكيل
+    final agentDoc = await _db.collection('users').doc(agentPhone).get();
+    final agentData = agentDoc.data() ?? {};
+    final bool loyaltyEnabled = agentData['loyaltyEnabled'] ?? false;
+    final double pointsPerRiyal = (agentData['loyaltyPointsPerRiyal'] ?? 1.0).toDouble();
+
+    if (!loyaltyEnabled || pointsPerRiyal <= 0) return;
+
+    final int pointsToAdd = (purchaseAmount * pointsPerRiyal).ceil();
+
+    // تحديث نقاط المستخدم الخاصة بهذا الوكيل
+    await _db.collection('users').doc(_auth!.activeUserPhone).update({
+      'loyaltyPoints.$agentPhone': FieldValue.increment(pointsToAdd),
+      'totalLoyaltyPoints': FieldValue.increment(pointsToAdd),
+    });
+  }
+
+  /// جلب نقاط الولاء الحالية للمستخدم (مقسمة حسب الوكيل)
+  Future<Map<String, int>> getLoyaltyPoints() async {
+    if (_auth?.activeUserPhone == null) return {};
+    final doc = await _db.collection('users').doc(_auth!.activeUserPhone).get();
+    final data = doc.data() ?? {};
+    final Map<String, dynamic> pointsMap = data['loyaltyPoints'] ?? {};
+    return pointsMap.map((key, value) => MapEntry(key, (value ?? 0) as int));
   }
 }
