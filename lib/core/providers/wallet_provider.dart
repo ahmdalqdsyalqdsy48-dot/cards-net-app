@@ -257,7 +257,6 @@ class WalletProvider extends ChangeNotifier {
     return user['privacy_showPhone'] ?? true;
   }
 
-  // 🆕 getters الخصوصية الجديدة
   bool get privacyHideBalance {
     if (_auth?.activeUserPhone == null) return false;
     final user = _usersDatabase.firstWhere(
@@ -1149,9 +1148,6 @@ class WalletProvider extends ChangeNotifier {
             }).toList());
   }
 
-  // *********************************************************
-  // 🆕 تمت إضافة هذه الدالة المفقودة
-  // *********************************************************
   Stream<List<Map<String, dynamic>>> getMyPendingQuotaRequests() {
     if (_auth?.activeUserPhone == null) return Stream.value([]);
     return _db
@@ -1166,7 +1162,6 @@ class WalletProvider extends ChangeNotifier {
               return data;
             }).toList());
   }
-  // *********************************************************
 
   Stream<List<Map<String, dynamic>>> getPendingPosRechargeRequests() {
     if (_auth?.activeUserPhone == null) return Stream.value([]);
@@ -1186,7 +1181,7 @@ class WalletProvider extends ChangeNotifier {
     await _db.collection('recharge_requests').doc(docId).delete();
   }
 
-  // ---------- اشتراكات الوكلاء (مؤقتة هنا) ----------
+  // ---------- اشتراكات الوكلاء ----------
   Map<String, dynamic> get subscriptionStats {
     int active = 0, expiringSoon = 0, frozen = 0;
     double realExpectedRevenue = 0.0;
@@ -1494,5 +1489,59 @@ class WalletProvider extends ChangeNotifier {
 
   Future<void> updateDangerLimit(String phone, double newLimit) async {
     await _db.collection('users').doc(phone).update({'dangerLimit': newLimit});
+  }
+
+  // ========== 🆕 مستويات المستخدم (منقولة من system_provider القديم) ==========
+  Future<Map<String, dynamic>?> getUserTierForAgent(String agentPhone) async {
+    if (_auth?.activeUserPhone == null) return null;
+
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {});
+    Map<String, dynamic> wallets = user['wallets'] ?? {};
+    double walletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
+
+    final tierQuery = await _db
+        .collection('discount_tiers')
+        .where('agentPhone', isEqualTo: agentPhone)
+        .where('isActive', isEqualTo: true)
+        .get();
+
+    if (tierQuery.docs.isEmpty) return null;
+
+    List<Map<String, dynamic>> tiers = tierQuery.docs
+        .map((doc) => doc.data() as Map<String, dynamic>)
+        .toList();
+
+    tiers.sort((a, b) => (b['condition'] as int).compareTo(a['condition'] as int));
+
+    for (var tier in tiers) {
+      if (walletBalance >= (tier['condition'] as num).toDouble()) {
+        return tier;
+      }
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> getUserHighestTier() async {
+    if (_auth?.activeUserPhone == null) return null;
+
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {});
+    Map<String, dynamic> wallets = user['wallets'] ?? {};
+    if (wallets.isEmpty) return null;
+
+    Map<String, dynamic>? bestTier;
+    double bestCondition = 0;
+
+    for (var agentPhone in wallets.keys) {
+      final tier = await getUserTierForAgent(agentPhone);
+      if (tier != null && (tier['condition'] as num).toDouble() > bestCondition) {
+        bestCondition = (tier['condition'] as num).toDouble();
+        bestTier = tier;
+      }
+    }
+    return bestTier;
   }
 }
