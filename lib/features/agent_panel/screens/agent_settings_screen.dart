@@ -72,7 +72,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
 
   // ---------- تبويب الولاء ----------
   bool _loyaltyEnabled = false;
-  double _loyaltyPointsPerRiyal = 1.0;
+  double _loyaltyPercentage = 0.0;  // 🆕 النسبة المئوية (بدلاً من القائمة المنسدلة)
 
   @override
   void initState() {
@@ -135,7 +135,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
 
       // ولاء
       _loyaltyEnabled = prefs.getBool('agent_loyaltyEnabled') ?? false;
-      _loyaltyPointsPerRiyal = prefs.getDouble('agent_loyaltyPointsPerRiyal') ?? 1.0;
+      _loyaltyPercentage = prefs.getDouble('agent_loyaltyPercentage') ?? 0.0;  // 🆕
 
       _isLoading = false;
     });
@@ -1102,10 +1102,12 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     );
   }
 
-  // ---------- تبويب الولاء والمكافآت ----------
+  // ---------- تبويب الولاء والمكافآت (مُحدَّث بحقل النسبة المئوية) ----------
   Widget _buildLoyaltyTab(AuthProvider auth, WalletProvider wallet,
       Color primaryColor, ColorScheme colorScheme) {
     final agentPhone = auth.activeUserPhone ?? '';
+    final percentController = TextEditingController(text: _loyaltyPercentage.toString());
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -1127,7 +1129,6 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                   _play('click');
                   setState(() => _loyaltyEnabled = val);
                   await _saveSetting('agent_loyaltyEnabled', val);
-                  // تحديث Firestore
                   await _db.collection('users').doc(agentPhone).update({
                     'loyaltyEnabled': val,
                   });
@@ -1135,29 +1136,34 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                 },
               ),
               const Divider(height: 1),
+              // 🆕 حقل النسبة المئوية (بديل القائمة المنسدلة)
               ListTile(
-                title: Text('النقاط لكل 1 ريال',
+                leading: Icon(Icons.percent, color: primaryColor),
+                title: Text('نسبة النقاط من المشتريات',
                     style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
-                subtitle: Text('يكسب المستخدم ${_loyaltyPointsPerRiyal.toStringAsFixed(1)} نقطة مقابل كل ريال',
+                subtitle: Text('مثلاً: 10 تعني 10% من قيمة المشتريات تتحول لنقاط',
                     style: TextStyle(color: colorScheme.onSurfaceVariant)),
-                trailing: DropdownButton<double>(
-                  value: _loyaltyPointsPerRiyal,
-                  items: const [
-                    DropdownMenuItem(value: 0.5, child: Text('0.5 نقطة')),
-                    DropdownMenuItem(value: 1.0, child: Text('1 نقطة')),
-                    DropdownMenuItem(value: 2.0, child: Text('2 نقطة')),
-                    DropdownMenuItem(value: 5.0, child: Text('5 نقطة')),
-                  ],
-                  onChanged: (val) async {
-                    if (val == null) return;
-                    _play('click');
-                    setState(() => _loyaltyPointsPerRiyal = val);
-                    await _saveSetting('agent_loyaltyPointsPerRiyal', val);
-                    await _db.collection('users').doc(agentPhone).update({
-                      'loyaltyPointsPerRiyal': val,
-                    });
-                    _showToast('تم تعيين $val نقطة لكل ريال');
-                  },
+                trailing: SizedBox(
+                  width: 90,
+                  child: TextField(
+                    controller: percentController,
+                    keyboardType: TextInputType.numberWithOptions(decimal: true),
+                    textAlign: TextAlign.center,
+                    decoration: InputDecoration(
+                      suffixText: '%',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                    ),
+                    onChanged: (val) async {
+                      final newPercent = double.tryParse(val.trim()) ?? 0.0;
+                      setState(() => _loyaltyPercentage = newPercent);
+                      await _saveSetting('agent_loyaltyPercentage', newPercent);
+                      await _db.collection('users').doc(agentPhone).update({
+                        'loyaltyPercentage': newPercent,
+                      });
+                      _showToast('تم تعيين النسبة إلى $newPercent%');
+                    },
+                  ),
                 ),
               ),
             ],
@@ -1170,7 +1176,6 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
           color: colorScheme.surface,
           child: Column(
             children: [
-              // قائمة المكافآت
               StreamBuilder<QuerySnapshot>(
                 stream: _db
                     .collection('loyalty_rewards')
@@ -1218,7 +1223,6 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                 },
               ),
               const Divider(height: 1),
-              // زر إضافة مكافأة جديدة
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: SizedBox(
@@ -1279,7 +1283,6 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // اختيار الفئة
                   FutureBuilder<QuerySnapshot>(
                     future: _db
                         .collection('networks')
