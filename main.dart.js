@@ -76778,10 +76778,10 @@ if(o==null)o=A.E(t.N,t.z)
 n=J.N(o)
 m=n.h(o,"loyaltyEnabled")
 if(m==null)m=!1
-n=n.h(o,"loyaltyPointsPerRiyal")
-l=J.bF(n==null?1:n)
+n=n.h(o,"loyaltyPercentage")
+l=J.bF(n==null?0:n)
 if(!m||l<=0){s=1
-break}k=B.k.fk(b*l)
+break}k=B.k.fk(b*l/100)
 j=i.K("users").ac(j.c)
 i=$.d_()
 n=i.jf(k)
