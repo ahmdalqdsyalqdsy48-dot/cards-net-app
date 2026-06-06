@@ -9,6 +9,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/providers/settings_provider.dart';
@@ -31,14 +32,14 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   late TabController _tabController;
   bool _isLoading = true;
   final LocalAuthentication _localAuth = LocalAuthentication();
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // ---------- تبويب الطباعة ----------
   bool _autoPrintEnabled = false;
   double _defaultQty = 1.0;
   bool _isPrinterConnected = false;
   String _paperSize = '80mm';
-  final TextEditingController _receiptFooterController =
-      TextEditingController();
+  final TextEditingController _receiptFooterController = TextEditingController();
 
   // ---------- تبويب الأمان ----------
   bool _pinEnabled = false;
@@ -47,12 +48,9 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   String _userEmail = '';
   final TextEditingController _emailController = TextEditingController();
 
-  final TextEditingController _oldPasswordController =
-      TextEditingController();
-  final TextEditingController _newPasswordController =
-      TextEditingController();
-  final TextEditingController _confirmPasswordController =
-      TextEditingController();
+  final TextEditingController _oldPasswordController = TextEditingController();
+  final TextEditingController _newPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
   bool _obsOldPass = true;
   bool _obsNewPass = true;
   bool _obsConfPass = true;
@@ -72,10 +70,14 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
   bool _appSounds = true;
   String _appLanguage = 'ar';
 
+  // ---------- تبويب الولاء ----------
+  bool _loyaltyEnabled = false;
+  double _loyaltyPointsPerRiyal = 1.0;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
     _loadSettings();
   }
 
@@ -96,6 +98,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     final prefs = await SharedPreferences.getInstance();
     final wallet = context.read<WalletProvider>();
     final settings = context.read<SettingsProvider>();
+    final auth = context.read<AuthProvider>();
 
     await wallet.loadUserEmail();
 
@@ -129,6 +132,10 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
       // مظهر
       _appSounds = settings.isSoundEnabled;
       _appLanguage = settings.getLanguageSync();
+
+      // ولاء
+      _loyaltyEnabled = prefs.getBool('agent_loyaltyEnabled') ?? false;
+      _loyaltyPointsPerRiyal = prefs.getDouble('agent_loyaltyPointsPerRiyal') ?? 1.0;
 
       _isLoading = false;
     });
@@ -380,6 +387,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                   Tab(icon: Icon(Icons.notifications), text: 'الإشعارات'),
                   Tab(icon: Icon(Icons.color_lens), text: 'المظهر واللغة'),
                   Tab(icon: Icon(Icons.sync), text: 'النظام والأدوات'),
+                  Tab(icon: Icon(Icons.card_giftcard), text: 'الولاء والمكافآت'),
                 ],
               ),
             ),
@@ -392,6 +400,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
                   _buildNotificationsTab(primaryColor, colorScheme),
                   _buildAppearanceTab(theme, settings, primaryColor, colorScheme),
                   _buildSystemTab(wallet, primaryColor, colorScheme),
+                  _buildLoyaltyTab(auth, wallet, primaryColor, colorScheme),
                 ],
               ),
             ),
@@ -401,7 +410,7 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
     );
   }
 
-  // ---------- تبويب الأمان والجلسة (مُحدَّث بالخصوصية) ----------
+  // ---------- تبويب الأمان والجلسة ----------
   Widget _buildSecurityTab(WalletProvider wallet, SettingsProvider settings,
       Color primaryColor, ColorScheme colorScheme) {
     return ListView(
@@ -562,7 +571,6 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
         ),
         const SizedBox(height: 20),
 
-        // 🆕 قسم الخصوصية
         _sectionTitle('الخصوصية', colorScheme.onSurface),
         Card(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
@@ -1092,6 +1100,330 @@ class _AgentSettingsScreenState extends State<AgentSettingsScreen>
         ),
       ],
     );
+  }
+
+  // ---------- تبويب الولاء والمكافآت ----------
+  Widget _buildLoyaltyTab(AuthProvider auth, WalletProvider wallet,
+      Color primaryColor, ColorScheme colorScheme) {
+    final agentPhone = auth.activeUserPhone ?? '';
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _sectionTitle('إعدادات الولاء', colorScheme.onSurface),
+        Card(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          color: colorScheme.surface,
+          child: Column(
+            children: [
+              SwitchListTile(
+                secondary: Icon(Icons.card_giftcard, color: primaryColor),
+                title: Text('تفعيل نظام الولاء',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text('سيتمكن المستخدمون من جمع نقاط مقابل مشترياتهم',
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                value: _loyaltyEnabled,
+                activeColor: primaryColor,
+                onChanged: (val) async {
+                  _play('click');
+                  setState(() => _loyaltyEnabled = val);
+                  await _saveSetting('agent_loyaltyEnabled', val);
+                  // تحديث Firestore
+                  await _db.collection('users').doc(agentPhone).update({
+                    'loyaltyEnabled': val,
+                  });
+                  _showToast(val ? 'تم تفعيل نظام الولاء' : 'تم تعطيل نظام الولاء');
+                },
+              ),
+              const Divider(height: 1),
+              ListTile(
+                title: Text('النقاط لكل 1 ريال',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                subtitle: Text('يكسب المستخدم ${_loyaltyPointsPerRiyal.toStringAsFixed(1)} نقطة مقابل كل ريال',
+                    style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                trailing: DropdownButton<double>(
+                  value: _loyaltyPointsPerRiyal,
+                  items: const [
+                    DropdownMenuItem(value: 0.5, child: Text('0.5 نقطة')),
+                    DropdownMenuItem(value: 1.0, child: Text('1 نقطة')),
+                    DropdownMenuItem(value: 2.0, child: Text('2 نقطة')),
+                    DropdownMenuItem(value: 5.0, child: Text('5 نقطة')),
+                  ],
+                  onChanged: (val) async {
+                    if (val == null) return;
+                    _play('click');
+                    setState(() => _loyaltyPointsPerRiyal = val);
+                    await _saveSetting('agent_loyaltyPointsPerRiyal', val);
+                    await _db.collection('users').doc(agentPhone).update({
+                      'loyaltyPointsPerRiyal': val,
+                    });
+                    _showToast('تم تعيين $val نقطة لكل ريال');
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _sectionTitle('المكافآت المتاحة للاستبدال', colorScheme.onSurface),
+        Card(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          color: colorScheme.surface,
+          child: Column(
+            children: [
+              // قائمة المكافآت
+              StreamBuilder<QuerySnapshot>(
+                stream: _db
+                    .collection('loyalty_rewards')
+                    .where('agentPhone', isEqualTo: agentPhone)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  final rewards = snapshot.data?.docs ?? [];
+                  if (rewards.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Text('لا توجد مكافآت مضافة بعد',
+                          style: TextStyle(color: Colors.grey)),
+                    );
+                  }
+                  return Column(
+                    children: rewards.map((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: Color(data['color'] ?? 0xFF009688),
+                          child: const Icon(Icons.card_giftcard, color: Colors.white, size: 20),
+                        ),
+                        title: Text(data['name'] ?? '',
+                            style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                        subtitle: Text('${data['points']} نقطة',
+                            style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(Icons.delete, color: colorScheme.error),
+                              onPressed: () => _deleteReward(doc.id),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+              const Divider(height: 1),
+              // زر إضافة مكافأة جديدة
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showAddRewardDialog(agentPhone, wallet),
+                    icon: const Icon(Icons.add),
+                    label: const Text('إضافة مكافأة جديدة'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---------- حوار إضافة مكافأة ----------
+  void _showAddRewardDialog(String agentPhone, WalletProvider wallet) {
+    final nameController = TextEditingController();
+    final pointsController = TextEditingController();
+    String? selectedCategoryId;
+    Color selectedColor = Colors.teal;
+    bool isSubmitting = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            title: const Text('إضافة مكافأة جديدة'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'اسم المكافأة',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: pointsController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'النقاط المطلوبة',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // اختيار الفئة
+                  FutureBuilder<QuerySnapshot>(
+                    future: _db
+                        .collection('networks')
+                        .where('agentPhone', isEqualTo: agentPhone)
+                        .get(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) return const CircularProgressIndicator();
+                      List<DropdownMenuItem<String>> items = [];
+                      for (var netDoc in snapshot.data!.docs) {
+                        final categories = List<Map<String, dynamic>>.from(
+                            (netDoc.data() as Map)['categories'] ?? []);
+                        for (var cat in categories) {
+                          items.add(DropdownMenuItem(
+                            value: cat['id'],
+                            child: Text(cat['name'] ?? ''),
+                          ));
+                        }
+                      }
+                      return DropdownButtonFormField<String>(
+                        decoration: const InputDecoration(
+                          labelText: 'اختر الفئة',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: items,
+                        onChanged: (val) {
+                          selectedCategoryId = val;
+                        },
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Text('اللون: '),
+                      GestureDetector(
+                        onTap: () async {
+                          final color = await showDialog<Color>(
+                            context: ctx,
+                            builder: (c) => AlertDialog(
+                              content: ColorPicker(
+                                pickerColor: selectedColor,
+                                onColorChanged: (c) => selectedColor = c,
+                                enableAlpha: false,
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(c),
+                                  child: const Text('إلغاء'),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () => Navigator.pop(c, selectedColor),
+                                  child: const Text('اختيار'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (color != null) {
+                            setDialogState(() => selectedColor = color);
+                          }
+                        },
+                        child: Container(
+                          width: 40, height: 40,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: selectedColor,
+                            border: Border.all(color: Colors.grey),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('إلغاء'),
+              ),
+              ElevatedButton(
+                onPressed: isSubmitting ? null : () async {
+                  final name = nameController.text.trim();
+                  final points = int.tryParse(pointsController.text.trim());
+                  if (name.isEmpty || points == null || selectedCategoryId == null) {
+                    _showToast('يرجى تعبئة جميع الحقول');
+                    return;
+                  }
+                  setDialogState(() => isSubmitting = true);
+                  try {
+                    await _db.collection('loyalty_rewards').add({
+                      'name': name,
+                      'points': points,
+                      'color': selectedColor.value,
+                      'agentPhone': agentPhone,
+                      'categoryId': selectedCategoryId,
+                      'isActive': true,
+                      'stock': 10,
+                    });
+                    Navigator.pop(ctx);
+                    _showToast('تم إضافة المكافأة بنجاح 🎉');
+                  } catch (e) {
+                    setDialogState(() => isSubmitting = false);
+                    _showToast('فشل إضافة المكافأة');
+                  }
+                },
+                child: isSubmitting
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('إضافة'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------- حذف مكافأة ----------
+  Future<void> _deleteReward(String docId) async {
+    _play('click');
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('حذف المكافأة'),
+          content: const Text('هل أنت متأكد من حذف هذه المكافأة؟'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('حذف', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirm == true) {
+      await _db.collection('loyalty_rewards').doc(docId).delete();
+      _showToast('تم حذف المكافأة');
+    }
   }
 
   // ---------- دوال مساعدة ----------
