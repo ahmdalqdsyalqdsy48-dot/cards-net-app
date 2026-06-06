@@ -1,3 +1,5 @@
+// lib/features/user_panel/widgets/custom_user_drawer.dart
+
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -6,7 +8,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/providers/theme_provider.dart';
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';       // ← استبدال system_provider
+import '../../../core/providers/wallet_provider.dart';    // ← إضافة للرصيد والبحث
 import '../../../core/providers/ui_provider.dart';
 
 import '../screens/user_dashboard_screen.dart';
@@ -49,8 +52,8 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
 
   Future<void> _loadUserTier() async {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final sys = Provider.of<SystemProvider>(context, listen: false);
-      sys.getUserHighestTier().then((tier) {
+      final wallet = Provider.of<WalletProvider>(context, listen: false);
+      wallet.getUserHighestTier().then((tier) {
         if (mounted) setState(() => _userTier = tier);
       });
     });
@@ -100,8 +103,8 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
     if (picked == null) return;
     final bytes = await picked.readAsBytes();
     final base64 = base64Encode(bytes);
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    await FirebaseFirestore.instance.collection('users').doc(sys.currentUserPhone).update({'profileImageBase64': base64});
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    await FirebaseFirestore.instance.collection('users').doc(auth.activeUserPhone).update({'profileImageBase64': base64});
     setState(() => _currentLocalImageUrl = base64);
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث الصورة بنجاح', textDirection: TextDirection.rtl), backgroundColor: Colors.green));
     Navigator.pop(context);
@@ -110,8 +113,8 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
 
   Future<void> _deleteProfileImage() async {
     _playSound();
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    await FirebaseFirestore.instance.collection('users').doc(sys.currentUserPhone).update({'profileImageBase64': FieldValue.delete()});
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    await FirebaseFirestore.instance.collection('users').doc(auth.activeUserPhone).update({'profileImageBase64': FieldValue.delete()});
     setState(() => _currentLocalImageUrl = null);
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حذف الصورة', textDirection: TextDirection.rtl), backgroundColor: Colors.orange));
     Navigator.pop(context);
@@ -120,7 +123,6 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
 
   void _showProfileImageActionDialog() {
     _playSound();
-    final sys = Provider.of<SystemProvider>(context, listen: false);
     bool hasImage = _currentLocalImageUrl != null && _currentLocalImageUrl!.isNotEmpty;
 
     showDialog(
@@ -180,18 +182,19 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    final systemProvider = Provider.of<SystemProvider>(context);
+    final auth = Provider.of<AuthProvider>(context);           // ← جديد
+    final wallet = Provider.of<WalletProvider>(context);       // ← جديد
     final ColorScheme colors = Theme.of(context).colorScheme;
 
     final bool isDark = themeProvider.isDarkMode;
     final Color primaryColor = themeProvider.primaryColor;
 
-    final String dynamicUserName = systemProvider.currentUserName;
-    final String dynamicUserPhone = systemProvider.currentUserPhone;
-    final bool isPos = systemProvider.currentUserRole == 'pos';
+    final String dynamicUserName = auth.currentUserName;       // ← من auth
+    final String dynamicUserPhone = auth.activeUserPhone ?? ''; // ← من auth
+    final bool isPos = auth.currentUserRole == 'pos';          // ← من auth
 
     if (_currentLocalImageUrl == null) {
-      FirebaseFirestore.instance.collection('users').doc(systemProvider.currentUserPhone).get().then((doc) {
+      FirebaseFirestore.instance.collection('users').doc(auth.activeUserPhone).get().then((doc) {
         if (doc.exists && doc.data() != null) {
           final data = doc.data()!;
           final base64 = data['profileImageBase64'] as String?;
@@ -203,7 +206,6 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
     }
     bool hasImage = _currentLocalImageUrl != null && _currentLocalImageUrl!.isNotEmpty;
 
-    // جميع التدرجات تستخدم primaryColor دائمًا (الأزرق افتراضيًا أو اللون المخصص)
     final nameColors = _generateGradientColors(primaryColor);
     final phoneColors = _generateGradientColors(primaryColor);
     final tierColors = _generateGradientColors(primaryColor);
@@ -219,7 +221,7 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
     }
 
     return Drawer(
-      backgroundColor: colors.surface, // خلفية معتمة ومتكيفة
+      backgroundColor: colors.surface,
       child: Directionality(
         textDirection: TextDirection.rtl,
         child: Column(
@@ -273,7 +275,7 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
                               setState(() => _isBalanceHidden = !_isBalanceHidden);
                             },
                             child: _buildGradientCard(
-                              text: _isBalanceHidden ? 'الرصيد: ******' : '${isPos ? "الرصيد العام" : "المحفظة"}: ${systemProvider.currentUserBalance.toStringAsFixed(0)} ريال',
+                              text: _isBalanceHidden ? 'الرصيد: ******' : '${isPos ? "الرصيد العام" : "المحفظة"}: ${wallet.currentUserBalance.toStringAsFixed(0)} ريال',
                               icon: Icons.account_balance_wallet,
                               colors: balanceColors,
                               trailingIcon: _isBalanceHidden ? Icons.visibility_off : Icons.visibility,
@@ -319,8 +321,8 @@ class _CustomUserDrawerState extends State<CustomUserDrawer> {
               title: Text('تسجيل الخروج', style: TextStyle(color: colors.onSurface, fontWeight: FontWeight.bold)),
               onTap: () {
                 _playSound();
-                final sys = Provider.of<SystemProvider>(context, listen: false);
-                sys.clearAllData();
+                final auth = Provider.of<AuthProvider>(context, listen: false);  // ← جديد
+                auth.clearAllData();  // ← من auth
                 Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const SSOLoginScreen()), (route) => false);
               },
             ),
