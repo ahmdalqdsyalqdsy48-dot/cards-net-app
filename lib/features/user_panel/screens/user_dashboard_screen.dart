@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:intl/intl.dart' as intl;
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/providers/wallet_provider.dart';
