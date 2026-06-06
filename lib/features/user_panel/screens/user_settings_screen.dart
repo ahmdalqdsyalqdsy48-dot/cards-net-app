@@ -61,7 +61,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen>
     final wallet = context.read<WalletProvider>();
     final settings = context.read<SettingsProvider>();
 
-    // تحميل بيانات المستخدم من السحابة
     await wallet.loadUserEmail();
 
     final currentPin = wallet.currentUserPin;
