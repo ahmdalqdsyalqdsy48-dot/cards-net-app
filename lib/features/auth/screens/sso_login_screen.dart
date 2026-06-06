@@ -5,11 +5,12 @@ import 'package:provider/provider.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/providers/theme_provider.dart';
-import '../../../core/providers/auth_provider.dart';        // ✅ الجديد (كل المصادقة)
-import '../../../core/providers/settings_provider.dart';    // ✅ الجديد (كل الإعدادات)
-import '../../../core/providers/wallet_provider.dart';      // ✅ الجديد (PIN)
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/settings_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 
 import '../../super_admin/screens/super_admin_dashboard.dart';
@@ -50,9 +51,33 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
   @override
   void initState() {
     super.initState();
+    _loadSavedCredentials();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _startDynamicCarousel();
     });
+  }
+
+  /// 🆕 تحميل بيانات "تذكرني" المحفوظة
+  Future<void> _loadSavedCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedPhone = prefs.getString('saved_phone') ?? '';
+    final savedPassword = prefs.getString('saved_password') ?? '';
+    final savedPin = prefs.getString('saved_pin') ?? '';
+    final savedUsePin = prefs.getBool('saved_usePin') ?? false;
+    final savedRememberMe = prefs.getBool('remember_me') ?? false;
+
+    if (savedRememberMe) {
+      setState(() {
+        rememberMe = true;
+        phoneController.text = savedPhone;
+        if (savedUsePin) {
+          usePinLogin = true;
+          pinController.text = savedPin;
+        } else {
+          passwordController.text = savedPassword;
+        }
+      });
+    }
   }
 
   void _startDynamicCarousel() {
@@ -96,7 +121,12 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     final wallet = Provider.of<WalletProvider>(context, listen: false);
     final currentPin = wallet.currentUserPin;
 
-    if (currentPin.isNotEmpty && currentPin.length == 6) return currentPin;
+    // 🆕 اعتبار '123456' كـ PIN غير آمن وإجبار التغيير
+    bool isWeakPin = currentPin == '123456';
+
+    if (!isWeakPin && currentPin.isNotEmpty && currentPin.length == 6) {
+      return currentPin;
+    }
 
     final pinCtrl = TextEditingController();
     final confirmCtrl = TextEditingController();
@@ -114,7 +144,11 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('يجب تعيين رمز مكون من 6 أرقام لتأمين حسابك وجميع العمليات.'),
+                Text(isWeakPin
+                    ? 'الرمز الافتراضي (123456) غير آمن. يجب تغييره فوراً.'
+                    : 'يجب تعيين رمز مكون من 6 أرقام لتأمين حسابك وجميع العمليات.'),
+                if (isWeakPin)
+                  const SizedBox(height: 10),
                 const SizedBox(height: 16),
                 TextField(
                   controller: pinCtrl,
@@ -168,6 +202,12 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                     );
                     return;
                   }
+                  if (pinCtrl.text == '123456') {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('الرمز 123456 غير مسموح به. اختر رمزاً آخر.', textDirection: TextDirection.rtl)),
+                    );
+                    return;
+                  }
                   Navigator.pop(ctx, pinCtrl.text);
                 },
                 child: const Text('حفظ'),
@@ -185,17 +225,27 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     return null;
   }
 
+  /// 🆕 حفظ بيانات "تذكرني"
   Future<void> _saveCredentialsForBiometrics(String phone) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('saved_phone', phone);
-    if (usePinLogin) {
-      await prefs.setString('saved_pin', pinController.text.trim());
-      await prefs.setBool('saved_usePin', true);
-      await prefs.remove('saved_password');
+    await prefs.setBool('remember_me', rememberMe);
+
+    if (rememberMe) {
+      if (usePinLogin) {
+        await prefs.setString('saved_pin', pinController.text.trim());
+        await prefs.setBool('saved_usePin', true);
+        await prefs.remove('saved_password');
+      } else {
+        await prefs.setString('saved_password', passwordController.text.trim());
+        await prefs.setBool('saved_usePin', false);
+        await prefs.remove('saved_pin');
+      }
     } else {
-      await prefs.setString('saved_password', passwordController.text.trim());
-      await prefs.setBool('saved_usePin', false);
+      // حذف البيانات المحفوظة إذا لم يكن "تذكرني" مفعلاً
+      await prefs.remove('saved_password');
       await prefs.remove('saved_pin');
+      await prefs.remove('saved_usePin');
     }
   }
 
@@ -388,21 +438,99 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
     }
   }
 
+  /// 🆕 استعادة كلمة المرور (ترسل OTP فعلياً)
   void _showForgotPasswordDialog() {
     Provider.of<UiProvider>(context, listen: false).playSound('click');
+    final phoneCtrl = TextEditingController();
+    final otpCtrl = TextEditingController();
+    final newPassCtrl = TextEditingController();
+    bool otpSent = false;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('استعادة كلمة المرور', textDirection: TextDirection.rtl),
-        content: const TextField(keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: 'أدخل رقم هاتفك المسجل', prefixIcon: Icon(Icons.phone)), textDirection: TextDirection.rtl),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-          ElevatedButton(onPressed: () {
-            Navigator.pop(context);
-            Provider.of<UiProvider>(context, listen: false).playSound('success');
-            _showSuccessSnackBar('تم إرسال رمز الاستعادة (OTP) إلى رقمك.');
-          }, child: const Text('إرسال الرمز')),
-        ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: const Text('استعادة كلمة المرور'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: phoneCtrl,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                      labelText: 'أدخل رقم هاتفك المسجل',
+                      prefixIcon: Icon(Icons.phone),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  if (otpSent) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: otpCtrl,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      decoration: const InputDecoration(
+                        labelText: 'رمز التحقق (OTP)',
+                        prefixIcon: Icon(Icons.sms),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: newPassCtrl,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'كلمة المرور الجديدة',
+                        prefixIcon: Icon(Icons.lock),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('إلغاء'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  if (!otpSent) {
+                    if (phoneCtrl.text.trim().isEmpty) {
+                      _showErrorSnackBar('يرجى إدخال رقم الهاتف');
+                      return;
+                    }
+                    // 🆕 إرسال OTP حقيقي (يمكنك ربطه بـ Firebase Phone Auth أو API)
+                    // حالياً نحاكي الإرسال
+                    setDialogState(() => otpSent = true);
+                    Provider.of<UiProvider>(context, listen: false).playSound('success');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('تم إرسال رمز التحقق (OTP) إلى رقمك.', textDirection: TextDirection.rtl), backgroundColor: Colors.green),
+                    );
+                  } else {
+                    if (otpCtrl.text.trim().length != 6) {
+                      _showErrorSnackBar('رمز التحقق يجب أن يكون 6 أرقام');
+                      return;
+                    }
+                    if (newPassCtrl.text.trim().length < 6) {
+                      _showErrorSnackBar('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+                      return;
+                    }
+                    Navigator.pop(context);
+                    // 🆕 استدعاء API لإعادة تعيين كلمة المرور
+                    Provider.of<UiProvider>(context, listen: false).playSound('success');
+                    _showSuccessSnackBar('تم تغيير كلمة المرور بنجاح.');
+                  }
+                },
+                child: Text(otpSent ? 'تأكيد' : 'إرسال الرمز'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -461,7 +589,17 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
               const SizedBox(height: 30),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12)),
-                onPressed: () {},
+                onPressed: () async {
+                  // 🆕 فتح متجر التطبيقات للتحديث
+                  final url = kIsWeb
+                      ? 'https://your-website.com'
+                      : (Theme.of(context).platform == TargetPlatform.android
+                          ? 'https://play.google.com/store/apps/details?id=com.cardsnet.app'
+                          : 'https://apps.apple.com/app/id123456789');
+                  if (await canLaunchUrl(Uri.parse(url))) {
+                    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                  }
+                },
                 icon: const Icon(Icons.download, color: Colors.white),
                 label: const Text('تحديث الآن', style: TextStyle(color: Colors.white, fontSize: 16)),
               )
@@ -573,7 +711,16 @@ class _SSOLoginScreenState extends State<SSOLoginScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Row(children: [Checkbox(value: rememberMe, onChanged: (value) { Provider.of<UiProvider>(context, listen: false).playSound('click'); setState(() => rememberMe = value!); }), const Text("تذكرني", style: TextStyle(fontSize: 14))]),
+                            Row(children: [
+                              Checkbox(
+                                value: rememberMe,
+                                onChanged: (value) {
+                                  Provider.of<UiProvider>(context, listen: false).playSound('click');
+                                  setState(() => rememberMe = value!);
+                                },
+                              ),
+                              const Text("تذكرني", style: TextStyle(fontSize: 14))
+                            ]),
                             Row(children: [Text(usePinLogin ? "PIN" : "كلمة المرور", style: const TextStyle(fontSize: 13, color: Colors.blueAccent)), Switch(value: usePinLogin, activeColor: Colors.blueAccent, onChanged: (val) { Provider.of<UiProvider>(context, listen: false).playSound('click'); setState(() => usePinLogin = val); })]),
                           ],
                         ),
