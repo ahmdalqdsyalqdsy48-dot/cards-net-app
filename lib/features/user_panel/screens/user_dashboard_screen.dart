@@ -1,3 +1,6 @@
+// lib/features/user_panel/screens/user_dashboard_screen.dart
+// تم التحديث: رأس متحرك، ربط حقيقي للأزرار، إحصائيات نقاط البيع، تحسين الفلترة، دمج CouponProvider
+
 import 'dart:async';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
@@ -5,13 +8,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:intl/intl.dart' as intl;
 
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/settings_provider.dart';
+import '../../../core/providers/coupon_provider.dart';
+import '../../../core/providers/transactions_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/widgets/custom_header.dart';
@@ -33,10 +37,10 @@ class UserDashboardScreen extends StatefulWidget {
 
 class _UserDashboardScreenState extends State<UserDashboardScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final GlobalKey<RefreshIndicatorState> _refreshKey = GlobalKey<RefreshIndicatorState>();
 
   DateTime? _startDate;
   DateTime? _endDate;
-  final GlobalKey<RefreshIndicatorState> _refreshKey = GlobalKey<RefreshIndicatorState>();
 
   void _goTo(Widget screen) {
     context.read<UiProvider>().playSound('click');
@@ -45,7 +49,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
 
   void _play(String type) => context.read<UiProvider>().playSound(type);
 
-  // ========== اختيار التواريخ ==========
+  // ========== اختيار التواريخ مع تحقق ==========
   Future<void> _pickStartDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -56,21 +60,39 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
       builder: (context, child) => Directionality(textDirection: TextDirection.rtl, child: child!),
     );
     if (picked != null && picked != _startDate) {
-      setState(() => _startDate = picked);
+      setState(() {
+        _startDate = picked;
+        // إذا كان تاريخ النهاية قبل البداية، نلغيه
+        if (_endDate != null && _endDate!.isBefore(_startDate!)) {
+          _endDate = null;
+        }
+      });
     }
   }
 
   Future<void> _pickEndDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _endDate ?? (_startDate ?? DateTime.now()),
-      firstDate: _startDate ?? DateTime(2023),
-      lastDate: DateTime(2030),
-      helpText: 'اختر تاريخ النهاية',
-      builder: (context, child) => Directionality(textDirection: TextDirection.rtl, child: child!),
-    );
-    if (picked != null && picked != _endDate) {
-      setState(() => _endDate = picked);
+    // لا يمكن اختيار تاريخ نهاية قبل تاريخ البداية
+    if (_startDate != null) {
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: _endDate ?? _startDate!,
+        firstDate: _startDate!,
+        lastDate: DateTime(2030),
+        helpText: 'اختر تاريخ النهاية',
+        builder: (context, child) => Directionality(textDirection: TextDirection.rtl, child: child!),
+      );
+      if (picked != null && picked != _endDate) {
+        setState(() => _endDate = picked);
+      }
+    } else {
+      // إذا لم يحدد تاريخ بداية، نطلب منه ذلك أولاً
+      _play('error');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('الرجاء اختيار تاريخ البداية أولاً', textDirection: TextDirection.rtl),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -96,6 +118,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
     final themeProvider = context.watch<ThemeProvider>();
     final auth = context.watch<AuthProvider>();
     final wallet = context.watch<WalletProvider>();
+    final transactions = context.watch<TransactionsProvider>();
+    final couponProvider = context.watch<CouponProvider>();
     final uiProvider = context.read<UiProvider>();
 
     final String role = auth.currentUserRole;
@@ -124,6 +148,32 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
     final bool hasActiveCard = purchasedCards.isNotEmpty;
     final bool hasFilteredCards = filteredCards.isNotEmpty;
 
+    // إحصائيات نقاط البيع (حقيقية)
+    final double todaySales = isPos
+        ? transactions.salesList
+            .where((s) {
+              try {
+                final d = DateTime.parse(s['date'] ?? '');
+                return d.year == DateTime.now().year && d.month == DateTime.now().month && d.day == DateTime.now().day;
+              } catch (_) {
+                return false;
+              }
+            })
+            .fold(0.0, (sum, s) => sum + ((s['amount'] ?? 0.0) as double))
+        : 0.0;
+    final int todayCardsCount = isPos
+        ? transactions.salesList
+            .where((s) {
+              try {
+                final d = DateTime.parse(s['date'] ?? '');
+                return d.year == DateTime.now().year && d.month == DateTime.now().month && d.day == DateTime.now().day;
+              } catch (_) {
+                return false;
+              }
+            })
+            .length
+        : 0;
+
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: const CustomHeader(title: 'الرئيسية'),
@@ -137,106 +187,119 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
           setState(() {});
           await Future.delayed(const Duration(milliseconds: 300));
         },
-        child: SingleChildScrollView(
+        child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // تمييز البقالات
-              if (isPos)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [Colors.purple.shade700, Colors.purple.shade500]),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.verified_user, color: Colors.amber, size: 20),
-                      SizedBox(width: 8),
-                      Text('نقطة بيع معتمدة 🏪 (أسعار الجملة مفعلة)',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                    ],
-                  ),
-                ),
-
-              // شريط الفلترة
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? themeProvider.primaryColor.withOpacity(0.4)
-                      : themeProvider.primaryColor.withOpacity(0.8),
-                  borderRadius: const BorderRadius.only(
-                      bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: _pickStartDate,
-                            icon: const Icon(Icons.date_range, color: Colors.blueAccent),
-                            label: Text(
-                              _startDate == null ? 'بداية الفترة' : _formatDate(_startDate!),
-                              style: const TextStyle(
-                                  color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 13),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: isDark ? Colors.grey.shade800 : Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: _pickEndDate,
-                            icon: const Icon(Icons.date_range, color: Colors.orangeAccent),
-                            label: Text(
-                              _endDate == null ? 'نهاية الفترة' : _formatDate(_endDate!),
-                              style: const TextStyle(
-                                  color: Colors.orangeAccent, fontWeight: FontWeight.bold, fontSize: 13),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: isDark ? Colors.grey.shade800 : Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
-                          ),
-                        ),
-                      ],
+          slivers: [
+            // ====== الرأس المتحرك (يحمل شريط الفلترة والتمييز) ======
+            SliverToBoxAdapter(
+              child: Column(
+                children: [
+                  // تمييز البقالات
+                  if (isPos)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: [Colors.purple.shade700, Colors.purple.shade500]),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.verified_user, color: Colors.amber, size: 20),
+                          SizedBox(width: 8),
+                          Text('نقطة بيع معتمدة 🏪 (أسعار الجملة مفعلة)',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                        ],
+                      ),
                     ),
-                    if (_startDate != null || _endDate != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+
+                  // شريط الفلترة
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? themeProvider.primaryColor.withOpacity(0.4)
+                          : themeProvider.primaryColor.withOpacity(0.8),
+                      borderRadius: const BorderRadius.only(
+                          bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
                           children: [
-                            Text(
-                              'عرض الكروت من ${_startDate != null ? _formatDate(_startDate!) : "البداية"} إلى ${_endDate != null ? _formatDate(_endDate!) : "اليوم"}',
-                              style: TextStyle(color: Colors.white70, fontSize: 12),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _pickStartDate,
+                                icon: const Icon(Icons.date_range, color: Colors.blueAccent),
+                                label: Text(
+                                  _startDate == null ? 'بداية الفترة' : _formatDate(_startDate!),
+                                  style: const TextStyle(
+                                      color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isDark ? Colors.grey.shade800 : Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              ),
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.clear_all, color: Colors.white70),
-                              tooltip: 'إعادة تعيين الفلترة',
-                              onPressed: _resetDates,
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _pickEndDate,
+                                icon: const Icon(Icons.date_range, color: Colors.orangeAccent),
+                                label: Text(
+                                  _endDate == null ? 'نهاية الفترة' : _formatDate(_endDate!),
+                                  style: const TextStyle(
+                                      color: Colors.orangeAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isDark ? Colors.grey.shade800 : Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              ),
                             ),
                           ],
                         ),
-                      ),
-                  ],
-                ),
+                        if (_startDate != null || _endDate != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'عرض الكروت من ${_startDate != null ? _formatDate(_startDate!) : "البداية"} إلى ${_endDate != null ? _formatDate(_endDate!) : "اليوم"}',
+                                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.clear_all, color: Colors.white70),
+                                  tooltip: 'إعادة تعيين الفلترة',
+                                  onPressed: _resetDates,
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 10),
+            ),
 
-              // بطاقة الرصيد
-              _buildBalanceCard(realBalance, isPos),
+            // بطاقة الرصيد (داخل Sliver)
+            SliverToBoxAdapter(
+              child: _buildBalanceCard(realBalance, isPos),
+            ),
 
-              // الأزرار السريعة
-              Padding(
+            // إحصائيات نقاط البيع اليومية
+            if (isPos)
+              SliverToBoxAdapter(
+                child: _buildPosDailyStats(todaySales, todayCardsCount),
+              ),
+
+            // الأزرار السريعة
+            SliverToBoxAdapter(
+              child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -249,8 +312,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                         () => _goTo(const MyCardsScreen())),
                     if (isPos)
                       _buildQuickActionBtn(Icons.bar_chart, 'مبيعاتي', Colors.blueGrey, () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('شاشة تقارير البقالة قيد التطوير 🛠️')));
+                        // ربط حقيقي بشاشة المعاملات مع إظهار المبيعات فقط
+                        _goTo(const UserTransactionsScreen(showOnlySales: true));
                       })
                     else
                       _buildQuickActionBtn(Icons.stars, 'المكافآت', Colors.amber,
@@ -258,13 +321,13 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                   ],
                 ),
               ),
+            ),
 
-              const SizedBox(height: 25),
-
-              // عرض الكروت المفلترة أو الكرت النشط
-              if (_startDate != null || _endDate != null) ...[
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+            // عرض الكروت المفلترة أو الكرت النشط
+            if (_startDate != null || _endDate != null) ...[
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: Text(
                     hasFilteredCards
                         ? 'الكروت المشتراة في الفترة المحددة (${filteredCards.length})'
@@ -272,30 +335,43 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                 ),
-                const SizedBox(height: 10),
-                if (hasFilteredCards)
-                  ...filteredCards.map((card) => _buildPurchasedCardTile(card, isPos))
-                else
-                  const Padding(
+              ),
+              if (hasFilteredCards)
+                SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) => _buildPurchasedCardTile(filteredCards[index], isPos),
+                    childCount: filteredCards.length,
+                  ),
+                )
+              else
+                const SliverToBoxAdapter(
+                  child: Padding(
                     padding: EdgeInsets.all(20),
                     child: Center(child: Text('لا توجد كروت مطابقة للفترة المحددة', style: TextStyle(color: Colors.grey))),
                   ),
-              ] else if (hasActiveCard)
-                _buildActiveCardSection(isDark, purchasedCards.last, isPos),
+                ),
+            ] else if (hasActiveCard)
+              SliverToBoxAdapter(
+                child: _buildActiveCardSection(isDark, purchasedCards.last, isPos),
+              ),
 
-              const SizedBox(height: 20),
-
-              // العروض
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+            // العنوان "عروض حصرية"
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Text(isPos ? 'عروض الوكلاء ونقاط البيع 🔥' : 'عروض حصرية لك 🔥',
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               ),
-              const SizedBox(height: 10),
-              _buildPromoSection(wallet, themeProvider),
-              const SizedBox(height: 30),
-            ],
-          ),
+            ),
+
+            // العروض (من CouponProvider)
+            SliverToBoxAdapter(
+              child: _buildPromoSection(couponProvider, wallet, themeProvider),
+            ),
+
+            // مسافة سفلية
+            const SliverToBoxAdapter(child: SizedBox(height: 30)),
+          ],
         ),
       ),
     );
@@ -368,6 +444,42 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // ========== إحصائيات البقالة ==========
+  Widget _buildPosDailyStats(double sales, int count) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.green.shade200),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildStatItem(Icons.monetization_on, 'مبيعات اليوم', '${sales.toStringAsFixed(0)} ريال', Colors.green),
+          _buildStatItem(Icons.sell, 'عدد الكروت', '$count', Colors.orange),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatItem(IconData icon, String label, String value, Color color) {
+    return Row(
+      children: [
+        Icon(icon, color: color, size: 28),
+        const SizedBox(width: 8),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: color)),
+            Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+          ],
+        ),
+      ],
     );
   }
 
@@ -446,8 +558,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
                         IconButton(
                           onPressed: () {
                             _play('click');
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                                content: Text('ميزة المشاركة جاهزة للربط', textDirection: TextDirection.rtl)));
+                            Share.share('رقم الكرت: $actualPin\nمن نقطة البيع: ${context.read<WalletProvider>().currentUserName}');
                           },
                           icon: const Icon(Icons.share, size: 18, color: Colors.teal),
                           padding: EdgeInsets.zero,
@@ -487,72 +598,63 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
     );
   }
 
-  // ========== العروض ==========
-  Widget _buildPromoSection(WalletProvider wallet, ThemeProvider theme) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _db.collection('coupons').snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SizedBox(height: 180, child: Center(child: CircularProgressIndicator()));
-        }
-        if (snapshot.hasError) {
-          return SizedBox(height: 180, child: Center(child: Text('تعذر تحميل العروض', style: TextStyle(color: Colors.grey))));
-        }
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return const SizedBox(height: 180, child: Center(child: Text('لا توجد عروض حالياً، ترقبوا جديدنا!', style: TextStyle(color: Colors.grey))));
-        }
+  // ========== العروض (باستخدام CouponProvider) ==========
+  Widget _buildPromoSection(CouponProvider couponProvider, WalletProvider wallet, ThemeProvider theme) {
+    final coupons = couponProvider.coupons;
 
-        var activeCoupons = snapshot.data!.docs.map((doc) => doc.data() as Map<String, dynamic>).where((offer) {
-          try {
-            if (offer['isActive'] != true) return false;
-            if (offer['expiryDate'] == null) return false;
-            final Timestamp expiryTs = offer['expiryDate'] as Timestamp;
-            final DateTime expiry = expiryTs.toDate();
-            if (expiry.isBefore(DateTime.now())) return false;
+    if (coupons.isEmpty) {
+      return const SizedBox(height: 180, child: Center(child: Text('لا توجد عروض حالياً، ترقبوا جديدنا!', style: TextStyle(color: Colors.grey))));
+    }
 
-            final int current = offer['currentUsage'] ?? 0;
-            final int max = offer['maxUsage'] ?? 1;
-            if (current >= max) return false;
+    var activeCoupons = coupons.where((offer) {
+      try {
+        if (offer['isActive'] != true) return false;
+        if (offer['expiryDate'] == null) return false;
+        final Timestamp expiryTs = offer['expiryDate'] as Timestamp;
+        final DateTime expiry = expiryTs.toDate();
+        if (expiry.isBefore(DateTime.now())) return false;
 
-            final String targetId = (offer['targetPhone'] ?? '').toString().trim();
-            if (targetId.isNotEmpty) {
-              if (targetId != wallet.activeUserPhone &&
-                  targetId != (wallet.currentUserAccountNumber ?? '')) {
-                return false;
-              }
-            }
-            return true;
-          } catch (_) {
+        final int current = offer['currentUsage'] ?? 0;
+        final int max = offer['maxUsage'] ?? 1;
+        if (current >= max) return false;
+
+        final String targetId = (offer['targetPhone'] ?? '').toString().trim();
+        if (targetId.isNotEmpty) {
+          if (targetId != wallet.activeUserPhone &&
+              targetId != (wallet.currentUserAccountNumber ?? '')) {
             return false;
           }
-        }).toList();
-
-        activeCoupons.sort((a, b) {
-          Timestamp tA = a['createdAt'] ?? Timestamp.now();
-          Timestamp tB = b['createdAt'] ?? Timestamp.now();
-          return tB.compareTo(tA);
-        });
-
-        if (activeCoupons.isEmpty) {
-          return const SizedBox(height: 180, child: Center(child: Text('لا توجد عروض تناسبك حالياً', style: TextStyle(color: Colors.grey))));
         }
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }).toList();
 
-        return SizedBox(
-          height: 170,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: activeCoupons.length,
-            itemBuilder: (context, index) {
-              var offer = activeCoupons[index];
-              List<Color> gradientColors = index % 2 == 0
-                  ? [Colors.orange.shade400, Colors.deepOrange]
-                  : [Colors.purple.shade400, Colors.deepPurple];
-              return _buildDynamicPromoBanner(offer, gradientColors, theme);
-            },
-          ),
-        );
-      },
+    activeCoupons.sort((a, b) {
+      Timestamp tA = a['createdAt'] ?? Timestamp.now();
+      Timestamp tB = b['createdAt'] ?? Timestamp.now();
+      return tB.compareTo(tA);
+    });
+
+    if (activeCoupons.isEmpty) {
+      return const SizedBox(height: 180, child: Center(child: Text('لا توجد عروض تناسبك حالياً', style: TextStyle(color: Colors.grey))));
+    }
+
+    return SizedBox(
+      height: 170,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: activeCoupons.length,
+        itemBuilder: (context, index) {
+          var offer = activeCoupons[index];
+          List<Color> gradientColors = index % 2 == 0
+              ? [Colors.orange.shade400, Colors.deepOrange]
+              : [Colors.purple.shade400, Colors.deepPurple];
+          return _buildDynamicPromoBanner(offer, gradientColors, theme);
+        },
+      ),
     );
   }
 
