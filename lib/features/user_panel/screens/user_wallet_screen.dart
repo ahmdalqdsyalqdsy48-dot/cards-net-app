@@ -1,4 +1,5 @@
 // lib/features/user_panel/screens/user_wallet_screen.dart
+// تم التحديث: استبدال SystemProvider بـ AuthProvider و WalletProvider، إصلاح كامل
 
 import 'dart:convert';
 import 'dart:typed_data';
@@ -13,7 +14,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:expandable/expandable.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_user_drawer.dart';
@@ -35,13 +37,12 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   bool _isLoadingAccounts = false;
   String? _accountsError;
 
-  // التجميع حسب الشبكة ثم الوكيل
   Map<String, Map<String, List<Map<String, dynamic>>>> _groupedByNetwork = {};
 
   List<String> _pinnedAccountIds = [];
 
   String _searchQuery = '';
-  String? _filterNetworkName; // فلترة حسب اسم الشبكة
+  String? _filterNetworkName;
 
   Map<String, dynamic>? _selectedBankAccount;
   final _amountController = TextEditingController();
@@ -54,7 +55,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   String? _editingRequestId;
   List<Map<String, dynamic>> _pendingRequests = [];
 
-  // ========== PIN المالي (6 أرقام) ==========
+  // ========== PIN ==========
   bool _isPinSet = false;
   final _pinController = TextEditingController();
   bool _pinVisible = false;
@@ -75,17 +76,15 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     _tabController = TabController(length: 3, vsync: this);
     _loadAllBankAccounts();
     _loadPinnedAccounts();
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    _fullNameController.text = sys.currentUserName;
-    sys.updateLastSeen();
-    // PIN status سيتحقق منه عند الحاجة
-    _checkPinStatusSimple();
+    final auth = context.read<AuthProvider>();
+    _fullNameController.text = auth.currentUserName;
+    auth.updateLastSeen();
+    _checkPinStatus();
   }
 
-  /// فحص بسيط للـ PIN بدون استدعاء دوال منفصلة
-  void _checkPinStatusSimple() {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    final pin = sys.currentUserPin;
+  void _checkPinStatus() {
+    final auth = context.read<AuthProvider>();
+    final pin = auth.currentUserPin;
     setState(() {
       _isPinSet = pin.isNotEmpty && pin.length == 6;
     });
@@ -105,7 +104,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   }
 
   void _play(String type) =>
-      Provider.of<UiProvider>(context, listen: false).playSound(type);
+      context.read<UiProvider>().playSound(type);
 
   void _showSnack(String msg, {bool error = false}) {
     if (!mounted) return;
@@ -128,7 +127,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     );
   }
 
-  // ========== طلب PIN قبل العمليات الحساسة ==========
+  // ========== حوار PIN ==========
   Future<String?> _requestPinDialog() async {
     _pinController.clear();
     _pinVisible = false;
@@ -189,8 +188,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       _accountsError = null;
     });
     try {
-      final sys = Provider.of<SystemProvider>(context, listen: false);
-      final accounts = await sys.getActiveBankAccountsForUserNetworks();
+      final wallet = context.read<WalletProvider>();
+      final accounts = await wallet.getActiveBankAccountsForUserNetworks();
       if (mounted) {
         setState(() {
           _allBankAccounts = accounts;
@@ -219,7 +218,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     }
   }
 
-  // ========== Pinned Accounts (تبديل) ==========
+  // ========== Pinned ==========
   Future<void> _loadPinnedAccounts() async {
     final prefs = await SharedPreferences.getInstance();
     final pinned = prefs.getStringList('pinned_accounts') ?? [];
@@ -243,7 +242,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
 
   bool _isPinned(String docId) => _pinnedAccountIds.contains(docId);
 
-  // ========== فلترة الحسابات (شاملة) ==========
+  // ========== فلترة ==========
   List<Map<String, dynamic>> get _filteredAccounts {
     return _allBankAccounts.where((acc) {
       final searchLower = _searchQuery.toLowerCase();
@@ -275,8 +274,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
 
   String _getAgentNameFromCache(String phone) {
     if (phone.isEmpty) return '';
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    final agent = sys.agentsList.firstWhere(
+    final wallet = context.read<WalletProvider>();
+    final agent = wallet.agentsList.firstWhere(
       (a) => a['phone'] == phone,
       orElse: () => {'name': ''},
     );
@@ -285,15 +284,15 @@ class _UserWalletScreenState extends State<UserWalletScreen>
 
   String _getAgentNetworkName(String phone) {
     if (phone.isEmpty) return '';
-    final sys = Provider.of<SystemProvider>(context, listen: false);
-    final agent = sys.agentsList.firstWhere(
+    final wallet = context.read<WalletProvider>();
+    final agent = wallet.agentsList.firstWhere(
       (a) => a['phone'] == phone,
       orElse: () => {'networkName': ''},
     );
     return agent['networkName'] ?? '';
   }
 
-  // ========== رفع صورة الإيصال ==========
+  // ========== رفع صورة ==========
   Future<void> _pickReceipt() async {
     _play('click');
     try {
@@ -316,7 +315,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   // ========== تقديم طلب الشحن ==========
   Future<void> _submitRecharge() async {
     if (_isSubmittingRecharge) return;
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final auth = context.read<AuthProvider>();
+    final wallet = context.read<WalletProvider>();
     if (_selectedBankAccount == null) {
       _showSnack('اختر حساباً بنكياً من القائمة', error: true);
       return;
@@ -336,11 +336,10 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       return;
     }
 
-    // التحقق من PIN إذا كان مفعّلاً
-    if (sys.isPinEnabled) {
+    if (auth.isPinEnabled) {
       final pin = await _requestPinDialog();
       if (pin == null) return;
-      if (!sys.validatePin(pin)) {
+      if (!auth.validatePin(pin)) {
         _showSnack('رمز PIN غير صحيح', error: true);
         return;
       }
@@ -360,7 +359,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
         _pendingRequests.removeWhere((r) => r['docId'] == _editingRequestId);
       }
 
-      await sys.requestRechargeFromAgent(
+      await wallet.requestRechargeFromAgent(
         agentPhone: agentPhone,
         amount: amount,
         paymentMethod: 'حوالة بنكية',
@@ -382,8 +381,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   void _clearRechargeForm() {
     _amountController.clear();
     _refController.clear();
-    _fullNameController.text =
-        Provider.of<SystemProvider>(context, listen: false).currentUserName;
+    _fullNameController.text = context.read<AuthProvider>().currentUserName;
     setState(() {
       _receiptBase64 = null;
       _selectedBankAccount = null;
@@ -443,15 +441,15 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     }
   }
 
-  // ========== تحويل (مع PIN) ==========
+  // ========== تحويل ==========
   Future<void> _searchForTransfer() async {
     _play('click');
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final wallet = context.read<WalletProvider>();
     final query = _searchController.text.trim();
     if (query.isEmpty) return;
     setState(() => _isSearching = true);
     try {
-      final result = await sys.searchUserByAccountOrName(query);
+      final result = await wallet.searchUserByAccountOrName(query);
       if (!mounted) return;
       setState(() {
         _transferTarget = result;
@@ -466,7 +464,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
 
   Future<void> _executeTransfer() async {
     if (_isSubmittingTransfer) return;
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final auth = context.read<AuthProvider>();
+    final wallet = context.read<WalletProvider>();
     if (_transferTarget == null) return;
     final amount = double.tryParse(_transferAmountController.text);
     if (amount == null || amount <= 0) {
@@ -474,7 +473,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       return;
     }
     final targetPhone = _transferTarget!['phone'];
-    if (targetPhone == sys.currentUserPhone) {
+    if (targetPhone == auth.activeUserPhone) {
       _showSnack('لا يمكنك تحويل الرصيد لنفسك', error: true);
       return;
     }
@@ -482,16 +481,15 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       _showSnack('لا يمكن التحويل لأن الرقم مخفي', error: true);
       return;
     }
-    if (amount > sys.availableBalance) {
+    if (amount > wallet.availableBalance) {
       _showSnack('رصيدك المتاح لا يكفي (يوجد رصيد محجوز)', error: true);
       return;
     }
 
-    // التحقق من PIN إذا كان مفعّلاً
-    if (sys.isPinEnabled) {
+    if (auth.isPinEnabled) {
       final pin = await _requestPinDialog();
       if (pin == null) return;
-      if (!sys.validatePin(pin)) {
+      if (!auth.validatePin(pin)) {
         _showSnack('رمز PIN غير صحيح', error: true);
         return;
       }
@@ -500,7 +498,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     setState(() => _isSubmittingTransfer = true);
     _play('start');
     try {
-      await sys.transferToUser(targetPhone: targetPhone, amount: amount);
+      await wallet.transferToUser(targetPhone: targetPhone, amount: amount);
       _play('success');
       _showSnack('تم التحويل بنجاح');
       _transferAmountController.clear();
@@ -538,9 +536,9 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     }
   }
 
-  // ========== حوار الحجز المالي ==========
+  // ========== حجز رصيد ==========
   void _showHoldBalanceDialog() {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final wallet = context.read<WalletProvider>();
     _holdAmountController.text = '';
     showDialog(
       context: context,
@@ -551,9 +549,9 @@ class _UserWalletScreenState extends State<UserWalletScreen>
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('الرصيد الكلي: ${sys.currentUserBalance.toStringAsFixed(0)} ريال'),
-              Text('المحجوز حالياً: ${sys.heldBalance.toStringAsFixed(0)} ريال'),
-              Text('المتاح: ${sys.availableBalance.toStringAsFixed(0)} ريال'),
+              Text('الرصيد الكلي: ${wallet.currentUserBalance.toStringAsFixed(0)} ريال'),
+              Text('المحجوز حالياً: ${wallet.heldBalance.toStringAsFixed(0)} ريال'),
+              Text('المتاح: ${wallet.availableBalance.toStringAsFixed(0)} ريال'),
               const Divider(),
               TextField(
                 controller: _holdAmountController,
@@ -576,16 +574,16 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                   _showSnack('المبلغ غير صحيح', error: true);
                   return;
                 }
-                // طلب PIN إذا كان مفعّلاً
-                if (sys.isPinEnabled) {
+                final auth = context.read<AuthProvider>();
+                if (auth.isPinEnabled) {
                   final pin = await _requestPinDialog();
                   if (pin == null) return;
-                  if (!sys.validatePin(pin)) {
+                  if (!auth.validatePin(pin)) {
                     _showSnack('رمز PIN غير صحيح', error: true);
                     return;
                   }
                 }
-                await sys.setHoldAmount(amount);
+                await wallet.setHoldAmount(amount);
                 Navigator.pop(ctx);
                 _showSnack('تم حجز المبلغ بنجاح');
                 setState(() {});
@@ -598,22 +596,23 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     );
   }
 
-  // ========== بناء الواجهة الرئيسية ==========
+  // ========== واجهة رئيسية ==========
   @override
   Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
+    final auth = context.watch<AuthProvider>();
+    final wallet = context.watch<WalletProvider>();
     final colors = Theme.of(context).colorScheme;
-    final availableBalance = sys.availableBalance;
-    final held = sys.heldBalance;
-    final accountNumber = sys.currentUserAccountNumber ?? 'غير متوفر';
-    final userName = sys.currentUserName;
+    final availableBalance = wallet.availableBalance;
+    final held = wallet.heldBalance;
+    final accountNumber = wallet.currentUserAccountNumber ?? 'غير متوفر';
+    final userName = auth.currentUserName;
 
     return Scaffold(
       backgroundColor: colors.surfaceContainerLowest,
       appBar: const CustomHeader(title: 'محفظتي'),
       drawer: CustomUserDrawer(
-        userName: sys.currentUserName,
-        phoneNumber: sys.currentUserPhone,
+        userName: userName,
+        phoneNumber: auth.activeUserPhone ?? '',
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
@@ -777,7 +776,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
             Text('📥 طلب شحن رصيد',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colors.onSurface)),
             const SizedBox(height: 12),
-            // شريط البحث
             TextField(
               onChanged: (v) => setState(() => _searchQuery = v.trim()),
               decoration: InputDecoration(
@@ -797,7 +795,6 @@ class _UserWalletScreenState extends State<UserWalletScreen>
               ),
             ),
             const SizedBox(height: 8),
-            // أزرار فلترة الشبكات
             if (_distinctNetworkNames.length > 1)
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -827,14 +824,12 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                 ),
               ),
             const SizedBox(height: 12),
-            // الحسابات المثبتة
             if (pinnedDocs.isNotEmpty && _searchQuery.isEmpty && _filterNetworkName == null) ...[
               Text('⭐ مثبتة',
                   style: TextStyle(fontWeight: FontWeight.bold, color: colors.primary)),
               ...pinnedDocs.map((acc) => _buildBankAccountCard(acc, colors)),
               const Divider(),
             ],
-            // القائمة المجمعة (شبكات -> وكلاء)
             if (_isLoadingAccounts)
               const Center(child: CircularProgressIndicator())
             else if (_accountsError != null)
@@ -855,10 +850,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
             else
               ..._buildNetworkGroupedAccounts(colors),
             const SizedBox(height: 20),
-            // نموذج الطلب
             _buildRechargeForm(colors),
             const SizedBox(height: 25),
-            // الطلبات المعلقة
             _buildPendingRequests(colors),
           ],
         ),
@@ -1084,7 +1077,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   }
 
   Widget _buildPendingRequests(ColorScheme colors) {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final auth = context.read<AuthProvider>();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1094,7 +1087,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
               .collection('user_recharges')
-              .where('userPhone', isEqualTo: sys.currentUserPhone)
+              .where('userPhone', isEqualTo: auth.activeUserPhone)
               .where('status', isEqualTo: 'قيد الانتظار')
               .orderBy('timestamp', descending: true)
               .snapshots(),
