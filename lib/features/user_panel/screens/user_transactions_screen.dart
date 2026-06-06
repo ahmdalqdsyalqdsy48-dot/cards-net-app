@@ -1,9 +1,11 @@
+// lib/features/user_panel/screens/user_transactions_screen.dart
+// تم التحديث: استخدام AuthProvider/TransactionsProvider، دعم showOnlySales، تحسينات كاملة
+
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart' as intl;
 import 'package:share_plus/share_plus.dart';
 import 'package:excel/excel.dart' as ex;
@@ -11,13 +13,16 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/transactions_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_user_drawer.dart';
 
 class UserTransactionsScreen extends StatefulWidget {
-  const UserTransactionsScreen({super.key});
+  final bool showOnlySales;
+  const UserTransactionsScreen({super.key, this.showOnlySales = false});
+
   @override
   State<UserTransactionsScreen> createState() => _UserTransactionsScreenState();
 }
@@ -80,9 +85,9 @@ class _UserTransactionsScreenState extends State<UserTransactionsScreen> {
       final to = tx['toPhone'] ?? '';
       if (from != currentPhone && to != currentPhone) continue;
 
-      final Timestamp? timestamp = tx['timestamp'];
+      final timestamp = tx['timestamp'];
       final DateTime dt =
-          timestamp != null ? timestamp.toDate() : DateTime.now();
+          timestamp != null ? (timestamp as dynamic).toDate() : DateTime.now();
       final double amount = (tx['amount'] ?? 0).toDouble();
       final String type = tx['type'] ?? 'أخرى';
       final String title = tx['title'] ?? '';
@@ -159,30 +164,38 @@ class _UserTransactionsScreenState extends State<UserTransactionsScreen> {
     }
     processed = processed.reversed.toList();
 
-    // تطبيق الفلاتر
-    return processed.where((row) {
-      if (_selectedType != 'الكل' && row['type'] != _selectedType) return false;
-      if (_searchQuery.isNotEmpty) {
-        final q = _searchQuery;
-        final title = (row['title'] ?? '').toLowerCase();
-        final ref = (row['reference'] ?? '').toLowerCase();
-        final network = (row['network'] ?? '').toLowerCase();
-        if (!title.contains(q) && !ref.contains(q) && !network.contains(q))
-          return false;
-      }
-      if (_selectedDateRange != null) {
-        DateTime rowDate = row['rawDate'];
-        DateTime start = DateTime(_selectedDateRange!.start.year,
-            _selectedDateRange!.start.month, _selectedDateRange!.start.day);
-        DateTime end = DateTime(_selectedDateRange!.end.year,
-            _selectedDateRange!.end.month, _selectedDateRange!.end.day, 23, 59, 59);
-        if (rowDate.isBefore(start) || rowDate.isAfter(end)) return false;
-      }
-      return true;
-    }).toList();
+    // تطبيق فلاتر النوع (فقط لو لم نكن في وضع "مبيعاتي")
+    if (!widget.showOnlySales && _selectedType != 'الكل') {
+      processed = processed.where((row) => row['type'] == _selectedType).toList();
+    }
+
+    // فلترة البحث
+    if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery;
+      processed = processed.where((row) {
+        final title = (row['title'] ?? '').toString().toLowerCase();
+        final ref = (row['reference'] ?? '').toString().toLowerCase();
+        final network = (row['network'] ?? '').toString().toLowerCase();
+        return title.contains(q) || ref.contains(q) || network.contains(q);
+      }).toList();
+    }
+
+    // فلترة التاريخ
+    if (_selectedDateRange != null) {
+      final start = DateTime(_selectedDateRange!.start.year,
+          _selectedDateRange!.start.month, _selectedDateRange!.start.day);
+      final end = DateTime(_selectedDateRange!.end.year,
+          _selectedDateRange!.end.month, _selectedDateRange!.end.day, 23, 59, 59);
+      processed = processed.where((row) {
+        final rowDate = row['rawDate'] as DateTime;
+        return !rowDate.isBefore(start) && !rowDate.isAfter(end);
+      }).toList();
+    }
+
+    return processed;
   }
 
-  // ========== إيصال تفصيلي مع مشاركة (نص + صورة) ==========
+  // ========== واجهة الإيصال والمشاركة (نفس السابق مع تعديل طفيف) ==========
   void _showReceipt(Map<String, dynamic> row) {
     _play('click');
     final theme = Theme.of(context);
@@ -199,7 +212,6 @@ class _UserTransactionsScreenState extends State<UserTransactionsScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // بوستر الإيصال (يُستخدم للمشاركة كصورة)
               RepaintBoundary(
                 key: receiptKey,
                 child: Container(
@@ -263,7 +275,6 @@ class _UserTransactionsScreenState extends State<UserTransactionsScreen> {
                   ),
                 ),
               ),
-              // أزرار
               Padding(
                 padding: const EdgeInsets.all(12),
                 child: Row(
@@ -381,9 +392,9 @@ class _UserTransactionsScreenState extends State<UserTransactionsScreen> {
     );
   }
 
-  // ========== تصدير PDF ==========
+  // ========== تصدير PDF (محدث) ==========
   Future<void> _exportPDF(List<Map<String, dynamic>> data) async {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final auth = context.read<AuthProvider>();
     _showSnack('جاري تجهيز PDF...');
     final pdf = pw.Document();
     final font = await PdfGoogleFonts.cairoRegular();
@@ -394,12 +405,12 @@ class _UserTransactionsScreenState extends State<UserTransactionsScreen> {
       theme: pw.ThemeData.withFont(base: font, bold: fontBold),
       textDirection: pw.TextDirection.rtl,
       build: (ctx) => [
-        pw.Text('سجل العمليات المالية',
+        pw.Text(widget.showOnlySales ? 'سجل المبيعات' : 'سجل العمليات المالية',
             style: pw.TextStyle(
                 fontSize: 20, fontWeight: pw.FontWeight.bold)),
         pw.SizedBox(height: 10),
-        pw.Text('المستخدم: ${sys.currentUserName}'),
-        pw.Text('رقم الهاتف: ${sys.currentUserPhone}'),
+        pw.Text('المستخدم: ${auth.currentUserName}'),
+        pw.Text('رقم الهاتف: ${auth.activeUserPhone ?? ''}'),
         pw.SizedBox(height: 20),
         pw.TableHelper.fromTextArray(
           headers: [
@@ -437,9 +448,9 @@ class _UserTransactionsScreenState extends State<UserTransactionsScreen> {
     await Printing.layoutPdf(onLayout: (format) async => pdf.save());
   }
 
-  // ========== تصدير Excel ==========
+  // ========== تصدير Excel (محدث) ==========
   Future<void> _exportExcel(List<Map<String, dynamic>> data) async {
-    final sys = Provider.of<SystemProvider>(context, listen: false);
+    final auth = context.read<AuthProvider>();
     _showSnack('جاري تجهيز Excel...');
     var excel = ex.Excel.createExcel();
     ex.Sheet sheet = excel['المعاملات'];
@@ -467,7 +478,7 @@ class _UserTransactionsScreenState extends State<UserTransactionsScreen> {
     if (bytes != null) {
       await Share.shareXFiles([
         XFile.fromData(Uint8List.fromList(bytes),
-            name: 'transactions_${sys.currentUserPhone}.xlsx',
+            name: 'transactions_${auth.activeUserPhone}.xlsx',
             mimeType:
                 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       ], text: 'سجل العمليات');
@@ -477,13 +488,14 @@ class _UserTransactionsScreenState extends State<UserTransactionsScreen> {
   // ========== واجهة المستخدم الرئيسية ==========
   @override
   Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
+    final auth = context.watch<AuthProvider>();
+    final transactions = context.watch<TransactionsProvider>();
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final colorScheme = theme.colorScheme;
 
-    final allTransactions = sys.transactionsLedger.reversed.toList();
-    final filtered = _processData(allTransactions, sys.currentUserPhone);
+    final allTransactions = transactions.transactionsLedger.reversed.toList();
+    final filtered = _processData(allTransactions, auth.activeUserPhone ?? '');
 
     double totalIn = filtered.fold(0, (sum, r) => sum + (r['incomingAmount'] as double));
     double totalOut = filtered.fold(0, (sum, r) => sum + (r['outgoingAmount'] as double));
@@ -497,206 +509,244 @@ class _UserTransactionsScreenState extends State<UserTransactionsScreen> {
     final sortedDays = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
 
     return Scaffold(
-      appBar: const CustomHeader(title: 'سجل العمليات المالية'),
+      appBar: CustomHeader(
+          title: widget.showOnlySales ? 'مبيعاتي' : 'سجل العمليات المالية'),
       drawer: CustomUserDrawer(
-        userName: sys.currentUserName,
-        phoneNumber: sys.currentUserPhone,
+        userName: auth.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: CustomScrollView(
-          slivers: [
-            // فلاتر (تختفي مع التمرير)
-            SliverToBoxAdapter(
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.grey.shade900
-                      : colorScheme.primary.withOpacity(0.1),
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(20),
-                    bottomRight: Radius.circular(20),
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: OutlinedButton.icon(
-                            onPressed: _selectDateRange,
-                            icon: const Icon(Icons.date_range, size: 18),
-                            label: Text(
-                              _selectedDateRange == null
-                                  ? 'الفترة'
-                                  : '${_selectedDateRange!.start.day}/${_selectedDateRange!.start.month} - ${_selectedDateRange!.end.day}/${_selectedDateRange!.end.month}',
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: colorScheme.onSurface,
-                              backgroundColor: colorScheme.surface,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          flex: 1,
-                          child: DropdownButtonFormField<String>(
-                            value: _selectedType,
-                            decoration: InputDecoration(
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              filled: true,
-                              fillColor: colorScheme.surface,
-                            ),
-                            style: TextStyle(fontSize: 12, color: colorScheme.onSurface),
-                            items: [
-                              'الكل',
-                              'sale',
-                              'deposit',
-                              'transfer',
-                              'credit_refund'
-                            ].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                            onChanged: (v) {
-                              _play('click');
-                              setState(() => _selectedType = v!);
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _searchController,
-                      onChanged: (v) => setState(() => _searchQuery = v.toLowerCase()),
-                      decoration: InputDecoration(
-                        hintText: 'ابحث برقم المرجع أو البيان...',
-                        prefixIcon: const Icon(Icons.search),
-                        filled: true,
-                        fillColor: colorScheme.surface,
-                        contentPadding: EdgeInsets.zero,
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide.none),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // ملخص وتصدير (يختفي مع التمرير)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildSummaryChip('داخل', totalIn, Colors.green),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: _buildSummaryChip('خارج', totalOut, Colors.red),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: _buildSummaryChip(
-                          'صافي', net, net >= 0 ? Colors.green : Colors.red),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            if (filtered.isNotEmpty)
+        child: RefreshIndicator(
+          onRefresh: () async {
+            // إعادة بناء الشاشة لتحديث البيانات من المزوّدات
+            setState(() {});
+            await Future.delayed(const Duration(milliseconds: 300));
+          },
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              // فلاتر (تختفي مع التمرير)
               SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.grey.shade900
+                        : colorScheme.primary.withOpacity(0.1),
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(20),
+                      bottomRight: Radius.circular(20),
+                    ),
+                  ),
+                  child: Column(
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.picture_as_pdf, color: Colors.red),
-                        onPressed: () => _exportPDF(filtered),
-                        tooltip: 'PDF',
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 2,
+                            child: OutlinedButton.icon(
+                              onPressed: _selectDateRange,
+                              icon: const Icon(Icons.date_range, size: 18),
+                              label: Text(
+                                _selectedDateRange == null
+                                    ? 'الفترة'
+                                    : '${_selectedDateRange!.start.day}/${_selectedDateRange!.start.month} - ${_selectedDateRange!.end.day}/${_selectedDateRange!.end.month}',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: colorScheme.onSurface,
+                                backgroundColor: colorScheme.surface,
+                              ),
+                            ),
+                          ),
+                          // نخفي فلتر النوع في وضع "مبيعاتي"
+                          if (!widget.showOnlySales) ...[
+                            const SizedBox(width: 8),
+                            Expanded(
+                              flex: 1,
+                              child: DropdownButtonFormField<String>(
+                                value: _selectedType,
+                                decoration: InputDecoration(
+                                  contentPadding:
+                                      const EdgeInsets.symmetric(horizontal: 8),
+                                  border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8)),
+                                  filled: true,
+                                  fillColor: colorScheme.surface,
+                                ),
+                                style: TextStyle(
+                                    fontSize: 12, color: colorScheme.onSurface),
+                                items: [
+                                  'الكل',
+                                  'sale',
+                                  'deposit',
+                                  'transfer',
+                                  'credit_refund'
+                                ].map((e) => DropdownMenuItem(
+                                    value: e, child: Text(e))).toList(),
+                                onChanged: (v) {
+                                  _play('click');
+                                  setState(() => _selectedType = v!);
+                                },
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.table_view, color: Colors.green),
-                        onPressed: () => _exportExcel(filtered),
-                        tooltip: 'Excel',
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _searchController,
+                        onChanged: (v) =>
+                            setState(() => _searchQuery = v.toLowerCase()),
+                        decoration: InputDecoration(
+                          hintText: 'ابحث برقم المرجع أو البيان...',
+                          prefixIcon: const Icon(Icons.search),
+                          filled: true,
+                          fillColor: colorScheme.surface,
+                          contentPadding: EdgeInsets.zero,
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none),
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
 
-            // القائمة الرئيسية
-            filtered.isEmpty
-                ? SliverFillRemaining(
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.hourglass_empty,
-                              size: 64, color: Colors.grey.shade400),
-                          const SizedBox(height: 12),
-                          Text('لا توجد عمليات في هذه الفترة.',
-                              style: TextStyle(color: Colors.grey.shade500)),
-                        ],
-                      ),
-                    ),
-                  )
-                : SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (ctx, index) {
-                        final day = sortedDays[index];
-                        final rows = grouped[day]!;
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+              // ملخص (يتغير حسب الوضع)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: widget.showOnlySales
+                      ? Row(
                           children: [
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 6),
-                              color: colorScheme.primary.withOpacity(0.05),
-                              child: Text(day,
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: colorScheme.primary)),
+                            Expanded(
+                              child: _buildSummaryChip('عدد المبيعات',
+                                  filtered.length.toDouble(), Colors.orange),
                             ),
-                            ...rows.map((row) => Card(
-                                  margin: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 4),
-                                  child: ListTile(
-                                    onTap: () => _showReceipt(row),
-                                    leading: Icon(row['icon'],
-                                        color: row['color'], size: 28),
-                                    title: Text(row['title'],
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.bold)),
-                                    subtitle: Text(
-                                        '${row['date']}  ${row['time']}',
-                                        style: const TextStyle(fontSize: 11)),
-                                    trailing: Text(
-                                      '${row['isIncoming'] ? "+" : "-"}${row['amount']}',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                        color: row['isIncoming']
-                                            ? Colors.green
-                                            : Colors.red,
-                                      ),
-                                    ),
-                                  ),
-                                )),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: _buildSummaryChip(
+                                  'الإيرادات', totalOut, Colors.green),
+                            ),
                           ],
-                        );
-                      },
-                      childCount: sortedDays.length,
+                        )
+                      : Row(
+                          children: [
+                            Expanded(
+                              child:
+                                  _buildSummaryChip('داخل', totalIn, Colors.green),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child:
+                                  _buildSummaryChip('خارج', totalOut, Colors.red),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: _buildSummaryChip('صافي', net,
+                                  net >= 0 ? Colors.green : Colors.red),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+
+              // أزرار التصدير (تظهر فقط إذا كانت هناك بيانات)
+              if (filtered.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        IconButton(
+                          icon:
+                              const Icon(Icons.picture_as_pdf, color: Colors.red),
+                          onPressed: () => _exportPDF(filtered),
+                          tooltip: 'PDF',
+                        ),
+                        IconButton(
+                          icon:
+                              const Icon(Icons.table_view, color: Colors.green),
+                          onPressed: () => _exportExcel(filtered),
+                          tooltip: 'Excel',
+                        ),
+                      ],
                     ),
                   ),
-          ],
+                ),
+
+              // القائمة الرئيسية أو رسالة فارغة
+              filtered.isEmpty
+                  ? SliverFillRemaining(
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.hourglass_empty,
+                                size: 64, color: Colors.grey.shade400),
+                            const SizedBox(height: 12),
+                            Text('لا توجد عمليات في هذه الفترة.',
+                                style: TextStyle(color: Colors.grey.shade500)),
+                          ],
+                        ),
+                      ),
+                    )
+                  : SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (ctx, index) {
+                          final day = sortedDays[index];
+                          final rows = grouped[day]!;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 6),
+                                color: colorScheme.primary.withOpacity(0.05),
+                                child: Text(day,
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: colorScheme.primary)),
+                              ),
+                              ...rows.map((row) => Card(
+                                    margin: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 4),
+                                    child: ListTile(
+                                      onTap: () => _showReceipt(row),
+                                      leading: Icon(row['icon'],
+                                          color: row['color'], size: 28),
+                                      title: Text(row['title'],
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold)),
+                                      subtitle: Text(
+                                          '${row['date']}  ${row['time']}',
+                                          style: const TextStyle(fontSize: 11)),
+                                      trailing: Text(
+                                        '${row['isIncoming'] ? "+" : "-"}${row['amount']}',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                          color: row['isIncoming']
+                                              ? Colors.green
+                                              : Colors.red,
+                                        ),
+                                      ),
+                                    ),
+                                  )),
+                            ],
+                          );
+                        },
+                        childCount: sortedDays.length,
+                      ),
+                    ),
+            ],
+          ),
         ),
       ),
     );
@@ -712,8 +762,10 @@ class _UserTransactionsScreenState extends State<UserTransactionsScreen> {
       child: Column(
         children: [
           Text(label,
-              style:
-                  TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
+              style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12)),
           Text('${amount.toStringAsFixed(0)}',
               style: TextStyle(color: color, fontWeight: FontWeight.bold)),
         ],
