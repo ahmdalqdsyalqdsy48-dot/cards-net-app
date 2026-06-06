@@ -1,9 +1,13 @@
+// lib/features/user_panel/screens/user_support_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:url_launcher/url_launcher.dart'; 
+import 'package:url_launcher/url_launcher.dart';
 
-import '../../../core/providers/system_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
+import '../../../core/providers/settings_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/widgets/custom_header.dart';
@@ -22,9 +26,9 @@ class _UserSupportScreenState extends State<UserSupportScreen> {
   void _play(String type) => Provider.of<UiProvider>(context, listen: false).playSound(type);
 
   void _showSnack(String m, {bool isErr = false}) {
-    if(!mounted) return;
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(m, textDirection: TextDirection.rtl), backgroundColor: isErr ? Colors.red : Colors.green)
+      SnackBar(content: Text(m, textDirection: TextDirection.rtl), backgroundColor: isErr ? Colors.red : Colors.green),
     );
   }
 
@@ -34,7 +38,7 @@ class _UserSupportScreenState extends State<UserSupportScreen> {
       _showSnack(fallbackMsg, isErr: true);
       return;
     }
-    
+
     final Uri url = Uri.parse(urlString);
     try {
       if (await canLaunchUrl(url)) {
@@ -50,21 +54,23 @@ class _UserSupportScreenState extends State<UserSupportScreen> {
   // ==========================================
   // نافذة إرسال تذكرة دعم فني حقيقية (موجهة) 📝
   // ==========================================
-  void _showTicketDialog(BuildContext context, SystemProvider sys) {
+  void _showTicketDialog(BuildContext context) {
     _play('click');
+    final auth = context.read<AuthProvider>();
+    final wallet = context.read<WalletProvider>();
+
     final TextEditingController subjectController = TextEditingController();
     final TextEditingController descController = TextEditingController();
     bool isSubmitting = false;
-    
-    // 👈 القيمة الافتراضية: توجيه التذكرة للإدارة
-    String targetPhone = 'admin'; 
+
+    String targetPhone = 'admin';
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setStateDialog) => Directionality(
-          textDirection: TextDirection.rtl, 
+          textDirection: TextDirection.rtl,
           child: AlertDialog(
             backgroundColor: Theme.of(context).cardColor,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -82,8 +88,7 @@ class _UserSupportScreenState extends State<UserSupportScreen> {
                 children: [
                   const Text('لمن تود توجيه هذه التذكرة؟', style: TextStyle(fontSize: 13, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
-                  
-                  // 👈 القائمة المنسدلة لاختيار الوجهة (الإدارة أو وكيل محدد)
+
                   DropdownButtonFormField<String>(
                     value: targetPhone,
                     isExpanded: true,
@@ -95,7 +100,7 @@ class _UserSupportScreenState extends State<UserSupportScreen> {
                     ),
                     items: [
                       const DropdownMenuItem(value: 'admin', child: Text('الإدارة العامة (مشكلة بالتطبيق)')),
-                      ...sys.agentsList.map((agent) {
+                      ...wallet.agentsList.map((agent) {
                         return DropdownMenuItem(
                           value: agent['phone'],
                           child: Text('الوكيل: ${agent['name']} (${agent['networkName'] ?? 'بدون شبكة'})'),
@@ -122,7 +127,7 @@ class _UserSupportScreenState extends State<UserSupportScreen> {
                   const SizedBox(height: 10),
                   TextField(
                     controller: descController,
-                    maxLines: 4, 
+                    maxLines: 4,
                     decoration: InputDecoration(
                       hintText: 'اكتب تفاصيل المشكلة هنا...',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -136,42 +141,40 @@ class _UserSupportScreenState extends State<UserSupportScreen> {
             actions: [
               if (!isSubmitting)
                 TextButton(
-                  onPressed: () { _play('click'); Navigator.pop(context); }, 
-                  child: const Text('إلغاء', style: TextStyle(color: Colors.grey))
+                  onPressed: () { _play('click'); Navigator.pop(context); },
+                  child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
                 ),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.purple,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
                 onPressed: isSubmitting ? null : () async {
                   if (subjectController.text.trim().isNotEmpty && descController.text.trim().isNotEmpty) {
                     _play('click');
                     setStateDialog(() => isSubmitting = true);
                     try {
-                      // 1. إرسال التذكرة بالهيكلة الموجهة الجديدة
                       await _db.collection('support_tickets').add({
-                        'creatorPhone': sys.currentUserPhone, 
-                        'creatorName': sys.currentUserName,
-                        'targetAgentPhone': targetPhone, // 👈 لمن التذكرة؟ 'admin' أو هاتف الوكيل
+                        'creatorPhone': auth.activeUserPhone,
+                        'creatorName': auth.currentUserName,
+                        'targetAgentPhone': targetPhone,
                         'subject': subjectController.text.trim(),
                         'description': descController.text.trim(),
                         'status': 'مفتوحة',
                         'priority': 'عادية',
-                        'role': 'user', 
+                        'role': 'user',
                         'timestamp': FieldValue.serverTimestamp(),
                         'replies': [],
                       });
 
-                      // 2. إرسال الإشعار للجهة المعنية فقط!
-                      List<String> notificationTargets = targetPhone == 'admin' 
-                          ? ['774578241', 'all_staff'] 
+                      List<String> notificationTargets = targetPhone == 'admin'
+                          ? ['774578241', 'all_staff']
                           : [targetPhone];
 
                       await _db.collection('notifications').add({
                         'targetPhones': notificationTargets,
                         'title': 'تذكرة جديدة من زبون 👤',
-                        'body': 'الزبون: ${sys.currentUserName}\nالمشكلة: ${subjectController.text.trim()}',
+                        'body': 'الزبون: ${auth.currentUserName}\nالمشكلة: ${subjectController.text.trim()}',
                         'timestamp': FieldValue.serverTimestamp(),
                         'isRead': false,
                         'readBy': [],
@@ -179,7 +182,7 @@ class _UserSupportScreenState extends State<UserSupportScreen> {
 
                       _play('success');
                       if (mounted) {
-                        Navigator.pop(context); 
+                        Navigator.pop(context);
                         _showSnack('تم إرسال تذكرتك بنجاح! ✅');
                       }
                     } catch (e) {
@@ -193,7 +196,7 @@ class _UserSupportScreenState extends State<UserSupportScreen> {
                   }
                 },
                 icon: isSubmitting ? const SizedBox.shrink() : const Icon(Icons.send, color: Colors.white, size: 18),
-                label: isSubmitting 
+                label: isSubmitting
                     ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                     : const Text('إرسال التذكرة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               ),
@@ -206,21 +209,22 @@ class _UserSupportScreenState extends State<UserSupportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final sys = Provider.of<SystemProvider>(context);
-    final themeProvider = Provider.of<ThemeProvider>(context);
+    final auth = context.watch<AuthProvider>();
+    final settings = context.watch<SettingsProvider>();
+    final themeProvider = context.watch<ThemeProvider>();
 
-    final String whatsappLink = sys.socialLinks['whatsapp'] ?? '';
-    final String cleanPhone = sys.supportNumbers.replaceAll(RegExp(r'[^0-9+]'), '');
+    final String whatsappLink = settings.socialLinks['whatsapp'] ?? '';
+    final String cleanPhone = settings.supportNumbers.replaceAll(RegExp(r'[^0-9+]'), '');
 
     return Scaffold(
       appBar: const CustomHeader(title: 'الدعم الفني والشكاوى'),
       drawer: CustomUserDrawer(
-        userName: sys.currentUserName,
-        phoneNumber: sys.currentUserPhone,
+        userName: auth.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: SingleChildScrollView( 
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           physics: const BouncingScrollPhysics(),
           child: Column(
@@ -241,12 +245,12 @@ class _UserSupportScreenState extends State<UserSupportScreen> {
               const SizedBox(height: 10),
               const Text('اختر الطريقة الأنسب للتواصل معنا، فريقنا متواجد على مدار الساعة لخدمتك وحل أي مشكلة تواجهك.', style: TextStyle(color: Colors.grey, height: 1.5)),
               const SizedBox(height: 40),
-              
+
               _buildSupportOption(
-                context, 
-                Icons.chat, 
-                'محادثة عبر واتساب', 
-                'رد سريع خلال دقائق', 
+                context,
+                Icons.chat,
+                'محادثة عبر واتساب',
+                'رد سريع خلال دقائق',
                 Colors.green,
                 () {
                   String finalUrl = whatsappLink;
@@ -254,29 +258,29 @@ class _UserSupportScreenState extends State<UserSupportScreen> {
                     finalUrl = 'https://wa.me/$whatsappLink';
                   }
                   _launchURL(finalUrl, 'رقم الواتساب غير متوفر حالياً.');
-                }
+                },
               ),
-              
+
               _buildSupportOption(
-                context, 
-                Icons.phone, 
-                'اتصال هاتفي بالدعم', 
-                'للحالات الطارئة والمستعجلة', 
+                context,
+                Icons.phone,
+                'اتصال هاتفي بالدعم',
+                'للحالات الطارئة والمستعجلة',
                 Colors.blue,
                 () {
                   _launchURL('tel:$cleanPhone', 'رقم الهاتف غير متوفر حالياً.');
-                }
+                },
               ),
-              
+
               _buildSupportOption(
-                context, 
-                Icons.email, 
-                'إرسال تذكرة دعم', 
-                'للمشاكل التقنية والمالية', 
+                context,
+                Icons.email,
+                'إرسال تذكرة دعم',
+                'للمشاكل التقنية والمالية',
                 Colors.purple,
                 () {
-                  _showTicketDialog(context, sys);
-                }
+                  _showTicketDialog(context);
+                },
               ),
             ],
           ),
@@ -287,7 +291,7 @@ class _UserSupportScreenState extends State<UserSupportScreen> {
 
   Widget _buildSupportOption(BuildContext context, IconData icon, String title, String subtitle, Color color, VoidCallback onTap) {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
-    
+
     return Card(
       elevation: 2,
       color: Theme.of(context).cardColor,
@@ -296,8 +300,8 @@ class _UserSupportScreenState extends State<UserSupportScreen> {
         borderRadius: BorderRadius.circular(15),
         side: BorderSide(color: color.withOpacity(0.2), width: 1.5),
       ),
-      child: InkWell( 
-        onTap: onTap, 
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(15),
         child: Padding(
           padding: const EdgeInsets.all(15),
