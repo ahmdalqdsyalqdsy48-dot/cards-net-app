@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // نحتاجها لميزة نسخ رقم الكرت المجاني
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart' as intl;
+
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/wallet_provider.dart';
+import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_header.dart';
 import '../widgets/custom_user_drawer.dart';
 
-// 👇 1. تم تحويل الشاشة إلى StatefulWidget لكي نتمكن من تغيير النقاط عند الاستبدال
 class RewardsScreen extends StatefulWidget {
   const RewardsScreen({super.key});
 
@@ -12,45 +18,174 @@ class RewardsScreen extends StatefulWidget {
 }
 
 class _RewardsScreenState extends State<RewardsScreen> {
-  // متغير يحفظ نقاط الزبون الحالية (جعلناها 1250 كتجربة)
-  int _currentPoints = 1250;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  bool _isRedeeming = false;
 
-  // ==========================================
-  // دالة استبدال النقاط بكرت مجاني 🎁
-  // ==========================================
-  void _redeemPoints(BuildContext context, String cardTitle, int requiredPoints) {
-    // 1. التحقق: هل الزبون يملك نقاطاً كافية؟
-    if (_currentPoints >= requiredPoints) {
-      // 2. إذا كانت تكفي، نقوم بخصم النقاط وتحديث الواجهة
-      setState(() {
-        _currentPoints -= requiredPoints;
+  void _play(String type) =>
+      context.read<UiProvider>().playSound(type);
+
+  void _showToast(String msg, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg, textDirection: TextDirection.rtl),
+        backgroundColor: error ? Colors.red.shade800 : Colors.green.shade800,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  // ========== جلب نقاط الولاء ==========
+  Future<Map<String, int>> _fetchLoyaltyPoints() async {
+    final wallet = context.read<WalletProvider>();
+    return await wallet.getLoyaltyPoints();
+  }
+
+  // ========== عملية الاستبدال الحقيقية ==========
+  Future<void> _redeemReward({
+    required String rewardDocId,
+    required String rewardName,
+    required int pointsRequired,
+    required String agentPhone,
+    required String categoryId,
+    required String agentName,
+  }) async {
+    final auth = context.read<AuthProvider>();
+    final wallet = context.read<WalletProvider>();
+    final phone = auth.activeUserPhone ?? '';
+    if (phone.isEmpty) {
+      _showToast('يجب تسجيل الدخول أولاً', error: true);
+      return;
+    }
+
+    // تأكيد
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('تأكيد الاستبدال'),
+          content: Text('سيتم خصم $pointsRequired نقطة من رصيدك واستبدالها بـ $rewardName.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('نعم، استبدل'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirm != true) return;
+
+    setState(() => _isRedeeming = true);
+    _play('click');
+
+    try {
+      // 1. التحقق من الرصيد
+      final pointsMap = await wallet.getLoyaltyPoints();
+      final int currentPoints = pointsMap[agentPhone] ?? 0;
+      if (currentPoints < pointsRequired) {
+        _play('error');
+        _showToast('نقاطك غير كافية', error: true);
+        return;
+      }
+
+      // 2. حجز كرت من المخزون
+      final cardsSnap = await _db
+          .collection('cards')
+          .where('agentPhone', isEqualTo: agentPhone)
+          .where('categoryId', isEqualTo: categoryId)
+          .where('status', isEqualTo: 'متاح')
+          .limit(1)
+          .get();
+
+      if (cardsSnap.docs.isEmpty) {
+        _play('error');
+        _showToast('لا توجد كروت متاحة لهذه المكافأة حالياً', error: true);
+        return;
+      }
+
+      final cardDoc = cardsSnap.docs.first;
+      final cardData = cardDoc.data() as Map<String, dynamic>;
+      final String pin = cardData['pin'] ?? 'غير متوفر';
+
+      // 3. تنفيذ العملية (batch)
+      final batch = _db.batch();
+      final userRef = _db.collection('users').doc(phone);
+
+      // خصم النقاط
+      batch.update(userRef, {
+        'loyaltyPoints.$agentPhone': FieldValue.increment(-pointsRequired),
+        'totalLoyaltyPoints': FieldValue.increment(-pointsRequired),
       });
-      
-      // 3. توليد رقم كرت مجاني (وهمي للتجربة)
-      String freePin = 'FREE-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
 
-      // 4. إظهار نافذة الاحتفال بالكرت المجاني
-      _showSuccessDialog(context, cardTitle, freePin);
+      // تحديث حالة الكرت
+      batch.update(cardDoc.reference, {
+        'status': 'مباع',
+        'buyerPhone': phone,
+        'soldAt': FieldValue.serverTimestamp(),
+        'soldPrice': 0,
+        'discountAmount': 0,
+        'redeemedWithPoints': true,
+      });
 
-    } else {
-      // 5. إذا كانت النقاط لا تكفي، نظهر رسالة خطأ
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('عفواً، نقاطك غير كافية لاستبدال $cardTitle ❌', textDirection: TextDirection.rtl),
-          backgroundColor: Colors.red,
-        )
-      );
+      // إضافة الكرت للمشتريات
+      batch.update(userRef, {
+        'purchasedCards': FieldValue.arrayUnion([
+          {
+            'title': '$agentName - $rewardName',
+            'pin': pin,
+            'price': 0,
+            'agentPhone': agentPhone,
+            'date': DateTime.now().toIso8601String(),
+            'redeemed': true,
+            'pointsPaid': pointsRequired,
+          }
+        ])
+      });
+
+      // تسجيل معاملة
+      batch.set(_db.collection('transactions').doc(), {
+        'fromPhone': 'SYSTEM',
+        'toPhone': phone,
+        'agentPhone': agentPhone,
+        'agentName': agentName,
+        'targetName': auth.currentUserName,
+        'amount': 0,
+        'type': 'loyalty_redeem',
+        'title': 'استبدال نقاط - $rewardName',
+        'pointsRedeemed': pointsRequired,
+        'pin': pin,
+        'reference': 'LR-${DateTime.now().millisecondsSinceEpoch}',
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
+      await batch.commit();
+
+      _play('success');
+      _showSuccessDialog(rewardName, pin, pointsRequired, agentName);
+
+      // تحديث الشاشة
+      setState(() {});
+    } catch (e) {
+      _play('error');
+      _showToast('فشل الاستبدال: $e', error: true);
+    } finally {
+      setState(() => _isRedeeming = false);
     }
   }
 
-  // ==========================================
-  // نافذة الاحتفال وعرض الكرت المجاني 🎉
-  // ==========================================
-  void _showSuccessDialog(BuildContext context, String cardTitle, String pin) {
+  // ========== نافذة نجاح الاستبدال ==========
+  void _showSuccessDialog(String rewardName, String pin, int points, String agentName) {
     showDialog(
       context: context,
-      barrierDismissible: false, // يمنع إغلاق النافذة بالنقر خارجها
-      builder: (context) => Directionality(
+      barrierDismissible: false,
+      builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -59,11 +194,12 @@ class _RewardsScreenState extends State<RewardsScreen> {
             children: [
               const Icon(Icons.card_giftcard, color: Colors.green, size: 60),
               const SizedBox(height: 15),
-              const Text('مبروك! كرتك المجاني جاهز 🎉', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.green)),
+              const Text('مبروك! تم الاستبدال بنجاح 🎉',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.green)),
               const SizedBox(height: 10),
-              Text('لقد قمت باستبدال نقاطك بـ $cardTitle', textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: Colors.blueGrey)),
+              Text('تم خصم $points نقطة واستبدالها بـ $rewardName من $agentName',
+                  textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: Colors.blueGrey)),
               const SizedBox(height: 20),
-              // عرض رقم الكرت
               Container(
                 padding: const EdgeInsets.all(15),
                 decoration: BoxDecoration(
@@ -79,15 +215,15 @@ class _RewardsScreenState extends State<RewardsScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-              // أزرار النسخ والإغلاق
               Row(
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: () {
-                        // نسخ الكرت للحافظة
                         Clipboard.setData(ClipboardData(text: pin));
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم نسخ الكرت المجاني! ✅'), backgroundColor: Colors.green));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('تم نسخ الكرت! ✅'), backgroundColor: Colors.green),
+                        );
                       },
                       icon: const Icon(Icons.copy, color: Colors.white, size: 18),
                       label: const Text('نسخ الكرت', style: TextStyle(color: Colors.white)),
@@ -96,7 +232,7 @@ class _RewardsScreenState extends State<RewardsScreen> {
                   ),
                   const SizedBox(width: 10),
                   TextButton(
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () => Navigator.pop(ctx),
                     child: const Text('إغلاق', style: TextStyle(color: Colors.grey)),
                   ),
                 ],
@@ -110,102 +246,194 @@ class _RewardsScreenState extends State<RewardsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final wallet = context.watch<WalletProvider>();
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
       appBar: const CustomHeader(title: 'المكافآت والولاء'),
-      // 👇 تم تنظيف القائمة الجانبية من المتغير المتعارض
-      drawer: const CustomUserDrawer(
-        userName: 'محمد أحمد',
-        phoneNumber: '777123456',
+      drawer: CustomUserDrawer(
+        userName: auth.currentUserName,
+        phoneNumber: auth.activeUserPhone ?? '',
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              // ==========================================
-              // 1. بطاقة عرض النقاط الحالية
-              // ==========================================
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(30),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.amber.shade700, Colors.orange.shade500],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+        child: RefreshIndicator(
+          onRefresh: () async {
+            setState(() {});
+            await Future.delayed(const Duration(milliseconds: 300));
+          },
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              // ========== بطاقة النقاط (تختفي مع التمرير) ==========
+              SliverToBoxAdapter(
+                child: FutureBuilder<Map<String, int>>(
+                  future: _fetchLoyaltyPoints(),
+                  builder: (context, snapshot) {
+                    final pointsMap = snapshot.data ?? {};
+                    final int totalPoints = pointsMap.values.fold(0, (a, b) => a + b);
+
+                    return Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(30),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Colors.amber.shade700, Colors.orange.shade500],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 5))
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          const Icon(Icons.stars, size: 60, color: Colors.white),
+                          const SizedBox(height: 10),
+                          const Text('نقاطك الحالية', style: TextStyle(color: Colors.white70, fontSize: 16)),
+                          Text(
+                            '${snapshot.connectionState == ConnectionState.waiting ? '...' : totalPoints} نقطة',
+                            style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 15),
+                          // تقسيم النقاط حسب الوكيل
+                          if (pointsMap.isNotEmpty)
+                            ...pointsMap.entries.map((e) {
+                              final agent = wallet.agentsList.firstWhere(
+                                (a) => a['phone'] == e.key,
+                                orElse: () => {'name': e.key},
+                              );
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Text(
+                                  '${agent['name'] ?? e.key}: ${e.value} نقطة',
+                                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                                ),
+                              );
+                            }),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+
+              // ========== عنوان الاستبدال ==========
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    'استبدل نقاطك بكروت مجانية 🎁',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                   ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 5))],
-                ),
-                child: Column(
-                  children: [
-                    const Icon(Icons.stars, size: 60, color: Colors.white),
-                    const SizedBox(height: 10),
-                    const Text('نقاطك الحالية', style: TextStyle(color: Colors.white70, fontSize: 16)),
-                    // 👈 قراءة النقاط من المتغير الديناميكي
-                    Text('$_currentPoints نقطة', style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
-                  ],
                 ),
               ),
-              
-              const SizedBox(height: 30),
-              const Align(
-                alignment: Alignment.centerRight,
-                child: Text('استبدل نقاطك بكروت مجانية 🎁', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-              ),
-              const SizedBox(height: 15),
-              
-              // ==========================================
-              // 2. قائمة خيارات الاستبدال المتاحة
-              // ==========================================
-              Expanded(
-                child: ListView(
-                  children: [
-                    _buildRewardItem(context, 'كرت أبو 250 ريال', 250, Colors.teal),
-                    _buildRewardItem(context, 'كرت أبو 500 ريال', 500, Colors.green),
-                    _buildRewardItem(context, 'كرت أبو 1000 ريال', 1000, Colors.blue),
-                    _buildRewardItem(context, 'باقة أسبوعية VIP', 2500, Colors.purple),
-                  ],
+
+              // ========== قائمة المكافآت ==========
+              SliverToBoxAdapter(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: _db
+                      .collection('loyalty_rewards')
+                      .where('isActive', isEqualTo: true)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: Padding(
+                        padding: EdgeInsets.all(20),
+                        child: CircularProgressIndicator(),
+                      ));
+                    }
+                    final rewards = snapshot.data?.docs ?? [];
+                    if (rewards.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.all(20),
+                        child: Center(child: Text('لا توجد مكافآت متاحة حالياً', style: TextStyle(color: Colors.grey))),
+                      );
+                    }
+
+                    return FutureBuilder<Map<String, int>>(
+                      future: _fetchLoyaltyPoints(),
+                      builder: (context, pointsSnapshot) {
+                        final pointsMap = pointsSnapshot.data ?? {};
+
+                        return Column(
+                          children: rewards.map((doc) {
+                            final data = doc.data() as Map<String, dynamic>;
+                            final String agentPhone = data['agentPhone'] ?? '';
+                            final int requiredPoints = data['points'] ?? 0;
+                            final int userPoints = pointsMap[agentPhone] ?? 0;
+                            final bool canRedeem = userPoints >= requiredPoints;
+                            final String agentName = (wallet.agentsList.firstWhere(
+                              (a) => a['phone'] == agentPhone,
+                              orElse: () => {'name': agentPhone},
+                            ))['name'] ?? agentPhone;
+
+                            return Card(
+                              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                              elevation: 2,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                                side: BorderSide(color: canRedeem ? Colors.green.withOpacity(0.5) : Colors.transparent),
+                              ),
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                leading: CircleAvatar(
+                                  backgroundColor: Color(data['color'] ?? Colors.teal.value).withOpacity(0.1),
+                                  child: Icon(Icons.card_giftcard, color: Color(data['color'] ?? Colors.teal.value)),
+                                ),
+                                title: Text(data['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'يتطلب $requiredPoints نقطة',
+                                      style: TextStyle(
+                                        color: canRedeem ? Colors.green : Colors.red,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    Text(
+                                      'لديك $userPoints نقطة لدى $agentName',
+                                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                    ),
+                                  ],
+                                ),
+                                trailing: ElevatedButton(
+                                  onPressed: _isRedeeming
+                                      ? null
+                                      : () => _redeemReward(
+                                            rewardDocId: doc.id,
+                                            rewardName: data['name'] ?? '',
+                                            pointsRequired: requiredPoints,
+                                            agentPhone: agentPhone,
+                                            categoryId: data['categoryId'] ?? '',
+                                            agentName: agentName,
+                                          ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: canRedeem ? Colors.green : Colors.grey.shade400,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                  child: const Text('استبدال', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        );
+                      },
+                    );
+                  },
                 ),
               ),
+
+              // ========== مساحة سفلية ==========
+              const SliverToBoxAdapter(child: SizedBox(height: 30)),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  // ==========================================
-  // تصميم بطاقة الاستبدال
-  // ==========================================
-  Widget _buildRewardItem(BuildContext context, String title, int points, Color color) {
-    // التحقق الشكلي: هل يملك المستخدم نقاطاً تكفي لهذا العنصر تحديداً؟
-    bool canRedeem = _currentPoints >= points;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
-        side: BorderSide(color: canRedeem ? color.withOpacity(0.5) : Colors.transparent),
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.1), 
-          child: Icon(Icons.card_giftcard, color: color)
-        ),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text('يتطلب $points نقطة', style: TextStyle(color: canRedeem ? Colors.green : Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
-        trailing: ElevatedButton(
-          // ربط الزر بدالة الاستبدال التي برمجناها
-          onPressed: () => _redeemPoints(context, title, points),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: canRedeem ? color : Colors.grey.shade400,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
-          ),
-          child: const Text('استبدال', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         ),
       ),
     );
