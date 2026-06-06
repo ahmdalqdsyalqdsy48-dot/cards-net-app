@@ -1555,7 +1555,7 @@ class WalletProvider extends ChangeNotifier {
     return bestTier;
   }
 
-  // ========== 🆕 نظام نقاط الولاء لكل وكيل ==========
+    // ========== 🆕 نظام نقاط الولاء (نسبة مئوية) ==========
 
   /// إضافة نقاط ولاء للمستخدم بعد الشراء من وكيل معين
   Future<void> addLoyaltyPoints({
@@ -1568,11 +1568,14 @@ class WalletProvider extends ChangeNotifier {
     final agentDoc = await _db.collection('users').doc(agentPhone).get();
     final agentData = agentDoc.data() ?? {};
     final bool loyaltyEnabled = agentData['loyaltyEnabled'] ?? false;
-    final double pointsPerRiyal = (agentData['loyaltyPointsPerRiyal'] ?? 1.0).toDouble();
+    
+    // 🆕 قراءة النسبة المئوية (مثلاً 10 تعني 10%)
+    final double loyaltyPercentage = (agentData['loyaltyPercentage'] ?? 0.0).toDouble();
 
-    if (!loyaltyEnabled || pointsPerRiyal <= 0) return;
+    if (!loyaltyEnabled || loyaltyPercentage <= 0) return;
 
-    final int pointsToAdd = (purchaseAmount * pointsPerRiyal).ceil();
+    // 🆕 حساب النقاط: مبلغ الشراء × النسبة المئوية ÷ 100
+    final int pointsToAdd = (purchaseAmount * loyaltyPercentage / 100).ceil();
 
     // تحديث نقاط المستخدم الخاصة بهذا الوكيل
     await _db.collection('users').doc(_auth!.activeUserPhone).update({
