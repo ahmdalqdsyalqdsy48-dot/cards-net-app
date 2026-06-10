@@ -8,7 +8,6 @@ import '../../../core/providers/auth_provider.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/agent_admin_provider.dart';
-import '../../../core/providers/transactions_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart';
@@ -256,13 +255,25 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
     }
   }
 
-  // ========== بطاقة تفصيلية ==========
+  // ========== بطاقة تفصيلية (الإصلاح الكامل للبيانات الوهمية) ==========
   Future<void> _selectUser(Map<String, dynamic> user) async {
     _play('click');
     final phone = user['phone'] ?? '';
     final role = (user['role'] ?? 'user').toString();
+    
+    // 🆕 قراءة وثيقة المستخدم الكاملة من Firestore مباشرة لضمان بيانات حقيقية 100%
+    Map<String, dynamic>? freshData;
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(phone).get();
+      if (doc.exists) {
+        freshData = doc.data()!;
+      }
+    } catch (e) {
+      debugPrint('خطأ في جلب بيانات المستخدم: $e');
+    }
+
     setState(() {
-      _selectedUserData = user;
+      _selectedUserData = freshData ?? user; // استخدام البيانات الجديدة كأساس
       _selectedUserPhone = phone;
       _selectedUserRole = role;
       _lastTransactions = [];
@@ -311,7 +322,6 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
   Future<void> _loadExtraData(String phone, String role) async {
     Map<String, dynamic> extra = {};
     try {
-      // بيانات عامة للجميع
       final userDoc = await FirebaseFirestore.instance.collection('users').doc(phone).get();
       final userData = userDoc.data() ?? {};
       extra['pin'] = userData['pin'] ?? '123456';
@@ -324,21 +334,28 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
       }
 
       if (role == 'agent') {
+        // جلب أسماء الشبكات (وليس فقط عددها)
         final netsSnap = await FirebaseFirestore.instance.collection('networks').where('agentPhone', isEqualTo: phone).get();
-        int activeNets = 0, stoppedNets = 0;
+        List<Map<String, dynamic>> networks = [];
         for (var d in netsSnap.docs) {
-          if (d['isActive'] == true) activeNets++; else stoppedNets++;
+          networks.add({
+            'name': d['name'] ?? 'شبكة بدون اسم',
+            'isActive': d['isActive'] ?? false,
+          });
         }
-        extra['activeNetworks'] = activeNets;
-        extra['stoppedNetworks'] = stoppedNets;
+        extra['networks'] = networks;
+        
+        // جلب أسماء نقاط البيع (وليس فقط عددها)
         final posSnap = await FirebaseFirestore.instance.collection('users').where('pos_agents', arrayContains: phone).get();
-        int activePos = 0, stoppedPos = 0;
+        List<Map<String, dynamic>> posList = [];
         for (var d in posSnap.docs) {
-          if (d['status'] == 'نشط') activePos++; else stoppedPos++;
+          posList.add({
+            'name': d['name'] ?? d['storeName'] ?? 'نقطة بيع بدون اسم',
+            'status': d['status'] ?? 'نشط',
+          });
         }
-        extra['activePos'] = activePos;
-        extra['stoppedPos'] = stoppedPos;
-        // عدد الكروت المباعة
+        extra['posList'] = posList;
+
         extra['soldCardsCount'] = userData['purchasedCards'] != null ? (userData['purchasedCards'] as List).length : 0;
         extra['status'] = userData['status'] ?? 'نشط';
         extra['subExpiry'] = userData['subExpiry'] ?? 'غير محدد';
@@ -355,13 +372,21 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
         }
         extra['agentNames'] = agentNames;
         extra['soldCardsCount'] = userData['purchasedCards'] != null ? (userData['purchasedCards'] as List).length : 0;
+        
         if (role == 'pos') {
+          // جلب أسماء الوكلاء المرتبطين (وليس فقط عددهم)
+          final List<dynamic> posAgents = userData['pos_agents'] ?? [];
+          List<String> agentDisplayNames = [];
+          for (var agentPhone in posAgents) {
+            agentDisplayNames.add(agentNames[agentPhone] ?? agentPhone.toString());
+          }
+          extra['posAgentNames'] = agentDisplayNames;
+
           final relations = userData['agent_relations'] ?? {};
           if (relations.isNotEmpty) {
             final firstRel = relations.values.first;
             extra['creditLimit'] = firstRel['creditLimit'] ?? 0;
             extra['commission'] = firstRel['commission'] ?? '0%';
-            extra['posAgents'] = relations.keys.toList();
           }
         }
       } else if (role == 'staff') {
@@ -786,7 +811,6 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
                   _buildDetailRow(Icons.phone_android, 'رقم الهاتف', _selectedUserPhone ?? '', Colors.indigo),
                   const Divider(),
                   _buildDetailRow(Icons.badge, 'الدور', _translateRole(role), Colors.orange),
-                  // بيانات عامة
                   if (extra != null) ...[
                     const Divider(),
                     _buildDetailRow(Icons.lock, 'PIN', extra['pin'] ?? 'غير معين', Colors.grey, copyable: true),
@@ -797,20 +821,42 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
                     const Divider(),
                     _buildDetailRow(Icons.confirmation_number, 'عدد الكروت', '${extra['soldCardsCount'] ?? 0}', Colors.deepPurple),
                   ],
-                  // بيانات خاصة بالوكيل
                   if (role == 'agent' && extra != null) ...[
                     const Divider(),
                     _buildDetailRow(Icons.account_balance_wallet, 'الرصيد', '${(data['balance'] ?? 0).toString()} ريال', Colors.green),
-                    const Divider(),
-                    _buildDetailRow(Icons.wifi, 'الشبكات', 'نشطة: ${extra['activeNetworks'] ?? 0} / موقوفة: ${extra['stoppedNetworks'] ?? 0}', Colors.blueGrey),
-                    const Divider(),
-                    _buildDetailRow(Icons.storefront, 'نقاط البيع', 'نشطة: ${extra['activePos'] ?? 0} / موقوفة: ${extra['stoppedPos'] ?? 0}', Colors.purple),
+                    if (extra['networks'] != null && (extra['networks'] as List).isNotEmpty) ...[
+                      const Divider(),
+                      const Text('الشبكات:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ...(extra['networks'] as List).map((net) => Padding(
+                        padding: const EdgeInsets.only(right: 16, bottom: 4),
+                        child: Row(
+                          children: [
+                            Icon(net['isActive'] ? Icons.wifi : Icons.wifi_off, size: 16, color: net['isActive'] ? Colors.green : Colors.red),
+                            const SizedBox(width: 6),
+                            Text(net['name'] ?? ''),
+                          ],
+                        ),
+                      )),
+                    ],
+                    if (extra['posList'] != null && (extra['posList'] as List).isNotEmpty) ...[
+                      const Divider(),
+                      const Text('نقاط البيع:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ...(extra['posList'] as List).map((pos) => Padding(
+                        padding: const EdgeInsets.only(right: 16, bottom: 4),
+                        child: Row(
+                          children: [
+                            Icon(pos['status'] == 'نشط' ? Icons.storefront : Icons.store, size: 16, color: pos['status'] == 'نشط' ? Colors.green : Colors.red),
+                            const SizedBox(width: 6),
+                            Text(pos['name'] ?? ''),
+                          ],
+                        ),
+                      )),
+                    ],
                     const Divider(),
                     _buildDetailRow(Icons.calendar_today, 'انتهاء الاشتراك', extra['subExpiry'] ?? 'غير محدد', Colors.redAccent),
                     const Divider(),
                     _buildDetailRow(Icons.card_membership, 'الباقة', extra['subPlan'] ?? 'غير محدد', Colors.teal),
                   ],
-                  // بيانات خاصة بالمستخدم ونقطة البيع
                   if ((role == 'user' || role == 'pos') && extra != null) ...[
                     const Divider(),
                     _buildDetailRow(Icons.account_balance_wallet, 'إجمالي الرصيد', '${extra['totalBalance'] ?? 0} ريال', Colors.green, bold: true),
@@ -836,14 +882,25 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
                     ],
                     if (role == 'pos' && extra != null) ...[
                       const Divider(),
+                      if (extra['posAgentNames'] != null && (extra['posAgentNames'] as List).isNotEmpty) ...[
+                        const Text('الوكلاء المرتبطون:', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ...(extra['posAgentNames'] as List).map((name) => Padding(
+                          padding: const EdgeInsets.only(right: 16, bottom: 4),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.person, size: 16, color: Colors.blue),
+                              const SizedBox(width: 6),
+                              Text(name.toString()),
+                            ],
+                          ),
+                        )),
+                      ],
+                      const Divider(),
                       _buildDetailRow(Icons.credit_score, 'الحد الائتماني', '${extra['creditLimit'] ?? 0} ريال', Colors.red),
                       const Divider(),
                       _buildDetailRow(Icons.percent, 'العمولة', extra['commission'] ?? '0%', Colors.indigo),
-                      if (extra['posAgents'] != null)
-                        _buildDetailRow(Icons.people, 'وكلاء مرتبطون', '${(extra['posAgents'] as List).length}', Colors.blue),
                     ],
                   ],
-                  // بيانات خاصة بالموظف
                   if (role == 'staff' && extra != null) ...[
                     const Divider(),
                     const Text('الصلاحيات:', style: TextStyle(fontWeight: FontWeight.bold)),
