@@ -103,6 +103,24 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
     );
   }
 
+  /// ترجمة الدور من الإنجليزية إلى العربية
+  String _translateRole(String role) {
+    switch (role) {
+      case 'agent':
+        return 'وكيل';
+      case 'user':
+        return 'مستخدم';
+      case 'pos':
+        return 'بقالة';
+      case 'staff':
+        return 'موظف';
+      case 'super_admin':
+        return 'مدير عام';
+      default:
+        return role;
+    }
+  }
+
   // ========== قائمة المستخدمين ==========
   void _loadUsers() {
     final agentAdmin = context.read<AgentAdminProvider>();
@@ -217,6 +235,30 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
         _play('error');
         _showSnack('$e', error: true);
       }
+    }
+  }
+
+  /// 🆕 إعادة تعيين رمز PIN لمستخدم إلى 123456
+  Future<void> _resetUserPin(Map<String, dynamic> user) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: Text('إعادة تعيين PIN لـ ${user['name']}'),
+          content: const Text('سيتم تغيير رمز PIN إلى 123456. سيُطلب من المستخدم تغييره عند الدخول.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('تراجع')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تأكيد')),
+          ],
+        ),
+      ),
+    );
+    if (confirm == true) {
+      final auth = context.read<AuthProvider>();
+      await auth.adminResetUserPin(user['phone']);
+      _play('success');
+      _showSnack('تم إعادة تعيين PIN إلى 123456');
     }
   }
 
@@ -434,6 +476,40 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
     }
   }
 
+  /// 🆕 عرض نافذة اختيار الدور
+  void _showRoleFilterSheet() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('اختر الدور', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              const SizedBox(height: 16),
+              ..._roleFilters.map((role) => ListTile(
+                title: Text(role),
+                leading: _selectedRoleFilter == role
+                    ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary)
+                    : const Icon(Icons.circle_outlined),
+                onTap: () {
+                  _play('click');
+                  setState(() => _selectedRoleFilter = role);
+                  Navigator.pop(ctx);
+                },
+              )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // ========== واجهة المستخدم ==========
   @override
   Widget build(BuildContext context) {
@@ -467,7 +543,12 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: RefreshIndicator(
-          onRefresh: () async { _loadUsers(); await Future.delayed(const Duration(milliseconds: 300)); _play('success'); },
+          onRefresh: () async {
+            _loadUsers();
+            await Future.delayed(const Duration(milliseconds: 300));
+            _play('success');
+            _showSnack('تم تحديث الصفحة بنجاح ✅');
+          },
           child: _selectedUserData != null
               ? _buildDetailView(colors)
               : _buildListView(colors, filteredUsers, roleFilterValue),
@@ -476,161 +557,168 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
     );
   }
 
-  // ---------- شاشة القائمة الرئيسية ----------
+  // ---------- شاشة القائمة الرئيسية (رأس يختفي مع التمرير) ----------
   Widget _buildListView(ColorScheme colors, List<Map<String, dynamic>> filteredUsers, String roleFilterValue) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Row(
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        // الرأس الذي يختفي تدريجياً
+        SliverToBoxAdapter(
+          child: Column(
             children: [
-              Expanded(
-                child: TextField(
-                  onChanged: (v) => setState(() => _searchQuery = v),
-                  decoration: InputDecoration(
-                    hintText: 'بحث بالاسم أو رقم الحساب أو الهاتف',
-                    prefixIcon: const Icon(Icons.search),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                  ),
+              Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        onChanged: (v) => setState(() => _searchQuery = v),
+                        decoration: InputDecoration(
+                          hintText: 'بحث بالاسم أو رقم الحساب أو الهاتف',
+                          prefixIcon: const Icon(Icons.search),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton.icon(
+                      onPressed: _generateMissingAccounts,
+                      icon: const Icon(Icons.generating_tokens),
+                      label: const Text('توليد الأرقام المفقودة'),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 8),
-              ElevatedButton.icon(
-                onPressed: _generateMissingAccounts,
-                icon: const Icon(Icons.generating_tokens),
-                label: const Text('توليد الأرقام المفقودة'),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700),
+              // صف يحتوي على زر الفلترة فقط
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _showRoleFilterSheet,
+                      icon: const Icon(Icons.filter_list),
+                      label: Text(_selectedRoleFilter == 'الكل' ? 'فلترة' : _selectedRoleFilter),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: colors.primary,
+                        side: BorderSide(color: colors.primary),
+                      ),
+                    ),
+                    const Spacer(),
+                    Text('${filteredUsers.length} مستخدم', style: TextStyle(color: colors.onSurfaceVariant)),
+                  ],
+                ),
               ),
+              const Divider(),
             ],
           ),
         ),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            children: _roleFilters.map((role) {
-              final isSelected = _selectedRoleFilter == role;
-              return Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: ChoiceChip(
-                  label: Text(role),
-                  selected: isSelected,
-                  selectedColor: colors.primary,
-                  labelStyle: TextStyle(color: isSelected ? colors.onPrimary : colors.onSurface),
-                  onSelected: (v) {
-                    _play('click');
-                    setState(() => _selectedRoleFilter = role);
-                  },
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text('${filteredUsers.length} مستخدم', style: TextStyle(color: colors.onSurfaceVariant)),
-        ),
-        const Divider(),
-        Expanded(
-          child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : filteredUsers.isEmpty
-                  ? const Center(child: Text('لا توجد نتائج', style: TextStyle(color: Colors.grey)))
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      itemCount: filteredUsers.length,
-                      itemBuilder: (context, index) {
+        // القائمة
+        _isLoading
+            ? const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
+            : filteredUsers.isEmpty
+                ? const SliverFillRemaining(child: Center(child: Text('لا توجد نتائج', style: TextStyle(color: Colors.grey))))
+                : SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
                         final user = filteredUsers[index];
                         final isBanned = user['isBanned'] == true;
-                        return Card(
-                          color: isBanned ? Colors.red.shade50 : colors.surface,
-                          margin: const EdgeInsets.only(bottom: 8),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(12),
-                            onTap: () => _selectUser(user),
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Icon(Icons.person, color: colors.primary, size: 20),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          user['name'] ?? '',
-                                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colors.onSurface, decoration: isBanned ? TextDecoration.lineThrough : null),
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          child: Card(
+                            color: isBanned ? Colors.red.shade50 : colors.surface,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () => _selectUser(user),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(Icons.person, color: colors.primary, size: 20),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            user['name'] ?? '',
+                                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colors.onSurface, decoration: isBanned ? TextDecoration.lineThrough : null),
+                                          ),
                                         ),
-                                      ),
-                                      if (isBanned)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                          decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(20)),
-                                          child: const Text('محظور', style: TextStyle(color: Colors.white, fontSize: 11)),
+                                        if (isBanned)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                            decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(20)),
+                                            child: const Text('محظور', style: TextStyle(color: Colors.white, fontSize: 11)),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        Icon(Icons.credit_card, color: colors.secondary, size: 18),
+                                        const SizedBox(width: 8),
+                                        Text('الحساب: ${user['accountNumber'] ?? 'غير متوفر'}', style: TextStyle(color: colors.onSurfaceVariant, fontSize: 14)),
+                                        const Spacer(),
+                                        InkWell(
+                                          onTap: () {
+                                            Clipboard.setData(ClipboardData(text: user['accountNumber'] ?? ''));
+                                            _showSnack('تم نسخ رقم الحساب');
+                                          },
+                                          child: Icon(Icons.copy, size: 16, color: colors.primary),
                                         ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      Icon(Icons.credit_card, color: colors.secondary, size: 18),
-                                      const SizedBox(width: 8),
-                                      Text('الحساب: ${user['accountNumber'] ?? 'غير متوفر'}', style: TextStyle(color: colors.onSurfaceVariant, fontSize: 14)),
-                                      const Spacer(),
-                                      InkWell(
-                                        onTap: () {
-                                          Clipboard.setData(ClipboardData(text: user['accountNumber'] ?? ''));
-                                          _showSnack('تم نسخ رقم الحساب');
-                                        },
-                                        child: Icon(Icons.copy, size: 16, color: colors.primary),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Row(
-                                    children: [
-                                      Icon(Icons.phone_android, color: Colors.teal, size: 18),
-                                      const SizedBox(width: 8),
-                                      Text('الهاتف: ${user['phone']}', style: TextStyle(color: colors.onSurfaceVariant, fontSize: 14)),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Row(
-                                    children: [
-                                      Icon(Icons.badge, color: Colors.orange, size: 18),
-                                      const SizedBox(width: 8),
-                                      Text('الدور: ${user['role']}', style: TextStyle(color: colors.onSurfaceVariant, fontSize: 14)),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Divider(color: colors.outlineVariant),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      IconButton(
-                                        icon: Icon(Icons.edit, color: colors.primary, size: 20),
-                                        onPressed: () => _editAccountNumber(user),
-                                        tooltip: 'تعديل رقم الحساب',
-                                      ),
-                                      IconButton(
-                                        icon: Icon(isBanned ? Icons.lock_open : Icons.block, color: isBanned ? Colors.green : Colors.red, size: 20),
-                                        onPressed: () => _toggleBan(user),
-                                        tooltip: isBanned ? 'فك الحظر' : 'حظر',
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      children: [
+                                        Icon(Icons.phone_android, color: Colors.teal, size: 18),
+                                        const SizedBox(width: 8),
+                                        Text('الهاتف: ${user['phone']}', style: TextStyle(color: colors.onSurfaceVariant, fontSize: 14)),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      children: [
+                                        Icon(Icons.badge, color: Colors.orange, size: 18),
+                                        const SizedBox(width: 8),
+                                        Text('الدور: ${_translateRole(user['role'] ?? '')}', style: TextStyle(color: colors.onSurfaceVariant, fontSize: 14)),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Divider(color: colors.outlineVariant),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        IconButton(
+                                          icon: Icon(Icons.edit, color: colors.primary, size: 20),
+                                          onPressed: () => _editAccountNumber(user),
+                                          tooltip: 'تعديل رقم الحساب',
+                                        ),
+                                        IconButton(
+                                          icon: Icon(Icons.lock_reset, color: Colors.amber, size: 20),
+                                          onPressed: () => _resetUserPin(user),
+                                          tooltip: 'إعادة تعيين PIN',
+                                        ),
+                                        IconButton(
+                                          icon: Icon(isBanned ? Icons.lock_open : Icons.block, color: isBanned ? Colors.green : Colors.red, size: 20),
+                                          onPressed: () => _toggleBan(user),
+                                          tooltip: isBanned ? 'فك الحظر' : 'حظر',
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
                         );
                       },
+                      childCount: filteredUsers.length,
                     ),
-        ),
+                  ),
       ],
     );
   }
@@ -639,7 +727,6 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
   Widget _buildDetailView(ColorScheme colors) {
     final data = _selectedUserData!;
     final role = _selectedUserRole!;
-    final walletProvider = context.read<WalletProvider>();
 
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -680,8 +767,7 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
                   const Divider(),
                   _buildDetailRow(Icons.phone_android, 'رقم الهاتف', _selectedUserPhone ?? '', Colors.indigo),
                   const Divider(),
-                  _buildDetailRow(Icons.badge, 'الدور',
-                      role == 'agent' ? 'وكيل' : role == 'pos' ? 'نقطة بيع' : role == 'user' ? 'مستخدم' : role, Colors.orange),
+                  _buildDetailRow(Icons.badge, 'الدور', _translateRole(role), Colors.orange),
                   if (role == 'agent') ...[
                     const Divider(),
                     _buildDetailRow(Icons.account_balance_wallet, 'الرصيد', '${(data['balance'] ?? 0).toString()} ريال', Colors.green),
@@ -717,6 +803,15 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
                       ],
                     ],
                   ],
+                  // 🆕 زر إعادة تعيين PIN
+                  const Divider(),
+                  Center(
+                    child: TextButton.icon(
+                      onPressed: () => _resetUserPin(data),
+                      icon: const Icon(Icons.lock_reset, color: Colors.amber),
+                      label: const Text('إعادة تعيين PIN (123456)', style: TextStyle(color: Colors.amber)),
+                    ),
+                  ),
                 ],
               ),
             ),
