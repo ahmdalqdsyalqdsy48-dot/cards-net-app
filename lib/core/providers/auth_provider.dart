@@ -63,6 +63,16 @@ class AuthProvider extends ChangeNotifier {
       await _loadUserData(phone);
       await _ensureUserAccountNumber();
 
+      // 🆕 فحص الحظر
+      final doc = await _db.collection('users').doc(phone).get();
+      if (doc.exists && doc.data() != null) {
+        final isBanned = doc.data()!['isBanned'] ?? false;
+        if (isBanned == true) {
+          clearAllData();
+          return null; // ممنوع من الدخول
+        }
+      }
+
       await _logAction(
         action: 'تسجيل دخول',
         details: 'تم تسجيل الدخول',
@@ -437,19 +447,15 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---------- Getters الملف الشخصي (مكتملة الآن) ----------
-
-  // --- تم إكمال هذا الـ getter ---
+  // ---------- Getters الملف الشخصي ----------
   bool get isPinEnabled {
     return _currentUserData['pinEnabled'] == true;
   }
 
-  // --- تم إكمال هذا الـ getter ---
   String get currentUserName {
     return _currentUserData['name'] ?? '';
   }
 
-  // --- تم إكمال هذا الـ getter ---
   double get currentUserBalance {
     if (_activeUserPhone == null) return 0.0;
     if (_currentUserRole == 'user' || _currentUserRole == 'pos') {
@@ -461,5 +467,20 @@ class AuthProvider extends ChangeNotifier {
 
   String get currentUserPin {
     return _currentUserData['pin'] ?? '123456';
+  }
+
+  // ---------- 🆕 دوال المدير العام: إدارة PIN وقفل الحساب ----------
+  /// إعادة تعيين رمز PIN لمستخدم معين إلى 123456
+  Future<void> adminResetUserPin(String phone) async {
+    await _db.collection('users').doc(phone).update({'pin': '123456'});
+  }
+
+  /// التحقق من حالة الحظر (تُستخدم بواسطة شاشة تسجيل الدخول)
+  Future<bool> isUserBanned(String phone) async {
+    final doc = await _db.collection('users').doc(phone).get();
+    if (doc.exists) {
+      return doc.data()?['isBanned'] ?? false;
+    }
+    return false;
   }
 }
