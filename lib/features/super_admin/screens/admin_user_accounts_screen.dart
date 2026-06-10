@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart' as intl;
 
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../core/providers/wallet_provider.dart';
 import '../../../core/providers/agent_admin_provider.dart';
+import '../../../core/providers/transactions_provider.dart';
 import '../../../core/providers/ui_provider.dart';
 import '../../../core/widgets/custom_drawer.dart';
 import '../../../core/widgets/custom_header.dart';
@@ -103,21 +105,14 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
     );
   }
 
-  /// ترجمة الدور من الإنجليزية إلى العربية
   String _translateRole(String role) {
     switch (role) {
-      case 'agent':
-        return 'وكيل';
-      case 'user':
-        return 'مستخدم';
-      case 'pos':
-        return 'بقالة';
-      case 'staff':
-        return 'موظف';
-      case 'super_admin':
-        return 'مدير عام';
-      default:
-        return role;
+      case 'agent': return 'وكيل';
+      case 'user': return 'مستخدم';
+      case 'pos': return 'بقالة';
+      case 'staff': return 'موظف';
+      case 'super_admin': return 'مدير عام';
+      default: return role;
     }
   }
 
@@ -238,7 +233,6 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
     }
   }
 
-  /// 🆕 إعادة تعيين رمز PIN لمستخدم إلى 123456
   Future<void> _resetUserPin(Map<String, dynamic> user) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -262,7 +256,7 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
     }
   }
 
-  // ========== بطاقة تفصيلية (منقولة من AdvancedResetScreen) ==========
+  // ========== بطاقة تفصيلية ==========
   Future<void> _selectUser(Map<String, dynamic> user) async {
     _play('click');
     final phone = user['phone'] ?? '';
@@ -316,32 +310,66 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
 
   Future<void> _loadExtraData(String phone, String role) async {
     Map<String, dynamic> extra = {};
-    if (role == 'agent') {
-      final netsSnap = await FirebaseFirestore.instance.collection('networks').where('agentPhone', isEqualTo: phone).get();
-      int activeNets = 0, stoppedNets = 0;
-      for (var d in netsSnap.docs) {
-        if (d['isActive'] == true) activeNets++; else stoppedNets++;
+    try {
+      // بيانات عامة للجميع
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(phone).get();
+      final userData = userDoc.data() ?? {};
+      extra['pin'] = userData['pin'] ?? '123456';
+      extra['email'] = userData['email'] ?? '';
+      final lastSeen = userData['lastSeen'];
+      if (lastSeen is Timestamp) {
+        extra['lastSeen'] = intl.DateFormat('yyyy-MM-dd hh:mm a').format(lastSeen.toDate());
+      } else {
+        extra['lastSeen'] = 'غير معروف';
       }
-      extra['activeNetworks'] = activeNets;
-      extra['stoppedNetworks'] = stoppedNets;
-      final posSnap = await FirebaseFirestore.instance.collection('users').where('pos_agents', arrayContains: phone).get();
-      int activePos = 0, stoppedPos = 0;
-      for (var d in posSnap.docs) {
-        if (d['status'] == 'نشط') activePos++; else stoppedPos++;
+
+      if (role == 'agent') {
+        final netsSnap = await FirebaseFirestore.instance.collection('networks').where('agentPhone', isEqualTo: phone).get();
+        int activeNets = 0, stoppedNets = 0;
+        for (var d in netsSnap.docs) {
+          if (d['isActive'] == true) activeNets++; else stoppedNets++;
+        }
+        extra['activeNetworks'] = activeNets;
+        extra['stoppedNetworks'] = stoppedNets;
+        final posSnap = await FirebaseFirestore.instance.collection('users').where('pos_agents', arrayContains: phone).get();
+        int activePos = 0, stoppedPos = 0;
+        for (var d in posSnap.docs) {
+          if (d['status'] == 'نشط') activePos++; else stoppedPos++;
+        }
+        extra['activePos'] = activePos;
+        extra['stoppedPos'] = stoppedPos;
+        // عدد الكروت المباعة
+        extra['soldCardsCount'] = userData['purchasedCards'] != null ? (userData['purchasedCards'] as List).length : 0;
+        extra['status'] = userData['status'] ?? 'نشط';
+        extra['subExpiry'] = userData['subExpiry'] ?? 'غير محدد';
+        extra['subPlan'] = userData['subPlan'] ?? 'باقة افتراضية';
+      } else if (role == 'user' || role == 'pos') {
+        final wallets = (userData['wallets'] as Map<String, dynamic>?) ?? {};
+        double total = wallets.values.fold(0.0, (a, b) => a + (b as num).toDouble());
+        extra['totalBalance'] = total;
+        extra['wallets'] = wallets;
+        final agentList = context.read<WalletProvider>().agentsList;
+        final agentNames = <String, String>{};
+        for (var a in agentList) {
+          agentNames[a['phone']] = a['name'] ?? a['phone'];
+        }
+        extra['agentNames'] = agentNames;
+        extra['soldCardsCount'] = userData['purchasedCards'] != null ? (userData['purchasedCards'] as List).length : 0;
+        if (role == 'pos') {
+          final relations = userData['agent_relations'] ?? {};
+          if (relations.isNotEmpty) {
+            final firstRel = relations.values.first;
+            extra['creditLimit'] = firstRel['creditLimit'] ?? 0;
+            extra['commission'] = firstRel['commission'] ?? '0%';
+            extra['posAgents'] = relations.keys.toList();
+          }
+        }
+      } else if (role == 'staff') {
+        final permissions = userData['permissions'] ?? {};
+        extra['permissions'] = permissions;
       }
-      extra['activePos'] = activePos;
-      extra['stoppedPos'] = stoppedPos;
-    } else if (role == 'user' || role == 'pos') {
-      final wallets = (_selectedUserData?['wallets'] as Map<String, dynamic>?) ?? {};
-      double total = wallets.values.fold(0.0, (a, b) => a + (b as num).toDouble());
-      extra['totalBalance'] = total;
-      extra['wallets'] = wallets;
-      final agentList = context.read<WalletProvider>().agentsList;
-      final agentNames = <String, String>{};
-      for (var a in agentList) {
-        agentNames[a['phone']] = a['name'] ?? a['phone'];
-      }
-      extra['agentNames'] = agentNames;
+    } catch (e) {
+      debugPrint('خطأ في تحميل البيانات الإضافية: $e');
     }
     if (mounted) setState(() => _extraData = extra);
   }
@@ -476,7 +504,6 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
     }
   }
 
-  /// 🆕 عرض نافذة اختيار الدور
   void _showRoleFilterSheet() {
     showModalBottomSheet(
       context: context,
@@ -510,7 +537,6 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
     );
   }
 
-  // ========== واجهة المستخدم ==========
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -557,12 +583,10 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
     );
   }
 
-  // ---------- شاشة القائمة الرئيسية (رأس يختفي مع التمرير) ----------
   Widget _buildListView(ColorScheme colors, List<Map<String, dynamic>> filteredUsers, String roleFilterValue) {
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
-        // الرأس الذي يختفي تدريجياً
         SliverToBoxAdapter(
           child: Column(
             children: [
@@ -591,7 +615,6 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
                   ],
                 ),
               ),
-              // صف يحتوي على زر الفلترة فقط
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Row(
@@ -614,7 +637,6 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
             ],
           ),
         ),
-        // القائمة
         _isLoading
             ? const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
             : filteredUsers.isEmpty
@@ -723,10 +745,10 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
     );
   }
 
-  // ---------- شاشة التفاصيل وإعادة التعيين ----------
   Widget _buildDetailView(ColorScheme colors) {
     final data = _selectedUserData!;
     final role = _selectedUserRole!;
+    final extra = _extraData;
 
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -736,15 +758,11 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
         children: [
           Row(
             children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: _closeDetailView,
-              ),
+              IconButton(icon: const Icon(Icons.arrow_back), onPressed: _closeDetailView),
               const Text('العودة للقائمة', style: TextStyle(fontWeight: FontWeight.bold)),
             ],
           ),
           const SizedBox(height: 16),
-
           Card(
             elevation: 4,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
@@ -768,42 +786,81 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
                   _buildDetailRow(Icons.phone_android, 'رقم الهاتف', _selectedUserPhone ?? '', Colors.indigo),
                   const Divider(),
                   _buildDetailRow(Icons.badge, 'الدور', _translateRole(role), Colors.orange),
-                  if (role == 'agent') ...[
+                  // بيانات عامة
+                  if (extra != null) ...[
+                    const Divider(),
+                    _buildDetailRow(Icons.lock, 'PIN', extra['pin'] ?? 'غير معين', Colors.grey, copyable: true),
+                    const Divider(),
+                    _buildDetailRow(Icons.email, 'البريد', extra['email'] ?? 'غير مضاف', Colors.blueGrey),
+                    const Divider(),
+                    _buildDetailRow(Icons.login, 'آخر دخول', extra['lastSeen'] ?? 'غير معروف', Colors.brown),
+                    const Divider(),
+                    _buildDetailRow(Icons.confirmation_number, 'عدد الكروت', '${extra['soldCardsCount'] ?? 0}', Colors.deepPurple),
+                  ],
+                  // بيانات خاصة بالوكيل
+                  if (role == 'agent' && extra != null) ...[
                     const Divider(),
                     _buildDetailRow(Icons.account_balance_wallet, 'الرصيد', '${(data['balance'] ?? 0).toString()} ريال', Colors.green),
-                    if (_extraData != null) ...[
-                      const Divider(),
-                      _buildDetailRow(Icons.wifi, 'الشبكات', 'نشطة: ${_extraData!['activeNetworks'] ?? 0} / موقوفة: ${_extraData!['stoppedNetworks'] ?? 0}', Colors.blueGrey),
-                      const Divider(),
-                      _buildDetailRow(Icons.storefront, 'نقاط البيع', 'نشطة: ${_extraData!['activePos'] ?? 0} / موقوفة: ${_extraData!['stoppedPos'] ?? 0}', Colors.purple),
+                    const Divider(),
+                    _buildDetailRow(Icons.wifi, 'الشبكات', 'نشطة: ${extra['activeNetworks'] ?? 0} / موقوفة: ${extra['stoppedNetworks'] ?? 0}', Colors.blueGrey),
+                    const Divider(),
+                    _buildDetailRow(Icons.storefront, 'نقاط البيع', 'نشطة: ${extra['activePos'] ?? 0} / موقوفة: ${extra['stoppedPos'] ?? 0}', Colors.purple),
+                    const Divider(),
+                    _buildDetailRow(Icons.calendar_today, 'انتهاء الاشتراك', extra['subExpiry'] ?? 'غير محدد', Colors.redAccent),
+                    const Divider(),
+                    _buildDetailRow(Icons.card_membership, 'الباقة', extra['subPlan'] ?? 'غير محدد', Colors.teal),
+                  ],
+                  // بيانات خاصة بالمستخدم ونقطة البيع
+                  if ((role == 'user' || role == 'pos') && extra != null) ...[
+                    const Divider(),
+                    _buildDetailRow(Icons.account_balance_wallet, 'إجمالي الرصيد', '${extra['totalBalance'] ?? 0} ريال', Colors.green, bold: true),
+                    if (extra['wallets'] != null && (extra['wallets'] as Map).isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      const Text('الأرصدة حسب الوكلاء:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 4),
+                      ...(extra['wallets'] as Map).entries.map((e) {
+                        final agentNames = (extra['agentNames'] as Map<String, String>?) ?? {};
+                        final agentName = agentNames[e.key] ?? e.key;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 16, bottom: 4),
+                          child: Row(
+                            children: [
+                              Icon(Icons.person, size: 16, color: colors.secondary),
+                              const SizedBox(width: 6),
+                              Text('$agentName: ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              Text('${e.value} ريال', style: TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        );
+                      }),
                     ],
-                  ] else if (role == 'user' || role == 'pos') ...[
-                    if (_extraData != null) ...[
+                    if (role == 'pos' && extra != null) ...[
                       const Divider(),
-                      _buildDetailRow(Icons.account_balance_wallet, 'إجمالي الرصيد', '${_extraData!['totalBalance'] ?? 0} ريال', Colors.green, bold: true),
-                      if ((_extraData!['wallets'] as Map?)?.isNotEmpty ?? false) ...[
-                        const SizedBox(height: 8),
-                        const Text('الأرصدة حسب الوكلاء:', style: TextStyle(fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 4),
-                        ...(_extraData!['wallets'] as Map).entries.map((e) {
-                          final agentNames = (_extraData!['agentNames'] as Map<String, String>?) ?? {};
-                          final agentName = agentNames[e.key] ?? e.key;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 16, bottom: 4),
-                            child: Row(
-                              children: [
-                                Icon(Icons.person, size: 16, color: colors.secondary),
-                                const SizedBox(width: 6),
-                                Text('$agentName: ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                                Text('${e.value} ريال', style: TextStyle(color: Colors.green, fontSize: 13, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                          );
-                        }),
-                      ],
+                      _buildDetailRow(Icons.credit_score, 'الحد الائتماني', '${extra['creditLimit'] ?? 0} ريال', Colors.red),
+                      const Divider(),
+                      _buildDetailRow(Icons.percent, 'العمولة', extra['commission'] ?? '0%', Colors.indigo),
+                      if (extra['posAgents'] != null)
+                        _buildDetailRow(Icons.people, 'وكلاء مرتبطون', '${(extra['posAgents'] as List).length}', Colors.blue),
                     ],
                   ],
-                  // 🆕 زر إعادة تعيين PIN
+                  // بيانات خاصة بالموظف
+                  if (role == 'staff' && extra != null) ...[
+                    const Divider(),
+                    const Text('الصلاحيات:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    if (extra['permissions'] != null && (extra['permissions'] as Map).isNotEmpty)
+                      ...(extra['permissions'] as Map).entries.map((e) => Padding(
+                        padding: const EdgeInsets.only(right: 16, bottom: 4),
+                        child: Row(
+                          children: [
+                            Icon(e.value == true ? Icons.check_circle : Icons.cancel, size: 16, color: e.value == true ? Colors.green : Colors.red),
+                            const SizedBox(width: 6),
+                            Text('${e.key}: ${e.value == true ? "مفعلة" : "غير مفعلة"}', style: TextStyle(fontSize: 13)),
+                          ],
+                        ),
+                      ))
+                    else
+                      const Text('لا توجد صلاحيات محددة'),
+                  ],
                   const Divider(),
                   Center(
                     child: TextButton.icon(
@@ -816,9 +873,7 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
               ),
             ),
           ),
-
           const SizedBox(height: 20),
-
           if (_lastTransactions.isNotEmpty) ...[
             Text('آخر العمليات', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface)),
             const SizedBox(height: 8),
@@ -835,12 +890,10 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
                 )),
             const SizedBox(height: 20),
           ],
-
           Text('الإجراءات المتاحة', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface)),
           const SizedBox(height: 8),
           _buildActionCheckboxes(role),
           const SizedBox(height: 20),
-
           Text('خيارات متقدمة', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface)),
           const SizedBox(height: 8),
           _buildCheckbox('إعادة تسمية الحساب', _renameAccount, (v) => setState(() => _renameAccount = v!)),
@@ -859,9 +912,7 @@ class _AdminUserAccountsScreenState extends State<AdminUserAccountsScreen> {
             TextField(controller: _mergeToController, decoration: const InputDecoration(labelText: 'رقم هاتف الهدف', border: OutlineInputBorder())),
           ],
           _buildCheckbox('تصدير البيانات قبل الحذف', _exportBeforeDelete, (v) => setState(() => _exportBeforeDelete = v!)),
-
           const SizedBox(height: 20),
-
           Row(
             children: [
               Expanded(
