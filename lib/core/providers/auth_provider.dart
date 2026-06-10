@@ -102,8 +102,8 @@ class AuthProvider extends ChangeNotifier {
     required String password,
     required String role,
   }) async {
-    final apiService = _getApiService();
-    await apiService.post('/api/register', {
+    final api = _getApiService();
+    await api.post('/api/register', {
       'name': name,
       'phone': phone,
       'password': password,
@@ -111,6 +111,9 @@ class AuthProvider extends ChangeNotifier {
     }, authenticate: false);
     _activeUserPhone = phone;
     _currentUserRole = role;
+    _listenToUserNotifications();
+    // 🆕 توليد رقم حساب تلقائي
+    await _ensureUserAccountNumber();
     notifyListeners();
   }
 
@@ -134,12 +137,68 @@ class AuthProvider extends ChangeNotifier {
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
         if (data['accountNumber'] == null) {
-          // التوليد يتم في WalletProvider
+          final newAcc = await _generateNextAccountNumber();
+          await _db.collection('users').doc(_activeUserPhone).update({
+            'accountNumber': newAcc,
+          });
         }
       }
     } catch (e) {
       debugPrint('خطأ في ضمان رقم الحساب: $e');
     }
+  }
+
+  Future<String> _generateNextAccountNumber() async {
+    final usersSnapshot = await _db
+        .collection('users')
+        .where('accountNumber', isNotEqualTo: null)
+        .get();
+
+    List<int> existingNumbers = [];
+    for (var doc in usersSnapshot.docs) {
+      final data = doc.data();
+      final acc = data['accountNumber'];
+      if (acc != null) {
+        final num = int.tryParse(acc.toString());
+        if (num != null) existingNumbers.add(num);
+      }
+    }
+
+    int candidate = 10000;
+    if (existingNumbers.isNotEmpty) {
+      candidate = existingNumbers.reduce((a, b) => a > b ? a : b) + 1;
+      if (candidate > 19999 && candidate < 100000) {
+        candidate = 100000;
+      } else if (candidate > 199999 && candidate < 1000000) {
+        candidate = 1000000;
+      } else if (candidate > 1999999 && candidate < 10000000) {
+        candidate = 10000000;
+      }
+    }
+
+    while (_isSpecialAccountNumber(candidate.toString())) {
+      candidate++;
+      if (candidate > 19999 && candidate < 100000) {
+        candidate = 100000;
+      } else if (candidate > 199999 && candidate < 1000000) {
+        candidate = 1000000;
+      } else if (candidate > 1999999 && candidate < 10000000) {
+        candidate = 10000000;
+      }
+    }
+
+    return candidate.toString();
+  }
+
+  bool _isSpecialAccountNumber(String numberStr) {
+    final num = int.tryParse(numberStr);
+    if (num == null || num < 10000) return true;
+    if (numberStr.length >= 5 && numberStr.split('').toSet().length == 1) return true;
+    final ascending = '0123456789';
+    if (ascending.contains(numberStr)) return true;
+    final descending = '9876543210';
+    if (descending.contains(numberStr)) return true;
+    return false;
   }
 
   Future<void> _logAction({
@@ -171,6 +230,10 @@ class AuthProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('خطأ في تسجيل الحدث: $e');
     }
+  }
+
+  void _listenToUserNotifications() {
+    // تم نقل مستمع الإشعارات إلى NotificationProvider، هذه الدالة أصبحت فارغة للتوافق
   }
 
   void clearAllData() {
