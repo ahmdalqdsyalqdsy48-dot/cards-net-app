@@ -127,10 +127,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
         ? 'تقرير مبيعات اليوم'
         : 'تقرير من: ${_formatDate(transactions.dashboardDateRange!.start)} إلى ${_formatDate(transactions.dashboardDateRange!.end)}';
 
-    // جمع إجمالي طلبات الشحن المعلقة (سنستخدم StreamBuilder لاحقاً لكن هنا نضع قيمة إجمالية 0 لأننا لا نستطيع جلبها بشكل تزامني)
-    // سنمرر 0 كما في الكود الأصلي، لكن يمكن تحسينه بجلب البيانات قبل فتح الـ PDF
-    const double pendingTotal = 0; // سيبقى كما هو للتوافق، يمكن تحسينه لاحقاً
-
     pdf.addPage(
       pw.Page(
         textDirection: pw.TextDirection.rtl,
@@ -161,7 +157,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                   ['البيان', 'القيمة'],
                   ['إجمالي المبيعات المحققة', '${transactions.filteredSales.toStringAsFixed(0)} ريال'],
                   ['إجمالي الأرباح', '${transactions.filteredProfit.toStringAsFixed(0)} ريال'],
-                  ['طلبات الشحن المعلقة', '${wallet.pendingRechargeRequests.length} طلبات (${pendingTotal.toStringAsFixed(0)} ريال)'],
+                  ['طلبات الشحن المعلقة', '${wallet.pendingRechargeRequests.length} طلبات'],
                   ['وكلاء في مرحلة الخطر', '$agentsDanger وكلاء'],
                   ['الوكيل الأنشط بالفترة', topAgent],
                   ['إجمالي تذاكر الدعم المفتوحة', '${transactions.openTicketsCount} تذاكر'],
@@ -357,22 +353,27 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
       drawer: CustomDrawer(
         userName: userName,
         phoneNumber: userPhone,
-        role: auth.hasPermission('الرئيسية (غرفة العمليات)') && adminBalance > 0 ? 'مالك النظام' : 'موظف مخصص',
+        role: auth.currentUserRole == 'super_admin' ? 'مالك النظام' : 'موظف مخصص', // 🆕 إصلاح الدور
         balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
       ),
       body: RefreshIndicator(
         key: _refreshKey,
         onRefresh: () async {
-          // يتم التحديث من المستمعات تلقائياً
           await Future.delayed(const Duration(milliseconds: 300));
           uiProvider.playSound('success');
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('تم تحديث الصفحة بنجاح ✅', textDirection: TextDirection.rtl),
+              backgroundColor: Colors.green,
+            ),
+          );
         },
-        child: SingleChildScrollView(
+        child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            children: [
-              // شريط الفلترة
-              Container(
+          slivers: [
+            // شريط الفلترة (يختفي تدريجياً مع التمرير)
+            SliverToBoxAdapter(
+              child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
                   color: isDark ? primaryColor.withOpacity(0.4) : primaryColor.withOpacity(0.8),
@@ -445,174 +446,219 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
                   ],
                 ),
               ),
-              const SizedBox(height: 10),
-              // شبكة البطاقات
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: 9,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 1.1,
-                  ),
-                  itemBuilder: (context, index) {
-                    switch (index) {
-                      case 0:
-                        if (auth.hasPermission('المركز المالي والمحافظ'))
-                          return _buildDashboardCard(
-                            title: 'المبيعات (مفلترة)',
-                            value: todaySales.toStringAsFixed(0),
-                            subValue: '+ أرباح: ${todayProfit.toStringAsFixed(0)}',
-                            icon: Icons.monetization_on,
-                            color: Colors.green,
-                            onTap: () => _navigateTo(const FinancialCenterScreen()),
-                          );
-                        break;
-                      case 1:
-                        if (auth.hasPermission('المركز المالي والمحافظ'))
-                          return StreamBuilder<QuerySnapshot>(
-                            stream: FirebaseFirestore.instance
-                                .collection('recharge_requests')
-                                .where('status', isEqualTo: 'pending')
-                                .snapshots(),
-                            builder: (context, snapshot) {
-                              int pendingCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
-                              double pendingTotal = 0;
-                              if (snapshot.hasData) {
-                                for (var doc in snapshot.data!.docs) {
-                                  pendingTotal += ((doc.data() as Map<String, dynamic>)['amount'] ?? 0).toDouble();
-                                }
-                              }
-                              return _buildDashboardCard(
-                                title: 'طلبات شحن معلقة',
-                                value: '$pendingCount طلبات',
-                                subValue: pendingCount > 0 ? 'بإجمالي: ${pendingTotal.toStringAsFixed(0)} ريال' : 'لا توجد طلبات جديدة',
-                                icon: Icons.download,
-                                color: pendingCount > 0 ? Colors.redAccent : Colors.grey,
-                                isAlert: pendingCount > 0,
-                                onTap: () {
-                                  if (pendingCount > 0) {
-                                    _showPendingRequestsModal(context, snapshot.data!.docs);
-                                  } else {
-                                    uiProvider.playSound('click');
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('لا توجد طلبات معلقة حالياً')),
-                                    );
-                                  }
-                                },
-                              );
-                            },
-                          );
-                        break;
-                      case 2:
-                        if (auth.hasPermission('إدارة الوكلاء الشاملة'))
-                          return _buildDashboardCard(
-                            title: 'رادار الخطر',
-                            value: '$agentsInDanger وكلاء',
-                            subValue: agentsInDanger > 0 ? 'تجاوزوا حد الخطر المسموح!' : 'جميع الوكلاء في أمان',
-                            icon: Icons.warning_amber_rounded,
-                            color: agentsInDanger > 0 ? Colors.orange : Colors.grey,
-                            isAlert: agentsInDanger > 0,
-                            onTap: () => _navigateTo(const AgentManagementScreen()),
-                          );
-                        break;
-                      case 3:
-                        if (auth.hasPermission('إدارة الموظفين والدعم'))
-                          return _buildDashboardCard(
-                            title: 'تذاكر الدعم',
-                            value: '$openTicketsCount مفتوحة',
-                            subValue: '$criticalTicketsCount منها أولوية قصوى',
-                            icon: Icons.support_agent,
-                            color: Colors.blue,
-                            isAlert: criticalTicketsCount > 0,
-                            onTap: () => _navigateTo(const StaffSupportScreen()),
-                          );
-                        break;
-                      case 4:
-                        if (auth.hasPermission('التقارير الشاملة'))
-                          return _buildDashboardCard(
-                            title: 'إجمالي المخزون',
-                            value: '$totalCards كرت',
-                            subValue: 'كروت متوفرة بالنظام',
-                            icon: Icons.inventory_2,
-                            color: Colors.teal,
-                            onTap: () => _navigateTo(const ReportsScreen()),
-                          );
-                        break;
-                      case 5:
-                        if (auth.hasPermission('إدارة الوكلاء الشاملة'))
-                          return _buildDashboardCard(
-                            title: 'الوكيل الأنشط',
-                            value: topAgentName,
-                            subValue: 'الأعلى رصيداً حالياً',
-                            icon: Icons.star,
-                            color: Colors.amber.shade600,
-                            onTap: () => _navigateTo(const AgentManagementScreen()),
-                          );
-                        break;
-                      case 6:
-                        if (auth.hasPermission('بوابة رسائل الـ SMS'))
-                          return _buildDashboardCard(
-                            title: 'رصيد الـ SMS',
-                            value: smsBalance.toString(),
-                            subValue: 'رسالة متبقية',
-                            icon: Icons.sms,
-                            color: Colors.purple,
-                            onTap: () => _navigateTo(const SmsGatewayScreen()),
-                          );
-                        break;
-                      case 7:
-                        if (auth.hasPermission('الإعلانات التسويقية'))
-                          return _buildDashboardCard(
-                            title: 'الإعلانات والبنرات',
-                            value: 'نشطة',
-                            subValue: 'إدارة الحملات الحية',
-                            icon: Icons.campaign,
-                            color: Colors.pink,
-                            onTap: () => _navigateTo(const BannersScreen()),
-                          );
-                        break;
-                      case 8:
-                        if (auth.hasPermission('الإعدادات العامة'))
-                          return _buildDashboardCard(
-                            title: 'إعدادات النظام',
-                            value: 'تحكم كامل',
-                            subValue: 'هوية، حماية، سياسات',
-                            icon: Icons.settings,
-                            color: Colors.blueGrey,
-                            onTap: () => _navigateTo(const GlobalSettingsScreen()),
-                          );
-                        break;
-                      default:
-                        break;
-                    }
-                    // بطاقة التحكم الشامل تظهر دائماً في حالة عدم وجود بطاقة أخرى للمؤشر
-                    if (index == 8) {
-                      return _buildDashboardCard(
-                        title: 'التحكم الشامل',
-                        value: 'إعادة تهيئة',
-                        subValue: 'فرمتة أي جزء من النظام',
-                        icon: Icons.cleaning_services,
-                        color: Colors.red,
-                        onTap: () {
-                          uiProvider.playSound('click');
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => const AdvancedResetScreen()));
-                        },
-                      );
-                    }
-                    return const SizedBox.shrink();
-                  },
-                ),
+            ),
+
+            // 🆕 شبكة البطاقات الديناميكية (تظهر فقط البطاقات المصرح بها)
+            SliverPadding(
+              padding: const EdgeInsets.all(16),
+              sliver: _buildDynamicDashboardGrid(
+                auth: auth,
+                wallet: wallet,
+                transactions: transactions,
+                settings: settings,
+                uiProvider: uiProvider,
+                todaySales: todaySales,
+                todayProfit: todayProfit,
+                openTicketsCount: openTicketsCount,
+                criticalTicketsCount: criticalTicketsCount,
+                totalCards: totalCards,
+                agentsInDanger: agentsInDanger,
+                topAgentName: topAgentName,
+                smsBalance: smsBalance,
               ),
-              const SizedBox(height: 30),
-            ],
-          ),
+            ),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 30)),
+          ],
         ),
       ),
+    );
+  }
+
+  // 🆕 بناء شبكة ديناميكية من البطاقات المتاحة حسب الصلاحيات
+  Widget _buildDynamicDashboardGrid({
+    required AuthProvider auth,
+    required WalletProvider wallet,
+    required TransactionsProvider transactions,
+    required SettingsProvider settings,
+    required UiProvider uiProvider,
+    required double todaySales,
+    required double todayProfit,
+    required int openTicketsCount,
+    required int criticalTicketsCount,
+    required int totalCards,
+    required int agentsInDanger,
+    required String topAgentName,
+    required int smsBalance,
+  }) {
+    // تعريف جميع البطاقات الممكنة مع الصلاحية المطلوبة
+    final List<Widget> allCards = [];
+
+    // بطاقة المبيعات
+    if (auth.hasPermission('المركز المالي والمحافظ')) {
+      allCards.add(_buildDashboardCard(
+        title: 'المبيعات (مفلترة)',
+        value: todaySales.toStringAsFixed(0),
+        subValue: '+ أرباح: ${todayProfit.toStringAsFixed(0)}',
+        icon: Icons.monetization_on,
+        color: Colors.green,
+        onTap: () => _navigateTo(const FinancialCenterScreen()),
+      ));
+    }
+
+    // بطاقة طلبات الشحن المعلقة (نحتاج StreamBuilder)
+    if (auth.hasPermission('المركز المالي والمحافظ')) {
+      allCards.add(
+        StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('recharge_requests')
+              .where('status', isEqualTo: 'pending')
+              .snapshots(),
+          builder: (context, snapshot) {
+            int pendingCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
+            double pendingTotal = 0;
+            if (snapshot.hasData) {
+              for (var doc in snapshot.data!.docs) {
+                pendingTotal += ((doc.data() as Map<String, dynamic>)['amount'] ?? 0).toDouble();
+              }
+            }
+            return _buildDashboardCard(
+              title: 'طلبات شحن معلقة',
+              value: '$pendingCount طلبات',
+              subValue: pendingCount > 0 ? 'بإجمالي: ${pendingTotal.toStringAsFixed(0)} ريال' : 'لا توجد طلبات جديدة',
+              icon: Icons.download,
+              color: pendingCount > 0 ? Colors.redAccent : Colors.grey,
+              isAlert: pendingCount > 0,
+              onTap: () {
+                if (pendingCount > 0 && snapshot.hasData) {
+                  _showPendingRequestsModal(context, snapshot.data!.docs);
+                } else {
+                  uiProvider.playSound('click');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('لا توجد طلبات معلقة حالياً')),
+                  );
+                }
+              },
+            );
+          },
+        ),
+      );
+    }
+
+    // بطاقة رادار الخطر
+    if (auth.hasPermission('إدارة الوكلاء الشاملة')) {
+      allCards.add(_buildDashboardCard(
+        title: 'رادار الخطر',
+        value: '$agentsInDanger وكلاء',
+        subValue: agentsInDanger > 0 ? 'تجاوزوا حد الخطر المسموح!' : 'جميع الوكلاء في أمان',
+        icon: Icons.warning_amber_rounded,
+        color: agentsInDanger > 0 ? Colors.orange : Colors.grey,
+        isAlert: agentsInDanger > 0,
+        onTap: () => _navigateTo(const AgentManagementScreen()),
+      ));
+    }
+
+    // بطاقة تذاكر الدعم
+    if (auth.hasPermission('إدارة الموظفين والدعم')) {
+      allCards.add(_buildDashboardCard(
+        title: 'تذاكر الدعم',
+        value: '$openTicketsCount مفتوحة',
+        subValue: '$criticalTicketsCount منها أولوية قصوى',
+        icon: Icons.support_agent,
+        color: Colors.blue,
+        isAlert: criticalTicketsCount > 0,
+        onTap: () => _navigateTo(const StaffSupportScreen()),
+      ));
+    }
+
+    // بطاقة إجمالي المخزون
+    if (auth.hasPermission('التقارير الشاملة')) {
+      allCards.add(_buildDashboardCard(
+        title: 'إجمالي المخزون',
+        value: '$totalCards كرت',
+        subValue: 'كروت متوفرة بالنظام',
+        icon: Icons.inventory_2,
+        color: Colors.teal,
+        onTap: () => _navigateTo(const ReportsScreen()),
+      ));
+    }
+
+    // بطاقة الوكيل الأنشط
+    if (auth.hasPermission('إدارة الوكلاء الشاملة')) {
+      allCards.add(_buildDashboardCard(
+        title: 'الوكيل الأنشط',
+        value: topAgentName,
+        subValue: 'الأعلى رصيداً حالياً',
+        icon: Icons.star,
+        color: Colors.amber.shade600,
+        onTap: () => _navigateTo(const AgentManagementScreen()),
+      ));
+    }
+
+    // بطاقة رصيد SMS
+    if (auth.hasPermission('بوابة رسائل الـ SMS')) {
+      allCards.add(_buildDashboardCard(
+        title: 'رصيد الـ SMS',
+        value: smsBalance.toString(),
+        subValue: 'رسالة متبقية',
+        icon: Icons.sms,
+        color: Colors.purple,
+        onTap: () => _navigateTo(const SmsGatewayScreen()),
+      ));
+    }
+
+    // بطاقة الإعلانات والبنرات
+    if (auth.hasPermission('الإعلانات التسويقية')) {
+      allCards.add(_buildDashboardCard(
+        title: 'الإعلانات والبنرات',
+        value: 'نشطة',
+        subValue: 'إدارة الحملات الحية',
+        icon: Icons.campaign,
+        color: Colors.pink,
+        onTap: () => _navigateTo(const BannersScreen()),
+      ));
+    }
+
+    // بطاقة إعدادات النظام
+    if (auth.hasPermission('الإعدادات العامة')) {
+      allCards.add(_buildDashboardCard(
+        title: 'إعدادات النظام',
+        value: 'تحكم كامل',
+        subValue: 'هوية، حماية، سياسات',
+        icon: Icons.settings,
+        color: Colors.blueGrey,
+        onTap: () => _navigateTo(const GlobalSettingsScreen()),
+      ));
+    }
+
+    // بطاقة التحكم الشامل (تظهر للكل كحالة افتراضية)
+    allCards.add(_buildDashboardCard(
+      title: 'التحكم الشامل',
+      value: 'إعادة تهيئة',
+      subValue: 'فرمتة أي جزء من النظام',
+      icon: Icons.cleaning_services,
+      color: Colors.red,
+      onTap: () {
+        uiProvider.playSound('click');
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const AdvancedResetScreen()));
+      },
+    ));
+
+    // إذا كانت القائمة فارغة، عرض رسالة
+    if (allCards.isEmpty) {
+      return const SliverFillRemaining(
+        child: Center(child: Text('لا توجد بطاقات متاحة لصلاحياتك', style: TextStyle(color: Colors.grey))),
+      );
+    }
+
+    return SliverGrid(
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 1.1,
+      ),
+      delegate: SliverChildListDelegate(allCards),
     );
   }
 
