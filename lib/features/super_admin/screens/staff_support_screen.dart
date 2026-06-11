@@ -45,7 +45,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
   }
 
   // ==========================================
-  // 1. نافذة إضافة/تعديل موظف (هرمية، إغلاق فوري)
+  // 1. نافذة إضافة/تعديل موظف (هرمية كاملة)
   // ==========================================
   void _showStaffDialog({Map<String, dynamic>? existingData}) {
     context.read<UiProvider>().playSound('click');
@@ -57,56 +57,171 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
     );
     final passwordController = TextEditingController();
 
-    // 🆕 هيكل الصلاحيات المنظم
-    Map<String, Map<String, String>> sections = {
-      'إدارة الموظفين': {
-        'عرض الموظفين': 'عرض الموظفين',
-        'إضافة موظف': 'إضافة موظف',
-        'تعديل موظف': 'تعديل موظف',
-        'حذف موظف': 'حذف موظف',
-        'تجميد/تنشيط موظف': 'تجميد/تنشيط موظف',
-        'عرض الرواتب': 'عرض الرواتب',
-        'تعديل الرواتب': 'تعديل الرواتب',
-        'تسليم راتب': 'تسليم راتب',
+    // 🆕 الهيكل الهرمي الكامل المطابق للقائمة الجانبية (جميع الأقسام الـ 15)
+    final Map<String, dynamic> sections = {
+      'الرئيسية (غرفة العمليات)': {
+        'icon': Icons.dashboard,
+        'tabs': {
+          'عام': {
+            'الرئيسية (غرفة العمليات)': 'الرئيسية (غرفة العمليات)',
+          }
+        }
       },
       'إدارة الوكلاء': {
-        'إدارة الوكلاء الشاملة': 'إدارة الوكلاء الشاملة',
+        'icon': Icons.people_alt,
+        'tabs': {
+          'الوكلاء': {
+            'عرض الوكلاء': 'عرض الوكلاء',
+            'إضافة وكيل': 'إضافة وكيل',
+            'تعديل وكيل': 'تعديل وكيل',
+            'حذف وكيل': 'حذف وكيل',
+            'تجميد/تنشيط وكيل': 'تجميد/تنشيط وكيل',
+          }
+        }
       },
-      'المركز المالي': {
-        'المركز المالي والمحافظ': 'المركز المالي والمحافظ',
-        'الحسابات البنكية': 'الحسابات البنكية',
-        'إدارة أرقام الحسابات والحظر': 'إدارة أرقام الحسابات والحظر',
+      'إدارة الاشتراكات': {
+        'icon': Icons.event_available,
+        'tabs': {
+          'الاشتراكات': {
+            'عرض الاشتراكات': 'عرض الاشتراكات',
+            'تعديل الاشتراكات': 'تعديل الاشتراكات',
+          }
+        }
       },
-      'التقارير': {
-        'التقارير الشاملة': 'التقارير الشاملة',
+      'المركز المالي والمحافظ': {
+        'icon': Icons.account_balance_wallet,
+        'tabs': {
+          'المالية': {
+            'عرض الأرصدة': 'عرض الأرصدة',
+            'تسوية رصيد': 'تسوية رصيد',
+            'عرض المعاملات': 'عرض المعاملات',
+          }
+        }
       },
-      'التذاكر والدعم': {
-        'عرض التذاكر': 'عرض التذاكر',
-        'الرد على التذاكر': 'الرد على التذاكر',
-        'إحالة التذاكر': 'إحالة التذاكر',
-        'إغلاق التذاكر': 'إغلاق التذاكر',
+      'الحسابات البنكية': {
+        'icon': Icons.account_balance,
+        'tabs': {
+          'الحسابات': {
+            'عرض الحسابات': 'عرض الحسابات',
+            'إضافة حساب': 'إضافة حساب',
+            'تعديل حساب': 'تعديل حساب',
+            'حذف حساب': 'حذف حساب',
+          }
+        }
       },
-      'الإعدادات والأمان': {
-        'الإعدادات العامة': 'الإعدادات العامة',
-        'النسخ الاحتياطي': 'النسخ الاحتياطي',
-        'السجل الأسود للنشاط (للقراءة)': 'السجل الأسود للنشاط (للقراءة)',
+      'إدارة أرقام الحسابات والحظر': {
+        'icon': Icons.credit_card,
+        'tabs': {
+          'الحسابات': {
+            'عرض الحسابات': 'عرض الحسابات',
+            'تعديل رقم حساب': 'تعديل رقم حساب',
+            'حظر/فك حظر': 'حظر/فك حظر',
+            'إعادة تعيين PIN': 'إعادة تعيين PIN',
+          }
+        }
       },
-      'التسويق والتواصل': {
-        'الإعلانات التسويقية': 'الإعلانات التسويقية',
-        'بوابة رسائل الـ SMS': 'بوابة رسائل الـ SMS',
+      'التقارير الشاملة': {
+        'icon': Icons.analytics,
+        'tabs': {
+          'التقارير': {
+            'عرض التقارير': 'عرض التقارير',
+          }
+        }
       },
-      'إدارة النظام': {
-        'إدارة الاشتراكات والباقات': 'إدارة الاشتراكات والباقات',
-        'إدارة بوابات النظام': 'إدارة بوابات النظام',
-        'التحكم الشامل (إعادة التهيئة)': 'التحكم الشامل (إعادة التهيئة)',
+      'إدارة بوابات النظام': {
+        'icon': Icons.important_devices,
+        'tabs': {
+          'البوابات': {
+            'عرض البوابات': 'عرض البوابات',
+            'تعديل البوابات': 'تعديل البوابات',
+          }
+        }
+      },
+      'إدارة الموظفين والدعم': {
+        'icon': Icons.support_agent,
+        'tabs': {
+          'الموظفين والصلاحيات': {
+            'عرض الموظفين': 'عرض الموظفين',
+            'إضافة موظف': 'إضافة موظف',
+            'تعديل موظف': 'تعديل موظف',
+            'حذف موظف': 'حذف موظف',
+            'تجميد/تنشيط موظف': 'تجميد/تنشيط موظف',
+            'عرض الرواتب': 'عرض الرواتب',
+            'تعديل الرواتب': 'تعديل الرواتب',
+            'تسليم راتب': 'تسليم راتب',
+          },
+          'تذاكر الدعم الفني': {
+            'عرض التذاكر': 'عرض التذاكر',
+            'الرد على التذاكر': 'الرد على التذاكر',
+            'إحالة التذاكر': 'إحالة التذاكر',
+            'إغلاق التذاكر': 'إغلاق التذاكر',
+          }
+        }
+      },
+      'الإعلانات والبنرات': {
+        'icon': Icons.campaign,
+        'tabs': {
+          'الإعلانات': {
+            'عرض الإعلانات': 'عرض الإعلانات',
+            'إضافة إعلان': 'إضافة إعلان',
+            'تعديل إعلان': 'تعديل إعلان',
+            'حذف إعلان': 'حذف إعلان',
+          }
+        }
+      },
+      'بوابة رسائل SMS': {
+        'icon': Icons.sms,
+        'tabs': {
+          'الرسائل': {
+            'عرض SMS': 'عرض SMS',
+            'إرسال SMS': 'إرسال SMS',
+          }
+        }
+      },
+      'السجل الأسود للنشاط': {
+        'icon': Icons.security,
+        'tabs': {
+          'السجل': {
+            'عرض السجل': 'عرض السجل',
+          }
+        }
+      },
+      'التحكم الشامل (إعادة التهيئة)': {
+        'icon': Icons.cleaning_services,
+        'tabs': {
+          'التحكم': {
+            'التحكم الشامل (إعادة التهيئة)': 'التحكم الشامل (إعادة التهيئة)',
+          }
+        }
+      },
+      'الإعدادات العامة': {
+        'icon': Icons.settings,
+        'tabs': {
+          'الإعدادات': {
+            'عرض الإعدادات': 'عرض الإعدادات',
+            'تعديل الإعدادات': 'تعديل الإعدادات',
+          }
+        }
+      },
+      'النسخ الاحتياطي': {
+        'icon': Icons.save,
+        'tabs': {
+          'النسخ': {
+            'عرض النسخ': 'عرض النسخ',
+            'أخذ نسخة': 'أخذ نسخة',
+            'حذف نسخة': 'حذف نسخة',
+          }
+        }
       },
     };
 
     // حالة الصلاحيات الحالية
     Map<String, bool> permissions = {};
     for (var section in sections.values) {
-      for (var key in section.values) {
-        permissions[key] = existingData?['permissions']?[key] ?? false;
+      for (var tab in (section['tabs'] as Map<String, dynamic>).values) {
+        for (var key in (tab as Map<String, String>).values) {
+          permissions[key] = existingData?['permissions']?[key] ?? false;
+        }
       }
     }
 
@@ -136,55 +251,69 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildTextField('الاسم الرباعي', Icons.person, controller: nameController),
-                    // الهاتف يظهر فقط عند الإضافة
                     if (existingData == null)
                       _buildTextField('رقم الهاتف', Icons.phone, controller: phoneController, isNumber: true),
                     if (existingData == null)
                       _buildTextField('كلمة المرور الافتراضية', Icons.lock, controller: passwordController),
-                    // حقل الراتب محمي بصلاحية تعديل الرواتب (تأثير على المستخدم الحالي)
                     _buildTextField('الراتب الشهري (اختياري)', Icons.monetization_on,
                         controller: salaryController, isNumber: true, enabled: _can('تعديل الرواتب')),
                     const Divider(),
                     Text('الصلاحيات الممنوحة للموظف:',
                         style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
                     const SizedBox(height: 8),
-                    // عرض الأقسام بشكل بطاقات
                     ...sections.entries.map((sectionEntry) {
                       final sectionName = sectionEntry.key;
-                      final sectionPerms = sectionEntry.value;
-                      // التحقق من حالة التحديد الكامل
-                      final allSelected = sectionPerms.values.every((p) => permissions[p] == true);
-                      final someSelected = sectionPerms.values.any((p) => permissions[p] == true) && !allSelected;
+                      final sectionData = sectionEntry.value as Map<String, dynamic>;
+                      final tabs = sectionData['tabs'] as Map<String, dynamic>;
+
+                      // حساب حالة التحديد
+                      int totalPerms = 0;
+                      int selectedPerms = 0;
+                      for (var tab in tabs.values) {
+                        for (var permKey in (tab as Map<String, String>).values) {
+                          totalPerms++;
+                          if (permissions[permKey] == true) selectedPerms++;
+                        }
+                      }
+                      final allSelected = totalPerms > 0 && selectedPerms == totalPerms;
+                      final someSelected = selectedPerms > 0 && !allSelected;
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 8),
                         color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         child: ListTile(
+                          leading: Icon(sectionData['icon'] as IconData?, color: Theme.of(context).colorScheme.primary),
                           title: Text(sectionName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text('${sectionPerms.length} صلاحية',
+                          subtitle: Text('$totalPerms صلاحية',
                               style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
-                          leading: Checkbox(
-                            value: allSelected,
-                            tristate: false,
-                            activeColor: Theme.of(context).colorScheme.primary,
-                            onChanged: (val) {
-                              context.read<UiProvider>().playSound('click');
-                              setDialogState(() {
-                                for (var permKey in sectionPerms.values) {
-                                  permissions[permKey] = val ?? false;
-                                }
-                              });
-                            },
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Checkbox(
+                                value: allSelected,
+                                tristate: false,
+                                activeColor: Theme.of(context).colorScheme.primary,
+                                onChanged: (val) {
+                                  context.read<UiProvider>().playSound('click');
+                                  setDialogState(() {
+                                    for (var tab in tabs.values) {
+                                      for (var permKey in (tab as Map<String, String>).values) {
+                                        permissions[permKey] = val ?? false;
+                                      }
+                                    }
+                                  });
+                                },
+                              ),
+                              Icon(Icons.arrow_forward_ios, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                            ],
                           ),
-                          trailing: Icon(Icons.arrow_forward_ios, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
                           onTap: () {
                             context.read<UiProvider>().playSound('click');
-                            // فتح نافذة الصلاحيات الدقيقة للقسم
                             _showSectionPermissionsDialog(
                               ctx: ctx,
                               sectionName: sectionName,
-                              sectionPerms: sectionPerms,
+                              sectionData: sectionData,
                               permissions: permissions,
                               setDialogState: setDialogState,
                             );
@@ -209,13 +338,11 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
                           if (nameController.text.isNotEmpty && phoneController.text.isNotEmpty) {
                             context.read<UiProvider>().playSound('click');
                             setDialogState(() => isSubmitting = true);
-                            // 🆕 إغلاق النافذة فوراً
                             Navigator.pop(ctx);
                             _showSnackBar('جاري حفظ بيانات الموظف... ⏳');
 
                             try {
                               if (existingData != null) {
-                                // تعديل
                                 await _db.collection('users').doc(existingData['phone']).update({
                                   'name': nameController.text.trim(),
                                   'salary': salaryController.text.trim().isNotEmpty
@@ -224,7 +351,6 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
                                   'permissions': permissions,
                                 });
                               } else {
-                                // إضافة جديدة
                                 await _db.collection('users').doc(phoneController.text.trim()).set({
                                   'id': 'STAFF_${DateTime.now().millisecondsSinceEpoch}',
                                   'name': nameController.text.trim(),
@@ -280,25 +406,129 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
     );
   }
 
-  // 🆕 نافذة الصلاحيات الدقيقة لكل قسم
+  // 🆕 نافذة الصلاحيات الدقيقة لكل قسم (تدعم التبويبات)
   void _showSectionPermissionsDialog({
     required BuildContext ctx,
     required String sectionName,
-    required Map<String, String> sectionPerms,
+    required Map<String, dynamic> sectionData,
     required Map<String, bool> permissions,
     required StateSetter setDialogState,
   }) {
+    final tabs = sectionData['tabs'] as Map<String, dynamic>;
+    
     showDialog(
       context: ctx,
       builder: (subCtx) => StatefulBuilder(
         builder: (subCtx, setSubDialogState) {
-          final allSelected = sectionPerms.values.every((p) => permissions[p] == true);
+          // إذا كان هناك تبويب واحد فقط، نظهر الصلاحيات مباشرة
+          if (tabs.length == 1) {
+            final tabEntry = tabs.entries.first;
+            final tabName = tabEntry.key;
+            final tabPerms = tabEntry.value as Map<String, String>;
+            return _buildTabPermissionsDialog(
+              ctx: subCtx,
+              sectionName: sectionName,
+              tabName: tabName,
+              tabPerms: tabPerms,
+              permissions: permissions,
+              setDialogState: setDialogState,
+              setSubDialogState: setSubDialogState,
+            );
+          }
+          
+          // إذا كان هناك عدة تبويبات، نظهر قائمة التبويبات أولاً
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
               backgroundColor: Theme.of(context).colorScheme.surface,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-              title: Text('صلاحيات $sectionName',
+              title: Text('تبويبات $sectionName',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: tabs.entries.map((tabEntry) {
+                    final tabName = tabEntry.key;
+                    final tabPerms = tabEntry.value as Map<String, String>;
+                    final allSelected = tabPerms.values.every((p) => permissions[p] == true);
+                    final someSelected = tabPerms.values.any((p) => permissions[p] == true);
+                    
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      child: ListTile(
+                        title: Text(tabName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text('${tabPerms.length} صلاحية',
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+                        leading: Checkbox(
+                          value: allSelected,
+                          tristate: someSelected && !allSelected,
+                          activeColor: Theme.of(context).colorScheme.primary,
+                          onChanged: (val) {
+                            context.read<UiProvider>().playSound('click');
+                            setSubDialogState(() {
+                              setDialogState(() {
+                                for (var permKey in tabPerms.values) {
+                                  permissions[permKey] = val ?? false;
+                                }
+                              });
+                            });
+                          },
+                        ),
+                        trailing: Icon(Icons.arrow_forward_ios, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        onTap: () {
+                          context.read<UiProvider>().playSound('click');
+                          Navigator.pop(subCtx);
+                          _buildTabPermissionsDialog(
+                            ctx: ctx,
+                            sectionName: sectionName,
+                            tabName: tabName,
+                            tabPerms: tabPerms,
+                            permissions: permissions,
+                            setDialogState: setDialogState,
+                            setSubDialogState: setSubDialogState,
+                          );
+                        },
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+              actions: [
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(subCtx),
+                  child: const Text('تم'),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // 🆕 حوار صلاحيات تبويب واحد
+  Widget _buildTabPermissionsDialog({
+    required BuildContext ctx,
+    required String sectionName,
+    required String tabName,
+    required Map<String, String> tabPerms,
+    required Map<String, bool> permissions,
+    required StateSetter setDialogState,
+    required StateSetter setSubDialogState,
+  }) {
+    return showDialog(
+      context: ctx,
+      builder: (subSubCtx) => StatefulBuilder(
+        builder: (subSubCtx, setSubSubDialogState) {
+          final allSelected = tabPerms.values.every((p) => permissions[p] == true);
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              backgroundColor: Theme.of(context).colorScheme.surface,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              title: Text('$sectionName - $tabName',
                   style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
               content: SingleChildScrollView(
                 child: Column(
@@ -310,26 +540,30 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
                       activeColor: Theme.of(context).colorScheme.primary,
                       onChanged: (val) {
                         context.read<UiProvider>().playSound('click');
-                        setSubDialogState(() {
-                          setDialogState(() {
-                            for (var permKey in sectionPerms.values) {
-                              permissions[permKey] = val ?? false;
-                            }
+                        setSubSubDialogState(() {
+                          setSubDialogState(() {
+                            setDialogState(() {
+                              for (var permKey in tabPerms.values) {
+                                permissions[permKey] = val ?? false;
+                              }
+                            });
                           });
                         });
                       },
                     ),
                     const Divider(),
-                    ...sectionPerms.entries.map((entry) {
+                    ...tabPerms.entries.map((entry) {
                       return CheckboxListTile(
                         title: Text(entry.key, style: const TextStyle(fontSize: 14)),
                         value: permissions[entry.value] ?? false,
                         activeColor: Theme.of(context).colorScheme.primary,
                         onChanged: (val) {
                           context.read<UiProvider>().playSound('click');
-                          setSubDialogState(() {
-                            setDialogState(() {
-                              permissions[entry.value] = val ?? false;
+                          setSubSubDialogState(() {
+                            setSubDialogState(() {
+                              setDialogState(() {
+                                permissions[entry.value] = val ?? false;
+                              });
                             });
                           });
                         },
@@ -340,7 +574,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
               ),
               actions: [
                 ElevatedButton(
-                  onPressed: () => Navigator.pop(subCtx),
+                  onPressed: () => Navigator.pop(subSubCtx),
                   child: const Text('تم'),
                 ),
               ],
@@ -768,7 +1002,6 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
     }
   }
 
-  // 🆕 عرض SnackBar موحد
   void _showSnackBar(String msg, {bool error = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -786,7 +1019,6 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
     final settings = context.watch<SettingsProvider>();
     final wallet = context.watch<WalletProvider>();
     final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
