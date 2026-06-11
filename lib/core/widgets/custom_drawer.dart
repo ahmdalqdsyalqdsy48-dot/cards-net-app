@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../providers/theme_provider.dart';
+import '../providers/auth_provider.dart';       // 🆕 للصلاحيات
 import '../providers/ui_provider.dart';
 
 import '../../features/auth/screens/sso_login_screen.dart';
@@ -25,7 +26,7 @@ import '../../features/super_admin/screens/sms_gateway_screen.dart';
 import '../../features/super_admin/screens/backup_screen.dart';
 import '../../features/super_admin/screens/portals_management_screen.dart';
 import '../../features/super_admin/screens/admin_user_accounts_screen.dart';
-import '../../features/super_admin/screens/advanced_reset_screen.dart'; // ✅ جديد
+import '../../features/super_admin/screens/advanced_reset_screen.dart';
 
 class CustomDrawer extends StatefulWidget {
   final String userName;
@@ -50,6 +51,13 @@ class CustomDrawer extends StatefulWidget {
 class _CustomDrawerState extends State<CustomDrawer> {
   bool _isBalanceHidden = true;
   bool _isUploading = false;
+
+  // 🆕 دالة مساعدة للتحقق من الصلاحية
+  bool _can(String permission) {
+    final auth = context.read<AuthProvider>();
+    // المدير العام يرى كل شيء، الموظف يحتاج الصلاحية
+    return auth.currentUserRole == 'super_admin' || auth.hasPermission(permission);
+  }
 
   void _playSound() {
     Provider.of<UiProvider>(context, listen: false).playSound('click');
@@ -243,8 +251,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
     
     // ألوان متدرجة للبطاقات الشخصية (تعتمد على اللون الأساسي للثيم)
     final nameColors = _generateGradientColors(primaryColor);
-    final phoneColors = _generateGradientColors(
-        primaryColor); // يمكن تخصيصها أكثر لكن متوافق حالياً
+    final phoneColors = _generateGradientColors(primaryColor);
     final roleColors = _generateGradientColors(primaryColor);
     final balanceColors = _generateGradientColors(primaryColor);
 
@@ -379,24 +386,28 @@ class _CustomDrawerState extends State<CustomDrawer> {
                       },
                     ),
                   ),
-                  _buildDrawerItem(
-                      context,
-                      'الرئيسية (غرفة العمليات)',
-                      Icons.dashboard,
-                      Colors.blue,
-                      const SuperAdminDashboard()),
-                  _buildDrawerItem(
-                      context,
-                      'إدارة الوكلاء',
-                      Icons.people_alt,
-                      Colors.purple,
-                      const AgentManagementScreen()),
-                  _buildDrawerItem(
-                      context,
-                      'إدارة الاشتراكات',
-                      Icons.event_available,
-                      Colors.teal,
-                      const SubscriptionsScreen()),
+                  // 🆕 جميع العناصر أصبحت محمية بالصلاحيات
+                  if (_can('الرئيسية (غرفة العمليات)'))
+                    _buildDrawerItem(
+                        context,
+                        'الرئيسية (غرفة العمليات)',
+                        Icons.dashboard,
+                        Colors.blue,
+                        const SuperAdminDashboard()),
+                  if (_can('إدارة الوكلاء الشاملة'))
+                    _buildDrawerItem(
+                        context,
+                        'إدارة الوكلاء',
+                        Icons.people_alt,
+                        Colors.purple,
+                        const AgentManagementScreen()),
+                  if (_can('إدارة الاشتراكات والباقات'))
+                    _buildDrawerItem(
+                        context,
+                        'إدارة الاشتراكات',
+                        Icons.event_available,
+                        Colors.teal,
+                        const SubscriptionsScreen()),
                   Divider(color: colors.outlineVariant),
                   Padding(
                     padding: const EdgeInsets.symmetric(
@@ -407,30 +418,34 @@ class _CustomDrawerState extends State<CustomDrawer> {
                             fontSize: 12,
                             fontWeight: FontWeight.bold)),
                   ),
-                  _buildDrawerItem(
-                      context,
-                      'المركز المالي والمحافظ',
-                      Icons.account_balance_wallet,
-                      Colors.green,
-                      const FinancialCenterScreen()),
-                  _buildDrawerItem(
-                      context,
-                      'الحسابات البنكية',
-                      Icons.account_balance,
-                      Colors.indigo,
-                      const BankAccountsScreen()),
-                  _buildDrawerItem(
-                      context,
-                      'إدارة أرقام الحسابات والحظر',
-                      Icons.credit_card,
-                      Colors.blueGrey,
-                      const AdminUserAccountsScreen()),
-                  _buildDrawerItem(
-                      context,
-                      'التقارير الشاملة',
-                      Icons.analytics,
-                      Colors.orange,
-                      const ReportsScreen()),
+                  if (_can('المركز المالي والمحافظ'))
+                    _buildDrawerItem(
+                        context,
+                        'المركز المالي والمحافظ',
+                        Icons.account_balance_wallet,
+                        Colors.green,
+                        const FinancialCenterScreen()),
+                  if (_can('الحسابات البنكية'))
+                    _buildDrawerItem(
+                        context,
+                        'الحسابات البنكية',
+                        Icons.account_balance,
+                        Colors.indigo,
+                        const BankAccountsScreen()),
+                  if (_can('إدارة أرقام الحسابات والحظر'))
+                    _buildDrawerItem(
+                        context,
+                        'إدارة أرقام الحسابات والحظر',
+                        Icons.credit_card,
+                        Colors.blueGrey,
+                        const AdminUserAccountsScreen()),
+                  if (_can('التقارير الشاملة'))
+                    _buildDrawerItem(
+                        context,
+                        'التقارير الشاملة',
+                        Icons.analytics,
+                        Colors.orange,
+                        const ReportsScreen()),
                   Divider(color: colors.outlineVariant),
                   Padding(
                     padding: const EdgeInsets.symmetric(
@@ -441,30 +456,34 @@ class _CustomDrawerState extends State<CustomDrawer> {
                             fontSize: 12,
                             fontWeight: FontWeight.bold)),
                   ),
-                  _buildDrawerItem(
-                      context,
-                      'إدارة بوابات النظام',
-                      Icons.important_devices,
-                      Colors.deepPurple,
-                      const PortalsManagementScreen()),
-                  _buildDrawerItem(
-                      context,
-                      'إدارة الموظفين والدعم',
-                      Icons.support_agent,
-                      Colors.brown,
-                      const StaffSupportScreen()),
-                  _buildDrawerItem(
-                      context,
-                      'الإعلانات والبنرات',
-                      Icons.campaign,
-                      Colors.deepOrange,
-                      const BannersScreen()),
-                  _buildDrawerItem(
-                      context,
-                      'بوابة رسائل SMS',
-                      Icons.sms,
-                      Colors.blueAccent,
-                      const SmsGatewayScreen()),
+                  if (_can('إدارة بوابات النظام'))
+                    _buildDrawerItem(
+                        context,
+                        'إدارة بوابات النظام',
+                        Icons.important_devices,
+                        Colors.deepPurple,
+                        const PortalsManagementScreen()),
+                  if (_can('إدارة الموظفين والدعم'))
+                    _buildDrawerItem(
+                        context,
+                        'إدارة الموظفين والدعم',
+                        Icons.support_agent,
+                        Colors.brown,
+                        const StaffSupportScreen()),
+                  if (_can('الإعلانات التسويقية'))
+                    _buildDrawerItem(
+                        context,
+                        'الإعلانات والبنرات',
+                        Icons.campaign,
+                        Colors.deepOrange,
+                        const BannersScreen()),
+                  if (_can('بوابة رسائل الـ SMS'))
+                    _buildDrawerItem(
+                        context,
+                        'بوابة رسائل SMS',
+                        Icons.sms,
+                        Colors.blueAccent,
+                        const SmsGatewayScreen()),
                   Divider(color: colors.outlineVariant),
                   Padding(
                     padding: const EdgeInsets.symmetric(
@@ -475,30 +494,34 @@ class _CustomDrawerState extends State<CustomDrawer> {
                             fontSize: 12,
                             fontWeight: FontWeight.bold)),
                   ),
-                  _buildDrawerItem(
-                      context,
-                      'السجل الأسود للنشاط',
-                      Icons.security,
-                      Colors.red,
-                      const AuditLogScreen()),
-                  _buildDrawerItem(
-                      context,
-                      'التحكم الشامل (إعادة التهيئة)',
-                      Icons.cleaning_services,
-                      Colors.red,
-                      const AdvancedResetScreen()),
-                  _buildDrawerItem(
-                      context,
-                      'الإعدادات العامة',
-                      Icons.settings,
-                      Colors.blueGrey,
-                      const GlobalSettingsScreen()),
-                  _buildDrawerItem(
-                      context,
-                      'النسخ الاحتياطي',
-                      Icons.save,
-                      Colors.black87,
-                      const BackupScreen()),
+                  if (_can('السجل الأسود للنشاط (للقراءة)'))
+                    _buildDrawerItem(
+                        context,
+                        'السجل الأسود للنشاط',
+                        Icons.security,
+                        Colors.red,
+                        const AuditLogScreen()),
+                  if (_can('التحكم الشامل (إعادة التهيئة)'))
+                    _buildDrawerItem(
+                        context,
+                        'التحكم الشامل (إعادة التهيئة)',
+                        Icons.cleaning_services,
+                        Colors.red,
+                        const AdvancedResetScreen()),
+                  if (_can('الإعدادات العامة'))
+                    _buildDrawerItem(
+                        context,
+                        'الإعدادات العامة',
+                        Icons.settings,
+                        Colors.blueGrey,
+                        const GlobalSettingsScreen()),
+                  if (_can('النسخ الاحتياطي'))
+                    _buildDrawerItem(
+                        context,
+                        'النسخ الاحتياطي',
+                        Icons.save,
+                        Colors.black87,
+                        const BackupScreen()),
                 ],
               ),
             ),
