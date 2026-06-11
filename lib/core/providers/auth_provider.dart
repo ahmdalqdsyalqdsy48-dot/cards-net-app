@@ -66,10 +66,22 @@ class AuthProvider extends ChangeNotifier {
       // 🆕 فحص الحظر
       final doc = await _db.collection('users').doc(phone).get();
       if (doc.exists && doc.data() != null) {
-        final isBanned = doc.data()!['isBanned'] ?? false;
+        final data = doc.data()!;
+        
+        // فحص الحظر العام
+        final isBanned = data['isBanned'] ?? false;
         if (isBanned == true) {
           clearAllData();
           return null; // ممنوع من الدخول
+        }
+        
+        // 🆕 فحص حالة الموظف (نشط/موقوف)
+        if (_currentUserRole == 'staff') {
+          final status = data['status'] ?? 'نشط';
+          if (status != 'نشط') {
+            clearAllData();
+            return null; // الموظف موقوف، ممنوع من الدخول
+          }
         }
       }
 
