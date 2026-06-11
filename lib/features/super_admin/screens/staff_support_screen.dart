@@ -276,7 +276,6 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
                         }
                       }
                       final allSelected = totalPerms > 0 && selectedPerms == totalPerms;
-                      final someSelected = selectedPerms > 0 && !allSelected;
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 8),
@@ -425,7 +424,8 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
             final tabEntry = tabs.entries.first;
             final tabName = tabEntry.key;
             final tabPerms = tabEntry.value as Map<String, String>;
-            return _buildTabPermissionsDialog(
+            // استدعاء مباشر بدون return
+            return _buildTabPermissionsContent(
               ctx: subCtx,
               sectionName: sectionName,
               tabName: tabName,
@@ -480,14 +480,18 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
                         onTap: () {
                           context.read<UiProvider>().playSound('click');
                           Navigator.pop(subCtx);
-                          _buildTabPermissionsDialog(
-                            ctx: ctx,
-                            sectionName: sectionName,
-                            tabName: tabName,
-                            tabPerms: tabPerms,
-                            permissions: permissions,
-                            setDialogState: setDialogState,
-                            setSubDialogState: setSubDialogState,
+                          // فتح حوار جديد للصلاحيات الدقيقة
+                          showDialog(
+                            context: ctx,
+                            builder: (subSubCtx) => _buildTabPermissionsContent(
+                              ctx: subSubCtx,
+                              sectionName: sectionName,
+                              tabName: tabName,
+                              tabPerms: tabPerms,
+                              permissions: permissions,
+                              setDialogState: setDialogState,
+                              setSubDialogState: setSubDialogState,
+                            ),
                           );
                         },
                       ),
@@ -508,8 +512,8 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
     );
   }
 
-  // 🆕 حوار صلاحيات تبويب واحد
-  Widget _buildTabPermissionsDialog({
+  // 🆕 محتوى صلاحيات تبويب واحد (يُرجع Widget مباشرة)
+  Widget _buildTabPermissionsContent({
     required BuildContext ctx,
     required String sectionName,
     required String tabName,
@@ -518,69 +522,58 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
     required StateSetter setDialogState,
     required StateSetter setSubDialogState,
   }) {
-    return showDialog(
-      context: ctx,
-      builder: (subSubCtx) => StatefulBuilder(
-        builder: (subSubCtx, setSubSubDialogState) {
-          final allSelected = tabPerms.values.every((p) => permissions[p] == true);
-          return Directionality(
-            textDirection: TextDirection.rtl,
-            child: AlertDialog(
-              backgroundColor: Theme.of(context).colorScheme.surface,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-              title: Text('$sectionName - $tabName',
-                  style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CheckboxListTile(
-                      title: const Text('تحديد الكل', style: TextStyle(fontWeight: FontWeight.bold)),
-                      value: allSelected,
-                      activeColor: Theme.of(context).colorScheme.primary,
-                      onChanged: (val) {
-                        context.read<UiProvider>().playSound('click');
-                        setSubSubDialogState(() {
-                          setSubDialogState(() {
-                            setDialogState(() {
-                              for (var permKey in tabPerms.values) {
-                                permissions[permKey] = val ?? false;
-                              }
-                            });
-                          });
-                        });
-                      },
-                    ),
-                    const Divider(),
-                    ...tabPerms.entries.map((entry) {
-                      return CheckboxListTile(
-                        title: Text(entry.key, style: const TextStyle(fontSize: 14)),
-                        value: permissions[entry.value] ?? false,
-                        activeColor: Theme.of(context).colorScheme.primary,
-                        onChanged: (val) {
-                          context.read<UiProvider>().playSound('click');
-                          setSubSubDialogState(() {
-                            setSubDialogState(() {
-                              setDialogState(() {
-                                permissions[entry.value] = val ?? false;
-                              });
-                            });
-                          });
-                        },
-                      );
-                    }),
-                  ],
-                ),
+    final allSelected = tabPerms.values.every((p) => permissions[p] == true);
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: Text('$sectionName - $tabName',
+            style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CheckboxListTile(
+                title: const Text('تحديد الكل', style: TextStyle(fontWeight: FontWeight.bold)),
+                value: allSelected,
+                activeColor: Theme.of(context).colorScheme.primary,
+                onChanged: (val) {
+                  context.read<UiProvider>().playSound('click');
+                  setSubDialogState(() {
+                    setDialogState(() {
+                      for (var permKey in tabPerms.values) {
+                        permissions[permKey] = val ?? false;
+                      }
+                    });
+                  });
+                },
               ),
-              actions: [
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(subSubCtx),
-                  child: const Text('تم'),
-                ),
-              ],
-            ),
-          );
-        },
+              const Divider(),
+              ...tabPerms.entries.map((entry) {
+                return CheckboxListTile(
+                  title: Text(entry.key, style: const TextStyle(fontSize: 14)),
+                  value: permissions[entry.value] ?? false,
+                  activeColor: Theme.of(context).colorScheme.primary,
+                  onChanged: (val) {
+                    context.read<UiProvider>().playSound('click');
+                    setSubDialogState(() {
+                      setDialogState(() {
+                        permissions[entry.value] = val ?? false;
+                      });
+                    });
+                  },
+                );
+              }),
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('تم'),
+          ),
+        ],
       ),
     );
   }
