@@ -8,7 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../providers/theme_provider.dart';
-import '../providers/auth_provider.dart';       // 🆕 للصلاحيات
+import '../providers/auth_provider.dart';
 import '../providers/ui_provider.dart';
 
 import '../../features/auth/screens/sso_login_screen.dart';
@@ -52,10 +52,45 @@ class _CustomDrawerState extends State<CustomDrawer> {
   bool _isBalanceHidden = true;
   bool _isUploading = false;
 
-  // 🆕 دالة مساعدة للتحقق من الصلاحية
+  // 🆕 خريطة الصلاحيات: كل قسم رئيسي مرتبط بالصلاحيات الدقيقة التابعة له
+  static const Map<String, List<String>> _sectionPermissions = {
+    'الرئيسية (غرفة العمليات)': ['الرئيسية (غرفة العمليات)'],
+    'إدارة الوكلاء': ['إدارة الوكلاء الشاملة', 'عرض الوكلاء', 'إضافة وكيل', 'تعديل وكيل', 'حذف وكيل', 'تجميد/تنشيط وكيل'],
+    'إدارة الاشتراكات': ['إدارة الاشتراكات والباقات', 'عرض الاشتراكات', 'تعديل الاشتراكات'],
+    'المركز المالي والمحافظ': ['المركز المالي والمحافظ', 'عرض الأرصدة', 'تسوية رصيد', 'عرض المعاملات'],
+    'الحسابات البنكية': ['الحسابات البنكية', 'عرض الحسابات', 'إضافة حساب', 'تعديل حساب', 'حذف حساب'],
+    'إدارة أرقام الحسابات والحظر': ['إدارة أرقام الحسابات والحظر', 'عرض الحسابات', 'تعديل رقم حساب', 'حظر/فك حظر', 'إعادة تعيين PIN'],
+    'التقارير الشاملة': ['التقارير الشاملة', 'عرض التقارير'],
+    'إدارة بوابات النظام': ['إدارة بوابات النظام', 'عرض البوابات', 'تعديل البوابات'],
+    'إدارة الموظفين والدعم': ['إدارة الموظفين والدعم', 'عرض الموظفين', 'إضافة موظف', 'تعديل موظف', 'حذف موظف', 'تجميد/تنشيط موظف', 'عرض الرواتب', 'تعديل الرواتب', 'تسليم راتب', 'عرض التذاكر', 'الرد على التذاكر', 'إحالة التذاكر', 'إغلاق التذاكر'],
+    'الإعلانات والبنرات': ['الإعلانات التسويقية', 'عرض الإعلانات', 'إضافة إعلان', 'تعديل إعلان', 'حذف إعلان'],
+    'بوابة رسائل SMS': ['بوابة رسائل الـ SMS', 'عرض SMS', 'إرسال SMS'],
+    'السجل الأسود للنشاط': ['السجل الأسود للنشاط (للقراءة)', 'عرض السجل'],
+    'التحكم الشامل (إعادة التهيئة)': ['التحكم الشامل (إعادة التهيئة)'],
+    'الإعدادات العامة': ['الإعدادات العامة', 'عرض الإعدادات', 'تعديل الإعدادات'],
+    'النسخ الاحتياطي': ['النسخ الاحتياطي', 'عرض النسخ', 'أخذ نسخة', 'حذف نسخة'],
+  };
+
+  // 🆕 دالة ذكية: تتحقق من الصلاحيات العامة والدقيقة معاً
+  bool _canAccessSection(String sectionName) {
+    final auth = context.read<AuthProvider>();
+    // المدير العام يرى كل شيء
+    if (auth.currentUserRole == 'super_admin') return true;
+    
+    // البحث عن الصلاحيات المرتبطة بهذا القسم
+    final permissions = _sectionPermissions[sectionName];
+    if (permissions == null) return false;
+    
+    // التحقق من أي صلاحية (عامة أو دقيقة)
+    for (var perm in permissions) {
+      if (auth.hasPermission(perm)) return true;
+    }
+    return false;
+  }
+
+  // دالة أصلية للتحقق من صلاحية محددة (للأزرار والوظائف)
   bool _can(String permission) {
     final auth = context.read<AuthProvider>();
-    // المدير العام يرى كل شيء، الموظف يحتاج الصلاحية
     return auth.currentUserRole == 'super_admin' || auth.hasPermission(permission);
   }
 
@@ -227,7 +262,6 @@ class _CustomDrawerState extends State<CustomDrawer> {
     );
   }
 
-  // توليد ألوان التدرج بناءً على اللون الأساسي للثيم
   List<Color> _generateGradientColors(Color baseColor) {
     final hsv = HSVColor.fromColor(baseColor);
     final darker =
@@ -244,12 +278,10 @@ class _CustomDrawerState extends State<CustomDrawer> {
     final bool isDark = themeProvider.isDarkMode;
     final Color primaryColor = themeProvider.primaryColor;
 
-    // نصوص شفافة نسبياً لكن واضحة: نستخدم onSurface من colorScheme
     final Color onSurfaceColor = colors.onSurface;
     final Color onSurfaceVariant = colors.onSurfaceVariant;
     final Color surfaceColor = colors.surface;
     
-    // ألوان متدرجة للبطاقات الشخصية (تعتمد على اللون الأساسي للثيم)
     final nameColors = _generateGradientColors(primaryColor);
     final phoneColors = _generateGradientColors(primaryColor);
     final roleColors = _generateGradientColors(primaryColor);
@@ -386,22 +418,22 @@ class _CustomDrawerState extends State<CustomDrawer> {
                       },
                     ),
                   ),
-                  // 🆕 جميع العناصر أصبحت محمية بالصلاحيات
-                  if (_can('الرئيسية (غرفة العمليات)'))
+                  // 🆕 جميع الأقسام تستخدم _canAccessSection
+                  if (_canAccessSection('الرئيسية (غرفة العمليات)'))
                     _buildDrawerItem(
                         context,
                         'الرئيسية (غرفة العمليات)',
                         Icons.dashboard,
                         Colors.blue,
                         const SuperAdminDashboard()),
-                  if (_can('إدارة الوكلاء الشاملة'))
+                  if (_canAccessSection('إدارة الوكلاء'))
                     _buildDrawerItem(
                         context,
                         'إدارة الوكلاء',
                         Icons.people_alt,
                         Colors.purple,
                         const AgentManagementScreen()),
-                  if (_can('إدارة الاشتراكات والباقات'))
+                  if (_canAccessSection('إدارة الاشتراكات'))
                     _buildDrawerItem(
                         context,
                         'إدارة الاشتراكات',
@@ -418,28 +450,28 @@ class _CustomDrawerState extends State<CustomDrawer> {
                             fontSize: 12,
                             fontWeight: FontWeight.bold)),
                   ),
-                  if (_can('المركز المالي والمحافظ'))
+                  if (_canAccessSection('المركز المالي والمحافظ'))
                     _buildDrawerItem(
                         context,
                         'المركز المالي والمحافظ',
                         Icons.account_balance_wallet,
                         Colors.green,
                         const FinancialCenterScreen()),
-                  if (_can('الحسابات البنكية'))
+                  if (_canAccessSection('الحسابات البنكية'))
                     _buildDrawerItem(
                         context,
                         'الحسابات البنكية',
                         Icons.account_balance,
                         Colors.indigo,
                         const BankAccountsScreen()),
-                  if (_can('إدارة أرقام الحسابات والحظر'))
+                  if (_canAccessSection('إدارة أرقام الحسابات والحظر'))
                     _buildDrawerItem(
                         context,
                         'إدارة أرقام الحسابات والحظر',
                         Icons.credit_card,
                         Colors.blueGrey,
                         const AdminUserAccountsScreen()),
-                  if (_can('التقارير الشاملة'))
+                  if (_canAccessSection('التقارير الشاملة'))
                     _buildDrawerItem(
                         context,
                         'التقارير الشاملة',
@@ -456,28 +488,28 @@ class _CustomDrawerState extends State<CustomDrawer> {
                             fontSize: 12,
                             fontWeight: FontWeight.bold)),
                   ),
-                  if (_can('إدارة بوابات النظام'))
+                  if (_canAccessSection('إدارة بوابات النظام'))
                     _buildDrawerItem(
                         context,
                         'إدارة بوابات النظام',
                         Icons.important_devices,
                         Colors.deepPurple,
                         const PortalsManagementScreen()),
-                  if (_can('إدارة الموظفين والدعم'))
+                  if (_canAccessSection('إدارة الموظفين والدعم'))
                     _buildDrawerItem(
                         context,
                         'إدارة الموظفين والدعم',
                         Icons.support_agent,
                         Colors.brown,
                         const StaffSupportScreen()),
-                  if (_can('الإعلانات التسويقية'))
+                  if (_canAccessSection('الإعلانات والبنرات'))
                     _buildDrawerItem(
                         context,
                         'الإعلانات والبنرات',
                         Icons.campaign,
                         Colors.deepOrange,
                         const BannersScreen()),
-                  if (_can('بوابة رسائل الـ SMS'))
+                  if (_canAccessSection('بوابة رسائل SMS'))
                     _buildDrawerItem(
                         context,
                         'بوابة رسائل SMS',
@@ -494,28 +526,28 @@ class _CustomDrawerState extends State<CustomDrawer> {
                             fontSize: 12,
                             fontWeight: FontWeight.bold)),
                   ),
-                  if (_can('السجل الأسود للنشاط (للقراءة)'))
+                  if (_canAccessSection('السجل الأسود للنشاط'))
                     _buildDrawerItem(
                         context,
                         'السجل الأسود للنشاط',
                         Icons.security,
                         Colors.red,
                         const AuditLogScreen()),
-                  if (_can('التحكم الشامل (إعادة التهيئة)'))
+                  if (_canAccessSection('التحكم الشامل (إعادة التهيئة)'))
                     _buildDrawerItem(
                         context,
                         'التحكم الشامل (إعادة التهيئة)',
                         Icons.cleaning_services,
                         Colors.red,
                         const AdvancedResetScreen()),
-                  if (_can('الإعدادات العامة'))
+                  if (_canAccessSection('الإعدادات العامة'))
                     _buildDrawerItem(
                         context,
                         'الإعدادات العامة',
                         Icons.settings,
                         Colors.blueGrey,
                         const GlobalSettingsScreen()),
-                  if (_can('النسخ الاحتياطي'))
+                  if (_canAccessSection('النسخ الاحتياطي'))
                     _buildDrawerItem(
                         context,
                         'النسخ الاحتياطي',
@@ -554,7 +586,6 @@ class _CustomDrawerState extends State<CustomDrawer> {
       Color iconColor, Widget targetScreen) {
     final ColorScheme colors = Theme.of(context).colorScheme;
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
-    // استخدام ألوان السطح لخلفية الايقونة بدلاً من الأبيض/الأسود شفاف
     final boxColor = themeProvider.isDarkMode
         ? colors.onPrimaryContainer.withOpacity(0.15)
         : colors.primaryContainer.withOpacity(0.3);
