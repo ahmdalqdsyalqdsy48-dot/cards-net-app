@@ -37,6 +37,29 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
   DateTime? _endDate;
   final GlobalKey<RefreshIndicatorState> _refreshKey = GlobalKey<RefreshIndicatorState>();
 
+  // 🆕 خريطة الصلاحيات (نفسها الموجودة في CustomDrawer)
+  static const Map<String, List<String>> _sectionPermissions = {
+    'المركز المالي والمحافظ': ['المركز المالي والمحافظ', 'عرض الأرصدة', 'تسوية رصيد', 'عرض المعاملات'],
+    'إدارة الوكلاء': ['إدارة الوكلاء الشاملة', 'عرض الوكلاء', 'إضافة وكيل', 'تعديل وكيل', 'حذف وكيل', 'تجميد/تنشيط وكيل'],
+    'إدارة الموظفين والدعم': ['إدارة الموظفين والدعم', 'عرض الموظفين', 'إضافة موظف', 'تعديل موظف', 'حذف موظف', 'تجميد/تنشيط موظف', 'عرض الرواتب', 'تعديل الرواتب', 'تسليم راتب', 'عرض التذاكر', 'الرد على التذاكر', 'إحالة التذاكر', 'إغلاق التذاكر'],
+    'التقارير الشاملة': ['التقارير الشاملة', 'عرض التقارير'],
+    'بوابة رسائل SMS': ['بوابة رسائل الـ SMS', 'عرض SMS', 'إرسال SMS'],
+    'الإعلانات والبنرات': ['الإعلانات التسويقية', 'عرض الإعلانات', 'إضافة إعلان', 'تعديل إعلان', 'حذف إعلان'],
+    'الإعدادات العامة': ['الإعدادات العامة', 'عرض الإعدادات', 'تعديل الإعدادات'],
+  };
+
+  // 🆕 دالة ذكية للتحقق من صلاحية قسم (عامة أو دقيقة)
+  bool _canAccessSection(String sectionName) {
+    final auth = context.read<AuthProvider>();
+    if (auth.currentUserRole == 'super_admin') return true;
+    final permissions = _sectionPermissions[sectionName];
+    if (permissions == null) return false;
+    for (var perm in permissions) {
+      if (auth.hasPermission(perm)) return true;
+    }
+    return false;
+  }
+
   // ========== اختيار التواريخ ==========
   Future<void> _pickStartDate() async {
     final ui = context.read<UiProvider>();
@@ -353,7 +376,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
       drawer: CustomDrawer(
         userName: userName,
         phoneNumber: userPhone,
-        role: auth.currentUserRole == 'super_admin' ? 'مالك النظام' : 'موظف مخصص', // 🆕 إصلاح الدور
+        role: auth.currentUserRole == 'super_admin' ? 'مالك النظام' : 'موظف مخصص',
         balanceOrPoints: 'أرباح النظام: ${adminBalance.toStringAsFixed(0)} ريال',
       ),
       body: RefreshIndicator(
@@ -371,7 +394,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // شريط الفلترة (يختفي تدريجياً مع التمرير)
             SliverToBoxAdapter(
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -448,7 +470,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
               ),
             ),
 
-            // 🆕 شبكة البطاقات الديناميكية (تظهر فقط البطاقات المصرح بها)
             SliverPadding(
               padding: const EdgeInsets.all(16),
               sliver: _buildDynamicDashboardGrid(
@@ -475,7 +496,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     );
   }
 
-  // 🆕 بناء شبكة ديناميكية من البطاقات المتاحة حسب الصلاحيات
+  // 🆕 بناء شبكة ديناميكية باستخدام _canAccessSection
   Widget _buildDynamicDashboardGrid({
     required AuthProvider auth,
     required WalletProvider wallet,
@@ -491,11 +512,10 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     required String topAgentName,
     required int smsBalance,
   }) {
-    // تعريف جميع البطاقات الممكنة مع الصلاحية المطلوبة
     final List<Widget> allCards = [];
 
     // بطاقة المبيعات
-    if (auth.hasPermission('المركز المالي والمحافظ')) {
+    if (_canAccessSection('المركز المالي والمحافظ')) {
       allCards.add(_buildDashboardCard(
         title: 'المبيعات (مفلترة)',
         value: todaySales.toStringAsFixed(0),
@@ -506,8 +526,8 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
       ));
     }
 
-    // بطاقة طلبات الشحن المعلقة (نحتاج StreamBuilder)
-    if (auth.hasPermission('المركز المالي والمحافظ')) {
+    // بطاقة طلبات الشحن المعلقة
+    if (_canAccessSection('المركز المالي والمحافظ')) {
       allCards.add(
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
@@ -546,7 +566,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     }
 
     // بطاقة رادار الخطر
-    if (auth.hasPermission('إدارة الوكلاء الشاملة')) {
+    if (_canAccessSection('إدارة الوكلاء')) {
       allCards.add(_buildDashboardCard(
         title: 'رادار الخطر',
         value: '$agentsInDanger وكلاء',
@@ -559,7 +579,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     }
 
     // بطاقة تذاكر الدعم
-    if (auth.hasPermission('إدارة الموظفين والدعم')) {
+    if (_canAccessSection('إدارة الموظفين والدعم')) {
       allCards.add(_buildDashboardCard(
         title: 'تذاكر الدعم',
         value: '$openTicketsCount مفتوحة',
@@ -572,7 +592,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     }
 
     // بطاقة إجمالي المخزون
-    if (auth.hasPermission('التقارير الشاملة')) {
+    if (_canAccessSection('التقارير الشاملة')) {
       allCards.add(_buildDashboardCard(
         title: 'إجمالي المخزون',
         value: '$totalCards كرت',
@@ -584,7 +604,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     }
 
     // بطاقة الوكيل الأنشط
-    if (auth.hasPermission('إدارة الوكلاء الشاملة')) {
+    if (_canAccessSection('إدارة الوكلاء')) {
       allCards.add(_buildDashboardCard(
         title: 'الوكيل الأنشط',
         value: topAgentName,
@@ -596,7 +616,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     }
 
     // بطاقة رصيد SMS
-    if (auth.hasPermission('بوابة رسائل الـ SMS')) {
+    if (_canAccessSection('بوابة رسائل SMS')) {
       allCards.add(_buildDashboardCard(
         title: 'رصيد الـ SMS',
         value: smsBalance.toString(),
@@ -608,7 +628,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     }
 
     // بطاقة الإعلانات والبنرات
-    if (auth.hasPermission('الإعلانات التسويقية')) {
+    if (_canAccessSection('الإعلانات والبنرات')) {
       allCards.add(_buildDashboardCard(
         title: 'الإعلانات والبنرات',
         value: 'نشطة',
@@ -620,7 +640,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     }
 
     // بطاقة إعدادات النظام
-    if (auth.hasPermission('الإعدادات العامة')) {
+    if (_canAccessSection('الإعدادات العامة')) {
       allCards.add(_buildDashboardCard(
         title: 'إعدادات النظام',
         value: 'تحكم كامل',
@@ -631,7 +651,7 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
       ));
     }
 
-    // بطاقة التحكم الشامل (تظهر للكل كحالة افتراضية)
+    // بطاقة التحكم الشامل (تظهر للجميع)
     allCards.add(_buildDashboardCard(
       title: 'التحكم الشامل',
       value: 'إعادة تهيئة',
@@ -644,7 +664,6 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
       },
     ));
 
-    // إذا كانت القائمة فارغة، عرض رسالة
     if (allCards.isEmpty) {
       return const SliverFillRemaining(
         child: Center(child: Text('لا توجد بطاقات متاحة لصلاحياتك', style: TextStyle(color: Colors.grey))),
