@@ -296,8 +296,11 @@ class _CustomHeaderState extends State<CustomHeader>
                   uiProvider.playSound('click');
                   showSearch(
                       context: context,
-                      delegate: SystemSearchDelegate(uiProvider,
-                          userRole: authProvider.currentUserRole));
+                      delegate: SystemSearchDelegate(
+                        uiProvider,
+                        userRole: authProvider.currentUserRole,
+                        authProvider: authProvider,
+                      ));
                 },
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
@@ -328,71 +331,125 @@ class _CustomHeaderState extends State<CustomHeader>
 }
 
 // ==========================================
-// 🚀 محرك البحث الذكي – شامل لكل الأقسام حسب الدور
+// 🚀 محرك البحث الذكي – يدعم الموظفين مع فلترة الصلاحيات
 // ==========================================
 class SystemSearchDelegate extends SearchDelegate<String> {
   final UiProvider uiProvider;
   final String userRole;
+  final AuthProvider authProvider;
 
-  SystemSearchDelegate(this.uiProvider, {required this.userRole});
+  SystemSearchDelegate(this.uiProvider, {required this.userRole, required this.authProvider});
+
+  // 🆕 خريطة الصلاحيات (نفسها المستخدمة في CustomDrawer و SuperAdminDashboard)
+  static const Map<String, List<String>> _sectionPermissions = {
+    'الرئيسية (غرفة العمليات)': ['الرئيسية (غرفة العمليات)'],
+    'إدارة الوكلاء': ['إدارة الوكلاء الشاملة', 'عرض الوكلاء', 'إضافة وكيل', 'تعديل وكيل', 'حذف وكيل', 'تجميد/تنشيط وكيل'],
+    'إدارة الاشتراكات': ['إدارة الاشتراكات والباقات', 'عرض الاشتراكات', 'تعديل الاشتراكات'],
+    'المركز المالي والمحافظ': ['المركز المالي والمحافظ', 'عرض الأرصدة', 'تسوية رصيد', 'عرض المعاملات'],
+    'الحسابات البنكية': ['الحسابات البنكية', 'عرض الحسابات', 'إضافة حساب', 'تعديل حساب', 'حذف حساب'],
+    'إدارة أرقام الحسابات والحظر': ['إدارة أرقام الحسابات والحظر', 'عرض الحسابات', 'تعديل رقم حساب', 'حظر/فك حظر', 'إعادة تعيين PIN'],
+    'التقارير الشاملة': ['التقارير الشاملة', 'عرض التقارير'],
+    'إدارة بوابات النظام': ['إدارة بوابات النظام', 'عرض البوابات', 'تعديل البوابات'],
+    'إدارة الموظفين والدعم': ['إدارة الموظفين والدعم', 'عرض الموظفين', 'إضافة موظف', 'تعديل موظف', 'حذف موظف', 'تجميد/تنشيط موظف', 'عرض الرواتب', 'تعديل الرواتب', 'تسليم راتب', 'عرض التذاكر', 'الرد على التذاكر', 'إحالة التذاكر', 'إغلاق التذاكر'],
+    'الإعلانات والبنرات': ['الإعلانات التسويقية', 'عرض الإعلانات', 'إضافة إعلان', 'تعديل إعلان', 'حذف إعلان'],
+    'بوابة رسائل SMS': ['بوابة رسائل الـ SMS', 'عرض SMS', 'إرسال SMS'],
+    'السجل الأسود للنشاط': ['السجل الأسود للنشاط (للقراءة)', 'عرض السجل'],
+    'التحكم الشامل (إعادة التهيئة)': ['التحكم الشامل (إعادة التهيئة)'],
+    'الإعدادات العامة': ['الإعدادات العامة', 'عرض الإعدادات', 'تعديل الإعدادات'],
+    'النسخ الاحتياطي': ['النسخ الاحتياطي', 'عرض النسخ', 'أخذ نسخة', 'حذف نسخة'],
+  };
+
+  // 🆕 دالة ذكية للتحقق من صلاحية قسم (عامة أو دقيقة)
+  bool _canAccessSection(String sectionName) {
+    // المدير العام يرى كل شيء
+    if (userRole == 'super_admin') return true;
+    
+    // الموظف: التحقق من الصلاحيات
+    final permissions = _sectionPermissions[sectionName];
+    if (permissions == null) return false;
+    
+    for (var perm in permissions) {
+      if (authProvider.hasPermission(perm)) return true;
+    }
+    return false;
+  }
 
   Map<String, Map<String, String>> _buildSearchMap() {
+    // 🆕 إذا كان المستخدم مدير عام أو موظف، استخدم قائمة المدير العام مع فلترة
+    if (userRole == 'super_admin' || userRole == 'staff') {
+      final Map<String, Map<String, String>> adminMap = {
+        'الرئيسية (غرفة العمليات)': {
+          'desc': 'لوحة التحكم الرئيسية',
+          'route': '/super_admin_dashboard'
+        },
+        'إدارة الوكلاء': {
+          'desc': 'إضافة وتعديل وحذف الوكلاء',
+          'route': '/agent_management'
+        },
+        'إدارة الاشتراكات': {
+          'desc': 'باقات وصلاحيات الوكلاء',
+          'route': '/subscriptions'
+        },
+        'المركز المالي والمحافظ': {
+          'desc': 'إدارة الأرصدة والتسويات',
+          'route': '/financial_center'
+        },
+        'الحسابات البنكية': {
+          'desc': 'حسابات التحويل للنظام',
+          'route': '/bank_accounts'
+        },
+        'إدارة أرقام الحسابات والحظر': {
+          'desc': 'أرقام الحسابات والحظر',
+          'route': '/admin_user_accounts'
+        },
+        'التقارير الشاملة': {
+          'desc': 'تقارير المبيعات والأرباح',
+          'route': '/reports'
+        },
+        'إدارة بوابات النظام': {
+          'desc': 'تخصيص مظهر التطبيق',
+          'route': '/portals_management'
+        },
+        'إدارة الموظفين والدعم': {
+          'desc': 'تذاكر الدعم والصلاحيات',
+          'route': '/staff_support'
+        },
+        'الإعلانات والبنرات': {
+          'desc': 'الحملات التسويقية',
+          'route': '/banners'
+        },
+        'بوابة رسائل SMS': {
+          'desc': 'إرسال الرسائل النصية',
+          'route': '/sms_gateway'
+        },
+        'السجل الأسود للنشاط': {
+          'desc': 'سجل تدقيق العمليات',
+          'route': '/audit_log'
+        },
+        'التحكم الشامل (إعادة التهيئة)': {
+          'desc': 'فرمتة أي جزء من النظام',
+          'route': '/advanced_reset'
+        },
+        'الإعدادات العامة': {
+          'desc': 'سياسات النظام والصيانة',
+          'route': '/settings'
+        },
+        'النسخ الاحتياطي': {
+          'desc': 'حفظ واستعادة البيانات',
+          'route': '/backup'
+        },
+      };
+      
+      // 🆕 فلترة النتائج حسب صلاحيات الموظف
+      if (userRole == 'staff') {
+        adminMap.removeWhere((sectionName, _) => !_canAccessSection(sectionName));
+      }
+      
+      return adminMap;
+    }
+    
+    // بقية الأدوار كما هي
     switch (userRole) {
-      case 'super_admin':
-        return {
-          'الرئيسية (غرفة العمليات)': {
-            'desc': 'لوحة التحكم الرئيسية',
-            'route': '/super_admin_dashboard'
-          },
-          'إدارة الوكلاء': {
-            'desc': 'إضافة وتعديل وحذف الوكلاء',
-            'route': '/agent_management'
-          },
-          'إدارة الاشتراكات': {
-            'desc': 'باقات وصلاحيات الوكلاء',
-            'route': '/subscriptions'
-          },
-          'المركز المالي والمحافظ': {
-            'desc': 'إدارة الأرصدة والتسويات',
-            'route': '/financial_center'
-          },
-          'الحسابات البنكية': {
-            'desc': 'حسابات التحويل للنظام',
-            'route': '/bank_accounts'
-          },
-          'التقارير الشاملة': {
-            'desc': 'تقارير المبيعات والأرباح',
-            'route': '/reports'
-          },
-          'إدارة بوابات النظام': {
-            'desc': 'تخصيص مظهر التطبيق',
-            'route': '/portals_management'
-          },
-          'إدارة الموظفين والدعم': {
-            'desc': 'تذاكر الدعم والصلاحيات',
-            'route': '/staff_support'
-          },
-          'الإعلانات والبنرات': {
-            'desc': 'الحملات التسويقية',
-            'route': '/banners'
-          },
-          'بوابة رسائل SMS': {
-            'desc': 'إرسال الرسائل النصية',
-            'route': '/sms_gateway'
-          },
-          'السجل الأسود للنشاط': {
-            'desc': 'سجل تدقيق العمليات',
-            'route': '/audit_log'
-          },
-          'الإعدادات العامة': {
-            'desc': 'سياسات النظام والصيانة',
-            'route': '/settings'
-          },
-          'النسخ الاحتياطي': {
-            'desc': 'حفظ واستعادة البيانات',
-            'route': '/backup'
-          },
-        };
       case 'agent':
         return {
           'الرئيسية (غرفة القيادة)': {
