@@ -38,18 +38,17 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
     super.dispose();
   }
 
-  // 🆕 دالة مساعدة للتحقق من الصلاحية
   bool _can(String permission) {
     final auth = context.read<AuthProvider>();
     return auth.currentUserRole == 'super_admin' || auth.hasPermission(permission);
   }
 
   // ==========================================
-  // 1. نافذة إضافة/تعديل موظف (هرمية كاملة)
+  // 1. نافذة إضافة/تعديل موظف (سلوك التحديد الجديد)
   // ==========================================
   void _showStaffDialog({Map<String, dynamic>? existingData}) {
     context.read<UiProvider>().playSound('click');
-    
+
     final nameController = TextEditingController(text: existingData?['name'] ?? '');
     final phoneController = TextEditingController(text: existingData?['phone'] ?? '');
     final salaryController = TextEditingController(
@@ -57,7 +56,6 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
     );
     final passwordController = TextEditingController();
 
-    // 🆕 الهيكل الهرمي الكامل المطابق للقائمة الجانبية (جميع الأقسام الـ 15)
     final Map<String, dynamic> sections = {
       'الرئيسية (غرفة العمليات)': {
         'icon': Icons.dashboard,
@@ -215,7 +213,6 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
       },
     };
 
-    // حالة الصلاحيات الحالية
     Map<String, bool> permissions = {};
     for (var section in sections.values) {
       for (var tab in (section['tabs'] as Map<String, dynamic>).values) {
@@ -266,7 +263,6 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
                       final sectionData = sectionEntry.value as Map<String, dynamic>;
                       final tabs = sectionData['tabs'] as Map<String, dynamic>;
 
-                      // حساب حالة التحديد
                       int totalPerms = 0;
                       int selectedPerms = 0;
                       for (var tab in tabs.values) {
@@ -275,7 +271,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
                           if (permissions[permKey] == true) selectedPerms++;
                         }
                       }
-                      final allSelected = totalPerms > 0 && selectedPerms == totalPerms;
+                      final someSelected = selectedPerms > 0;
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 8),
@@ -289,21 +285,8 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Checkbox(
-                                value: allSelected,
-                                tristate: false,
-                                activeColor: Theme.of(context).colorScheme.primary,
-                                onChanged: (val) {
-                                  context.read<UiProvider>().playSound('click');
-                                  setDialogState(() {
-                                    for (var tab in tabs.values) {
-                                      for (var permKey in (tab as Map<String, String>).values) {
-                                        permissions[permKey] = val ?? false;
-                                      }
-                                    }
-                                  });
-                                },
-                              ),
+                              if (someSelected)
+                                Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary, size: 20),
                               Icon(Icons.arrow_forward_ios, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ],
                           ),
@@ -405,7 +388,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
     );
   }
 
-  // 🆕 نافذة الصلاحيات الدقيقة لكل قسم (تدعم التبويبات)
+  // نافذة التبويبات الخاصة بقسم
   void _showSectionPermissionsDialog({
     required BuildContext ctx,
     required String sectionName,
@@ -414,29 +397,11 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
     required StateSetter setDialogState,
   }) {
     final tabs = sectionData['tabs'] as Map<String, dynamic>;
-    
+
     showDialog(
       context: ctx,
       builder: (subCtx) => StatefulBuilder(
         builder: (subCtx, setSubDialogState) {
-          // إذا كان هناك تبويب واحد فقط، نظهر الصلاحيات مباشرة
-          if (tabs.length == 1) {
-            final tabEntry = tabs.entries.first;
-            final tabName = tabEntry.key;
-            final tabPerms = tabEntry.value as Map<String, String>;
-            // استدعاء مباشر بدون return
-            return _buildTabPermissionsContent(
-              ctx: subCtx,
-              sectionName: sectionName,
-              tabName: tabName,
-              tabPerms: tabPerms,
-              permissions: permissions,
-              setDialogState: setDialogState,
-              setSubDialogState: setSubDialogState,
-            );
-          }
-          
-          // إذا كان هناك عدة تبويبات، نظهر قائمة التبويبات أولاً
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
@@ -451,8 +416,8 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
                     final tabName = tabEntry.key;
                     final tabPerms = tabEntry.value as Map<String, String>;
                     final allSelected = tabPerms.values.every((p) => permissions[p] == true);
-                    final someSelected = tabPerms.values.any((p) => permissions[p] == true);
-                    
+                    final someSelected = tabPerms.values.any((p) => permissions[p] == true) && !allSelected;
+
                     return Card(
                       margin: const EdgeInsets.only(bottom: 8),
                       color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
@@ -463,7 +428,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
                             style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                         leading: Checkbox(
                           value: allSelected,
-                          tristate: someSelected && !allSelected,
+                          tristate: someSelected,
                           activeColor: Theme.of(context).colorScheme.primary,
                           onChanged: (val) {
                             context.read<UiProvider>().playSound('click');
@@ -476,22 +441,18 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
                             });
                           },
                         ),
-                        trailing: Icon(Icons.arrow_forward_ios, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        trailing: Icon(Icons.arrow_forward_ios, size: 14,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant),
                         onTap: () {
                           context.read<UiProvider>().playSound('click');
                           Navigator.pop(subCtx);
-                          // فتح حوار جديد للصلاحيات الدقيقة
-                          showDialog(
-                            context: ctx,
-                            builder: (subSubCtx) => _buildTabPermissionsContent(
-                              ctx: subSubCtx,
-                              sectionName: sectionName,
-                              tabName: tabName,
-                              tabPerms: tabPerms,
-                              permissions: permissions,
-                              setDialogState: setDialogState,
-                              setSubDialogState: setSubDialogState,
-                            ),
+                          _showTabPermissionsDialog(
+                            ctx: ctx,
+                            sectionName: sectionName,
+                            tabName: tabName,
+                            tabPerms: tabPerms,
+                            permissions: permissions,
+                            setDialogState: setDialogState,
                           );
                         },
                       ),
@@ -512,68 +473,74 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
     );
   }
 
-  // 🆕 محتوى صلاحيات تبويب واحد (يُرجع Widget مباشرة)
-  Widget _buildTabPermissionsContent({
+  // نافذة الصلاحيات التفصيلية لتبويب
+  void _showTabPermissionsDialog({
     required BuildContext ctx,
     required String sectionName,
     required String tabName,
     required Map<String, String> tabPerms,
     required Map<String, bool> permissions,
     required StateSetter setDialogState,
-    required StateSetter setSubDialogState,
   }) {
-    final allSelected = tabPerms.values.every((p) => permissions[p] == true);
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: AlertDialog(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: Text('$sectionName - $tabName',
-            style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CheckboxListTile(
-                title: const Text('تحديد الكل', style: TextStyle(fontWeight: FontWeight.bold)),
-                value: allSelected,
-                activeColor: Theme.of(context).colorScheme.primary,
-                onChanged: (val) {
-                  context.read<UiProvider>().playSound('click');
-                  setSubDialogState(() {
-                    setDialogState(() {
-                      for (var permKey in tabPerms.values) {
-                        permissions[permKey] = val ?? false;
-                      }
-                    });
-                  });
-                },
+    showDialog(
+      context: ctx,
+      builder: (subSubCtx) => StatefulBuilder(
+        builder: (subSubCtx, setSubSubDialogState) {
+          final allSelected = tabPerms.values.every((p) => permissions[p] == true);
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              backgroundColor: Theme.of(context).colorScheme.surface,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              title: Text('$sectionName - $tabName',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CheckboxListTile(
+                      title: const Text('تحديد الكل', style: TextStyle(fontWeight: FontWeight.bold)),
+                      value: allSelected,
+                      activeColor: Theme.of(context).colorScheme.primary,
+                      onChanged: (val) {
+                        context.read<UiProvider>().playSound('click');
+                        setSubSubDialogState(() {
+                          setDialogState(() {
+                            for (var permKey in tabPerms.values) {
+                              permissions[permKey] = val ?? false;
+                            }
+                          });
+                        });
+                      },
+                    ),
+                    const Divider(),
+                    ...tabPerms.entries.map((entry) {
+                      return CheckboxListTile(
+                        title: Text(entry.key, style: const TextStyle(fontSize: 14)),
+                        value: permissions[entry.value] ?? false,
+                        activeColor: Theme.of(context).colorScheme.primary,
+                        onChanged: (val) {
+                          context.read<UiProvider>().playSound('click');
+                          setSubSubDialogState(() {
+                            setDialogState(() {
+                              permissions[entry.value] = val ?? false;
+                            });
+                          });
+                        },
+                      );
+                    }),
+                  ],
+                ),
               ),
-              const Divider(),
-              ...tabPerms.entries.map((entry) {
-                return CheckboxListTile(
-                  title: Text(entry.key, style: const TextStyle(fontSize: 14)),
-                  value: permissions[entry.value] ?? false,
-                  activeColor: Theme.of(context).colorScheme.primary,
-                  onChanged: (val) {
-                    context.read<UiProvider>().playSound('click');
-                    setSubDialogState(() {
-                      setDialogState(() {
-                        permissions[entry.value] = val ?? false;
-                      });
-                    });
-                  },
-                );
-              }),
-            ],
-          ),
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('تم'),
-          ),
-        ],
+              actions: [
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(subSubCtx),
+                  child: const Text('تم'),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -1298,7 +1265,6 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
   }
 }
 
-// 🆕 وكيل تثبيت التبويبات في NestedScrollView
 class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   final TabBar _tabBar;
   final Color color;
