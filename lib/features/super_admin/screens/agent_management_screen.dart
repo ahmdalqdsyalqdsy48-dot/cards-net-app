@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/providers/settings_provider.dart';
@@ -20,10 +22,11 @@ class AgentManagementScreen extends StatefulWidget {
 
 class _AgentManagementScreenState extends State<AgentManagementScreen> {
   String _searchQuery = '';
+  // 🆕 متغير لتتبع أي وكيل مفتوح حالياً
+  String? _expandedAgentPhone;
 
   void _play(String type) => context.read<UiProvider>().playSound(type);
 
-  // دالة مساعدة للصلاحيات
   bool _can(String permission) {
     final auth = context.read<AuthProvider>();
     return auth.currentUserRole == 'super_admin' || auth.hasPermission(permission);
@@ -68,8 +71,10 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                 children: [
                   Icon(Icons.person_add, color: Theme.of(context).colorScheme.primary),
                   const SizedBox(width: 10),
-                  Text('إضافة وكيل جديد',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Theme.of(context).colorScheme.onSurface)),
+                  Flexible(
+                    child: Text('إضافة وكيل جديد',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Theme.of(context).colorScheme.onSurface)),
+                  ),
                 ],
               ),
               content: SingleChildScrollView(
@@ -176,8 +181,10 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                 children: [
                   Icon(Icons.edit, color: Theme.of(context).colorScheme.secondary),
                   const SizedBox(width: 10),
-                  Text('تعديل بيانات الوكيل',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Theme.of(context).colorScheme.onSurface)),
+                  Flexible(
+                    child: Text('تعديل بيانات الوكيل',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Theme.of(context).colorScheme.onSurface)),
+                  ),
                 ],
               ),
               content: SingleChildScrollView(
@@ -186,7 +193,6 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                   children: [
                     _buildTextField('الاسم الرباعي', Icons.person, controller: nameController),
                     _buildTextField('رقم الهاتف (الآيدي للحساب)', Icons.phone, controller: phoneController, isNumber: true),
-                    // 🆕 حقل نسبة رسوم النظام في التعديل
                     _buildTextField('نسبة رسوم النظام %', Icons.percent, controller: profitController, isNumber: true,
                         hint: 'النسبة التي يخصمها النظام من مبيعات الوكيل'),
                     _buildTextField('كلمة المرور', Icons.lock, controller: passwordController),
@@ -302,8 +308,72 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
     );
   }
 
+  // 🆕 عرض الشبكة على الخريطة
+  void _showNetworkMap(double lat, double lng, String title) {
+    _play('click');
+    showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: Text('موقع: $title'),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 300,
+            child: FlutterMap(
+              options: MapOptions(initialCenter: LatLng(lat, lng), initialZoom: 15.0),
+              children: [
+                TileLayer(urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'),
+                MarkerLayer(markers: [
+                  Marker(point: LatLng(lat, lng), width: 40, height: 40,
+                      child: const Icon(Icons.location_pin, color: Colors.red, size: 40)),
+                ]),
+              ],
+            ),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق'))],
+        ),
+      ),
+    );
+  }
+
+  // 🆕 تحميل شبكات الوكيل من Firestore
+  Future<Map<String, dynamic>> _loadAgentNetworks(String phone) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('networks')
+          .where('agentPhone', isEqualTo: phone)
+          .get();
+
+      final networks = snap.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'name': data['name'] ?? '',
+          'location': data['location'] ?? '',
+          'ip': data['ip'] ?? '',
+          'isActive': data['isActive'] ?? true,
+          'latitude': data['latitude'],
+          'longitude': data['longitude'],
+          'categories': data['categories'] ?? [],
+        };
+      }).toList();
+
+      // جلب رقم الحساب من وثيقة المستخدم
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(phone).get();
+      final accountNumber = userDoc.data()?['accountNumber'] as String?;
+
+      return {
+        'networks': networks,
+        'accountNumber': accountNumber,
+      };
+    } catch (e) {
+      return {'networks': [], 'accountNumber': null};
+    }
+  }
+
   // ==========================================
-  // بناء واجهة المستخدم
+  // بناء واجهة المستخدم (متجاوبة + توسيع)
   // ==========================================
   @override
   Widget build(BuildContext context) {
@@ -312,6 +382,10 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
     final wallet = context.watch<WalletProvider>();
     final agentAdmin = context.read<AgentAdminProvider>();
     final colorScheme = Theme.of(context).colorScheme;
+
+    // 🆕 استجابة لحجم الشاشة
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 600;
 
     final realAgentsList = wallet.agentsList;
 
@@ -345,15 +419,18 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                 children: [
                   if (_can('إضافة وكيل'))
                     Padding(
-                      padding: const EdgeInsets.all(16.0),
+                      padding: EdgeInsets.all(isSmallScreen ? 12.0 : 16.0),
                       child: SizedBox(
                         width: double.infinity,
-                        height: 50,
+                        height: isSmallScreen ? 44 : 50,
                         child: ElevatedButton.icon(
                           onPressed: () => _showAddAgentDialog(agentAdmin),
                           icon: const Icon(Icons.person_add, color: Colors.white),
-                          label: const Text('إضافة وكيل جديد',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                          label: Text('إضافة وكيل جديد',
+                              style: TextStyle(
+                                  fontSize: isSmallScreen ? 14 : 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white)),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: colorScheme.primary,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -362,7 +439,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                       ),
                     ),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 12.0 : 16.0),
                     child: TextField(
                       onChanged: (value) {
                         if (value.length == 1) _play('click');
@@ -370,21 +447,22 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                       },
                       decoration: InputDecoration(
                         hintText: 'ابحث بالاسم أو الهاتف...',
-                        prefixIcon: Icon(Icons.search, color: colorScheme.onSurfaceVariant),
+                        prefixIcon: Icon(Icons.search, color: colorScheme.onSurfaceVariant, size: isSmallScreen ? 20 : 24),
                         filled: true,
                         fillColor: colorScheme.surfaceContainerHighest,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(15),
                           borderSide: BorderSide.none,
                         ),
+                        contentPadding: EdgeInsets.symmetric(vertical: isSmallScreen ? 8 : 12),
                       ),
                     ),
                   ),
                   const SizedBox(height: 8),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 12.0 : 16.0),
                     child: Text('${filteredAgents.length} وكيل',
-                        style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                        style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: isSmallScreen ? 12 : 14)),
                   ),
                   const Divider(),
                 ],
@@ -402,6 +480,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                         final agent = filteredAgents[index];
                         final isFrozen = agent['status'] == 'مجمد';
                         final phone = agent['phone'] ?? '';
+                        final isExpanded = _expandedAgentPhone == phone;
 
                         return FutureBuilder<Map<String, dynamic>>(
                           future: _loadAgentNetworks(phone),
@@ -412,7 +491,9 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                             final accountNumber = data['accountNumber'] as String?;
 
                             return Card(
-                              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                              margin: EdgeInsets.symmetric(
+                                  horizontal: isSmallScreen ? 8 : 16,
+                                  vertical: isSmallScreen ? 4 : 6),
                               elevation: 3,
                               color: colorScheme.surface,
                               shape: RoundedRectangleBorder(
@@ -422,89 +503,118 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                                   width: 1.5,
                                 ),
                               ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(12.0),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // الصف الأول: الاسم والحالة
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            agent['name'] ?? 'مجهول',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 18,
-                                              color: colorScheme.onSurface,
-                                              decoration: isFrozen ? TextDecoration.lineThrough : null,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(15),
+                                onTap: () {
+                                  _play('click');
+                                  setState(() {
+                                    // 🆕 توسيع/طي البطاقة
+                                    _expandedAgentPhone = isExpanded ? null : phone;
+                                  });
+                                },
+                                child: Padding(
+                                  padding: EdgeInsets.all(isSmallScreen ? 10.0 : 12.0),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      // الصف الأول: الاسم والحالة
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              agent['name'] ?? 'مجهول',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: isSmallScreen ? 16 : 18,
+                                                color: colorScheme.onSurface,
+                                                decoration: isFrozen ? TextDecoration.lineThrough : null,
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                          decoration: BoxDecoration(
-                                            color: isFrozen ? Colors.red : Colors.green,
-                                            borderRadius: BorderRadius.circular(20),
+                                          Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Container(
+                                                padding: EdgeInsets.symmetric(
+                                                    horizontal: isSmallScreen ? 8 : 12,
+                                                    vertical: isSmallScreen ? 4 : 6),
+                                                decoration: BoxDecoration(
+                                                  color: isFrozen ? Colors.red : Colors.green,
+                                                  borderRadius: BorderRadius.circular(20),
+                                                ),
+                                                child: Text(
+                                                  agent['status'] ?? 'نشط',
+                                                  style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: isSmallScreen ? 10 : 12,
+                                                      fontWeight: FontWeight.bold),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              // 🆕 أيقونة التوسيع
+                                              Icon(
+                                                isExpanded ? Icons.expand_less : Icons.expand_more,
+                                                color: colorScheme.onSurfaceVariant,
+                                                size: isSmallScreen ? 20 : 24,
+                                              ),
+                                            ],
                                           ),
-                                          child: Text(
-                                            agent['status'] ?? 'نشط',
-                                            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const Divider(),
-                                    // رقم الحساب
-                                    if (accountNumber != null && accountNumber.isNotEmpty)
-                                      _buildInfoRow(Icons.credit_card, 'رقم الحساب', accountNumber, Colors.teal),
-                                    // رقم الهاتف
-                                    _buildInfoRow(Icons.phone_android, 'رقم الهاتف', phone, Colors.indigo),
-                                    // نسبة رسوم النظام
-                                    _buildInfoRow(Icons.percent, 'رسوم النظام', agent['profitMargin'] ?? '0%', Colors.orange),
-                                    // الرصيد
-                                    _buildInfoRow(Icons.account_balance_wallet, 'الرصيد', '${agent['balance'] ?? 0} ريال', Colors.green),
-                                    // الشبكات
-                                    if (networks.isNotEmpty) ...[
-                                      const SizedBox(height: 8),
-                                      Text('الشبكات:', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
-                                      ...networks.map((net) => Padding(
-                                        padding: const EdgeInsets.only(right: 16, top: 4),
-                                        child: Row(
+                                        ],
+                                      ),
+                                      const Divider(),
+                                      // المعلومات المختصرة (تظهر دائماً)
+                                      if (accountNumber != null && accountNumber.isNotEmpty)
+                                        _buildInfoRow(Icons.credit_card, 'رقم الحساب', accountNumber, Colors.teal, isSmallScreen),
+                                      _buildInfoRow(Icons.phone_android, 'رقم الهاتف', phone, Colors.indigo, isSmallScreen),
+                                      _buildInfoRow(Icons.percent, 'رسوم النظام', agent['profitMargin'] ?? '0%', Colors.orange, isSmallScreen),
+                                      _buildInfoRow(Icons.account_balance_wallet, 'الرصيد', '${(agent['balance'] ?? 0).toString()} ريال', Colors.green, isSmallScreen),
+                                      // ملخص الشبكات (يظهر دائماً)
+                                      _buildInfoRow(
+                                        networks.isNotEmpty ? Icons.wifi : Icons.wifi_off,
+                                        'الشبكات',
+                                        networks.isNotEmpty ? '${networks.length} شبكات' : 'لم يضف شبكات بعد',
+                                        networks.isNotEmpty ? Colors.blue : Colors.grey,
+                                        isSmallScreen,
+                                      ),
+
+                                      // 🆕 المحتوى الموسع (يظهر فقط عند التوسيع)
+                                      if (isExpanded) ...[
+                                        const Divider(),
+                                        // عرض الشبكات بالتصميم الموحد
+                                        if (networks.isNotEmpty) ...[
+                                          Text('الشبكات:',
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: isSmallScreen ? 14 : 16,
+                                                  color: colorScheme.onSurface)),
+                                          const SizedBox(height: 8),
+                                          ...networks.map((net) => _buildNetworkCard(net, isSmallScreen)),
+                                        ],
+                                        const Divider(),
+                                        // أزرار التحكم بالوكيل
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceAround,
                                           children: [
-                                            Icon(Icons.wifi, size: 16, color: net['isActive'] == true ? Colors.green : Colors.red),
-                                            const SizedBox(width: 8),
-                                            Expanded(child: Text(net['name'] ?? 'بدون اسم', style: TextStyle(color: colorScheme.onSurface))),
-                                            if (net['location'] != null && net['location'].toString().isNotEmpty)
-                                              Text(net['location'].toString(), style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12)),
+                                            if (_can('عرض الوكلاء'))
+                                              _buildActionButton(Icons.visibility, 'تفاصيل', Colors.blue, () => _showAgentDetails(agent), isSmallScreen),
+                                            if (_can('تعديل وكيل'))
+                                              _buildActionButton(Icons.edit, 'تعديل', Colors.orange, () => _showEditAgentDialog(agent, agentAdmin), isSmallScreen),
+                                            if (_can('تجميد/تنشيط وكيل'))
+                                              _buildActionButton(
+                                                isFrozen ? Icons.play_arrow : Icons.pause,
+                                                isFrozen ? 'تنشيط' : 'تجميد',
+                                                isFrozen ? Colors.green : Colors.red,
+                                                () => _toggleFreeze(agent, agentAdmin),
+                                                isSmallScreen,
+                                              ),
+                                            if (_can('حذف وكيل'))
+                                              _buildActionButton(Icons.delete_forever, 'حذف', Colors.red, () => _deleteAgent(agent, agentAdmin), isSmallScreen),
                                           ],
                                         ),
-                                      )),
-                                    ] else ...[
-                                      _buildInfoRow(Icons.wifi_off, 'الشبكات', 'لم يضف شبكات بعد', Colors.grey),
-                                    ],
-                                    const Divider(),
-                                    // أزرار التحكم
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                                      children: [
-                                        if (_can('عرض الوكلاء'))
-                                          _buildActionButton(Icons.visibility, 'تفاصيل', Colors.blue, () => _showAgentDetails(agent)),
-                                        if (_can('تعديل وكيل'))
-                                          _buildActionButton(Icons.edit, 'تعديل', Colors.orange, () => _showEditAgentDialog(agent, agentAdmin)),
-                                        if (_can('تجميد/تنشيط وكيل'))
-                                          _buildActionButton(
-                                            isFrozen ? Icons.play_arrow : Icons.pause,
-                                            isFrozen ? 'تنشيط' : 'تجميد',
-                                            isFrozen ? Colors.green : Colors.red,
-                                            () => _toggleFreeze(agent, agentAdmin),
-                                          ),
-                                        if (_can('حذف وكيل'))
-                                          _buildActionButton(Icons.delete_forever, 'حذف', Colors.red, () => _deleteAgent(agent, agentAdmin)),
                                       ],
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             );
@@ -520,53 +630,142 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
     );
   }
 
-  // 🆕 تحميل شبكات الوكيل من Firestore
-  Future<Map<String, dynamic>> _loadAgentNetworks(String phone) async {
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection('networks')
-          .where('agentPhone', isEqualTo: phone)
-          .get();
-      
-      final networks = snap.docs.map((doc) {
-        final data = doc.data();
-        return {
-          'name': data['name'] ?? '',
-          'location': data['location'] ?? '',
-          'isActive': data['isActive'] ?? true,
-        };
-      }).toList();
+  // 🆕 بطاقة شبكة واحدة بالتصميم الموحد (متجاوبة)
+  Widget _buildNetworkCard(Map<String, dynamic> net, bool isSmallScreen) {
+    final bool isActive = net['isActive'] == true;
+    final String name = net['name'] ?? 'بدون اسم';
+    final String location = net['location'] ?? '';
+    final String ip = net['ip'] ?? '';
+    final int catCount = (net['categories'] as List?)?.length ?? 0;
+    final double? lat = net['latitude']?.toDouble();
+    final double? lng = net['longitude']?.toDouble();
+    final colorScheme = Theme.of(context).colorScheme;
 
-      // جلب رقم الحساب من وثيقة المستخدم
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(phone).get();
-      final accountNumber = userDoc.data()?['accountNumber'] as String?;
-
-      return {
-        'networks': networks,
-        'accountNumber': accountNumber,
-      };
-    } catch (e) {
-      return {'networks': [], 'accountNumber': null};
-    }
+    return Card(
+      color: isActive ? colorScheme.surface : Colors.grey.shade200,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: isActive ? colorScheme.outlineVariant : Colors.grey.shade300),
+      ),
+      elevation: 1,
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: EdgeInsets.all(isSmallScreen ? 8 : 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // رأس البطاقة: دائرة + اسم + شريحة حالة
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: isActive ? Colors.green.withOpacity(0.15) : Colors.grey.withOpacity(0.15),
+                  radius: isSmallScreen ? 14 : 18,
+                  child: Icon(Icons.router,
+                      color: isActive ? Colors.green : Colors.grey,
+                      size: isSmallScreen ? 16 : 20),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    name,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: isSmallScreen ? 13 : 15,
+                      color: colorScheme.onSurface,
+                      decoration: isActive ? null : TextDecoration.lineThrough,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 6 : 8, vertical: isSmallScreen ? 2 : 3),
+                  decoration: BoxDecoration(
+                    color: isActive ? Colors.green.withOpacity(0.15) : Colors.red.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    isActive ? 'نشط' : 'مجمد',
+                    style: TextStyle(
+                      fontSize: isSmallScreen ? 10 : 11,
+                      fontWeight: FontWeight.bold,
+                      color: isActive ? Colors.green.shade700 : Colors.red.shade700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: isSmallScreen ? 8 : 10),
+            // صفوف المعلومات
+            if (location.isNotEmpty)
+              _buildInfoRow(Icons.location_on, 'الموقع', location, Colors.orange, isSmallScreen),
+            if (ip.isNotEmpty)
+              _buildInfoRow(Icons.wifi, 'IP', ip, Colors.blueGrey, isSmallScreen),
+            _buildInfoRow(Icons.category, 'عدد الفئات', '$catCount فئة', Colors.purple, isSmallScreen),
+            // زر الخريطة
+            if (lat != null && lng != null)
+              TextButton.icon(
+                onPressed: () => _showNetworkMap(lat, lng, name),
+                icon: Icon(Icons.map, size: isSmallScreen ? 14 : 16, color: colorScheme.primary),
+                label: Text('عرض على الخريطة',
+                    style: TextStyle(color: colorScheme.primary, fontSize: isSmallScreen ? 10 : 12)),
+                style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 30)),
+              ),
+            // أزرار التحكم بالشبكة
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                _networkActionBtn(Icons.bolt, 'اختبار', Colors.blue, () {
+                  _play('click');
+                  _showSnackBar('اختبار الاتصال بـ $name...');
+                }, isSmallScreen),
+                const SizedBox(width: 4),
+                _networkActionBtn(
+                  isActive ? Icons.pause_circle_filled : Icons.play_circle_fill,
+                  isActive ? 'تجميد' : 'تنشيط',
+                  Colors.orange,
+                  () {
+                    _play('click');
+                    _showSnackBar(isActive ? 'تم تجميد $name' : 'تم تنشيط $name');
+                  },
+                  isSmallScreen,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  Widget _buildInfoRow(IconData icon, String label, String value, Color color) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  Widget _networkActionBtn(IconData icon, String label, Color color, VoidCallback onTap, bool isSmallScreen) {
+    return TextButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: isSmallScreen ? 14 : 16, color: color),
+      label: Text(label,
+          style: TextStyle(fontSize: isSmallScreen ? 10 : 11, color: color, fontWeight: FontWeight.bold)),
+      style: TextButton.styleFrom(
+        padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 4 : 6, vertical: 2),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value, Color color, bool isSmallScreen) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: EdgeInsets.symmetric(vertical: isSmallScreen ? 2 : 3),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(width: 8),
+          Icon(icon, size: isSmallScreen ? 14 : 16, color: color),
+          const SizedBox(width: 6),
           Text('$label: ',
               style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                  color: isDark ? Colors.white70 : Colors.black87)),
+                  fontSize: isSmallScreen ? 11 : 12,
+                  color: Colors.grey)),
           Expanded(
             child: Text(
               value,
-              style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurface),
+              style: TextStyle(fontSize: isSmallScreen ? 11 : 12, color: Theme.of(context).colorScheme.onSurface),
             ),
           ),
         ],
@@ -592,20 +791,20 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
     );
   }
 
-  Widget _buildActionButton(IconData icon, String tooltip, Color color, VoidCallback onTap) {
+  Widget _buildActionButton(IconData icon, String tooltip, Color color, VoidCallback onTap, bool isSmallScreen) {
     return Tooltip(
       message: tooltip,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Padding(
-          padding: const EdgeInsets.all(8.0),
+          padding: EdgeInsets.all(isSmallScreen ? 6.0 : 8.0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: color, size: 24),
-              const SizedBox(height: 4),
-              Text(tooltip, style: TextStyle(fontSize: 11, color: color)),
+              Icon(icon, color: color, size: isSmallScreen ? 20 : 24),
+              SizedBox(height: isSmallScreen ? 2 : 4),
+              Text(tooltip, style: TextStyle(fontSize: isSmallScreen ? 10 : 11, color: color)),
             ],
           ),
         ),
