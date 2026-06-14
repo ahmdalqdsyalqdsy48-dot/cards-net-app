@@ -22,8 +22,8 @@ class AgentManagementScreen extends StatefulWidget {
 
 class _AgentManagementScreenState extends State<AgentManagementScreen> {
   String _searchQuery = '';
-  // 🆕 متغير لتتبع أي وكيل مفتوح حالياً
   String? _expandedAgentPhone;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   void _play(String type) => context.read<UiProvider>().playSound(type);
 
@@ -337,6 +337,35 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
     );
   }
 
+  // 🆕 تجميد/تنشيط شبكة (حقيقية)
+  Future<void> _toggleNetworkStatus(Map<String, dynamic> net) async {
+    if (!_can('تجميد/تنشيط شبكة')) return;
+    _play('click');
+    final bool isActive = net['isActive'] == true;
+    final String netId = net['id'] ?? '';
+    final String netName = net['name'] ?? '';
+
+    try {
+      // تغيير حالة الشبكة
+      await _db.collection('networks').doc(netId).update({'isActive': !isActive});
+
+      // تغيير حالة جميع الفئات المرتبطة
+      final netDoc = await _db.collection('networks').doc(netId).get();
+      final List cats = List.from((netDoc.data() as Map)['categories'] ?? []);
+      for (int i = 0; i < cats.length; i++) {
+        cats[i]['isActive'] = !isActive;
+      }
+      await _db.collection('networks').doc(netId).update({'categories': cats});
+
+      _play('success');
+      setState(() {}); // تحديث الواجهة
+      _showSnackBar(isActive ? 'تم تجميد الشبكة $netName وجميع فئاتها ⏸️' : 'تم تنشيط الشبكة $netName وجميع فئاتها ▶️');
+    } catch (e) {
+      _play('error');
+      _showSnackBar('فشل تغيير الحالة ❌: $e', error: true);
+    }
+  }
+
   // 🆕 تحميل شبكات الوكيل من Firestore
   Future<Map<String, dynamic>> _loadAgentNetworks(String phone) async {
     try {
@@ -383,7 +412,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
     final agentAdmin = context.read<AgentAdminProvider>();
     final colorScheme = Theme.of(context).colorScheme;
 
-    // 🆕 استجابة لحجم الشاشة
+    // استجابة لحجم الشاشة
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 600;
 
@@ -508,7 +537,6 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                                 onTap: () {
                                   _play('click');
                                   setState(() {
-                                    // 🆕 توسيع/طي البطاقة
                                     _expandedAgentPhone = isExpanded ? null : phone;
                                   });
                                 },
@@ -552,7 +580,6 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                                                 ),
                                               ),
                                               const SizedBox(width: 8),
-                                              // 🆕 أيقونة التوسيع
                                               Icon(
                                                 isExpanded ? Icons.expand_less : Icons.expand_more,
                                                 color: colorScheme.onSurfaceVariant,
@@ -569,7 +596,6 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                                       _buildInfoRow(Icons.phone_android, 'رقم الهاتف', phone, Colors.indigo, isSmallScreen),
                                       _buildInfoRow(Icons.percent, 'رسوم النظام', agent['profitMargin'] ?? '0%', Colors.orange, isSmallScreen),
                                       _buildInfoRow(Icons.account_balance_wallet, 'الرصيد', '${(agent['balance'] ?? 0).toString()} ريال', Colors.green, isSmallScreen),
-                                      // ملخص الشبكات (يظهر دائماً)
                                       _buildInfoRow(
                                         networks.isNotEmpty ? Icons.wifi : Icons.wifi_off,
                                         'الشبكات',
@@ -578,10 +604,9 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                                         isSmallScreen,
                                       ),
 
-                                      // 🆕 المحتوى الموسع (يظهر فقط عند التوسيع)
+                                      // المحتوى الموسع
                                       if (isExpanded) ...[
                                         const Divider(),
-                                        // عرض الشبكات بالتصميم الموحد
                                         if (networks.isNotEmpty) ...[
                                           Text('الشبكات:',
                                               style: TextStyle(
@@ -630,7 +655,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
     );
   }
 
-  // 🆕 بطاقة شبكة واحدة بالتصميم الموحد (متجاوبة)
+  // 🆕 بطاقة شبكة واحدة (بدون زر اختبار الاتصال، مع تجميد حقيقي)
   Widget _buildNetworkCard(Map<String, dynamic> net, bool isSmallScreen) {
     final bool isActive = net['isActive'] == true;
     final String name = net['name'] ?? 'بدون اسم';
@@ -654,7 +679,7 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // رأس البطاقة: دائرة + اسم + شريحة حالة
+            // رأس البطاقة
             Row(
               children: [
                 CircleAvatar(
@@ -694,13 +719,11 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
               ],
             ),
             SizedBox(height: isSmallScreen ? 8 : 10),
-            // صفوف المعلومات
             if (location.isNotEmpty)
               _buildInfoRow(Icons.location_on, 'الموقع', location, Colors.orange, isSmallScreen),
             if (ip.isNotEmpty)
               _buildInfoRow(Icons.wifi, 'IP', ip, Colors.blueGrey, isSmallScreen),
             _buildInfoRow(Icons.category, 'عدد الفئات', '$catCount فئة', Colors.purple, isSmallScreen),
-            // زر الخريطة
             if (lat != null && lng != null)
               TextButton.icon(
                 onPressed: () => _showNetworkMap(lat, lng, name),
@@ -709,25 +732,18 @@ class _AgentManagementScreenState extends State<AgentManagementScreen> {
                     style: TextStyle(color: colorScheme.primary, fontSize: isSmallScreen ? 10 : 12)),
                 style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 30)),
               ),
-            // أزرار التحكم بالشبكة
+            // 🆕 زر تجميد/تنشيط الشبكة (حقيقي، محمي بصلاحية)
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                _networkActionBtn(Icons.bolt, 'اختبار', Colors.blue, () {
-                  _play('click');
-                  _showSnackBar('اختبار الاتصال بـ $name...');
-                }, isSmallScreen),
-                const SizedBox(width: 4),
-                _networkActionBtn(
-                  isActive ? Icons.pause_circle_filled : Icons.play_circle_fill,
-                  isActive ? 'تجميد' : 'تنشيط',
-                  Colors.orange,
-                  () {
-                    _play('click');
-                    _showSnackBar(isActive ? 'تم تجميد $name' : 'تم تنشيط $name');
-                  },
-                  isSmallScreen,
-                ),
+                if (_can('تجميد/تنشيط شبكة'))
+                  _networkActionBtn(
+                    isActive ? Icons.pause_circle_filled : Icons.play_circle_fill,
+                    isActive ? 'تجميد' : 'تنشيط',
+                    Colors.orange,
+                    () => _toggleNetworkStatus(net),
+                    isSmallScreen,
+                  ),
               ],
             ),
           ],
