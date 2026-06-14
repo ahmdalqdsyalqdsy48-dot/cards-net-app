@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../providers/theme_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/wallet_provider.dart'; // للوصول إلى رقم الحساب
 import '../providers/ui_provider.dart';
 
 import '../../features/auth/screens/sso_login_screen.dart';
@@ -19,7 +20,6 @@ import '../../features/super_admin/screens/subscriptions_screen.dart';
 import '../../features/super_admin/screens/staff_support_screen.dart';
 import '../../features/super_admin/screens/bank_accounts_screen.dart';
 import '../../features/super_admin/screens/reports_screen.dart';
-import '../../features/super_admin/screens/settings_screen.dart';
 import '../../features/super_admin/screens/audit_log_screen.dart';
 import '../../features/super_admin/screens/banners_screen.dart';
 import '../../features/super_admin/screens/sms_gateway_screen.dart';
@@ -27,6 +27,7 @@ import '../../features/super_admin/screens/backup_screen.dart';
 import '../../features/super_admin/screens/portals_management_screen.dart';
 import '../../features/super_admin/screens/admin_user_accounts_screen.dart';
 import '../../features/super_admin/screens/advanced_reset_screen.dart';
+import '../../features/super_admin/screens/settings_screen.dart';
 
 class CustomDrawer extends StatefulWidget {
   final String userName;
@@ -52,46 +53,32 @@ class _CustomDrawerState extends State<CustomDrawer> {
   bool _isBalanceHidden = true;
   bool _isUploading = false;
 
-  // 🆕 خريطة الصلاحيات: كل قسم رئيسي مرتبط بالصلاحيات الدقيقة التابعة له
   static const Map<String, List<String>> _sectionPermissions = {
-    'الرئيسية (غرفة العمليات)': ['الرئيسية (غرفة العمليات)'],
+    'الرئيسية': ['الرئيسية (غرفة العمليات)'],
     'إدارة الوكلاء': ['إدارة الوكلاء الشاملة', 'عرض الوكلاء', 'إضافة وكيل', 'تعديل وكيل', 'حذف وكيل', 'تجميد/تنشيط وكيل'],
-    'إدارة الاشتراكات': ['إدارة الاشتراكات والباقات', 'عرض الاشتراكات', 'تعديل الاشتراكات'],
-    'المركز المالي والمحافظ': ['المركز المالي والمحافظ', 'عرض الأرصدة', 'تسوية رصيد', 'عرض المعاملات'],
+    'الاشتراكات': ['إدارة الاشتراكات والباقات', 'عرض الاشتراكات', 'تعديل الاشتراكات'],
+    'المركز المالي': ['المركز المالي والمحافظ', 'عرض الأرصدة', 'تسوية رصيد', 'عرض المعاملات'],
     'الحسابات البنكية': ['الحسابات البنكية', 'عرض الحسابات', 'إضافة حساب', 'تعديل حساب', 'حذف حساب'],
-    'إدارة أرقام الحسابات والحظر': ['إدارة أرقام الحسابات والحظر', 'عرض الحسابات', 'تعديل رقم حساب', 'حظر/فك حظر', 'إعادة تعيين PIN'],
+    'الحسابات والحظر': ['إدارة أرقام الحسابات والحظر', 'عرض الحسابات', 'تعديل رقم حساب', 'حظر/فك حظر', 'إعادة تعيين PIN'],
     'التقارير الشاملة': ['التقارير الشاملة', 'عرض التقارير'],
-    'إدارة بوابات النظام': ['إدارة بوابات النظام', 'عرض البوابات', 'تعديل البوابات'],
-    'إدارة الموظفين والدعم': ['إدارة الموظفين والدعم', 'عرض الموظفين', 'إضافة موظف', 'تعديل موظف', 'حذف موظف', 'تجميد/تنشيط موظف', 'عرض الرواتب', 'تعديل الرواتب', 'تسليم راتب', 'عرض التذاكر', 'الرد على التذاكر', 'إحالة التذاكر', 'إغلاق التذاكر'],
+    'الموظفين والدعم': ['إدارة الموظفين والدعم', 'عرض الموظفين', 'إضافة موظف', 'تعديل موظف', 'حذف موظف', 'تجميد/تنشيط موظف', 'عرض الرواتب', 'تعديل الرواتب', 'تسليم راتب', 'عرض التذاكر', 'الرد على التذاكر', 'إحالة التذاكر', 'إغلاق التذاكر'],
     'الإعلانات والبنرات': ['الإعلانات التسويقية', 'عرض الإعلانات', 'إضافة إعلان', 'تعديل إعلان', 'حذف إعلان'],
-    'بوابة رسائل SMS': ['بوابة رسائل الـ SMS', 'عرض SMS', 'إرسال SMS'],
-    'السجل الأسود للنشاط': ['السجل الأسود للنشاط (للقراءة)', 'عرض السجل'],
-    'التحكم الشامل (إعادة التهيئة)': ['التحكم الشامل (إعادة التهيئة)'],
-    'الإعدادات العامة': ['الإعدادات العامة', 'عرض الإعدادات', 'تعديل الإعدادات'],
+    'الرسائل SMS': ['بوابة رسائل الـ SMS', 'عرض SMS', 'إرسال SMS'],
+    'بوابات النظام': ['إدارة بوابات النظام', 'عرض البوابات', 'تعديل البوابات'],
+    'سجل النشاط': ['السجل الأسود للنشاط (للقراءة)', 'عرض السجل'],
+    'التحكم الشامل': ['التحكم الشامل (إعادة التهيئة)'],
     'النسخ الاحتياطي': ['النسخ الاحتياطي', 'عرض النسخ', 'أخذ نسخة', 'حذف نسخة'],
   };
 
-  // 🆕 دالة ذكية: تتحقق من الصلاحيات العامة والدقيقة معاً
   bool _canAccessSection(String sectionName) {
     final auth = context.read<AuthProvider>();
-    // المدير العام يرى كل شيء
     if (auth.currentUserRole == 'super_admin') return true;
-    
-    // البحث عن الصلاحيات المرتبطة بهذا القسم
     final permissions = _sectionPermissions[sectionName];
     if (permissions == null) return false;
-    
-    // التحقق من أي صلاحية (عامة أو دقيقة)
     for (var perm in permissions) {
       if (auth.hasPermission(perm)) return true;
     }
     return false;
-  }
-
-  // دالة أصلية للتحقق من صلاحية محددة (للأزرار والوظائف)
-  bool _can(String permission) {
-    final auth = context.read<AuthProvider>();
-    return auth.currentUserRole == 'super_admin' || auth.hasPermission(permission);
   }
 
   void _playSound() {
@@ -281,8 +268,13 @@ class _CustomDrawerState extends State<CustomDrawer> {
     final Color onSurfaceColor = colors.onSurface;
     final Color onSurfaceVariant = colors.onSurfaceVariant;
     final Color surfaceColor = colors.surface;
-    
+
+    // 🆕 الحصول على رقم الحساب
+    final walletProvider = context.watch<WalletProvider>();
+    final String accountNumber = walletProvider.currentUserAccountNumber ?? 'غير متوفر';
+
     final nameColors = _generateGradientColors(primaryColor);
+    final accountColors = _generateGradientColors(primaryColor);
     final phoneColors = _generateGradientColors(primaryColor);
     final roleColors = _generateGradientColors(primaryColor);
     final balanceColors = _generateGradientColors(primaryColor);
@@ -383,6 +375,11 @@ class _CustomDrawerState extends State<CustomDrawer> {
                                   text: widget.userName,
                                   icon: Icons.badge,
                                   colors: nameColors),
+                              // 🆕 بطاقة رقم الحساب بين الاسم والهاتف
+                              _buildGradientCard(
+                                  text: 'الحساب: $accountNumber',
+                                  icon: Icons.credit_card,
+                                  colors: accountColors),
                               _buildGradientCard(
                                   text: widget.phoneNumber,
                                   icon: Icons.phone,
@@ -418,11 +415,11 @@ class _CustomDrawerState extends State<CustomDrawer> {
                       },
                     ),
                   ),
-                  // 🆕 جميع الأقسام تستخدم _canAccessSection
-                  if (_canAccessSection('الرئيسية (غرفة العمليات)'))
+                  // 🆕 المجموعة الأولى: الأساسية
+                  if (_canAccessSection('الرئيسية'))
                     _buildDrawerItem(
                         context,
-                        'الرئيسية (غرفة العمليات)',
+                        'الرئيسية',
                         Icons.dashboard,
                         Colors.blue,
                         const SuperAdminDashboard()),
@@ -433,27 +430,29 @@ class _CustomDrawerState extends State<CustomDrawer> {
                         Icons.people_alt,
                         Colors.purple,
                         const AgentManagementScreen()),
-                  if (_canAccessSection('إدارة الاشتراكات'))
+                  if (_canAccessSection('الاشتراكات'))
                     _buildDrawerItem(
                         context,
-                        'إدارة الاشتراكات',
+                        'الاشتراكات',
                         Icons.event_available,
                         Colors.teal,
                         const SubscriptionsScreen()),
+
+                  // المجموعة الثانية: المالية
                   Divider(color: colors.outlineVariant),
                   Padding(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 6),
-                    child: Text('المالية والمحاسبة',
+                    child: Text('المالية',
                         style: TextStyle(
                             color: onSurfaceColor,
                             fontSize: 12,
                             fontWeight: FontWeight.bold)),
                   ),
-                  if (_canAccessSection('المركز المالي والمحافظ'))
+                  if (_canAccessSection('المركز المالي'))
                     _buildDrawerItem(
                         context,
-                        'المركز المالي والمحافظ',
+                        'المركز المالي',
                         Icons.account_balance_wallet,
                         Colors.green,
                         const FinancialCenterScreen()),
@@ -464,10 +463,10 @@ class _CustomDrawerState extends State<CustomDrawer> {
                         Icons.account_balance,
                         Colors.indigo,
                         const BankAccountsScreen()),
-                  if (_canAccessSection('إدارة أرقام الحسابات والحظر'))
+                  if (_canAccessSection('الحسابات والحظر'))
                     _buildDrawerItem(
                         context,
-                        'إدارة أرقام الحسابات والحظر',
+                        'الحسابات والحظر',
                         Icons.credit_card,
                         Colors.blueGrey,
                         const AdminUserAccountsScreen()),
@@ -478,27 +477,22 @@ class _CustomDrawerState extends State<CustomDrawer> {
                         Icons.analytics,
                         Colors.orange,
                         const ReportsScreen()),
+
+                  // المجموعة الثالثة: الإدارة
                   Divider(color: colors.outlineVariant),
                   Padding(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 6),
-                    child: Text('الإدارة والتسويق',
+                    child: Text('الإدارة',
                         style: TextStyle(
                             color: onSurfaceColor,
                             fontSize: 12,
                             fontWeight: FontWeight.bold)),
                   ),
-                  if (_canAccessSection('إدارة بوابات النظام'))
+                  if (_canAccessSection('الموظفين والدعم'))
                     _buildDrawerItem(
                         context,
-                        'إدارة بوابات النظام',
-                        Icons.important_devices,
-                        Colors.deepPurple,
-                        const PortalsManagementScreen()),
-                  if (_canAccessSection('إدارة الموظفين والدعم'))
-                    _buildDrawerItem(
-                        context,
-                        'إدارة الموظفين والدعم',
+                        'الموظفين والدعم',
                         Icons.support_agent,
                         Colors.brown,
                         const StaffSupportScreen()),
@@ -509,44 +503,46 @@ class _CustomDrawerState extends State<CustomDrawer> {
                         Icons.campaign,
                         Colors.deepOrange,
                         const BannersScreen()),
-                  if (_canAccessSection('بوابة رسائل SMS'))
+                  if (_canAccessSection('الرسائل SMS'))
                     _buildDrawerItem(
                         context,
-                        'بوابة رسائل SMS',
+                        'الرسائل SMS',
                         Icons.sms,
                         Colors.blueAccent,
                         const SmsGatewayScreen()),
+                  if (_canAccessSection('بوابات النظام'))
+                    _buildDrawerItem(
+                        context,
+                        'بوابات النظام',
+                        Icons.important_devices,
+                        Colors.deepPurple,
+                        const PortalsManagementScreen()),
+
+                  // المجموعة الرابعة: الأمان
                   Divider(color: colors.outlineVariant),
                   Padding(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 6),
-                    child: Text('الأمان والنظام',
+                    child: Text('الأمان',
                         style: TextStyle(
                             color: onSurfaceColor,
                             fontSize: 12,
                             fontWeight: FontWeight.bold)),
                   ),
-                  if (_canAccessSection('السجل الأسود للنشاط'))
+                  if (_canAccessSection('سجل النشاط'))
                     _buildDrawerItem(
                         context,
-                        'السجل الأسود للنشاط',
+                        'سجل النشاط',
                         Icons.security,
                         Colors.red,
                         const AuditLogScreen()),
-                  if (_canAccessSection('التحكم الشامل (إعادة التهيئة)'))
+                  if (_canAccessSection('التحكم الشامل'))
                     _buildDrawerItem(
                         context,
-                        'التحكم الشامل (إعادة التهيئة)',
+                        'التحكم الشامل',
                         Icons.cleaning_services,
                         Colors.red,
                         const AdvancedResetScreen()),
-                  if (_canAccessSection('الإعدادات العامة'))
-                    _buildDrawerItem(
-                        context,
-                        'الإعدادات العامة',
-                        Icons.settings,
-                        Colors.blueGrey,
-                        const GlobalSettingsScreen()),
                   if (_canAccessSection('النسخ الاحتياطي'))
                     _buildDrawerItem(
                         context,
@@ -557,7 +553,21 @@ class _CustomDrawerState extends State<CustomDrawer> {
                 ],
               ),
             ),
+            // 🆕 الإعدادات + تسجيل الخروج في الأسفل
             Divider(height: 1, color: colors.outlineVariant),
+            ListTile(
+              dense: true,
+              leading:
+                  const Icon(Icons.settings, color: Colors.blueGrey, size: 20),
+              title: Text('الإعدادات',
+                  style: TextStyle(
+                      color: onSurfaceColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13)),
+              trailing: Icon(Icons.arrow_forward_ios,
+                  size: 11, color: onSurfaceColor.withOpacity(0.5)),
+              onTap: () => _navigateTo(context, const GlobalSettingsScreen()),
+            ),
             ListTile(
               dense: true,
               leading:
@@ -565,7 +575,8 @@ class _CustomDrawerState extends State<CustomDrawer> {
               title: Text('تسجيل الخروج',
                   style: TextStyle(
                       color: onSurfaceColor,
-                      fontWeight: FontWeight.bold)),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13)),
               onTap: () {
                 _playSound();
                 Navigator.pop(context);
