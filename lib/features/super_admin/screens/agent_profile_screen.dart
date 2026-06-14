@@ -41,7 +41,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 6, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) {
         context.read<UiProvider>().playSound('click');
@@ -279,6 +279,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     final String agentPhone = liveAgent['phone'] ?? '';
 
     return Scaffold(
+      appBar: const CustomHeader(title: 'الملف الشامل للوكيل'),
       drawer: CustomDrawer(
         userName: wallet.currentUserName,
         phoneNumber: auth.activeUserPhone ?? '',
@@ -296,18 +297,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
           controller: _scrollController,
           headerSliverBuilder: (context, innerBoxIsScrolled) {
             return [
-              SliverAppBar(
-                title: Text('الملف الشامل للوكيل',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 16 : 18)),
-                centerTitle: true,
-                floating: true,
-                pinned: false,
-                snap: true,
-                backgroundColor: colors.primaryContainer,
-                foregroundColor: colors.onPrimaryContainer,
-                elevation: 0,
-                expandedHeight: 0,
-              ),
               SliverToBoxAdapter(
                 child: FutureBuilder<Map<String, dynamic>>(
                   future: _loadAgentExtraData(agentPhone),
@@ -337,8 +326,8 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
                   TabBar(
                     controller: _tabController,
                     isScrollable: true,
-                    labelColor: colors.onPrimary,
-                    unselectedLabelColor: colors.onSurface.withOpacity(0.7),
+                    labelColor: colors.primary,
+                    unselectedLabelColor: colors.onSurfaceVariant,
                     indicatorColor: colors.primary,
                     indicatorWeight: 4,
                     labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 11 : 13),
@@ -347,7 +336,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
                       Tab(icon: Icon(Icons.inventory_2, size: isSmallScreen ? 18 : 22), text: 'المخزون'),
                       Tab(icon: Icon(Icons.store, size: isSmallScreen ? 18 : 22), text: 'البقالات'),
                       Tab(icon: Icon(Icons.receipt_long, size: isSmallScreen ? 18 : 22), text: 'المعاملات'),
-                      Tab(icon: Icon(Icons.dns, size: isSmallScreen ? 18 : 22), text: 'الشبكات'),
                       Tab(icon: Icon(Icons.history, size: isSmallScreen ? 18 : 22), text: 'سجل التدقيق'),
                     ],
                   ),
@@ -363,7 +351,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
               _buildInventoryTab(liveAgent),
               _buildPosTab(liveAgent),
               _buildTransactionsTab(agentPhone),
-              _buildNetworksTab(agentPhone),
               _buildAuditLogTab(agentPhone),
             ],
           ),
@@ -434,13 +421,21 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
                   ],
                 ),
               ),
-              Chip(
-                label: Text(agent['status'] ?? 'غير محدد',
-                    style: TextStyle(
-                        color: colors.onPrimary,
-                        fontSize: isSmallScreen ? 10 : 12,
-                        fontWeight: FontWeight.bold)),
-                backgroundColor: agent['status'] == 'نشط' ? Colors.green : Colors.red,
+              Container(
+                padding: EdgeInsets.symmetric(
+                    horizontal: isSmallScreen ? 8 : 12,
+                    vertical: isSmallScreen ? 4 : 6),
+                decoration: BoxDecoration(
+                  color: agent['status'] == 'نشط' ? Colors.green : colors.error,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  agent['status'] ?? 'غير محدد',
+                  style: TextStyle(
+                      color: colors.onPrimary,
+                      fontSize: isSmallScreen ? 10 : 12,
+                      fontWeight: FontWeight.bold),
+                ),
               ),
             ],
           ),
@@ -591,6 +586,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
                       const SizedBox(height: 10),
                       ...categorySales.entries.map((entry) => Card(
                             margin: const EdgeInsets.only(bottom: 8),
+                            color: colors.surface,
                             child: ListTile(
                               leading: Icon(Icons.category, color: colors.primary, size: isSmallScreen ? 20 : 24),
                               title: Text(entry.key, style: TextStyle(fontSize: isSmallScreen ? 12 : 14, color: colors.onSurface)),
@@ -647,6 +643,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
             return Card(
               elevation: 2,
               margin: const EdgeInsets.only(bottom: 12),
+              color: colors.surface,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
               child: Padding(
                 padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
@@ -713,6 +710,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
             return Card(
               elevation: 3,
               margin: const EdgeInsets.only(bottom: 16),
+              color: colors.surface,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
               child: ExpansionTile(
                 iconColor: colors.primary,
@@ -749,7 +747,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     );
   }
 
-  // 🆕 تبويب المعاملات المالية
   Widget _buildTransactionsTab(String agentPhone) {
     final colors = Theme.of(context).colorScheme;
     final isSmallScreen = MediaQuery.of(context).size.width < 600;
@@ -777,10 +774,11 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
             final date = (tx['timestamp'] as Timestamp?)?.toDate();
             final String dateStr = date != null ? DateFormat('yyyy/MM/dd hh:mm a', 'ar').format(date) : '';
             final bool isIncoming = type == 'deposit' || type == 'credit_refund';
-            final Color txColor = type == 'sale' ? Colors.blue : (isIncoming ? Colors.green : Colors.red);
+            final Color txColor = type == 'sale' ? Colors.blue : (isIncoming ? Colors.green : colors.error);
 
             return Card(
               margin: const EdgeInsets.only(bottom: 8),
+              color: colors.surface,
               child: ListTile(
                 leading: Icon(
                   isIncoming ? Icons.arrow_downward : Icons.arrow_upward,
@@ -798,73 +796,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
                     fontSize: isSmallScreen ? 12 : 14,
                     color: txColor,
                   ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildNetworksTab(String agentPhone) {
-    final colors = Theme.of(context).colorScheme;
-    final isSmallScreen = MediaQuery.of(context).size.width < 600;
-    return StreamBuilder<QuerySnapshot>(
-      stream: _db.collection('networks').where('agentPhone', isEqualTo: agentPhone).snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) return _buildSkeletonLoader();
-        if (snapshot.hasError) return _buildErrorWidget('تعذر تحميل الشبكات');
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
-          return _buildEmptyState(Icons.dns_outlined, 'لا توجد شبكات ميكروتك.');
-
-        final networks = snapshot.data!.docs;
-        return ListView.builder(
-          padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-          itemCount: networks.length,
-          itemBuilder: (context, index) {
-            final net = networks[index].data() as Map<String, dynamic>;
-            final bool isActive = net['isActive'] ?? true;
-            final String name = net['name'] ?? 'بدون اسم';
-            final String location = net['location'] ?? 'غير محدد';
-            final String ip = net['ip'] ?? 'غير محدد';
-            final int catCount = (net['categories'] as List?)?.length ?? 0;
-            final double? lat = net['latitude']?.toDouble();
-            final double? lng = net['longitude']?.toDouble();
-
-            return Card(
-              elevation: 2,
-              margin: const EdgeInsets.only(bottom: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: EdgeInsets.all(isSmallScreen ? 10 : 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.router, color: isActive ? Colors.green : Colors.grey, size: isSmallScreen ? 18 : 20),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text(name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 14 : 16, color: colors.onSurface))),
-                        Chip(
-                          label: Text(isActive ? 'نشط' : 'مجمد', style: TextStyle(fontSize: isSmallScreen ? 10 : 11, color: colors.onPrimary)),
-                          backgroundColor: isActive ? Colors.green : Colors.red,
-                          padding: EdgeInsets.zero,
-                          labelPadding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 6 : 8),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: isSmallScreen ? 6 : 8),
-                    _infoRow(Icons.location_on, 'الموقع', location),
-                    _infoRow(Icons.wifi, 'IP', ip),
-                    _infoRow(Icons.category, 'عدد الفئات', '$catCount فئة'),
-                    if (lat != null && lng != null)
-                      TextButton.icon(
-                        onPressed: () => _showLocationMap(lat, lng, name),
-                        icon: Icon(Icons.map, size: isSmallScreen ? 14 : 16, color: colors.primary),
-                        label: Text('عرض على الخريطة', style: TextStyle(color: colors.primary, fontSize: isSmallScreen ? 10 : 12)),
-                      ),
-                  ],
                 ),
               ),
             );
@@ -900,6 +831,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
             final String date = log['datetime'] ?? '';
             return Card(
               margin: const EdgeInsets.only(bottom: 8),
+              color: colors.surface,
               child: ListTile(
                 leading: Icon(Icons.receipt_long, color: colors.primary, size: isSmallScreen ? 18 : 20),
                 title: Text(action, style: TextStyle(fontSize: isSmallScreen ? 12 : 14, color: colors.onSurface)),
@@ -985,10 +917,11 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
   }
 
   Widget _buildStatCard(String title, String value, IconData icon, Color color, bool isSmallScreen) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
       padding: EdgeInsets.all(isSmallScreen ? 10 : 12),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withOpacity(0.3)),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)],
@@ -1000,7 +933,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
           SizedBox(height: isSmallScreen ? 6 : 8),
           Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 14 : 16, color: color)),
           SizedBox(height: isSmallScreen ? 2 : 4),
-          Text(title, style: TextStyle(fontSize: isSmallScreen ? 10 : 11, color: Colors.grey)),
+          Text(title, style: TextStyle(fontSize: isSmallScreen ? 10 : 11, color: colors.onSurfaceVariant)),
         ],
       ),
     );
