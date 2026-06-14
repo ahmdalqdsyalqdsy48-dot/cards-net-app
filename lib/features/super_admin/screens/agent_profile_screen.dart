@@ -38,12 +38,10 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
   TimeOfDay? _startTime;
   TimeOfDay? _endTime;
 
-  int _posCount = 0;
-
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) {
         context.read<UiProvider>().playSound('click');
@@ -56,6 +54,22 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     _tabController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  bool _can(String permission) {
+    final auth = context.read<AuthProvider>();
+    return auth.currentUserRole == 'super_admin' || auth.hasPermission(permission);
+  }
+
+  void _showSnackBar(String msg, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg, textDirection: TextDirection.rtl),
+        backgroundColor: error ? Colors.red.shade800 : Colors.green.shade800,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   DateTimeRange _getDateRange() {
@@ -105,9 +119,10 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
   }
 
   Widget _buildFilterBar() {
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 8 : 12, vertical: 8),
       child: Row(
         children: [
           _filterChip('اليوم'),
@@ -143,10 +158,12 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
   Widget _filterChip(String label) {
     final isSelected = _overviewFilter == label;
     final colors = Theme.of(context).colorScheme;
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
     return ChoiceChip(
       label: Text(label,
           style: TextStyle(
-              color: isSelected ? colors.onPrimaryContainer : colors.onSurface)),
+              color: isSelected ? colors.onPrimaryContainer : colors.onSurface,
+              fontSize: isSmallScreen ? 12 : 14)),
       selected: isSelected,
       selectedColor: colors.primaryContainer,
       backgroundColor: colors.surfaceVariant.withOpacity(0.5),
@@ -166,6 +183,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
   }
 
   Widget _datePickButton(String label, DateTime? current, ValueChanged<DateTime> onPick) {
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
     return TextButton.icon(
       onPressed: () async {
         context.read<UiProvider>().playSound('click');
@@ -178,15 +196,16 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
         );
         if (picked != null) onPick(picked);
       },
-      icon: Icon(Icons.calendar_today, size: 14, color: Theme.of(context).colorScheme.primary),
+      icon: Icon(Icons.calendar_today, size: isSmallScreen ? 12 : 14, color: Theme.of(context).colorScheme.primary),
       label: Text(
         current != null ? DateFormat('yyyy/MM/dd', 'ar').format(current) : label,
-        style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.primary),
+        style: TextStyle(fontSize: isSmallScreen ? 10 : 12, color: Theme.of(context).colorScheme.primary),
       ),
     );
   }
 
   Widget _timePickButton(String label, TimeOfDay? current, ValueChanged<TimeOfDay> onPick) {
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
     return TextButton.icon(
       onPressed: () async {
         context.read<UiProvider>().playSound('click');
@@ -196,12 +215,46 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
         );
         if (picked != null) onPick(picked);
       },
-      icon: Icon(Icons.access_time, size: 14, color: Theme.of(context).colorScheme.primary),
+      icon: Icon(Icons.access_time, size: isSmallScreen ? 12 : 14, color: Theme.of(context).colorScheme.primary),
       label: Text(
         current != null ? current.format(context) : label,
-        style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.primary),
+        style: TextStyle(fontSize: isSmallScreen ? 10 : 12, color: Theme.of(context).colorScheme.primary),
       ),
     );
+  }
+
+  Future<Map<String, dynamic>> _loadAgentExtraData(String phone) async {
+    try {
+      final netsSnap = await _db.collection('networks').where('agentPhone', isEqualTo: phone).get();
+      final networks = netsSnap.docs.map((d) => d.data()).toList();
+      final networkNames = networks.map((n) => n['name'] ?? 'بدون اسم').toList();
+      final activeNetworks = networks.where((n) => n['isActive'] == true).length;
+
+      final userDoc = await _db.collection('users').doc(phone).get();
+      final userData = userDoc.data() ?? {};
+      final accountNumber = userData['accountNumber'] as String?;
+      final lastSeen = userData['lastSeen'];
+      String lastSeenStr = 'غير معروف';
+      if (lastSeen is Timestamp) {
+        lastSeenStr = DateFormat('yyyy/MM/dd hh:mm a', 'ar').format(lastSeen.toDate());
+      }
+
+      return {
+        'networkNames': networkNames,
+        'networkCount': networks.length,
+        'activeNetworkCount': activeNetworks,
+        'accountNumber': accountNumber,
+        'lastSeen': lastSeenStr,
+      };
+    } catch (e) {
+      return {
+        'networkNames': [],
+        'networkCount': 0,
+        'activeNetworkCount': 0,
+        'accountNumber': null,
+        'lastSeen': 'غير معروف',
+      };
+    }
   }
 
   @override
@@ -210,6 +263,8 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     final wallet = context.watch<WalletProvider>();
     final auth = context.watch<AuthProvider>();
     final settings = context.watch<SettingsProvider>();
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 600;
 
     final liveAgent = wallet.agentsList.firstWhere(
       (a) => a['phone'] == widget.agentData['phone'],
@@ -227,13 +282,15 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
       drawer: CustomDrawer(
         userName: wallet.currentUserName,
         phoneNumber: auth.activeUserPhone ?? '',
-        role: 'مالك النظام',
+        role: auth.currentUserRole == 'super_admin' ? 'مالك النظام' : 'موظف مخصص',
         balanceOrPoints: 'أرباح النظام: ${settings.adminMainBalance.toStringAsFixed(0)} ريال',
       ),
       body: RefreshIndicator(
         onRefresh: () async {
+          setState(() {});
           await Future.delayed(const Duration(milliseconds: 300));
           context.read<UiProvider>().playSound('success');
+          _showSnackBar('تم تحديث الصفحة بنجاح ✅');
         },
         child: NestedScrollView(
           controller: _scrollController,
@@ -241,7 +298,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
             return [
               SliverAppBar(
                 title: Text('الملف الشامل للوكيل',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 16 : 18)),
                 centerTitle: true,
                 floating: true,
                 pinned: false,
@@ -252,25 +309,46 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
                 expandedHeight: 0,
               ),
               SliverToBoxAdapter(
-                child: _buildIdentityCard(agentName, nameInitial, balance, liveAgent),
+                child: FutureBuilder<Map<String, dynamic>>(
+                  future: _loadAgentExtraData(agentPhone),
+                  initialData: {
+                    'networkNames': [],
+                    'networkCount': 0,
+                    'activeNetworkCount': 0,
+                    'accountNumber': null,
+                    'lastSeen': 'جار التحميل...',
+                  },
+                  builder: (context, snapshot) {
+                    final extra = snapshot.data ?? {};
+                    return _buildIdentityCard(
+                      agentName,
+                      nameInitial,
+                      balance,
+                      liveAgent,
+                      extra,
+                      isSmallScreen,
+                    );
+                  },
+                ),
               ),
               SliverPersistentHeader(
                 pinned: true,
                 delegate: _SliverTabBarDelegate(
                   TabBar(
                     controller: _tabController,
-                    isScrollable: false,
+                    isScrollable: true,
                     labelColor: colors.onPrimary,
                     unselectedLabelColor: colors.onSurface.withOpacity(0.7),
                     indicatorColor: colors.primary,
                     indicatorWeight: 4,
-                    labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 11 : 13),
                     tabs: [
-                      Tab(icon: Icon(Icons.analytics, size: 22), text: 'نظرة عامة'),
-                      Tab(icon: Icon(Icons.inventory_2, size: 22), text: 'المخزون'),
-                      Tab(icon: Icon(Icons.store, size: 22), text: 'البقالات'),
-                      Tab(icon: Icon(Icons.dns, size: 22), text: 'الشبكات'),
-                      Tab(icon: Icon(Icons.history, size: 22), text: 'سجل العمليات'),
+                      Tab(icon: Icon(Icons.analytics, size: isSmallScreen ? 18 : 22), text: 'نظرة عامة'),
+                      Tab(icon: Icon(Icons.inventory_2, size: isSmallScreen ? 18 : 22), text: 'المخزون'),
+                      Tab(icon: Icon(Icons.store, size: isSmallScreen ? 18 : 22), text: 'البقالات'),
+                      Tab(icon: Icon(Icons.receipt_long, size: isSmallScreen ? 18 : 22), text: 'المعاملات'),
+                      Tab(icon: Icon(Icons.dns, size: isSmallScreen ? 18 : 22), text: 'الشبكات'),
+                      Tab(icon: Icon(Icons.history, size: isSmallScreen ? 18 : 22), text: 'سجل التدقيق'),
                     ],
                   ),
                   colors.surface,
@@ -284,6 +362,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
               _buildSalesOverviewTab(liveAgent),
               _buildInventoryTab(liveAgent),
               _buildPosTab(liveAgent),
+              _buildTransactionsTab(agentPhone),
               _buildNetworksTab(agentPhone),
               _buildAuditLogTab(agentPhone),
             ],
@@ -293,64 +372,105 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     );
   }
 
-  Widget _buildIdentityCard(String name, String initial, double balance, Map<String, dynamic> agent) {
+  Widget _buildIdentityCard(String name, String initial, double balance, Map<String, dynamic> agent, Map<String, dynamic> extra, bool isSmallScreen) {
     final colors = Theme.of(context).colorScheme;
+    final networkNames = (extra['networkNames'] as List?) ?? [];
+    final networkCount = extra['networkCount'] as int? ?? 0;
+    final accountNumber = extra['accountNumber'] as String?;
+    final lastSeen = extra['lastSeen'] as String? ?? 'غير معروف';
+    final profitMargin = agent['profitMargin'] ?? '0%';
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
       decoration: BoxDecoration(
         color: colors.primaryContainer,
         borderRadius: const BorderRadius.only(
             bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            radius: 30,
-            backgroundColor: colors.onPrimaryContainer.withOpacity(0.2),
-            child: Text(initial,
-                style: TextStyle(
-                    fontSize: 24,
-                    color: colors.onPrimaryContainer,
-                    fontWeight: FontWeight.bold)),
-          ),
-          const SizedBox(width: 15),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(name,
+          Row(
+            children: [
+              CircleAvatar(
+                radius: isSmallScreen ? 25 : 30,
+                backgroundColor: colors.onPrimaryContainer.withOpacity(0.2),
+                child: Text(initial,
                     style: TextStyle(
+                        fontSize: isSmallScreen ? 20 : 24,
                         color: colors.onPrimaryContainer,
-                        fontSize: 20,
                         fontWeight: FontWeight.bold)),
-                Text(
-                    '${agent['networkName'] ?? 'بدون شبكة'} | الهاتف: ${agent['phone']}',
-                    style: TextStyle(
-                        color: colors.onPrimaryContainer, fontSize: 13)),
-                const SizedBox(height: 5),
-                Row(
+              ),
+              const SizedBox(width: 15),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.account_balance_wallet,
-                        color: colors.primary, size: 16),
-                    const SizedBox(width: 5),
-                    Text('الرصيد: $balance ريال',
+                    Text(name,
                         style: TextStyle(
-                            color: colors.primary,
+                            color: colors.onPrimaryContainer,
+                            fontSize: isSmallScreen ? 16 : 20,
                             fontWeight: FontWeight.bold)),
+                    if (accountNumber != null)
+                      Text('الحساب: $accountNumber',
+                          style: TextStyle(color: colors.onPrimaryContainer.withOpacity(0.8), fontSize: isSmallScreen ? 11 : 13)),
+                    Text('الهاتف: ${agent['phone']}',
+                        style: TextStyle(color: colors.onPrimaryContainer.withOpacity(0.8), fontSize: isSmallScreen ? 11 : 13)),
+                    Text('رسوم النظام: $profitMargin',
+                        style: TextStyle(color: colors.onPrimaryContainer.withOpacity(0.8), fontSize: isSmallScreen ? 11 : 13)),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.account_balance_wallet,
+                            color: colors.primary, size: isSmallScreen ? 14 : 16),
+                        const SizedBox(width: 5),
+                        Text('الرصيد: $balance ريال',
+                            style: TextStyle(
+                                color: colors.primary,
+                                fontWeight: FontWeight.bold,
+                                fontSize: isSmallScreen ? 12 : 14)),
+                      ],
+                    ),
                   ],
                 ),
-              ],
-            ),
+              ),
+              Chip(
+                label: Text(agent['status'] ?? 'غير محدد',
+                    style: TextStyle(
+                        color: colors.onPrimary,
+                        fontSize: isSmallScreen ? 10 : 12,
+                        fontWeight: FontWeight.bold)),
+                backgroundColor: agent['status'] == 'نشط' ? Colors.green : Colors.red,
+              ),
+            ],
           ),
-          Chip(
-            label: Text(agent['status'] ?? 'غير محدد',
-                style: TextStyle(
-                    color: colors.onPrimary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold)),
-            backgroundColor: agent['status'] == 'نشط'
-                ? Colors.green
-                : Colors.red,
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(Icons.wifi, size: isSmallScreen ? 14 : 16, color: colors.onPrimaryContainer),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  networkNames.isNotEmpty
+                      ? networkNames.take(3).join(' | ')
+                      : 'لم يضف شبكات بعد',
+                  style: TextStyle(color: colors.onPrimaryContainer, fontSize: isSmallScreen ? 11 : 12),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (networkCount > 3)
+                Text(' +${networkCount - 3}',
+                    style: TextStyle(color: colors.onPrimaryContainer, fontSize: isSmallScreen ? 10 : 11, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(Icons.login, size: isSmallScreen ? 14 : 16, color: colors.onPrimaryContainer),
+              const SizedBox(width: 6),
+              Text('آخر دخول: $lastSeen',
+                  style: TextStyle(color: colors.onPrimaryContainer.withOpacity(0.8), fontSize: isSmallScreen ? 10 : 11)),
+            ],
           ),
         ],
       ),
@@ -361,24 +481,25 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     final range = _getDateRange();
     final String agentPhone = agent['phone'] ?? '';
     final colors = Theme.of(context).colorScheme;
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
 
     return Column(
       children: [
         _buildFilterBar(),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 12 : 16),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               TextButton.icon(
-                onPressed: () => _printReport(agent, range),
-                icon: Icon(Icons.print, color: colors.primary),
-                label: Text('طباعة', style: TextStyle(color: colors.primary)),
+                onPressed: () => _exportReport(agent, range, 'pdf'),
+                icon: Icon(Icons.picture_as_pdf, size: isSmallScreen ? 16 : 18, color: colors.primary),
+                label: Text('PDF', style: TextStyle(fontSize: isSmallScreen ? 11 : 13, color: colors.primary)),
               ),
               TextButton.icon(
-                onPressed: () => _downloadReport(agent, range),
-                icon: Icon(Icons.download, color: colors.primary),
-                label: Text('تحميل PDF', style: TextStyle(color: colors.primary)),
+                onPressed: () => _exportReport(agent, range, 'print'),
+                icon: Icon(Icons.print, size: isSmallScreen ? 16 : 18, color: colors.primary),
+                label: Text('طباعة', style: TextStyle(fontSize: isSmallScreen ? 11 : 13, color: colors.primary)),
               ),
             ],
           ),
@@ -392,7 +513,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
                     isGreaterThanOrEqualTo: Timestamp.fromDate(range.start))
                 .where('timestamp',
                     isLessThanOrEqualTo: Timestamp.fromDate(range.end))
-                .limit(100)
+                .limit(500)
                 .snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
@@ -438,57 +559,43 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
               });
 
               return SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        Expanded(child: _buildStatCard('إجمالي المبيعات', '${totalSales.toStringAsFixed(0)} ريال', Icons.monetization_on, colors.primary)),
+                        Expanded(child: _buildStatCard('إجمالي المبيعات', '${totalSales.toStringAsFixed(0)} ريال', Icons.monetization_on, colors.primary, isSmallScreen)),
                         const SizedBox(width: 10),
-                        Expanded(child: _buildStatCard('عدد الكروت المباعة', '$totalCards كرت', Icons.confirmation_number, colors.tertiary)),
+                        Expanded(child: _buildStatCard('عدد الكروت المباعة', '$totalCards كرت', Icons.confirmation_number, colors.tertiary, isSmallScreen)),
                       ],
                     ),
                     const SizedBox(height: 10),
                     Row(
                       children: [
-                        Expanded(child: _buildStatCard('أفضل فئة مبيعاً', bestCategory, Icons.star, Colors.amber.shade700)),
+                        Expanded(child: _buildStatCard('أفضل فئة مبيعاً', bestCategory, Icons.star, Colors.amber.shade700, isSmallScreen)),
                         const SizedBox(width: 10),
-                        Expanded(child: _buildStatCard('عدد البقالات', '$_posCount', Icons.store, colors.secondary)),
+                        Expanded(child: _buildStatCard('عدد البقالات', '${posSales.length}', Icons.store, colors.secondary, isSmallScreen)),
                       ],
                     ),
                     const SizedBox(height: 10),
-                    if (_posCount > 0)
+                    if (posSales.isNotEmpty)
                       Row(
                         children: [
-                          Expanded(child: _buildStatCard('إجمالي مبيعات البقالات', '${posSales.values.fold(0.0, (a, b) => a + b).toStringAsFixed(0)} ريال', Icons.store_mall_directory, colors.primary)),
+                          Expanded(child: _buildStatCard('مبيعات البقالات', '${posSales.values.fold(0.0, (a, b) => a + b).toStringAsFixed(0)} ريال', Icons.store_mall_directory, colors.primary, isSmallScreen)),
                         ],
                       ),
                     const SizedBox(height: 20),
                     if (categorySales.isNotEmpty) ...[
-                      Text('توزيع المبيعات حسب الفئة:', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface)),
+                      Text('توزيع المبيعات حسب الفئة:', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface, fontSize: isSmallScreen ? 14 : 16)),
                       const SizedBox(height: 10),
                       ...categorySales.entries.map((entry) => Card(
                             margin: const EdgeInsets.only(bottom: 8),
                             child: ListTile(
-                              leading: Icon(Icons.category, color: colors.primary),
-                              title: Text(entry.key, style: TextStyle(color: colors.onSurface)),
+                              leading: Icon(Icons.category, color: colors.primary, size: isSmallScreen ? 20 : 24),
+                              title: Text(entry.key, style: TextStyle(fontSize: isSmallScreen ? 12 : 14, color: colors.onSurface)),
                               trailing: Text('${entry.value.toStringAsFixed(0)} ريال',
-                                  style: TextStyle(fontWeight: FontWeight.bold, color: colors.primary)),
-                            ),
-                          )),
-                    ],
-                    if (posSales.isNotEmpty) ...[
-                      const SizedBox(height: 20),
-                      Text('مبيعات كل بقالة:', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface)),
-                      const SizedBox(height: 10),
-                      ...posSales.entries.map((entry) => Card(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            child: ListTile(
-                              leading: Icon(Icons.store, color: colors.secondary),
-                              title: Text('بقالة ${entry.key}', style: TextStyle(color: colors.onSurface)),
-                              trailing: Text('${entry.value.toStringAsFixed(0)} ريال',
-                                  style: TextStyle(fontWeight: FontWeight.bold, color: colors.primary)),
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 12 : 14, color: colors.primary)),
                             ),
                           )),
                     ],
@@ -496,7 +603,8 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
                       Center(
                         child: Padding(
                           padding: const EdgeInsets.all(20),
-                          child: Text('لا توجد مبيعات في هذه الفترة.', style: TextStyle(color: colors.onSurface.withOpacity(0.6))),
+                          child: Text('لا توجد مبيعات في هذه الفترة.',
+                              style: TextStyle(color: colors.onSurface.withOpacity(0.6), fontSize: isSmallScreen ? 12 : 14)),
                         ),
                       ),
                   ],
@@ -512,6 +620,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
   Widget _buildInventoryTab(Map<String, dynamic> agent) {
     final String agentPhone = agent['phone'] ?? '';
     final colors = Theme.of(context).colorScheme;
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
     return StreamBuilder<QuerySnapshot>(
       stream: _db.collection('networks').where('agentPhone', isEqualTo: agentPhone).snapshots(),
       builder: (context, snapshot) {
@@ -531,7 +640,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
         if (allCategories.isEmpty) return _buildEmptyState(Icons.inventory_2_outlined, 'لا توجد فئات نشطة.');
 
         return ListView.builder(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
           itemCount: allCategories.length,
           itemBuilder: (context, index) {
             final cat = allCategories[index];
@@ -540,7 +649,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
               margin: const EdgeInsets.only(bottom: 12),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -548,8 +657,8 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(cat['name'] ?? 'فئة غير معروفة',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: colors.primary)),
-                        Icon(Icons.category, color: Color(cat['color'] ?? colors.primary.value)),
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 14 : 16, color: colors.primary)),
+                        Icon(Icons.category, color: Color(cat['color'] ?? colors.primary.value), size: isSmallScreen ? 20 : 24),
                       ],
                     ),
                     const Divider(),
@@ -557,14 +666,14 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
                         Column(children: [
-                          Text('المخزون الحقيقي', style: TextStyle(color: colors.onSurface.withOpacity(0.7), fontSize: 12)),
+                          Text('المخزون الحقيقي', style: TextStyle(color: colors.onSurface.withOpacity(0.7), fontSize: isSmallScreen ? 10 : 12)),
                           Text('${cat['realStock'] ?? 0}',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.green)),
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 16 : 18, color: Colors.green)),
                         ]),
                         Column(children: [
-                          Text('المخزون الوهمي', style: TextStyle(color: colors.onSurface.withOpacity(0.7), fontSize: 12)),
+                          Text('المخزون الوهمي', style: TextStyle(color: colors.onSurface.withOpacity(0.7), fontSize: isSmallScreen ? 10 : 12)),
                           Text('${cat['simStock'] ?? 0}',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.orange)),
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 16 : 18, color: Colors.orange)),
                         ]),
                       ],
                     ),
@@ -581,21 +690,17 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
   Widget _buildPosTab(Map<String, dynamic> agent) {
     final String agentPhone = agent['phone'] ?? '';
     final colors = Theme.of(context).colorScheme;
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
     return StreamBuilder<QuerySnapshot>(
       stream: _db.collection('users').where('role', isEqualTo: 'pos').where('pos_agents', arrayContains: agentPhone).snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return _buildSkeletonLoader();
         if (snapshot.hasError) return _buildErrorWidget('تعذر تحميل البقالات');
         final posList = snapshot.data!.docs;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && _posCount != posList.length) {
-            setState(() => _posCount = posList.length);
-          }
-        });
         if (posList.isEmpty) return _buildEmptyState(Icons.storefront_outlined, 'لا توجد بقالات.');
 
         return ListView.builder(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
           itemCount: posList.length,
           itemBuilder: (context, index) {
             final pos = posList[index].data() as Map<String, dynamic>;
@@ -612,16 +717,16 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
               child: ExpansionTile(
                 iconColor: colors.primary,
                 collapsedIconColor: colors.onSurface,
-                title: Text(storeName, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: colors.onSurface)),
+                title: Text(storeName, style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 14 : 16, color: colors.onSurface)),
                 subtitle: Text('الموقع: $location | الرصيد: $walletBalance ريال',
-                    style: TextStyle(fontSize: 12, color: colors.onSurface.withOpacity(0.7))),
-                leading: CircleAvatar(backgroundColor: colors.primary, child: Icon(Icons.store, color: colors.onPrimary)),
+                    style: TextStyle(fontSize: isSmallScreen ? 10 : 12, color: colors.onSurface.withOpacity(0.7))),
+                leading: CircleAvatar(backgroundColor: colors.primary, radius: isSmallScreen ? 16 : 20, child: Icon(Icons.store, color: colors.onPrimary, size: isSmallScreen ? 16 : 20)),
                 onExpansionChanged: (expanded) {
                   if (expanded) context.read<UiProvider>().playSound('click');
                 },
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(16),
+                    padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
                     decoration: BoxDecoration(
                       color: colors.surfaceVariant.withOpacity(0.5),
                       borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(15), bottomRight: Radius.circular(15)),
@@ -644,8 +749,67 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     );
   }
 
+  // 🆕 تبويب المعاملات المالية
+  Widget _buildTransactionsTab(String agentPhone) {
+    final colors = Theme.of(context).colorScheme;
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
+    return StreamBuilder<QuerySnapshot>(
+      stream: _db
+          .collection('transactions')
+          .where('agentPhone', isEqualTo: agentPhone)
+          .orderBy('timestamp', descending: true)
+          .limit(100)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) return _buildSkeletonLoader();
+        if (snapshot.hasError) return _buildErrorWidget('تعذر تحميل المعاملات');
+        final transactions = snapshot.data?.docs ?? [];
+        if (transactions.isEmpty) return _buildEmptyState(Icons.receipt_long, 'لا توجد معاملات مالية.');
+
+        return ListView.builder(
+          padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+          itemCount: transactions.length,
+          itemBuilder: (context, index) {
+            final tx = transactions[index].data() as Map<String, dynamic>;
+            final String type = tx['type'] ?? 'عملية';
+            final String title = tx['title'] ?? '';
+            final double amount = (tx['amount'] ?? 0).toDouble();
+            final date = (tx['timestamp'] as Timestamp?)?.toDate();
+            final String dateStr = date != null ? DateFormat('yyyy/MM/dd hh:mm a', 'ar').format(date) : '';
+            final bool isIncoming = type == 'deposit' || type == 'credit_refund';
+            final Color txColor = type == 'sale' ? Colors.blue : (isIncoming ? Colors.green : Colors.red);
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: Icon(
+                  isIncoming ? Icons.arrow_downward : Icons.arrow_upward,
+                  color: txColor,
+                  size: isSmallScreen ? 20 : 24,
+                ),
+                title: Text(title.isNotEmpty ? title : type,
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 12 : 14, color: colors.onSurface)),
+                subtitle: Text(dateStr,
+                    style: TextStyle(fontSize: isSmallScreen ? 10 : 12, color: colors.onSurface.withOpacity(0.7))),
+                trailing: Text(
+                  '$amount ريال',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: isSmallScreen ? 12 : 14,
+                    color: txColor,
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildNetworksTab(String agentPhone) {
     final colors = Theme.of(context).colorScheme;
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
     return StreamBuilder<QuerySnapshot>(
       stream: _db.collection('networks').where('agentPhone', isEqualTo: agentPhone).snapshots(),
       builder: (context, snapshot) {
@@ -656,7 +820,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
 
         final networks = snapshot.data!.docs;
         return ListView.builder(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
           itemCount: networks.length,
           itemBuilder: (context, index) {
             final net = networks[index].data() as Map<String, dynamic>;
@@ -673,31 +837,32 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
               margin: const EdgeInsets.only(bottom: 12),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
-                padding: const EdgeInsets.all(12),
+                padding: EdgeInsets.all(isSmallScreen ? 10 : 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.router, color: isActive ? Colors.green : Colors.grey, size: 20),
+                        Icon(Icons.router, color: isActive ? Colors.green : Colors.grey, size: isSmallScreen ? 18 : 20),
                         const SizedBox(width: 8),
-                        Expanded(child: Text(name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: colors.onSurface))),
+                        Expanded(child: Text(name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 14 : 16, color: colors.onSurface))),
                         Chip(
-                          label: Text(isActive ? 'نشط' : 'مجمد', style: TextStyle(fontSize: 11, color: colors.onPrimary)),
+                          label: Text(isActive ? 'نشط' : 'مجمد', style: TextStyle(fontSize: isSmallScreen ? 10 : 11, color: colors.onPrimary)),
                           backgroundColor: isActive ? Colors.green : Colors.red,
                           padding: EdgeInsets.zero,
+                          labelPadding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 6 : 8),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: isSmallScreen ? 6 : 8),
                     _infoRow(Icons.location_on, 'الموقع', location),
                     _infoRow(Icons.wifi, 'IP', ip),
                     _infoRow(Icons.category, 'عدد الفئات', '$catCount فئة'),
                     if (lat != null && lng != null)
                       TextButton.icon(
                         onPressed: () => _showLocationMap(lat, lng, name),
-                        icon: Icon(Icons.map, size: 16, color: colors.primary),
-                        label: Text('عرض على الخريطة', style: TextStyle(color: colors.primary)),
+                        icon: Icon(Icons.map, size: isSmallScreen ? 14 : 16, color: colors.primary),
+                        label: Text('عرض على الخريطة', style: TextStyle(color: colors.primary, fontSize: isSmallScreen ? 10 : 12)),
                       ),
                   ],
                 ),
@@ -711,6 +876,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
 
   Widget _buildAuditLogTab(String agentPhone) {
     final colors = Theme.of(context).colorScheme;
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
     return StreamBuilder<QuerySnapshot>(
       stream: _db
           .collection('audit_logs')
@@ -720,12 +886,12 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) return _buildSkeletonLoader();
-        if (snapshot.hasError) return _buildErrorWidget('تعذر تحميل سجل العمليات');
+        if (snapshot.hasError) return _buildErrorWidget('تعذر تحميل سجل التدقيق');
         final logs = snapshot.data?.docs ?? [];
-        if (logs.isEmpty) return _buildEmptyState(Icons.history, 'لا يوجد سجل عمليات.');
+        if (logs.isEmpty) return _buildEmptyState(Icons.history, 'لا يوجد سجل تدقيق.');
 
         return ListView.builder(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
           itemCount: logs.length,
           itemBuilder: (context, index) {
             final log = logs[index].data() as Map<String, dynamic>;
@@ -735,9 +901,9 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
             return Card(
               margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
-                leading: Icon(Icons.receipt_long, color: colors.primary),
-                title: Text(action, style: TextStyle(color: colors.onSurface)),
-                subtitle: Text('$details\n$date', style: TextStyle(fontSize: 12, color: colors.onSurface.withOpacity(0.7))),
+                leading: Icon(Icons.receipt_long, color: colors.primary, size: isSmallScreen ? 18 : 20),
+                title: Text(action, style: TextStyle(fontSize: isSmallScreen ? 12 : 14, color: colors.onSurface)),
+                subtitle: Text('$details\n$date', style: TextStyle(fontSize: isSmallScreen ? 10 : 12, color: colors.onSurface.withOpacity(0.7))),
               ),
             );
           },
@@ -746,40 +912,29 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     );
   }
 
-  Future<void> _printReport(Map<String, dynamic> agent, DateTimeRange range) async {
+  Future<void> _exportReport(Map<String, dynamic> agent, DateTimeRange range, String mode) async {
     context.read<UiProvider>().playSound('click');
     final pdf = await _generatePdf(agent, range);
-    await Printing.layoutPdf(onLayout: (format) => pdf.save());
+    if (mode == 'pdf') {
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/تقرير_الوكيل.pdf');
+      await file.writeAsBytes(await pdf.save());
+      await Share.shareXFiles([XFile(file.path)], subject: 'تقرير الوكيل');
+    } else if (mode == 'print') {
+      await Printing.layoutPdf(onLayout: (format) => pdf.save());
+    }
     context.read<UiProvider>().playSound('success');
-  }
-
-  Future<void> _downloadReport(Map<String, dynamic> agent, DateTimeRange range) async {
-    context.read<UiProvider>().playSound('click');
-    final pdf = await _generatePdf(agent, range);
-    final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/تقرير_الوكيل.pdf');
-    await file.writeAsBytes(await pdf.save());
-    await Share.shareXFiles([XFile(file.path)], subject: 'تقرير الوكيل');
-    context.read<UiProvider>().playSound('success');
+    _showSnackBar(mode == 'pdf' ? 'تم تحميل التقرير ✅' : 'تم فتح نافذة الطباعة ✅');
   }
 
   Future<pw.Document> _generatePdf(Map<String, dynamic> agent, DateTimeRange range) async {
     final pdf = pw.Document();
     final transactions = await _fetchTransactions(agent['phone'] ?? '', range);
     double totalSales = 0; int totalCards = 0;
-    Map<String, double> catSales = {};
     for (var t in transactions) {
       if (t['type'] == 'sale') {
         totalSales += (t['amount'] ?? 0).toDouble();
         totalCards += (t['quantity'] as int?) ?? 1;
-        String title = t['title'] ?? '';
-        String cat = 'فئة عامة';
-        if (title.contains(':') && title.contains('لـ')) {
-          int s = title.indexOf(':') + 1;
-          int e = title.indexOf('لـ');
-          if (s < e) cat = title.substring(s, e).trim();
-        }
-        catSales[cat] = (catSales[cat] ?? 0) + (t['amount'] ?? 0).toDouble();
       }
     }
 
@@ -815,22 +970,23 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
 
   Widget _infoRow(IconData icon, String label, String value) {
     final colors = Theme.of(context).colorScheme;
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
-          Icon(icon, size: 14, color: colors.primary),
+          Icon(icon, size: isSmallScreen ? 12 : 14, color: colors.primary),
           const SizedBox(width: 6),
-          Text('$label: ', style: TextStyle(fontSize: 12, color: colors.onSurface, fontWeight: FontWeight.bold)),
-          Expanded(child: Text(value, style: TextStyle(fontSize: 12, color: colors.onSurface))),
+          Text('$label: ', style: TextStyle(fontSize: isSmallScreen ? 11 : 12, color: colors.onSurface, fontWeight: FontWeight.bold)),
+          Expanded(child: Text(value, style: TextStyle(fontSize: isSmallScreen ? 11 : 12, color: colors.onSurface))),
         ],
       ),
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+  Widget _buildStatCard(String title, String value, IconData icon, Color color, bool isSmallScreen) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(isSmallScreen ? 10 : 12),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
@@ -840,11 +996,11 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(height: 8),
-          Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: color)),
-          const SizedBox(height: 4),
-          Text(title, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          Icon(icon, color: color, size: isSmallScreen ? 20 : 24),
+          SizedBox(height: isSmallScreen ? 6 : 8),
+          Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 14 : 16, color: color)),
+          SizedBox(height: isSmallScreen ? 2 : 4),
+          Text(title, style: TextStyle(fontSize: isSmallScreen ? 10 : 11, color: Colors.grey)),
         ],
       ),
     );
@@ -865,11 +1021,12 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
   }
 
   Widget _buildEmptyState(IconData icon, String text) {
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
     return Center(
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(icon, size: 80, color: Colors.grey.shade300),
+        Icon(icon, size: isSmallScreen ? 60 : 80, color: Colors.grey.shade300),
         const SizedBox(height: 10),
-        Text(text, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6))),
+        Text(text, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6), fontSize: isSmallScreen ? 12 : 14)),
       ]),
     );
   }
