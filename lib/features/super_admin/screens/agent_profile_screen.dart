@@ -34,12 +34,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final ScrollController _scrollController = ScrollController();
 
-  final GlobalKey<_OverviewTabState> _overviewKey = GlobalKey();
-  final GlobalKey<_InventoryTabState> _inventoryKey = GlobalKey();
-  final GlobalKey<_PosTabState> _posKey = GlobalKey();
-  final GlobalKey<_TransactionsTabState> _transactionsKey = GlobalKey();
-  final GlobalKey<_AuditLogTabState> _auditLogKey = GlobalKey();
-
   @override
   void initState() {
     super.initState();
@@ -129,11 +123,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          _overviewKey.currentState?.refresh();
-          _inventoryKey.currentState?.refresh();
-          _posKey.currentState?.refresh();
-          _transactionsKey.currentState?.refresh();
-          _auditLogKey.currentState?.refresh();
+          setState(() {});
           await Future.delayed(const Duration(milliseconds: 300));
           if (mounted) {
             context.read<UiProvider>().playSound('success');
@@ -194,11 +184,11 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
           body: TabBarView(
             controller: _tabController,
             children: [
-              OverviewTab(key: _overviewKey, agent: liveAgent, db: _db),
-              InventoryTab(key: _inventoryKey, agent: liveAgent, db: _db),
-              PosTab(key: _posKey, agent: liveAgent, db: _db),
-              TransactionsTab(key: _transactionsKey, agentPhone: agentPhone, db: _db),
-              AuditLogTab(key: _auditLogKey, agentPhone: agentPhone, db: _db),
+              OverviewTab(agent: liveAgent, db: _db),
+              InventoryTab(agent: liveAgent, db: _db),
+              PosTab(agent: liveAgent, db: _db),
+              TransactionsTab(agentPhone: agentPhone, db: _db),
+              AuditLogTab(agentPhone: agentPhone, db: _db),
             ],
           ),
         ),
@@ -340,8 +330,6 @@ class _OverviewTabState extends State<OverviewTab> with AutomaticKeepAliveClient
   @override
   bool get wantKeepAlive => true;
 
-  void refresh() => setState(() {});
-
   DateTimeRange _getRange() {
     final now = DateTime.now();
     switch (_filter) {
@@ -382,7 +370,6 @@ class _OverviewTabState extends State<OverviewTab> with AutomaticKeepAliveClient
 
     return Column(
       children: [
-        // شريط الفلترة قابل للطي
         ExpansionTile(
           title: Text(_filter == 'الكل' ? 'عرض الكل' : 'الفترة: $_filter', style: TextStyle(color: colors.onSurface)),
           leading: Icon(Icons.filter_list, color: colors.primary),
@@ -617,7 +604,6 @@ class InventoryTab extends StatefulWidget {
 class _InventoryTabState extends State<InventoryTab> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
-  void refresh() => setState(() {});
 
   @override
   Widget build(BuildContext context) {
@@ -693,7 +679,6 @@ class PosTab extends StatefulWidget {
 class _PosTabState extends State<PosTab> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
-  void refresh() => setState(() {});
 
   @override
   Widget build(BuildContext context) {
@@ -765,7 +750,6 @@ class TransactionsTab extends StatefulWidget {
 class _TransactionsTabState extends State<TransactionsTab> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
-  void refresh() => setState(() {});
 
   @override
   Widget build(BuildContext context) {
@@ -821,7 +805,6 @@ class AuditLogTab extends StatefulWidget {
 class _AuditLogTabState extends State<AuditLogTab> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
-  void refresh() => setState(() {});
 
   @override
   Widget build(BuildContext context) {
@@ -830,7 +813,7 @@ class _AuditLogTabState extends State<AuditLogTab> with AutomaticKeepAliveClient
     final isSmallScreen = MediaQuery.of(context).size.width < 600;
     return StreamBuilder<QuerySnapshot>(
       stream: widget.db
-          .collection('activity_logs')  // تم التغيير من audit_logs إلى activity_logs
+          .collection('activity_logs') // التصحيح النهائي
           .where('phone', isEqualTo: widget.agentPhone)
           .orderBy('timestamp', descending: true)
           .limit(50)
