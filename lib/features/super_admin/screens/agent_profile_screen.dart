@@ -553,6 +553,20 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
                 }
               });
 
+              // 🆕 إذا لم تكن هناك أي معاملات على الإطلاق، نعرض رسالة واضحة
+              if (transactions.isEmpty) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Text(
+                      'لا توجد أي معاملات مالية لهذا الوكيل في هذه الفترة.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: colors.onSurface.withOpacity(0.6), fontSize: isSmallScreen ? 12 : 14),
+                    ),
+                  ),
+                );
+              }
+
               return SingleChildScrollView(
                 padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
                 child: Column(
@@ -625,21 +639,27 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
         final networks = snapshot.data!.docs;
         if (networks.isEmpty) return _buildEmptyState(Icons.inventory_2_outlined, 'لم يقم الوكيل برفع أي كروت.');
 
-        List<Map<String, dynamic>> allCategories = [];
+        // 🆕 تجميع الفئات مع اسم الشبكة
+        List<Map<String, dynamic>> allCategoriesWithNetwork = [];
         for (var net in networks) {
           final data = net.data() as Map<String, dynamic>;
+          final networkName = data['name'] ?? 'شبكة بدون اسم';
           final cats = List<Map<String, dynamic>>.from(data['categories'] ?? []);
           for (var cat in cats) {
-            if ((cat['isActive'] ?? true) == true) allCategories.add(cat);
+            if ((cat['isActive'] ?? true) == true) {
+              cat['networkName'] = networkName;
+              allCategoriesWithNetwork.add(cat);
+            }
           }
         }
-        if (allCategories.isEmpty) return _buildEmptyState(Icons.inventory_2_outlined, 'لا توجد فئات نشطة.');
+        if (allCategoriesWithNetwork.isEmpty) return _buildEmptyState(Icons.inventory_2_outlined, 'لا توجد فئات نشطة.');
 
         return ListView.builder(
           padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-          itemCount: allCategories.length,
+          itemCount: allCategoriesWithNetwork.length,
           itemBuilder: (context, index) {
-            final cat = allCategories[index];
+            final cat = allCategoriesWithNetwork[index];
+            final networkName = cat['networkName'] ?? 'غير معروف';
             return Card(
               elevation: 2,
               margin: const EdgeInsets.only(bottom: 12),
@@ -653,8 +673,17 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(cat['name'] ?? 'فئة غير معروفة',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 14 : 16, color: colors.primary)),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(cat['name'] ?? 'فئة غير معروفة',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 14 : 16, color: colors.primary)),
+                              Text('الشبكة: $networkName',
+                                  style: TextStyle(fontSize: isSmallScreen ? 10 : 12, color: colors.onSurface.withOpacity(0.6))),
+                            ],
+                          ),
+                        ),
                         Icon(Icons.category, color: Color(cat['color'] ?? colors.primary.value), size: isSmallScreen ? 20 : 24),
                       ],
                     ),
