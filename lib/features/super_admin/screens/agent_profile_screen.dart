@@ -21,7 +21,6 @@ import '../../../core/widgets/custom_drawer.dart';
 class AgentProfileScreen extends StatefulWidget {
   final Map<String, dynamic> agentData;
   const AgentProfileScreen({super.key, required this.agentData});
-
   @override
   State<AgentProfileScreen> createState() => _AgentProfileScreenState();
 }
@@ -29,6 +28,7 @@ class AgentProfileScreen extends StatefulWidget {
 class _AgentProfileScreenState extends State<AgentProfileScreen> with TickerProviderStateMixin {
   late TabController _tabController;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final ScrollController _scrollController = ScrollController();
 
   final GlobalKey<_OverviewTabState> _overviewKey = GlobalKey();
   final GlobalKey<_InventoryTabState> _inventoryKey = GlobalKey();
@@ -45,7 +45,28 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with TickerProv
   @override
   void dispose() {
     _tabController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<Map<String, dynamic>> _loadAgentExtraData(String phone) async {
+    try {
+      final netsSnap = await _db.collection('networks').where('agentPhone', isEqualTo: phone).get();
+      final networks = netsSnap.docs.map((d) => d.data()).toList();
+      final userDoc = await _db.collection('users').doc(phone).get();
+      final userData = userDoc.data() ?? {};
+      
+      return {
+        'networkNames': networks.map((n) => n['name'] ?? 'بدون اسم').toList(),
+        'networkCount': networks.length,
+        'accountNumber': userData['accountNumber'],
+        'lastSeen': userData['lastSeen'] is Timestamp 
+            ? DateFormat('yyyy/MM/dd hh:mm a', 'ar').format((userData['lastSeen'] as Timestamp).toDate()) 
+            : 'غير معروف',
+      };
+    } catch (_) {
+      return {'networkNames': [], 'networkCount': 0, 'lastSeen': 'غير معروف'};
+    }
   }
 
   @override
@@ -53,13 +74,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with TickerProv
     final wallet = context.watch<WalletProvider>();
     final auth = context.watch<AuthProvider>();
     final settings = context.watch<SettingsProvider>();
-    final colors = Theme.of(context).colorScheme;
-
-    final liveAgent = wallet.agentsList.firstWhere(
-      (a) => a['phone'] == widget.agentData['phone'],
-      orElse: () => widget.agentData,
-    );
-
+    final liveAgent = wallet.agentsList.firstWhere((a) => a['phone'] == widget.agentData['phone'], orElse: () => widget.agentData);
     final agentPhone = liveAgent['phone'] ?? '';
 
     return Scaffold(
@@ -80,7 +95,8 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with TickerProv
           context.read<UiProvider>().playSound('success');
         },
         child: NestedScrollView(
-          headerSliverBuilder: (context, innerBoxIsScrolled) => [
+          controller: _scrollController,
+          headerSliverBuilder: (ctx, inner) => [
             SliverToBoxAdapter(
               child: FutureBuilder<Map<String, dynamic>>(
                 future: _loadAgentExtraData(agentPhone),
@@ -93,18 +109,16 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with TickerProv
                 TabBar(
                   controller: _tabController,
                   isScrollable: true,
-                  labelColor: colors.primary,
-                  unselectedLabelColor: colors.onSurfaceVariant,
-                  indicatorColor: colors.primary,
+                  labelColor: Theme.of(context).colorScheme.primary,
                   tabs: const [
                     Tab(icon: Icon(Icons.analytics), text: 'نظرة عامة'),
                     Tab(icon: Icon(Icons.inventory_2), text: 'المخزون'),
                     Tab(icon: Icon(Icons.store), text: 'البقالات'),
                     Tab(icon: Icon(Icons.receipt_long), text: 'المعاملات'),
-                    Tab(icon: Icon(Icons.history), text: 'السجل'),
+                    Tab(icon: Icon(Icons.history), text: 'سجل التدقيق'),
                   ],
                 ),
-                colors.surface,
+                Theme.of(context).colorScheme.surface,
               ),
             ),
           ],
@@ -123,40 +137,21 @@ class _AgentProfileScreenState extends State<AgentProfileScreen> with TickerProv
     );
   }
 
-  Future<Map<String, dynamic>> _loadAgentExtraData(String phone) async {
-    try {
-      final nets = await _db.collection('networks').where('agentPhone', isEqualTo: phone).get();
-      final user = await _db.collection('users').doc(phone).get();
-      final userData = user.data() ?? {};
-      return {
-        'networkNames': nets.docs.map((d) => d['name'] ?? 'بدون اسم').toList(),
-        'networkCount': nets.size,
-        'accountNumber': userData['accountNumber'] as String?,
-        'lastSeen': userData['lastSeen'] is Timestamp
-            ? DateFormat('yyyy/MM/dd hh:mm', 'ar').format((userData['lastSeen'] as Timestamp).toDate())
-            : 'غير معروف',
-      };
-    } catch (_) {
-      return {'networkNames': [], 'networkCount': 0, 'lastSeen': 'غير معروف'};
-    }
-  }
-
   Widget _buildIdentityCard(Map<String, dynamic> agent, Map<String, dynamic> extra) {
     final colors = Theme.of(context).colorScheme;
     final name = agent['name'] ?? 'غير معروف';
-    final balance = double.tryParse((agent['balance'] ?? 0).toString()) ?? 0.0;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: colors.primaryContainer, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20))),
-      child: Column(children: [
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          CircleAvatar(backgroundColor: colors.primary, child: Text(name[0], style: TextStyle(color: colors.onPrimary))),
+          CircleAvatar(backgroundColor: colors.primary, child: Text(name[0])),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: colors.onPrimaryContainer)),
-            Text('الرصيد: ${balance.toStringAsFixed(0)} ريال', style: TextStyle(color: colors.primary)),
+            Text(name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: colors.onPrimaryContainer)),
+            Text('الرصيد: ${agent['balance']} ريال', style: TextStyle(color: colors.primary)),
           ])),
-          Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: agent['status'] == 'نشط' ? Colors.green : Colors.red, borderRadius: BorderRadius.circular(12)), child: Text(agent['status'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 10))),
+          Text(agent['status'] ?? 'غير محدد', style: TextStyle(fontWeight: FontWeight.bold, color: agent['status'] == 'نشط' ? Colors.green : Colors.red)),
         ]),
         const SizedBox(height: 8),
         Text('آخر دخول: ${extra['lastSeen']}', style: TextStyle(fontSize: 12, color: colors.onPrimaryContainer.withOpacity(0.7))),
@@ -174,12 +169,23 @@ class OverviewTab extends StatefulWidget {
   @override
   State<OverviewTab> createState() => _OverviewTabState();
 }
+
 class _OverviewTabState extends State<OverviewTab> with AutomaticKeepAliveClientMixin {
+  String _filter = 'اليوم';
   @override
   bool get wantKeepAlive => true;
   void refresh() => setState(() {});
+
   @override
-  Widget build(BuildContext context) { super.build(context); return const Center(child: Text('نظرة عامة')); }
+  Widget build(BuildContext context) {
+    super.build(context);
+    return Column(children: [
+      Wrap(children: ['اليوم', 'الأسبوع', 'الشهر', 'الكل'].map((f) => ChoiceChip(
+        label: Text(f), selected: _filter == f, onSelected: (_) => setState(() => _filter = f),
+      )).toList()),
+      Expanded(child: Center(child: Text('عرض البيانات للفترة: $_filter'))),
+    ]);
+  }
 }
 
 class InventoryTab extends StatefulWidget {
@@ -189,6 +195,7 @@ class InventoryTab extends StatefulWidget {
   @override
   State<InventoryTab> createState() => _InventoryTabState();
 }
+
 class _InventoryTabState extends State<InventoryTab> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
@@ -200,12 +207,11 @@ class _InventoryTabState extends State<InventoryTab> with AutomaticKeepAliveClie
       stream: widget.db.collection('networks').where('agentPhone', isEqualTo: widget.agent['phone']).snapshots(),
       builder: (context, snap) {
         if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-        final docs = snap.data!.docs;
         return ListView.builder(
-          itemCount: docs.length,
+          itemCount: snap.data!.docs.length,
           itemBuilder: (ctx, i) {
-            final data = docs[i].data() as Map<String, dynamic>;
-            return Card(child: ListTile(title: Text(data['name'] ?? 'بدون اسم'), subtitle: Text('الرصيد: ${data['balance'] ?? 0}')));
+            final d = snap.data!.docs[i].data() as Map<String, dynamic>;
+            return Card(child: ListTile(title: Text(d['name'] ?? 'شبكة')));
           },
         );
       },
@@ -220,12 +226,28 @@ class PosTab extends StatefulWidget {
   @override
   State<PosTab> createState() => _PosTabState();
 }
+
 class _PosTabState extends State<PosTab> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
   void refresh() => setState(() {});
   @override
-  Widget build(BuildContext context) { super.build(context); return const Center(child: Text('قائمة البقالات')); }
+  Widget build(BuildContext context) {
+    super.build(context);
+    return StreamBuilder<QuerySnapshot>(
+      stream: widget.db.collection('users').where('role', isEqualTo: 'pos').where('pos_agents', arrayContains: widget.agent['phone']).snapshots(),
+      builder: (context, snap) {
+        if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+        return ListView.builder(
+          itemCount: snap.data!.docs.length,
+          itemBuilder: (ctx, i) {
+            final p = snap.data!.docs[i].data() as Map<String, dynamic>;
+            return Card(child: ListTile(title: Text(p['storeName'] ?? 'بقالة')));
+          },
+        );
+      },
+    );
+  }
 }
 
 class TransactionsTab extends StatefulWidget {
@@ -235,6 +257,7 @@ class TransactionsTab extends StatefulWidget {
   @override
   State<TransactionsTab> createState() => _TransactionsTabState();
 }
+
 class _TransactionsTabState extends State<TransactionsTab> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
@@ -243,10 +266,16 @@ class _TransactionsTabState extends State<TransactionsTab> with AutomaticKeepAli
   Widget build(BuildContext context) {
     super.build(context);
     return StreamBuilder<QuerySnapshot>(
-      stream: widget.db.collection('transactions').where('agentPhone', isEqualTo: widget.agentPhone).orderBy('timestamp', descending: true).limit(50).snapshots(),
+      stream: widget.db.collection('transactions').where('agentPhone', isEqualTo: widget.agentPhone).orderBy('timestamp', descending: true).snapshots(),
       builder: (context, snap) {
         if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-        return ListView.builder(itemCount: snap.data!.docs.length, itemBuilder: (ctx, i) => ListTile(title: Text(snap.data!.docs[i]['title'] ?? 'معاملة')));
+        return ListView.builder(
+          itemCount: snap.data!.docs.length,
+          itemBuilder: (ctx, i) {
+            final tx = snap.data!.docs[i].data() as Map<String, dynamic>;
+            return ListTile(title: Text(tx['title'] ?? 'معاملة'), trailing: Text('${tx['amount']}'));
+          },
+        );
       },
     );
   }
@@ -259,12 +288,28 @@ class AuditLogTab extends StatefulWidget {
   @override
   State<AuditLogTab> createState() => _AuditLogTabState();
 }
+
 class _AuditLogTabState extends State<AuditLogTab> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
   void refresh() => setState(() {});
   @override
-  Widget build(BuildContext context) { super.build(context); return const Center(child: Text('سجل التدقيق')); }
+  Widget build(BuildContext context) {
+    super.build(context);
+    return StreamBuilder<QuerySnapshot>(
+      stream: widget.db.collection('audit_logs').where('phone', isEqualTo: widget.agentPhone).orderBy('timestamp', descending: true).snapshots(),
+      builder: (context, snap) {
+        if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+        return ListView.builder(
+          itemCount: snap.data!.docs.length,
+          itemBuilder: (ctx, i) {
+            final log = snap.data!.docs[i].data() as Map<String, dynamic>;
+            return ListTile(title: Text(log['action'] ?? 'إجراء'));
+          },
+        );
+      },
+    );
+  }
 }
 
 class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
