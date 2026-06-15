@@ -1,3 +1,5 @@
+// lib/features/super_admin/screens/agent_profile_screen.dart
+
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -38,15 +40,16 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
   TimeOfDay? _startTime;
   TimeOfDay? _endTime;
 
+  final GlobalKey<_OverviewTabState> _overviewKey = GlobalKey();
+  final GlobalKey<_InventoryTabState> _inventoryKey = GlobalKey();
+  final GlobalKey<_PosTabState> _posKey = GlobalKey();
+  final GlobalKey<_TransactionsTabState> _transactionsKey = GlobalKey();
+  final GlobalKey<_AuditLogTabState> _auditLogKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 5, vsync: this);
-    _tabController.addListener(() {
-      if (_tabController.indexIsChanging) {
-        context.read<UiProvider>().playSound('click');
-      }
-    });
   }
 
   @override
@@ -56,11 +59,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     super.dispose();
   }
 
-  bool _can(String permission) {
-    final auth = context.read<AuthProvider>();
-    return auth.currentUserRole == 'super_admin' || auth.hasPermission(permission);
-  }
-
   void _showSnackBar(String msg, {bool error = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -68,157 +66,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
         content: Text(msg, textDirection: TextDirection.rtl),
         backgroundColor: error ? Colors.red.shade800 : Colors.green.shade800,
         behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  DateTimeRange _getDateRange() {
-    final now = DateTime.now();
-    switch (_overviewFilter) {
-      case 'اليوم':
-        DateTime start = DateTime(now.year, now.month, now.day);
-        if (_startTime != null) {
-          start = DateTime(start.year, start.month, start.day,
-              _startTime!.hour, _startTime!.minute);
-        }
-        DateTime end = DateTime(now.year, now.month, now.day, 23, 59, 59);
-        if (_endTime != null) {
-          end = DateTime(end.year, end.month, end.day,
-              _endTime!.hour, _endTime!.minute);
-        }
-        return DateTimeRange(start: start, end: end);
-      case 'الأسبوع':
-        final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
-        return DateTimeRange(
-          start: DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day),
-          end: DateTime(now.year, now.month, now.day, 23, 59, 59),
-        );
-      case 'الشهر':
-        return DateTimeRange(
-          start: DateTime(now.year, now.month, 1),
-          end: DateTime(now.year, now.month, now.day, 23, 59, 59),
-        );
-      case 'مخصص':
-        if (_customStart != null && _customEnd != null) {
-          DateTime start = _customStart!;
-          DateTime end = _customEnd!;
-          if (_startTime != null) {
-            start = DateTime(start.year, start.month, start.day,
-                _startTime!.hour, _startTime!.minute);
-          }
-          if (_endTime != null) {
-            end = DateTime(end.year, end.month, end.day,
-                _endTime!.hour, _endTime!.minute);
-          }
-          return DateTimeRange(start: start, end: end);
-        }
-        return DateTimeRange(start: DateTime(now.year, now.month, now.day), end: DateTime(now.year, now.month, now.day, 23, 59, 59));
-      default:
-        return DateTimeRange(start: DateTime(now.year, now.month, now.day), end: DateTime(now.year, now.month, now.day, 23, 59, 59));
-    }
-  }
-
-  Widget _buildFilterBar() {
-    final isSmallScreen = MediaQuery.of(context).size.width < 600;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 8 : 12, vertical: 8),
-      child: Row(
-        children: [
-          _filterChip('اليوم'),
-          const SizedBox(width: 6),
-          _filterChip('الأسبوع'),
-          const SizedBox(width: 6),
-          _filterChip('الشهر'),
-          const SizedBox(width: 6),
-          _filterChip('مخصص'),
-          if (_overviewFilter == 'مخصص') ...[
-            const SizedBox(width: 8),
-            _datePickButton('من', _customStart, (d) {
-              setState(() => _customStart = d);
-            }),
-            const SizedBox(width: 4),
-            _datePickButton('إلى', _customEnd, (d) {
-              setState(() => _customEnd = d);
-            }),
-            const SizedBox(width: 8),
-            _timePickButton('⏰', _startTime, (t) {
-              setState(() => _startTime = t);
-            }),
-            const SizedBox(width: 4),
-            _timePickButton('⏰', _endTime, (t) {
-              setState(() => _endTime = t);
-            }),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _filterChip(String label) {
-    final isSelected = _overviewFilter == label;
-    final colors = Theme.of(context).colorScheme;
-    final isSmallScreen = MediaQuery.of(context).size.width < 600;
-    return ChoiceChip(
-      label: Text(label,
-          style: TextStyle(
-              color: isSelected ? colors.onPrimaryContainer : colors.onSurface,
-              fontSize: isSmallScreen ? 12 : 14)),
-      selected: isSelected,
-      selectedColor: colors.primaryContainer,
-      backgroundColor: colors.surfaceVariant.withOpacity(0.5),
-      onSelected: (val) {
-        context.read<UiProvider>().playSound('click');
-        setState(() {
-          _overviewFilter = label;
-          if (label != 'مخصص') {
-            _customStart = null;
-            _customEnd = null;
-            _startTime = null;
-            _endTime = null;
-          }
-        });
-      },
-    );
-  }
-
-  Widget _datePickButton(String label, DateTime? current, ValueChanged<DateTime> onPick) {
-    final isSmallScreen = MediaQuery.of(context).size.width < 600;
-    return TextButton.icon(
-      onPressed: () async {
-        context.read<UiProvider>().playSound('click');
-        final picked = await showDatePicker(
-          context: context,
-          initialDate: current ?? DateTime.now(),
-          firstDate: DateTime(2020),
-          lastDate: DateTime.now(),
-          locale: const Locale('ar'),
-        );
-        if (picked != null) onPick(picked);
-      },
-      icon: Icon(Icons.calendar_today, size: isSmallScreen ? 12 : 14, color: Theme.of(context).colorScheme.primary),
-      label: Text(
-        current != null ? DateFormat('yyyy/MM/dd', 'ar').format(current) : label,
-        style: TextStyle(fontSize: isSmallScreen ? 10 : 12, color: Theme.of(context).colorScheme.primary),
-      ),
-    );
-  }
-
-  Widget _timePickButton(String label, TimeOfDay? current, ValueChanged<TimeOfDay> onPick) {
-    final isSmallScreen = MediaQuery.of(context).size.width < 600;
-    return TextButton.icon(
-      onPressed: () async {
-        context.read<UiProvider>().playSound('click');
-        final picked = await showTimePicker(
-          context: context,
-          initialTime: current ?? TimeOfDay.now(),
-        );
-        if (picked != null) onPick(picked);
-      },
-      icon: Icon(Icons.access_time, size: isSmallScreen ? 12 : 14, color: Theme.of(context).colorScheme.primary),
-      label: Text(
-        current != null ? current.format(context) : label,
-        style: TextStyle(fontSize: isSmallScreen ? 10 : 12, color: Theme.of(context).colorScheme.primary),
       ),
     );
   }
@@ -290,8 +137,10 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
         onRefresh: () async {
           setState(() {});
           await Future.delayed(const Duration(milliseconds: 300));
-          context.read<UiProvider>().playSound('success');
-          _showSnackBar('تم تحديث الصفحة بنجاح ✅');
+          if (mounted) {
+            context.read<UiProvider>().playSound('success');
+            _showSnackBar('تم تحديث الصفحة بنجاح ✅');
+          }
         },
         child: NestedScrollView(
           controller: _scrollController,
@@ -347,11 +196,11 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
           body: TabBarView(
             controller: _tabController,
             children: [
-              _buildSalesOverviewTab(liveAgent),
-              _buildInventoryTab(liveAgent),
-              _buildPosTab(liveAgent),
-              _buildTransactionsTab(agentPhone),
-              _buildAuditLogTab(agentPhone),
+              OverviewTab(key: _overviewKey, agent: liveAgent, db: _db, uiProvider: context.read<UiProvider>()),
+              InventoryTab(key: _inventoryKey, agent: liveAgent, db: _db),
+              PosTab(key: _posKey, agent: liveAgent, db: _db, uiProvider: context.read<UiProvider>()),
+              TransactionsTab(key: _transactionsKey, agentPhone: agentPhone, db: _db),
+              AuditLogTab(key: _auditLogKey, agentPhone: agentPhone, db: _db),
             ],
           ),
         ),
@@ -471,54 +320,124 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
       ),
     );
   }
+}
 
-  Widget _buildSalesOverviewTab(Map<String, dynamic> agent) {
-    final range = _getDateRange();
-    final String agentPhone = agent['phone'] ?? '';
+// ==================== تبويب نظرة عامة ====================
+class OverviewTab extends StatefulWidget {
+  final Map<String, dynamic> agent;
+  final FirebaseFirestore db;
+  final UiProvider uiProvider;
+  const OverviewTab({super.key, required this.agent, required this.db, required this.uiProvider});
+  @override
+  State<OverviewTab> createState() => _OverviewTabState();
+}
+
+class _OverviewTabState extends State<OverviewTab> with AutomaticKeepAliveClientMixin {
+  String _filter = 'اليوم';
+  DateTime? _customStart;
+  DateTime? _customEnd;
+  TimeOfDay? _startTime;
+  TimeOfDay? _endTime;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  DateTimeRange _getRange() {
+    final now = DateTime.now();
+    switch (_filter) {
+      case 'اليوم':
+        DateTime start = DateTime(now.year, now.month, now.day);
+        if (_startTime != null) start = DateTime(start.year, start.month, start.day, _startTime!.hour, _startTime!.minute);
+        DateTime end = DateTime(now.year, now.month, now.day, 23, 59, 59);
+        if (_endTime != null) end = DateTime(end.year, end.month, end.day, _endTime!.hour, _endTime!.minute);
+        return DateTimeRange(start: start, end: end);
+      case 'الأسبوع':
+        final s = now.subtract(Duration(days: now.weekday - 1));
+        return DateTimeRange(start: DateTime(s.year, s.month, s.day), end: DateTime(now.year, now.month, now.day, 23, 59, 59));
+      case 'الشهر':
+        return DateTimeRange(start: DateTime(now.year, now.month, 1), end: DateTime(now.year, now.month, now.day, 23, 59, 59));
+      case 'مخصص':
+        if (_customStart != null && _customEnd != null) {
+          DateTime s = _customStart!;
+          DateTime e = _customEnd!;
+          if (_startTime != null) s = DateTime(s.year, s.month, s.day, _startTime!.hour, _startTime!.minute);
+          if (_endTime != null) e = DateTime(e.year, e.month, e.day, _endTime!.hour, _endTime!.minute);
+          return DateTimeRange(start: s, end: e);
+        }
+        return DateTimeRange(start: DateTime(now.year, now.month, now.day), end: DateTime(now.year, now.month, now.day, 23, 59, 59));
+      case 'الكل':
+        return DateTimeRange(start: DateTime(2020), end: DateTime(2030));
+      default:
+        return DateTimeRange(start: DateTime(now.year, now.month, now.day), end: DateTime(now.year, now.month, now.day, 23, 59, 59));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
     final colors = Theme.of(context).colorScheme;
     final isSmallScreen = MediaQuery.of(context).size.width < 600;
+    final range = _getRange();
+    final String agentPhone = widget.agent['phone'] ?? '';
 
     return Column(
       children: [
-        _buildFilterBar(),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 12 : 16),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 8 : 12, vertical: 8),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              TextButton.icon(
-                onPressed: () => _exportReport(agent, range, 'pdf'),
-                icon: Icon(Icons.picture_as_pdf, size: isSmallScreen ? 16 : 18, color: colors.primary),
-                label: Text('PDF', style: TextStyle(fontSize: isSmallScreen ? 11 : 13, color: colors.primary)),
-              ),
-              TextButton.icon(
-                onPressed: () => _exportReport(agent, range, 'print'),
-                icon: Icon(Icons.print, size: isSmallScreen ? 16 : 18, color: colors.primary),
-                label: Text('طباعة', style: TextStyle(fontSize: isSmallScreen ? 11 : 13, color: colors.primary)),
-              ),
+              _chip('الكل'),
+              const SizedBox(width: 6),
+              _chip('اليوم'),
+              const SizedBox(width: 6),
+              _chip('الأسبوع'),
+              const SizedBox(width: 6),
+              _chip('الشهر'),
+              const SizedBox(width: 6),
+              _chip('مخصص'),
+              if (_filter == 'مخصص') ...[
+                const SizedBox(width: 8),
+                _dateBtn('من', _customStart, (d) => setState(() => _customStart = d)),
+                const SizedBox(width: 4),
+                _dateBtn('إلى', _customEnd, (d) => setState(() => _customEnd = d)),
+                const SizedBox(width: 8),
+                _timeBtn('⏰', _startTime, (t) => setState(() => _startTime = t)),
+                const SizedBox(width: 4),
+                _timeBtn('⏰', _endTime, (t) => setState(() => _endTime = t)),
+              ],
             ],
           ),
         ),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 12 : 16),
+          child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+            TextButton.icon(
+              onPressed: () => _export('pdf'),
+              icon: Icon(Icons.picture_as_pdf, size: isSmallScreen ? 16 : 18, color: colors.primary),
+              label: Text('PDF', style: TextStyle(fontSize: isSmallScreen ? 11 : 13, color: colors.primary)),
+            ),
+            TextButton.icon(
+              onPressed: () => _export('print'),
+              icon: Icon(Icons.print, size: isSmallScreen ? 16 : 18, color: colors.primary),
+              label: Text('طباعة', style: TextStyle(fontSize: isSmallScreen ? 11 : 13, color: colors.primary)),
+            ),
+          ]),
+        ),
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
-            stream: _db
+            stream: widget.db
                 .collection('transactions')
                 .where('agentPhone', isEqualTo: agentPhone)
-                .where('timestamp',
-                    isGreaterThanOrEqualTo: Timestamp.fromDate(range.start))
-                .where('timestamp',
-                    isLessThanOrEqualTo: Timestamp.fromDate(range.end))
+                .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(range.start))
+                .where('timestamp', isLessThanOrEqualTo: Timestamp.fromDate(range.end))
                 .limit(500)
                 .snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return _buildSkeletonLoader();
-              }
-              if (snapshot.hasError) {
-                return _buildErrorWidget('تعذر تحميل المبيعات');
+                return const Center(child: CircularProgressIndicator());
               }
               final transactions = snapshot.data?.docs ?? [];
-
               double totalSales = 0;
               int totalCards = 0;
               Map<String, double> categorySales = {};
@@ -532,11 +451,9 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
                   String title = data['title'] ?? '';
                   String catName = 'فئة عامة';
                   if (title.contains(':') && title.contains('لـ')) {
-                    int start = title.indexOf(':') + 1;
-                    int end = title.indexOf('لـ');
-                    if (start < end) {
-                      catName = title.substring(start, end).trim();
-                    }
+                    int s = title.indexOf(':') + 1;
+                    int e = title.indexOf('لـ');
+                    if (s < e) catName = title.substring(s, e).trim();
                   }
                   categorySales[catName] = (categorySales[catName] ?? 0) + (data['amount'] ?? 0).toDouble();
                   String buyer = data['fromPhone'] ?? '';
@@ -544,81 +461,51 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
                 }
               }
 
-              String bestCategory = 'غير متوفر';
-              double bestCatAmount = 0;
-              categorySales.forEach((name, amt) {
-                if (amt > bestCatAmount) {
-                  bestCategory = name;
-                  bestCatAmount = amt;
-                }
-              });
+              String bestCat = 'غير متوفر';
+              double bestAmt = 0;
+              categorySales.forEach((k, v) { if (v > bestAmt) { bestCat = k; bestAmt = v; } });
 
-              // 🆕 إذا لم تكن هناك أي معاملات على الإطلاق، نعرض رسالة واضحة
               if (transactions.isEmpty) {
                 return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Text(
-                      'لا توجد أي معاملات مالية لهذا الوكيل في هذه الفترة.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: colors.onSurface.withOpacity(0.6), fontSize: isSmallScreen ? 12 : 14),
-                    ),
-                  ),
+                  child: Text('لا توجد معاملات مالية لهذا الوكيل في الفترة المحددة.',
+                      style: TextStyle(color: colors.onSurface.withOpacity(0.6))),
                 );
               }
 
               return SingleChildScrollView(
                 padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(child: _buildStatCard('إجمالي المبيعات', '${totalSales.toStringAsFixed(0)} ريال', Icons.monetization_on, colors.primary, isSmallScreen)),
-                        const SizedBox(width: 10),
-                        Expanded(child: _buildStatCard('عدد الكروت المباعة', '$totalCards كرت', Icons.confirmation_number, colors.tertiary, isSmallScreen)),
-                      ],
+                child: Column(children: [
+                  Row(children: [
+                    Expanded(child: _card('إجمالي المبيعات', '${totalSales.toStringAsFixed(0)} ريال', Icons.monetization_on, colors.primary)),
+                    const SizedBox(width: 10),
+                    Expanded(child: _card('عدد الكروت', '$totalCards كرت', Icons.confirmation_number, colors.tertiary)),
+                  ]),
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    Expanded(child: _card('أفضل فئة', bestCat, Icons.star, Colors.amber.shade700)),
+                    const SizedBox(width: 10),
+                    Expanded(child: _card('عدد البقالات', '${posSales.length}', Icons.store, colors.secondary)),
+                  ]),
+                  if (posSales.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Row(children: [
+                        Expanded(child: _card('مبيعات البقالات', '${posSales.values.fold(0.0, (a, b) => a + b).toStringAsFixed(0)} ريال', Icons.store_mall_directory, colors.primary)),
+                      ]),
                     ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(child: _buildStatCard('أفضل فئة مبيعاً', bestCategory, Icons.star, Colors.amber.shade700, isSmallScreen)),
-                        const SizedBox(width: 10),
-                        Expanded(child: _buildStatCard('عدد البقالات', '${posSales.length}', Icons.store, colors.secondary, isSmallScreen)),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    if (posSales.isNotEmpty)
-                      Row(
-                        children: [
-                          Expanded(child: _buildStatCard('مبيعات البقالات', '${posSales.values.fold(0.0, (a, b) => a + b).toStringAsFixed(0)} ريال', Icons.store_mall_directory, colors.primary, isSmallScreen)),
-                        ],
+                  const SizedBox(height: 20),
+                  if (categorySales.isNotEmpty) ...[
+                    Text('المبيعات حسب الفئة:', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface)),
+                    ...categorySales.entries.map((e) => Card(
+                      color: colors.surface,
+                      child: ListTile(
+                        leading: Icon(Icons.category, color: colors.primary),
+                        title: Text(e.key, style: TextStyle(color: colors.onSurface)),
+                        trailing: Text('${e.value.toStringAsFixed(0)} ريال', style: TextStyle(fontWeight: FontWeight.bold, color: colors.primary)),
                       ),
-                    const SizedBox(height: 20),
-                    if (categorySales.isNotEmpty) ...[
-                      Text('توزيع المبيعات حسب الفئة:', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface, fontSize: isSmallScreen ? 14 : 16)),
-                      const SizedBox(height: 10),
-                      ...categorySales.entries.map((entry) => Card(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            color: colors.surface,
-                            child: ListTile(
-                              leading: Icon(Icons.category, color: colors.primary, size: isSmallScreen ? 20 : 24),
-                              title: Text(entry.key, style: TextStyle(fontSize: isSmallScreen ? 12 : 14, color: colors.onSurface)),
-                              trailing: Text('${entry.value.toStringAsFixed(0)} ريال',
-                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 12 : 14, color: colors.primary)),
-                            ),
-                          )),
-                    ],
-                    if (categorySales.isEmpty && posSales.isEmpty)
-                      Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Text('لا توجد مبيعات في هذه الفترة.',
-                              style: TextStyle(color: colors.onSurface.withOpacity(0.6), fontSize: isSmallScreen ? 12 : 14)),
-                        ),
-                      ),
+                    )),
                   ],
-                ),
+                ]),
               );
             },
           ),
@@ -627,84 +514,154 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     );
   }
 
-  Widget _buildInventoryTab(Map<String, dynamic> agent) {
-    final String agentPhone = agent['phone'] ?? '';
+  Widget _chip(String label) {
+    final isSel = _filter == label;
+    final colors = Theme.of(context).colorScheme;
+    return ChoiceChip(
+      label: Text(label, style: TextStyle(color: isSel ? colors.onPrimaryContainer : colors.onSurface)),
+      selected: isSel,
+      selectedColor: colors.primaryContainer,
+      onSelected: (_) { widget.uiProvider.playSound('click'); setState(() => _filter = label); },
+    );
+  }
+
+  Widget _dateBtn(String label, DateTime? d, ValueChanged<DateTime> onPick) {
+    return TextButton.icon(
+      onPressed: () async {
+        widget.uiProvider.playSound('click');
+        final p = await showDatePicker(context: context, initialDate: d ?? DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime.now(), locale: const Locale('ar'));
+        if (p != null) onPick(p);
+      },
+      icon: Icon(Icons.calendar_today, size: 14, color: Theme.of(context).colorScheme.primary),
+      label: Text(d != null ? DateFormat('yyyy/MM/dd', 'ar').format(d) : label, style: TextStyle(fontSize: 12)),
+    );
+  }
+
+  Widget _timeBtn(String label, TimeOfDay? t, ValueChanged<TimeOfDay> onPick) {
+    return TextButton.icon(
+      onPressed: () async {
+        widget.uiProvider.playSound('click');
+        final p = await showTimePicker(context: context, initialTime: t ?? TimeOfDay.now());
+        if (p != null) onPick(p);
+      },
+      icon: Icon(Icons.access_time, size: 14, color: Theme.of(context).colorScheme.primary),
+      label: Text(t != null ? t.format(context) : label, style: TextStyle(fontSize: 12)),
+    );
+  }
+
+  Widget _card(String title, String value, IconData icon, Color color) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: colors.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: color.withOpacity(0.3))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(icon, color: color),
+        const SizedBox(height: 6),
+        Text(value, style: TextStyle(fontWeight: FontWeight.bold, color: color)),
+        Text(title, style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
+      ]),
+    );
+  }
+
+  Future<void> _export(String mode) async {
+    final pdf = pw.Document();
+    final range = _getRange();
+    final snap = await widget.db
+        .collection('transactions')
+        .where('agentPhone', isEqualTo: widget.agent['phone'] ?? '')
+        .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(range.start))
+        .where('timestamp', isLessThanOrEqualTo: Timestamp.fromDate(range.end))
+        .limit(200)
+        .get();
+    final txns = snap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
+    double sales = 0; int cards = 0;
+    for (var t in txns) { if (t['type'] == 'sale') { sales += (t['amount'] ?? 0).toDouble(); cards += (t['quantity'] as int?) ?? 1; } }
+    pdf.addPage(pw.MultiPage(pageFormat: PdfPageFormat.a4, build: (ctx) => [
+      pw.Header(level: 0, child: pw.Text('تقرير مبيعات', textDirection: pw.TextDirection.rtl)),
+      pw.Text('الوكيل: ${widget.agent['name']}', textDirection: pw.TextDirection.rtl),
+      pw.Text('الفترة: ${DateFormat('yyyy/MM/dd').format(range.start)} - ${DateFormat('yyyy/MM/dd').format(range.end)}', textDirection: pw.TextDirection.rtl),
+      pw.Divider(),
+      pw.Table(border: pw.TableBorder.all(), children: [
+        pw.TableRow(children: [pw.Text('البيان'), pw.Text('القيمة')]),
+        pw.TableRow(children: [pw.Text('إجمالي المبيعات'), pw.Text('$sales ريال')]),
+        pw.TableRow(children: [pw.Text('عدد الكروت'), pw.Text('$cards')]),
+      ]),
+    ]));
+    if (mode == 'pdf') {
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/تقرير.pdf');
+      await file.writeAsBytes(await pdf.save());
+      await Share.shareXFiles([XFile(file.path)]);
+    } else {
+      await Printing.layoutPdf(onLayout: (f) => pdf.save());
+    }
+  }
+}
+
+// ==================== تبويب المخزون ====================
+class InventoryTab extends StatefulWidget {
+  final Map<String, dynamic> agent;
+  final FirebaseFirestore db;
+  const InventoryTab({super.key, required this.agent, required this.db});
+  @override
+  State<InventoryTab> createState() => _InventoryTabState();
+}
+
+class _InventoryTabState extends State<InventoryTab> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
     final colors = Theme.of(context).colorScheme;
     final isSmallScreen = MediaQuery.of(context).size.width < 600;
     return StreamBuilder<QuerySnapshot>(
-      stream: _db.collection('networks').where('agentPhone', isEqualTo: agentPhone).snapshots(),
+      stream: widget.db.collection('networks').where('agentPhone', isEqualTo: widget.agent['phone'] ?? '').snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return _buildSkeletonLoader();
-        if (snapshot.hasError) return _buildErrorWidget('تعذر تحميل المخزون');
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         final networks = snapshot.data!.docs;
-        if (networks.isEmpty) return _buildEmptyState(Icons.inventory_2_outlined, 'لم يقم الوكيل برفع أي كروت.');
-
-        // 🆕 تجميع الفئات مع اسم الشبكة
-        List<Map<String, dynamic>> allCategoriesWithNetwork = [];
+        if (networks.isEmpty) return _empty('لم يقم الوكيل برفع أي كروت.');
+        List<Map<String, dynamic>> cats = [];
         for (var net in networks) {
           final data = net.data() as Map<String, dynamic>;
-          final networkName = data['name'] ?? 'شبكة بدون اسم';
-          final cats = List<Map<String, dynamic>>.from(data['categories'] ?? []);
-          for (var cat in cats) {
-            if ((cat['isActive'] ?? true) == true) {
-              cat['networkName'] = networkName;
-              allCategoriesWithNetwork.add(cat);
-            }
+          final name = data['name'] ?? 'بدون اسم';
+          for (var c in List<Map<String, dynamic>>.from(data['categories'] ?? [])) {
+            if ((c['isActive'] ?? true) == true) { c['networkName'] = name; cats.add(c); }
           }
         }
-        if (allCategoriesWithNetwork.isEmpty) return _buildEmptyState(Icons.inventory_2_outlined, 'لا توجد فئات نشطة.');
-
+        if (cats.isEmpty) return _empty('لا توجد فئات نشطة.');
         return ListView.builder(
           padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-          itemCount: allCategoriesWithNetwork.length,
-          itemBuilder: (context, index) {
-            final cat = allCategoriesWithNetwork[index];
-            final networkName = cat['networkName'] ?? 'غير معروف';
+          itemCount: cats.length,
+          itemBuilder: (ctx, i) {
+            final cat = cats[i];
             return Card(
-              elevation: 2,
-              margin: const EdgeInsets.only(bottom: 12),
               color: colors.surface,
+              margin: const EdgeInsets.only(bottom: 12),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
               child: Padding(
                 padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(cat['name'] ?? 'فئة غير معروفة',
-                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 14 : 16, color: colors.primary)),
-                              Text('الشبكة: $networkName',
-                                  style: TextStyle(fontSize: isSmallScreen ? 10 : 12, color: colors.onSurface.withOpacity(0.6))),
-                            ],
-                          ),
-                        ),
-                        Icon(Icons.category, color: Color(cat['color'] ?? colors.primary.value), size: isSmallScreen ? 20 : 24),
-                      ],
-                    ),
-                    const Divider(),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        Column(children: [
-                          Text('المخزون الحقيقي', style: TextStyle(color: colors.onSurface.withOpacity(0.7), fontSize: isSmallScreen ? 10 : 12)),
-                          Text('${cat['realStock'] ?? 0}',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 16 : 18, color: Colors.green)),
-                        ]),
-                        Column(children: [
-                          Text('المخزون الوهمي', style: TextStyle(color: colors.onSurface.withOpacity(0.7), fontSize: isSmallScreen ? 10 : 12)),
-                          Text('${cat['simStock'] ?? 0}',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 16 : 18, color: Colors.orange)),
-                        ]),
-                      ],
-                    ),
-                  ],
-                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(cat['name'] ?? '', style: TextStyle(fontWeight: FontWeight.bold, color: colors.primary)),
+                      Text('الشبكة: ${cat['networkName']}', style: TextStyle(fontSize: 12, color: colors.onSurface.withOpacity(0.6))),
+                    ])),
+                    Icon(Icons.category, color: Color(cat['color'] ?? colors.primary.value)),
+                  ]),
+                  const Divider(),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+                    Column(children: [
+                      Text('حقيقي', style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12)),
+                      Text('${cat['realStock'] ?? 0}', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                    ]),
+                    Column(children: [
+                      Text('وهمي', style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12)),
+                      Text('${cat['simStock'] ?? 0}', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+                    ]),
+                  ]),
+                ]),
               ),
             );
           },
@@ -713,59 +670,59 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     );
   }
 
-  Widget _buildPosTab(Map<String, dynamic> agent) {
-    final String agentPhone = agent['phone'] ?? '';
+  Widget _empty(String text) => Center(child: Text(text, style: TextStyle(color: Colors.grey)));
+}
+
+// ==================== تبويب البقالات ====================
+class PosTab extends StatefulWidget {
+  final Map<String, dynamic> agent;
+  final FirebaseFirestore db;
+  final UiProvider uiProvider;
+  const PosTab({super.key, required this.agent, required this.db, required this.uiProvider});
+  @override
+  State<PosTab> createState() => _PosTabState();
+}
+
+class _PosTabState extends State<PosTab> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
     final colors = Theme.of(context).colorScheme;
+    final phone = widget.agent['phone'] ?? '';
     final isSmallScreen = MediaQuery.of(context).size.width < 600;
     return StreamBuilder<QuerySnapshot>(
-      stream: _db.collection('users').where('role', isEqualTo: 'pos').where('pos_agents', arrayContains: agentPhone).snapshots(),
+      stream: widget.db.collection('users').where('role', isEqualTo: 'pos').where('pos_agents', arrayContains: phone).snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return _buildSkeletonLoader();
-        if (snapshot.hasError) return _buildErrorWidget('تعذر تحميل البقالات');
-        final posList = snapshot.data!.docs;
-        if (posList.isEmpty) return _buildEmptyState(Icons.storefront_outlined, 'لا توجد بقالات.');
-
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        final list = snapshot.data!.docs;
+        if (list.isEmpty) return const Center(child: Text('لا توجد بقالات.', style: TextStyle(color: Colors.grey)));
         return ListView.builder(
           padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-          itemCount: posList.length,
-          itemBuilder: (context, index) {
-            final pos = posList[index].data() as Map<String, dynamic>;
-            final String storeName = pos['storeName'] ?? 'بقالة غير معروفة';
-            final String location = pos['location'] ?? 'غير محدد';
-            final double walletBalance = ((pos['wallets'] ?? {})[agentPhone] ?? 0.0).toDouble();
-            final double creditLimit = (((pos['agent_relations'] ?? {})[agentPhone] ?? {})['creditLimit'] ?? 0.0).toDouble();
-            final String commission = ((pos['agent_relations'] ?? {})[agentPhone] ?? {})['commission'] ?? '0%';
-
+          itemCount: list.length,
+          itemBuilder: (ctx, i) {
+            final p = list[i].data() as Map<String, dynamic>;
+            final bal = ((p['wallets'] ?? {})[phone] ?? 0.0).toDouble();
+            final limit = (((p['agent_relations'] ?? {})[phone] ?? {})['creditLimit'] ?? 0.0).toDouble();
+            final comm = ((p['agent_relations'] ?? {})[phone] ?? {})['commission'] ?? '0%';
             return Card(
-              elevation: 3,
-              margin: const EdgeInsets.only(bottom: 16),
               color: colors.surface,
+              margin: const EdgeInsets.only(bottom: 12),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
               child: ExpansionTile(
-                iconColor: colors.primary,
-                collapsedIconColor: colors.onSurface,
-                title: Text(storeName, style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 14 : 16, color: colors.onSurface)),
-                subtitle: Text('الموقع: $location | الرصيد: $walletBalance ريال',
-                    style: TextStyle(fontSize: isSmallScreen ? 10 : 12, color: colors.onSurface.withOpacity(0.7))),
-                leading: CircleAvatar(backgroundColor: colors.primary, radius: isSmallScreen ? 16 : 20, child: Icon(Icons.store, color: colors.onPrimary, size: isSmallScreen ? 16 : 20)),
-                onExpansionChanged: (expanded) {
-                  if (expanded) context.read<UiProvider>().playSound('click');
-                },
+                title: Text(p['storeName'] ?? '', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface)),
+                subtitle: Text('الرصيد: $bal ريال', style: TextStyle(color: colors.onSurfaceVariant)),
+                leading: CircleAvatar(backgroundColor: colors.primary, child: Icon(Icons.store, color: colors.onPrimary)),
                 children: [
-                  Container(
-                    padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-                    decoration: BoxDecoration(
-                      color: colors.surfaceVariant.withOpacity(0.5),
-                      borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(15), bottomRight: Radius.circular(15)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _infoRow(Icons.money, 'الرصيد الحالي', '$walletBalance ريال'),
-                        _infoRow(Icons.credit_card, 'الحد الائتماني', '$creditLimit ريال'),
-                        _infoRow(Icons.percent, 'العمولة', commission),
-                      ],
-                    ),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      _row('الرصيد الحالي', '$bal ريال'),
+                      _row('الحد الائتماني', '$limit ريال'),
+                      _row('العمولة', comm),
+                    ]),
                   ),
                 ],
               ),
@@ -776,268 +733,134 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
     );
   }
 
-  Widget _buildTransactionsTab(String agentPhone) {
+  Widget _row(String label, String value) {
     final colors = Theme.of(context).colorScheme;
-    final isSmallScreen = MediaQuery.of(context).size.width < 600;
-    return StreamBuilder<QuerySnapshot>(
-      stream: _db
-          .collection('transactions')
-          .where('agentPhone', isEqualTo: agentPhone)
-          .orderBy('timestamp', descending: true)
-          .limit(100)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) return _buildSkeletonLoader();
-        if (snapshot.hasError) return _buildErrorWidget('تعذر تحميل المعاملات');
-        final transactions = snapshot.data?.docs ?? [];
-        if (transactions.isEmpty) return _buildEmptyState(Icons.receipt_long, 'لا توجد معاملات مالية.');
-
-        return ListView.builder(
-          padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-          itemCount: transactions.length,
-          itemBuilder: (context, index) {
-            final tx = transactions[index].data() as Map<String, dynamic>;
-            final String type = tx['type'] ?? 'عملية';
-            final String title = tx['title'] ?? '';
-            final double amount = (tx['amount'] ?? 0).toDouble();
-            final date = (tx['timestamp'] as Timestamp?)?.toDate();
-            final String dateStr = date != null ? DateFormat('yyyy/MM/dd hh:mm a', 'ar').format(date) : '';
-            final bool isIncoming = type == 'deposit' || type == 'credit_refund';
-            final Color txColor = type == 'sale' ? Colors.blue : (isIncoming ? Colors.green : colors.error);
-
-            return Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              color: colors.surface,
-              child: ListTile(
-                leading: Icon(
-                  isIncoming ? Icons.arrow_downward : Icons.arrow_upward,
-                  color: txColor,
-                  size: isSmallScreen ? 20 : 24,
-                ),
-                title: Text(title.isNotEmpty ? title : type,
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 12 : 14, color: colors.onSurface)),
-                subtitle: Text(dateStr,
-                    style: TextStyle(fontSize: isSmallScreen ? 10 : 12, color: colors.onSurface.withOpacity(0.7))),
-                trailing: Text(
-                  '$amount ريال',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: isSmallScreen ? 12 : 14,
-                    color: txColor,
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildAuditLogTab(String agentPhone) {
-    final colors = Theme.of(context).colorScheme;
-    final isSmallScreen = MediaQuery.of(context).size.width < 600;
-    return StreamBuilder<QuerySnapshot>(
-      stream: _db
-          .collection('audit_logs')
-          .where('phone', isEqualTo: agentPhone)
-          .orderBy('timestamp', descending: true)
-          .limit(50)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) return _buildSkeletonLoader();
-        if (snapshot.hasError) return _buildErrorWidget('تعذر تحميل سجل التدقيق');
-        final logs = snapshot.data?.docs ?? [];
-        if (logs.isEmpty) return _buildEmptyState(Icons.history, 'لا يوجد سجل تدقيق.');
-
-        return ListView.builder(
-          padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-          itemCount: logs.length,
-          itemBuilder: (context, index) {
-            final log = logs[index].data() as Map<String, dynamic>;
-            final String action = log['action'] ?? 'عملية';
-            final String details = log['details'] ?? '';
-            final String date = log['datetime'] ?? '';
-            return Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              color: colors.surface,
-              child: ListTile(
-                leading: Icon(Icons.receipt_long, color: colors.primary, size: isSmallScreen ? 18 : 20),
-                title: Text(action, style: TextStyle(fontSize: isSmallScreen ? 12 : 14, color: colors.onSurface)),
-                subtitle: Text('$details\n$date', style: TextStyle(fontSize: isSmallScreen ? 10 : 12, color: colors.onSurface.withOpacity(0.7))),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<void> _exportReport(Map<String, dynamic> agent, DateTimeRange range, String mode) async {
-    context.read<UiProvider>().playSound('click');
-    final pdf = await _generatePdf(agent, range);
-    if (mode == 'pdf') {
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/تقرير_الوكيل.pdf');
-      await file.writeAsBytes(await pdf.save());
-      await Share.shareXFiles([XFile(file.path)], subject: 'تقرير الوكيل');
-    } else if (mode == 'print') {
-      await Printing.layoutPdf(onLayout: (format) => pdf.save());
-    }
-    context.read<UiProvider>().playSound('success');
-    _showSnackBar(mode == 'pdf' ? 'تم تحميل التقرير ✅' : 'تم فتح نافذة الطباعة ✅');
-  }
-
-  Future<pw.Document> _generatePdf(Map<String, dynamic> agent, DateTimeRange range) async {
-    final pdf = pw.Document();
-    final transactions = await _fetchTransactions(agent['phone'] ?? '', range);
-    double totalSales = 0; int totalCards = 0;
-    for (var t in transactions) {
-      if (t['type'] == 'sale') {
-        totalSales += (t['amount'] ?? 0).toDouble();
-        totalCards += (t['quantity'] as int?) ?? 1;
-      }
-    }
-
-    pdf.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        build: (context) => [
-          pw.Header(level: 0, child: pw.Text('تقرير مبيعات الوكيل', textDirection: pw.TextDirection.rtl)),
-          pw.Text('الوكيل: ${agent['name']}', textDirection: pw.TextDirection.rtl),
-          pw.Text('الفترة: ${DateFormat('yyyy/MM/dd').format(range.start)} - ${DateFormat('yyyy/MM/dd').format(range.end)}', textDirection: pw.TextDirection.rtl),
-          pw.Divider(),
-          pw.Table(border: pw.TableBorder.all(), children: [
-            pw.TableRow(children: [pw.Text('الإحصاء'), pw.Text('القيمة')]),
-            pw.TableRow(children: [pw.Text('إجمالي المبيعات'), pw.Text('$totalSales ريال')]),
-            pw.TableRow(children: [pw.Text('عدد الكروت'), pw.Text('$totalCards')]),
-          ]),
-        ],
-      ),
-    );
-    return pdf;
-  }
-
-  Future<List<Map<String, dynamic>>> _fetchTransactions(String agentPhone, DateTimeRange range) async {
-    final snap = await _db
-        .collection('transactions')
-        .where('agentPhone', isEqualTo: agentPhone)
-        .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(range.start))
-        .where('timestamp', isLessThanOrEqualTo: Timestamp.fromDate(range.end))
-        .limit(200)
-        .get();
-    return snap.docs.map((d) => d.data() as Map<String, dynamic>).toList();
-  }
-
-  Widget _infoRow(IconData icon, String label, String value) {
-    final colors = Theme.of(context).colorScheme;
-    final isSmallScreen = MediaQuery.of(context).size.width < 600;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          Icon(icon, size: isSmallScreen ? 12 : 14, color: colors.primary),
-          const SizedBox(width: 6),
-          Text('$label: ', style: TextStyle(fontSize: isSmallScreen ? 11 : 12, color: colors.onSurface, fontWeight: FontWeight.bold)),
-          Expanded(child: Text(value, style: TextStyle(fontSize: isSmallScreen ? 11 : 12, color: colors.onSurface))),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatCard(String title, String value, IconData icon, Color color, bool isSmallScreen) {
-    final colors = Theme.of(context).colorScheme;
-    return Container(
-      padding: EdgeInsets.all(isSmallScreen ? 10 : 12),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color, size: isSmallScreen ? 20 : 24),
-          SizedBox(height: isSmallScreen ? 6 : 8),
-          Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 14 : 16, color: color)),
-          SizedBox(height: isSmallScreen ? 2 : 4),
-          Text(title, style: TextStyle(fontSize: isSmallScreen ? 10 : 11, color: colors.onSurfaceVariant)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSkeletonLoader() {
-    return Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary));
-  }
-
-  Widget _buildErrorWidget(String message) {
-    return Center(
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(Icons.error_outline, size: 50, color: Colors.red.shade300),
-        const SizedBox(height: 10),
-        Text(message, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7))),
+      child: Row(children: [
+        Text('$label: ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: colors.onSurface)),
+        Text(value, style: TextStyle(fontSize: 12, color: colors.onSurface)),
       ]),
-    );
-  }
-
-  Widget _buildEmptyState(IconData icon, String text) {
-    final isSmallScreen = MediaQuery.of(context).size.width < 600;
-    return Center(
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(icon, size: isSmallScreen ? 60 : 80, color: Colors.grey.shade300),
-        const SizedBox(height: 10),
-        Text(text, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6), fontSize: isSmallScreen ? 12 : 14)),
-      ]),
-    );
-  }
-
-  void _showLocationMap(double lat, double lng, String title) {
-    context.read<UiProvider>().playSound('click');
-    showDialog(
-      context: context,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          title: Text('موقع: $title'),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: 300,
-            child: FlutterMap(
-              options: MapOptions(initialCenter: LatLng(lat, lng), initialZoom: 15.0),
-              children: [
-                TileLayer(urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'),
-                MarkerLayer(markers: [
-                  Marker(point: LatLng(lat, lng), width: 40, height: 40,
-                      child: Icon(Icons.location_pin, color: Colors.red, size: 40)),
-                ]),
-              ],
-            ),
-          ),
-          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق'))],
-        ),
-      ),
     );
   }
 }
 
+// ==================== تبويب المعاملات ====================
+class TransactionsTab extends StatefulWidget {
+  final String agentPhone;
+  final FirebaseFirestore db;
+  const TransactionsTab({super.key, required this.agentPhone, required this.db});
+  @override
+  State<TransactionsTab> createState() => _TransactionsTabState();
+}
+
+class _TransactionsTabState extends State<TransactionsTab> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final colors = Theme.of(context).colorScheme;
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
+    return StreamBuilder<QuerySnapshot>(
+      stream: widget.db
+          .collection('transactions')
+          .where('agentPhone', isEqualTo: widget.agentPhone)
+          .orderBy('timestamp', descending: true)
+          .limit(100)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        final list = snapshot.data?.docs ?? [];
+        if (list.isEmpty) return const Center(child: Text('لا توجد معاملات.', style: TextStyle(color: Colors.grey)));
+        return ListView.builder(
+          padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+          itemCount: list.length,
+          itemBuilder: (ctx, i) {
+            final tx = list[i].data() as Map<String, dynamic>;
+            final type = tx['type'] ?? '';
+            final bool incoming = type == 'deposit' || type == 'credit_refund';
+            final Color c = type == 'sale' ? Colors.blue : (incoming ? Colors.green : colors.error);
+            final date = (tx['timestamp'] as Timestamp?)?.toDate();
+            return Card(
+              color: colors.surface,
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: Icon(incoming ? Icons.arrow_downward : Icons.arrow_upward, color: c),
+                title: Text(tx['title'] ?? type, style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface)),
+                subtitle: Text(date != null ? DateFormat('yyyy/MM/dd hh:mm a', 'ar').format(date) : '', style: TextStyle(color: colors.onSurfaceVariant)),
+                trailing: Text('${tx['amount'] ?? 0} ريال', style: TextStyle(fontWeight: FontWeight.bold, color: c)),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+// ==================== تبويب سجل التدقيق ====================
+class AuditLogTab extends StatefulWidget {
+  final String agentPhone;
+  final FirebaseFirestore db;
+  const AuditLogTab({super.key, required this.agentPhone, required this.db});
+  @override
+  State<AuditLogTab> createState() => _AuditLogTabState();
+}
+
+class _AuditLogTabState extends State<AuditLogTab> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final colors = Theme.of(context).colorScheme;
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
+    return StreamBuilder<QuerySnapshot>(
+      stream: widget.db
+          .collection('audit_logs')
+          .where('phone', isEqualTo: widget.agentPhone)
+          .orderBy('timestamp', descending: true)
+          .limit(50)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        final list = snapshot.data?.docs ?? [];
+        if (list.isEmpty) return const Center(child: Text('لا يوجد سجل تدقيق.', style: TextStyle(color: Colors.grey)));
+        return ListView.builder(
+          padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+          itemCount: list.length,
+          itemBuilder: (ctx, i) {
+            final log = list[i].data() as Map<String, dynamic>;
+            return Card(
+              color: colors.surface,
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: Icon(Icons.receipt_long, color: colors.primary),
+                title: Text(log['action'] ?? '', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface)),
+                subtitle: Text('${log['details'] ?? ''}\n${log['datetime'] ?? ''}', style: TextStyle(color: colors.onSurfaceVariant)),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+// ==================== مساعد شريط التبويبات ====================
 class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
   _SliverTabBarDelegate(this._tabBar, this.color);
   final TabBar _tabBar;
   final Color color;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Container(color: color, child: _tabBar);
-  }
-
-  @override
-  double get maxExtent => _tabBar.preferredSize.height;
-
   @override
   double get minExtent => _tabBar.preferredSize.height;
-
+  @override
+  double get maxExtent => _tabBar.preferredSize.height;
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) => Container(color: color, child: _tabBar);
   @override
   bool shouldRebuild(_SliverTabBarDelegate oldDelegate) => false;
 }
