@@ -830,7 +830,7 @@ class _AuditLogTabState extends State<AuditLogTab> with AutomaticKeepAliveClient
     final isSmallScreen = MediaQuery.of(context).size.width < 600;
     return StreamBuilder<QuerySnapshot>(
       stream: widget.db
-          .collection('audit_logs')
+          .collection('activity_logs')  // تم التغيير من audit_logs إلى activity_logs
           .where('phone', isEqualTo: widget.agentPhone)
           .orderBy('timestamp', descending: true)
           .limit(50)
