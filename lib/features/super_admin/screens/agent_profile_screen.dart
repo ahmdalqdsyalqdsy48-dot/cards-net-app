@@ -34,12 +34,6 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final ScrollController _scrollController = ScrollController();
 
-  String _overviewFilter = 'اليوم';
-  DateTime? _customStart;
-  DateTime? _customEnd;
-  TimeOfDay? _startTime;
-  TimeOfDay? _endTime;
-
   final GlobalKey<_OverviewTabState> _overviewKey = GlobalKey();
   final GlobalKey<_InventoryTabState> _inventoryKey = GlobalKey();
   final GlobalKey<_PosTabState> _posKey = GlobalKey();
@@ -135,7 +129,12 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          setState(() {});
+          // إعادة تحميل جميع التبويبات
+          _overviewKey.currentState?.refresh();
+          _inventoryKey.currentState?.refresh();
+          _posKey.currentState?.refresh();
+          _transactionsKey.currentState?.refresh();
+          _auditLogKey.currentState?.refresh();
           await Future.delayed(const Duration(milliseconds: 300));
           if (mounted) {
             context.read<UiProvider>().playSound('success');
@@ -196,9 +195,9 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
           body: TabBarView(
             controller: _tabController,
             children: [
-              OverviewTab(key: _overviewKey, agent: liveAgent, db: _db, uiProvider: context.read<UiProvider>()),
+              OverviewTab(key: _overviewKey, agent: liveAgent, db: _db),
               InventoryTab(key: _inventoryKey, agent: liveAgent, db: _db),
-              PosTab(key: _posKey, agent: liveAgent, db: _db, uiProvider: context.read<UiProvider>()),
+              PosTab(key: _posKey, agent: liveAgent, db: _db),
               TransactionsTab(key: _transactionsKey, agentPhone: agentPhone, db: _db),
               AuditLogTab(key: _auditLogKey, agentPhone: agentPhone, db: _db),
             ],
@@ -326,8 +325,7 @@ class _AgentProfileScreenState extends State<AgentProfileScreen>
 class OverviewTab extends StatefulWidget {
   final Map<String, dynamic> agent;
   final FirebaseFirestore db;
-  final UiProvider uiProvider;
-  const OverviewTab({super.key, required this.agent, required this.db, required this.uiProvider});
+  const OverviewTab({super.key, required this.agent, required this.db});
   @override
   State<OverviewTab> createState() => _OverviewTabState();
 }
@@ -338,9 +336,12 @@ class _OverviewTabState extends State<OverviewTab> with AutomaticKeepAliveClient
   DateTime? _customEnd;
   TimeOfDay? _startTime;
   TimeOfDay? _endTime;
+  bool _filterExpanded = false;
 
   @override
   bool get wantKeepAlive => true;
+
+  void refresh() => setState(() {});
 
   DateTimeRange _getRange() {
     final now = DateTime.now();
@@ -382,32 +383,41 @@ class _OverviewTabState extends State<OverviewTab> with AutomaticKeepAliveClient
 
     return Column(
       children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 8 : 12, vertical: 8),
-          child: Row(
-            children: [
-              _chip('الكل'),
-              const SizedBox(width: 6),
-              _chip('اليوم'),
-              const SizedBox(width: 6),
-              _chip('الأسبوع'),
-              const SizedBox(width: 6),
-              _chip('الشهر'),
-              const SizedBox(width: 6),
-              _chip('مخصص'),
-              if (_filter == 'مخصص') ...[
-                const SizedBox(width: 8),
-                _dateBtn('من', _customStart, (d) => setState(() => _customStart = d)),
-                const SizedBox(width: 4),
-                _dateBtn('إلى', _customEnd, (d) => setState(() => _customEnd = d)),
-                const SizedBox(width: 8),
-                _timeBtn('⏰', _startTime, (t) => setState(() => _startTime = t)),
-                const SizedBox(width: 4),
-                _timeBtn('⏰', _endTime, (t) => setState(() => _endTime = t)),
-              ],
-            ],
-          ),
+        // شريط الفلترة قابل للطي
+        ExpansionTile(
+          title: Text(_filter == 'الكل' ? 'عرض الكل' : 'الفترة: $_filter', style: TextStyle(color: colors.onSurface)),
+          leading: Icon(Icons.filter_list, color: colors.primary),
+          initiallyExpanded: _filterExpanded,
+          onExpansionChanged: (v) => _filterExpanded = v,
+          children: [
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 8 : 12, vertical: 8),
+              child: Row(
+                children: [
+                  _chip('الكل'),
+                  const SizedBox(width: 6),
+                  _chip('اليوم'),
+                  const SizedBox(width: 6),
+                  _chip('الأسبوع'),
+                  const SizedBox(width: 6),
+                  _chip('الشهر'),
+                  const SizedBox(width: 6),
+                  _chip('مخصص'),
+                  if (_filter == 'مخصص') ...[
+                    const SizedBox(width: 8),
+                    _dateBtn('من', _customStart, (d) => setState(() => _customStart = d)),
+                    const SizedBox(width: 4),
+                    _dateBtn('إلى', _customEnd, (d) => setState(() => _customEnd = d)),
+                    const SizedBox(width: 8),
+                    _timeBtn('⏰', _startTime, (t) => setState(() => _startTime = t)),
+                    const SizedBox(width: 4),
+                    _timeBtn('⏰', _endTime, (t) => setState(() => _endTime = t)),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ),
         Padding(
           padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 12 : 16),
@@ -521,14 +531,13 @@ class _OverviewTabState extends State<OverviewTab> with AutomaticKeepAliveClient
       label: Text(label, style: TextStyle(color: isSel ? colors.onPrimaryContainer : colors.onSurface)),
       selected: isSel,
       selectedColor: colors.primaryContainer,
-      onSelected: (_) { widget.uiProvider.playSound('click'); setState(() => _filter = label); },
+      onSelected: (_) => setState(() => _filter = label),
     );
   }
 
   Widget _dateBtn(String label, DateTime? d, ValueChanged<DateTime> onPick) {
     return TextButton.icon(
       onPressed: () async {
-        widget.uiProvider.playSound('click');
         final p = await showDatePicker(context: context, initialDate: d ?? DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime.now(), locale: const Locale('ar'));
         if (p != null) onPick(p);
       },
@@ -540,7 +549,6 @@ class _OverviewTabState extends State<OverviewTab> with AutomaticKeepAliveClient
   Widget _timeBtn(String label, TimeOfDay? t, ValueChanged<TimeOfDay> onPick) {
     return TextButton.icon(
       onPressed: () async {
-        widget.uiProvider.playSound('click');
         final p = await showTimePicker(context: context, initialTime: t ?? TimeOfDay.now());
         if (p != null) onPick(p);
       },
@@ -610,6 +618,7 @@ class InventoryTab extends StatefulWidget {
 class _InventoryTabState extends State<InventoryTab> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
+  void refresh() => setState(() {});
 
   @override
   Widget build(BuildContext context) {
@@ -677,8 +686,7 @@ class _InventoryTabState extends State<InventoryTab> with AutomaticKeepAliveClie
 class PosTab extends StatefulWidget {
   final Map<String, dynamic> agent;
   final FirebaseFirestore db;
-  final UiProvider uiProvider;
-  const PosTab({super.key, required this.agent, required this.db, required this.uiProvider});
+  const PosTab({super.key, required this.agent, required this.db});
   @override
   State<PosTab> createState() => _PosTabState();
 }
@@ -686,6 +694,7 @@ class PosTab extends StatefulWidget {
 class _PosTabState extends State<PosTab> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
+  void refresh() => setState(() {});
 
   @override
   Widget build(BuildContext context) {
@@ -757,6 +766,7 @@ class TransactionsTab extends StatefulWidget {
 class _TransactionsTabState extends State<TransactionsTab> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
+  void refresh() => setState(() {});
 
   @override
   Widget build(BuildContext context) {
@@ -812,6 +822,7 @@ class AuditLogTab extends StatefulWidget {
 class _AuditLogTabState extends State<AuditLogTab> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
+  void refresh() => setState(() {});
 
   @override
   Widget build(BuildContext context) {
