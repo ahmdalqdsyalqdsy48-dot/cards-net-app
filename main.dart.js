@@ -92339,7 +92339,7 @@ uD(a){return this.A(new A.bDj())},
 K(a){var s
 this.mC(a)
 s=A.F(a)
-return A.eZ(new A.bDi(A.aL(a,null,t.l).w.a.a<600,s.ax),this.a.d.H("audit_logs").b0(0,"phone",this.a.c).j7("timestamp",!0).fT(50).ei(),t.o)}}
+return A.eZ(new A.bDi(A.aL(a,null,t.l).w.a.a<600,s.ax),this.a.d.H("activity_logs").b0(0,"phone",this.a.c).j7("timestamp",!0).fT(50).ei(),t.o)}}
 A.bDj.prototype={
 $0(){},
 $S:2}
