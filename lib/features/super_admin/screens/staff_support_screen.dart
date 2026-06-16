@@ -1,3 +1,5 @@
+// lib/features/super_admin/screens/staff_support_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -44,7 +46,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
   }
 
   // ==========================================
-  // 1. نافذة إضافة/تعديل موظف (سلوك التحديد الجديد)
+  // 1. نافذة إضافة/تعديل موظف (مُحدثة بجميع الصلاحيات)
   // ==========================================
   void _showStaffDialog({Map<String, dynamic>? existingData}) {
     context.read<UiProvider>().playSound('click');
@@ -56,8 +58,9 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
     );
     final passwordController = TextEditingController();
 
+    // 🆕 الهيكل الهرمي الكامل لجميع الأقسام مع الصلاحيات الجديدة
     final Map<String, dynamic> sections = {
-      'الرئيسية (غرفة العمليات)': {
+      'الرئيسية': {
         'icon': Icons.dashboard,
         'tabs': {
           'عام': {
@@ -74,10 +77,11 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
             'تعديل وكيل': 'تعديل وكيل',
             'حذف وكيل': 'حذف وكيل',
             'تجميد/تنشيط وكيل': 'تجميد/تنشيط وكيل',
+            'تجميد/تنشيط شبكة': 'تجميد/تنشيط شبكة',     // 🆕
           }
         }
       },
-      'إدارة الاشتراكات': {
+      'الاشتراكات': {
         'icon': Icons.event_available,
         'tabs': {
           'الاشتراكات': {
@@ -86,7 +90,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
           }
         }
       },
-      'المركز المالي والمحافظ': {
+      'المركز المالي': {
         'icon': Icons.account_balance_wallet,
         'tabs': {
           'المالية': {
@@ -107,7 +111,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
           }
         }
       },
-      'إدارة أرقام الحسابات والحظر': {
+      'الحسابات والحظر': {
         'icon': Icons.credit_card,
         'tabs': {
           'الحسابات': {
@@ -126,16 +130,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
           }
         }
       },
-      'إدارة بوابات النظام': {
-        'icon': Icons.important_devices,
-        'tabs': {
-          'البوابات': {
-            'عرض البوابات': 'عرض البوابات',
-            'تعديل البوابات': 'تعديل البوابات',
-          }
-        }
-      },
-      'إدارة الموظفين والدعم': {
+      'الموظفين والدعم': {
         'icon': Icons.support_agent,
         'tabs': {
           'الموظفين والصلاحيات': {
@@ -167,7 +162,7 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
           }
         }
       },
-      'بوابة رسائل SMS': {
+      'الرسائل SMS': {
         'icon': Icons.sms,
         'tabs': {
           'الرسائل': {
@@ -176,7 +171,16 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
           }
         }
       },
-      'السجل الأسود للنشاط': {
+      'بوابات النظام': {
+        'icon': Icons.important_devices,
+        'tabs': {
+          'البوابات': {
+            'عرض البوابات': 'عرض البوابات',
+            'تعديل البوابات': 'تعديل البوابات',
+          }
+        }
+      },
+      'سجل النشاط': {
         'icon': Icons.security,
         'tabs': {
           'السجل': {
@@ -184,20 +188,11 @@ class _StaffSupportScreenState extends State<StaffSupportScreen>
           }
         }
       },
-      'التحكم الشامل (إعادة التهيئة)': {
+      'التحكم الشامل': {
         'icon': Icons.cleaning_services,
         'tabs': {
           'التحكم': {
             'التحكم الشامل (إعادة التهيئة)': 'التحكم الشامل (إعادة التهيئة)',
-          }
-        }
-      },
-      'الإعدادات العامة': {
-        'icon': Icons.settings,
-        'tabs': {
-          'الإعدادات': {
-            'عرض الإعدادات': 'عرض الإعدادات',
-            'تعديل الإعدادات': 'تعديل الإعدادات',
           }
         }
       },
