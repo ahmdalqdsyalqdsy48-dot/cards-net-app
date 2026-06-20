@@ -37,6 +37,8 @@ class ReportsScreen extends StatefulWidget {
 class _ReportsScreenState extends State<ReportsScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  // 🆕 الاحتفاظ بالفلتر القديم
+  String _selectedReportType = 'الكل (شامل)';
   String _selectedAgent = 'الكل';
   DateTime? _startDate;
   DateTime? _endDate;
@@ -57,6 +59,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     _loadSchedule();
   }
 
+  // 🆕 نظام الصلاحيات
   bool _can(String permission) {
     final auth = context.read<AuthProvider>();
     return auth.currentUserRole == 'super_admin' || auth.hasPermission(permission);
@@ -66,7 +69,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(m, textDirection: TextDirection.rtl, style: const TextStyle(fontWeight: FontWeight.bold)),
+        content: Text(m, textDirection: TextDirection.rtl,
+            style: const TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: isErr ? Colors.red.shade800 : Colors.green.shade800,
         behavior: SnackBarBehavior.floating,
       ),
@@ -83,7 +87,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
         .where('phone', isEqualTo: phone)
         .limit(1)
         .get();
-
     if (snap.docs.isNotEmpty) {
       final data = snap.docs.first.data();
       setState(() {
@@ -99,6 +102,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
+  // 🆕 الاحتفاظ بمنطق الفلترة القديم بالكامل
   List<Map<String, dynamic>> _getFilteredData(TransactionsProvider transactions) {
     List<Map<String, dynamic>> data = List.from(transactions.transactionsLedger);
 
@@ -113,12 +117,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
 
     if (_selectedAgent != 'الكل') {
-      data = data
-          .where((tx) =>
-              tx['agentName'] == _selectedAgent ||
-              tx['fromName'] == _selectedAgent ||
-              tx['toName'] == _selectedAgent)
-          .toList();
+      data = data.where((tx) => tx['agentName'] == _selectedAgent).toList();
+    }
+
+    // الفلاتر القديمة
+    if (_selectedReportType == 'إيداعات وشحن') {
+      data = data.where((tx) =>
+          tx['type'] == 'deposit' ||
+          tx['title'].toString().contains('توريد')).toList();
+    } else if (_selectedReportType == 'تسويات وخصومات') {
+      data = data.where((tx) =>
+          tx['type'].toString().contains('تسوية') ||
+          tx['type'] == 'expense').toList();
     }
 
     return data;
@@ -148,170 +158,83 @@ class _ReportsScreenState extends State<ReportsScreen> {
         builder: (ctx, setStateDialog) => Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.schedule, color: Colors.blueAccent),
-                SizedBox(width: 8),
-                Text('جدولة التقرير التلقائي',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              ],
-            ),
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(children: [
+              Icon(Icons.schedule, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 8),
+              Text('جدولة التقرير التلقائي',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
+            ]),
             content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('سيتم إرسال التقرير إلى بريدك تلقائياً:',
-                      style: TextStyle(fontSize: 13, color: Colors.grey)),
-                  const SizedBox(height: 15),
-                  DropdownButtonFormField<String>(
-                    value: freq,
-                    decoration: InputDecoration(
-                        labelText: 'التكرار',
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10))),
-                    items: ['يومياً', 'أسبوعياً', 'شهرياً']
-                        .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                        .toList(),
-                    onChanged: (val) => setStateDialog(() => freq = val!),
-                  ),
-                  const SizedBox(height: 10),
-                  if (freq == 'أسبوعياً')
-                    _buildDayOfWeekPicker(
-                        day, (val) => setStateDialog(() => day = val)),
-                  if (freq == 'شهرياً')
-                    _buildDayOfMonthPicker(
-                        day, (val) => setStateDialog(() => day = val)),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: TextEditingController(
-                              text: hour.toString()),
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'الساعة (1-12)',
-                            border: OutlineInputBorder(),
-                          ),
-                          onChanged: (val) {
-                            int? h = int.tryParse(val);
-                            if (h != null && h >= 1 && h <= 12) {
-                              setStateDialog(() => hour = h);
-                            }
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: amPm,
-                          decoration: const InputDecoration(
-                            labelText: 'صباحاً/مساءاً',
-                            border: OutlineInputBorder(),
-                          ),
-                          items: ['صباحاً', 'مساءاً']
-                              .map((e) =>
-                                  DropdownMenuItem(value: e, child: Text(e)))
-                              .toList(),
-                          onChanged: (val) =>
-                              setStateDialog(() => amPm = val!),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: TextEditingController(
-                        text: minute.toString()),
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'الدقائق (0-59)',
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (val) {
-                      int? m = int.tryParse(val);
-                      if (m != null && m >= 0 && m <= 59) {
-                        setStateDialog(() => minute = m);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: emailCtrl,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: InputDecoration(
-                      labelText: 'البريد الإلكتروني',
-                      prefixIcon: const Icon(Icons.email, color: Colors.blue),
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10)),
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('سيتم إرسال التقرير إلى بريدك تلقائياً:', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                const SizedBox(height: 15),
+                DropdownButtonFormField<String>(
+                  value: freq,
+                  decoration: InputDecoration(labelText: 'التكرار', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
+                  items: ['يومياً', 'أسبوعياً', 'شهرياً'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                  onChanged: (val) => setStateDialog(() => freq = val!),
+                ),
+                const SizedBox(height: 10),
+                if (freq == 'أسبوعياً') _buildDayOfWeekPicker(day, (val) => setStateDialog(() => day = val)),
+                if (freq == 'شهرياً') _buildDayOfMonthPicker(day, (val) => setStateDialog(() => day = val)),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(
+                    child: TextField(
+                      controller: TextEditingController(text: hour.toString()),
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'الساعة (1-12)', border: OutlineInputBorder()),
+                      onChanged: (val) { int? h = int.tryParse(val); if (h != null && h >= 1 && h <= 12) setStateDialog(() => hour = h); },
                     ),
                   ),
-                ],
-              ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      value: amPm,
+                      decoration: const InputDecoration(labelText: 'صباحاً/مساءاً', border: OutlineInputBorder()),
+                      items: ['صباحاً', 'مساءاً'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                      onChanged: (val) => setStateDialog(() => amPm = val!),
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: TextEditingController(text: minute.toString()),
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'الدقائق (0-59)', border: OutlineInputBorder()),
+                  onChanged: (val) { int? m = int.tryParse(val); if (m != null && m >= 0 && m <= 59) setStateDialog(() => minute = m); },
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: emailCtrl,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: InputDecoration(labelText: 'البريد الإلكتروني', prefixIcon: const Icon(Icons.email, color: Colors.blue), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
+                ),
+              ]),
             ),
             actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('إلغاء')),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
               ElevatedButton(
                 onPressed: () async {
                   final email = emailCtrl.text.trim();
-                  if (email.isEmpty || !email.contains('@')) {
-                    _showSnack('يرجى إدخال بريد إلكتروني صحيح!',
-                        isErr: true);
-                    return;
-                  }
-
+                  if (email.isEmpty || !email.contains('@')) { _showSnack('يرجى إدخال بريد إلكتروني صحيح!', isErr: true); return; }
                   final auth = context.read<AuthProvider>();
                   final phone = auth.activeUserPhone ?? 'admin';
-
                   try {
                     if (_scheduleDocId != null) {
-                      await _db
-                          .collection('scheduled_reports')
-                          .doc(_scheduleDocId)
-                          .update({
-                        'phone': phone,
-                        'frequency': freq,
-                        'day': day,
-                        'hour': hour,
-                        'minute': minute,
-                        'amPm': amPm,
-                        'email': email,
-                        'updatedAt': FieldValue.serverTimestamp(),
+                      await _db.collection('scheduled_reports').doc(_scheduleDocId).update({
+                        'phone': phone, 'frequency': freq, 'day': day, 'hour': hour, 'minute': minute, 'amPm': amPm, 'email': email, 'updatedAt': FieldValue.serverTimestamp(),
                       });
                     } else {
                       await _db.collection('scheduled_reports').add({
-                        'phone': phone,
-                        'frequency': freq,
-                        'day': day,
-                        'hour': hour,
-                        'minute': minute,
-                        'amPm': amPm,
-                        'email': email,
-                        'createdAt': FieldValue.serverTimestamp(),
+                        'phone': phone, 'frequency': freq, 'day': day, 'hour': hour, 'minute': minute, 'amPm': amPm, 'email': email, 'createdAt': FieldValue.serverTimestamp(),
                       });
                     }
-
-                    setState(() {
-                      _hasSchedule = true;
-                      _scheduleFrequency = freq;
-                      _scheduleDay = day;
-                      _scheduleHour = hour;
-                      _scheduleMinute = minute;
-                      _scheduleAmPm = amPm;
-                      _scheduleEmail = email;
-                    });
-
-                    if (mounted) {
-                      context.read<UiProvider>().playSound('success');
-                      Navigator.pop(ctx);
-                      _showSnack('تم حفظ الجدولة بنجاح! ✅');
-                    }
-                  } catch (e) {
-                    _showSnack('خطأ: $e', isErr: true);
-                  }
+                    setState(() { _hasSchedule = true; _scheduleFrequency = freq; _scheduleDay = day; _scheduleHour = hour; _scheduleMinute = minute; _scheduleAmPm = amPm; _scheduleEmail = email; });
+                    if (mounted) { context.read<UiProvider>().playSound('success'); Navigator.pop(ctx); _showSnack('تم حفظ الجدولة بنجاح! ✅'); }
+                  } catch (e) { _showSnack('خطأ: $e', isErr: true); }
                 },
                 child: const Text('حفظ'),
               ),
@@ -323,38 +246,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Widget _buildDayOfWeekPicker(int current, Function(int) onChanged) {
-    final days = [
-      'السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'
-    ];
-    return DropdownButtonFormField<int>(
-      value: current,
-      decoration: const InputDecoration(
-        labelText: 'يوم الأسبوع',
-        border: OutlineInputBorder(),
-      ),
-      items: List.generate(
-          7,
-          (i) => DropdownMenuItem(value: i + 1, child: Text(days[i]))),
-      onChanged: (val) => onChanged(val!),
-    );
+    final days = ['السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
+    return DropdownButtonFormField<int>(value: current, decoration: const InputDecoration(labelText: 'يوم الأسبوع', border: OutlineInputBorder()), items: List.generate(7, (i) => DropdownMenuItem(value: i + 1, child: Text(days[i]))), onChanged: (val) => onChanged(val!));
   }
 
   Widget _buildDayOfMonthPicker(int current, Function(int) onChanged) {
-    return DropdownButtonFormField<int>(
-      value: current,
-      decoration: const InputDecoration(
-        labelText: 'يوم الشهر (1-28)',
-        border: OutlineInputBorder(),
-      ),
-      items: List.generate(
-          28,
-          (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}'))),
-      onChanged: (val) => onChanged(val!),
-    );
+    return DropdownButtonFormField<int>(value: current, decoration: const InputDecoration(labelText: 'يوم الشهر (1-28)', border: OutlineInputBorder()), items: List.generate(28, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}'))), onChanged: (val) => onChanged(val!));
   }
 
-  Future<void> _exportToPDF(
-      List<Map<String, dynamic>> data, double totalAmount) async {
+  Future<void> _exportToPDF(List<Map<String, dynamic>> data, double totalAmount) async {
     if (!_can('تصدير تقارير')) return;
     context.read<UiProvider>().playSound('click');
     _showSnack('جاري تجهيز ملف PDF... ⏳');
@@ -362,74 +262,39 @@ class _ReportsScreenState extends State<ReportsScreen> {
       final pdf = pw.Document();
       final arabicFont = await PdfGoogleFonts.cairoRegular();
       final arabicFontBold = await PdfGoogleFonts.cairoBold();
-
       pdf.addPage(pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        textDirection: pw.TextDirection.rtl,
+        pageFormat: PdfPageFormat.a4, textDirection: pw.TextDirection.rtl,
         theme: pw.ThemeData.withFont(base: arabicFont, bold: arabicFontBold),
         build: (pw.Context context) {
           return [
-            pw.Header(
-                level: 0,
-                child: pw.Text('تقرير كروت نت الشامل',
-                    style: pw.TextStyle(
-                        font: arabicFontBold, fontSize: 24))),
-            pw.Text(
-                'تاريخ التصدير: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}'),
-            pw.Text('الوكيل المحدد: $_selectedAgent'),
+            pw.Header(level: 0, child: pw.Text('تقرير كروت نت الشامل', style: pw.TextStyle(font: arabicFontBold, fontSize: 24))),
+            pw.Text('تاريخ التصدير: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}'),
+            pw.Text('الوكيل المحدد: $_selectedAgent | نوع التقرير: $_selectedReportType'),
             pw.SizedBox(height: 20),
             pw.TableHelper.fromTextArray(
-              context: context,
-              border: pw.TableBorder.all(color: PdfColors.grey400),
-              headerStyle: pw.TextStyle(
-                  font: arabicFontBold, color: PdfColors.white),
-              headerDecoration:
-                  const pw.BoxDecoration(color: PdfColors.blue800),
-              rowDecoration:
-                  const pw.BoxDecoration(color: PdfColors.grey100),
+              context: context, border: pw.TableBorder.all(color: PdfColors.grey400),
+              headerStyle: pw.TextStyle(font: arabicFontBold, color: PdfColors.white),
+              headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
+              rowDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
               cellAlignment: pw.Alignment.center,
               headers: ['المبلغ', 'النوع', 'اسم الوكيل', 'التاريخ'],
               data: data.map((row) {
-                String dateStr = row['timestamp'] != null
-                    ? DateFormat('yyyy-MM-dd HH:mm')
-                        .format((row['timestamp'] as Timestamp).toDate())
-                    : '';
-                return [
-                  '${row['amount']} ريال',
-                  row['type'] ?? '',
-                  row['agentName'] ?? '',
-                  dateStr,
-                ];
+                String dateStr = row['timestamp'] != null ? DateFormat('yyyy-MM-dd HH:mm').format((row['timestamp'] as Timestamp).toDate()) : '';
+                return ['${row['amount']} ريال', row['type'] ?? '', row['agentName'] ?? '', dateStr];
               }).toList(),
             ),
-            pw.SizedBox(height: 20),
-            pw.Divider(),
-            pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text('إجمالي المبالغ في التقرير:',
-                      style: pw.TextStyle(
-                          font: arabicFontBold, fontSize: 16)),
-                  pw.Text('${totalAmount.toStringAsFixed(0)} ريال',
-                      style: pw.TextStyle(
-                          font: arabicFontBold,
-                          fontSize: 16,
-                          color: PdfColors.green700)),
-                ])
+            pw.SizedBox(height: 20), pw.Divider(),
+            pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+              pw.Text('إجمالي المبالغ في التقرير:', style: pw.TextStyle(font: arabicFontBold, fontSize: 16)),
+              pw.Text('${totalAmount.toStringAsFixed(0)} ريال', style: pw.TextStyle(font: arabicFontBold, fontSize: 16, color: PdfColors.green700)),
+            ])
           ];
         },
       ));
-
-      await Printing.sharePdf(
-          bytes: await pdf.save(),
-          filename:
-              'CardsNet_Report_${DateTime.now().millisecondsSinceEpoch}.pdf');
+      await Printing.sharePdf(bytes: await pdf.save(), filename: 'CardsNet_Report_${DateTime.now().millisecondsSinceEpoch}.pdf');
       context.read<UiProvider>().playSound('success');
       _showSnack('تم فتح نافذة الطباعة/المشاركة ✅');
-    } catch (e) {
-      context.read<UiProvider>().playSound('error');
-      _showSnack('حدث خطأ أثناء التصدير: $e', isErr: true);
-    }
+    } catch (e) { context.read<UiProvider>().playSound('error'); _showSnack('حدث خطأ أثناء التصدير: $e', isErr: true); }
   }
 
   Future<void> _exportToExcel(List<Map<String, dynamic>> data) async {
@@ -440,61 +305,34 @@ class _ReportsScreenState extends State<ReportsScreen> {
       var excel = Excel.createExcel();
       Sheet sheetObject = excel['Sheet1'];
       excel.setDefaultSheet('Sheet1');
-
-      sheetObject.appendRow([
-        TextCellValue('التاريخ'),
-        TextCellValue('اسم الوكيل'),
-        TextCellValue('نوع العملية'),
-        TextCellValue('المبلغ (ريال)')
-      ]);
-
+      sheetObject.appendRow([TextCellValue('التاريخ'), TextCellValue('اسم الوكيل'), TextCellValue('نوع العملية'), TextCellValue('المبلغ (ريال)')]);
       for (var row in data) {
-        String dateStr = row['timestamp'] != null
-            ? DateFormat('yyyy-MM-dd HH:mm')
-                .format((row['timestamp'] as Timestamp).toDate())
-            : '';
-        sheetObject.appendRow([
-          TextCellValue(dateStr),
-          TextCellValue(row['agentName']?.toString() ?? ''),
-          TextCellValue(row['type']?.toString() ?? ''),
-          DoubleCellValue((row['amount'] ?? 0.0).toDouble()),
-        ]);
+        String dateStr = row['timestamp'] != null ? DateFormat('yyyy-MM-dd HH:mm').format((row['timestamp'] as Timestamp).toDate()) : '';
+        sheetObject.appendRow([TextCellValue(dateStr), TextCellValue(row['agentName']?.toString() ?? ''), TextCellValue(row['type']?.toString() ?? ''), DoubleCellValue((row['amount'] ?? 0.0).toDouble())]);
       }
-
       var fileBytes = excel.save();
-
       if (!kIsWeb) {
         Directory directory = await getApplicationDocumentsDirectory();
-        String filePath =
-            '${directory.path}/CardsNet_Report_${DateTime.now().millisecondsSinceEpoch}.xlsx';
-        File(filePath)
-          ..createSync(recursive: true)
-          ..writeAsBytesSync(fileBytes!);
+        String filePath = '${directory.path}/CardsNet_Report_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+        File(filePath)..createSync(recursive: true)..writeAsBytesSync(fileBytes!);
         context.read<UiProvider>().playSound('success');
         _showSnack('تم حفظ الملف بنجاح في المسار:\n$filePath');
       } else {
-        _showSnack(
-            'بيانات الإكسل جاهزة! استخدم PDF للحفظ على الويب.');
+        _showSnack('بيانات الإكسل جاهزة! استخدم PDF للحفظ على الويب.');
       }
-    } catch (e) {
-      context.read<UiProvider>().playSound('error');
-      _showSnack('حدث خطأ أثناء تصدير الإكسل: $e', isErr: true);
-    }
+    } catch (e) { context.read<UiProvider>().playSound('error'); _showSnack('حدث خطأ أثناء تصدير الإكسل: $e', isErr: true); }
   }
 
-  void _showTransactionReceipt(
-      Map<String, dynamic> log, SettingsProvider settings) {
+  // 🆕 الإيصال الذكي - يعرض الحقول المناسبة لكل نوع حركة
+  void _showTransactionReceipt(Map<String, dynamic> log, SettingsProvider settings) {
     context.read<UiProvider>().playSound('click');
     final GlobalKey receiptKey = GlobalKey();
 
-    final double amount =
-        double.tryParse(log['amount'].toString()) ?? 0.0;
-    final String type = log['type'] ?? '';
-    final bool isPositive = type == 'deposit' || type == 'income';
+    final double amount = double.tryParse(log['amount'].toString()) ?? 0.0;
+    final bool isPositive = log['type'] == 'deposit' || log['type'] == 'credit_refund';
     final Color color = isPositive ? Colors.green : Colors.red;
     final String dateStr = log['timestamp'] != null
-        ? DateFormat('yyyy-MM-dd hh:mm a')
-            .format((log['timestamp'] as Timestamp).toDate())
+        ? DateFormat('yyyy-MM-dd hh:mm a').format((log['timestamp'] as Timestamp).toDate())
         : 'الآن';
 
     showDialog(
@@ -503,209 +341,93 @@ class _ReportsScreenState extends State<ReportsScreen> {
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           contentPadding: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           content: RepaintBoundary(
             key: receiptKey,
             child: Container(
-              width: 340,
+              width: 360,
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Theme.of(context).colorScheme.surface,
-                    color.withOpacity(0.08)
-                  ],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
+                gradient: LinearGradient(colors: [Theme.of(context).colorScheme.surface, color.withOpacity(0.05)], begin: Alignment.topCenter, end: Alignment.bottomCenter),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                    color: color.withOpacity(0.3), width: 2),
+                border: Border.all(color: color.withOpacity(0.3), width: 2),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                        color: color.withOpacity(0.1),
-                        shape: BoxShape.circle),
-                    child: Icon(
-                        isPositive
-                            ? Icons.arrow_downward
-                            : Icons.arrow_upward,
-                        size: 30,
-                        color: color),
-                  ),
+                  Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle), child: Icon(isPositive ? Icons.arrow_downward : Icons.arrow_upward, size: 30, color: color)),
                   const SizedBox(height: 10),
-                  Text('نظام ${settings.appName}',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: Colors.blueGrey)),
-                  Text('إشعار عملية مالية',
-                      style: TextStyle(
-                          color: color,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold)),
-                  const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 10),
-                      child: Divider(thickness: 1.5)),
-                  Text(log['title'] ?? log['type'] ?? 'عملية مسجلة',
-                      style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.center),
+                  Text('نظام ${settings.appName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueGrey)),
+                  Text('إشعار عملية مالية', style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
+                  const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(thickness: 1.5)),
+                  Text(log['title'] ?? log['type'] ?? 'عملية مسجلة', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
                   const SizedBox(height: 15),
-                  _buildReceiptRow('المرجع',
-                      log['reference'] ?? 'لا يوجد',
-                      isBold: true),
+                  _buildReceiptRow('المرجع', log['reference'] ?? 'لا يوجد', isBold: true),
                   _buildReceiptRow('التاريخ', dateStr),
-                  _buildReceiptRow(
-                      'المبلغ',
-                      '${NumberFormat('#,###').format(amount)} ريال',
-                      valueColor: color,
-                      isBold: true),
-                  if (log['fromName'] != null)
-                    _buildReceiptRow('من', log['fromName']),
-                  if (log['toName'] != null)
-                    _buildReceiptRow('إلى', log['toName']),
-                  if (log['agentName'] != null)
-                    _buildReceiptRow('الطرف الآخر',
-                        log['agentName']),
-                  if (log['networkName'] != null &&
-                      log['networkName'] != 'غير محدد')
-                    _buildReceiptRow(
-                        'الشبكة', log['networkName']),
-                  if (log['categoryName'] != null)
-                    _buildReceiptRow(
-                        'الفئة', log['categoryName']),
-                  if (log['quantity'] != null)
-                    _buildReceiptRow(
-                        'العدد', '${log['quantity']}'),
-                  if (log['paymentMethod'] != null)
-                    _buildReceiptRow(
-                        'طريقة الدفع', log['paymentMethod']),
-                  if (log['fee'] != null &&
-                      double.tryParse(log['fee'].toString()) != 0)
-                    _buildReceiptRow(
-                        'الرسوم التشغيلية',
-                        '${NumberFormat('#,###').format(log['fee'])} ريال',
-                        valueColor: Colors.red),
-                  if (log['reason'] != null)
-                    _buildReceiptRow('السبب', log['reason']),
-                  const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 10),
-                      child: Divider(thickness: 1.5)),
-                  const Text('المركز المالي لمالك النظام',
-                      style: TextStyle(
-                          fontSize: 10, color: Colors.grey)),
+                  _buildReceiptRow('المبلغ', '${NumberFormat('#,###').format(amount)} ريال', valueColor: color, isBold: true),
+                  if (log['fromName'] != null) _buildReceiptRow('من', log['fromName']),
+                  if (log['toName'] != null) _buildReceiptRow('إلى', log['toName']),
+                  if (log['agentName'] != null) _buildReceiptRow('الطرف الآخر', log['agentName']),
+                  if (log['networkName'] != null && log['networkName'] != 'غير محدد') _buildReceiptRow('الشبكة', log['networkName']),
+                  if (log['categoryName'] != null) _buildReceiptRow('الفئة', log['categoryName']),
+                  if (log['quantity'] != null) _buildReceiptRow('العدد', '${log['quantity']}'),
+                  if (log['paymentMethod'] != null) _buildReceiptRow('طريقة الدفع', log['paymentMethod']),
+                  if (log['fee'] != null && double.tryParse(log['fee'].toString()) != 0) _buildReceiptRow('الرسوم التشغيلية', '${NumberFormat('#,###').format(log['fee'])} ريال', valueColor: Colors.red),
+                  if (log['reason'] != null) _buildReceiptRow('السبب', log['reason']),
+                  const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(thickness: 1.5)),
+                  const Text('المركز المالي لمالك النظام', style: TextStyle(fontSize: 10, color: Colors.grey)),
                 ],
               ),
             ),
           ),
           actionsAlignment: MainAxisAlignment.spaceEvenly,
           actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(c),
-                child: const Text('إغلاق',
-                    style: TextStyle(
-                        color: Colors.grey,
-                        fontWeight: FontWeight.bold))),
+            TextButton(onPressed: () => Navigator.pop(c), child: const Text('إغلاق', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))),
             IconButton(
               icon: const Icon(Icons.copy, color: Colors.blue),
               tooltip: 'نسخ كنص',
               onPressed: () {
                 context.read<UiProvider>().playSound('click');
-                String text =
-                    "🧾 *إشعار عملية - ${settings.appName}*\n";
-                text +=
-                    "المرجع: ${log['reference'] ?? 'لا يوجد'}\n";
+                String text = "🧾 *إشعار عملية - ${settings.appName}*\n";
+                text += "المرجع: ${log['reference'] ?? 'لا يوجد'}\n";
                 text += "التاريخ: $dateStr\n";
-                text +=
-                    "البيان: ${log['title'] ?? log['type']}\n";
-                text +=
-                    "المبلغ: ${NumberFormat('#,###').format(amount)} ريال\n";
-                text +=
-                    "الطرف: ${log['agentName'] ?? 'مجهول'}\n";
+                text += "البيان: ${log['title'] ?? log['type']}\n";
+                text += "المبلغ: ${NumberFormat('#,###').format(amount)} ريال\n";
+                text += "الطرف: ${log['agentName'] ?? 'مجهول'}\n";
                 Clipboard.setData(ClipboardData(text: text));
                 _showSnack('تم نسخ النص بنجاح');
               },
             ),
             ElevatedButton.icon(
-                icon: const Icon(Icons.image,
-                    color: Colors.white, size: 16),
-                label: const Text('مشاركة',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: color,
-                    shape: RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(10))),
-                onPressed: () async {
-                  context.read<UiProvider>().playSound('click');
-                  _showSnack('جاري تجهيز الصورة... ⏳');
-                  try {
-                    RenderRepaintBoundary boundary = receiptKey
-                        .currentContext!
-                        .findRenderObject() as RenderRepaintBoundary;
-                    ui.Image image =
-                        await boundary.toImage(pixelRatio: 3.0);
-                    ByteData? byteData = await image.toByteData(
-                        format: ui.ImageByteFormat.png);
-                    Uint8List pngBytes =
-                        byteData!.buffer.asUint8List();
-
-                    await Share.shareXFiles(
-                        [
-                          XFile.fromData(pngBytes,
-                              mimeType: 'image/png',
-                              name: 'receipt.png')
-                        ],
-                        text:
-                            'إيصال عملية مالية - ${settings.appName}');
-                    context.read<UiProvider>().playSound('success');
-                  } catch (e) {
-                    context.read<UiProvider>().playSound('error');
-                    _showSnack(
-                        'حدث خطأ أثناء التقاط الصورة',
-                        isErr: true);
-                  }
-                }),
+              icon: const Icon(Icons.image, color: Colors.white, size: 16),
+              label: const Text('مشاركة', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(backgroundColor: color, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+              onPressed: () async {
+                context.read<UiProvider>().playSound('click');
+                _showSnack('جاري تجهيز الصورة... ⏳');
+                try {
+                  RenderRepaintBoundary boundary = receiptKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+                  ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+                  ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+                  Uint8List pngBytes = byteData!.buffer.asUint8List();
+                  await Share.shareXFiles([XFile.fromData(pngBytes, mimeType: 'image/png', name: 'receipt.png')], text: 'إيصال عملية مالية - ${settings.appName}');
+                  context.read<UiProvider>().playSound('success');
+                } catch (e) { context.read<UiProvider>().playSound('error'); _showSnack('حدث خطأ أثناء التقاط الصورة', isErr: true); }
+              },
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildReceiptRow(String label, String value,
-      {Color? valueColor, bool isBold = false}) {
+  Widget _buildReceiptRow(String label, String value, {Color? valueColor, bool isBold = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 11, color: Colors.grey)),
-          Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: TextStyle(
-                  fontSize: isBold ? 14 : 12,
-                  fontWeight:
-                      isBold ? FontWeight.bold : FontWeight.w600,
-                  color: valueColor),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+        Expanded(child: Text(value, textAlign: TextAlign.end, style: TextStyle(fontSize: isBold ? 14 : 12, fontWeight: isBold ? FontWeight.bold : FontWeight.w600, color: valueColor), maxLines: 2, overflow: TextOverflow.ellipsis)),
+      ]),
     );
   }
 
@@ -722,10 +444,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final currentTotalAmount = _calculateTotalAmount(filteredData);
 
     List<String> agentNames = ['الكل'];
-    agentNames.addAll(wallet.agentsList
-        .map((a) => a['name'].toString())
-        .toSet()
-        .toList());
+    agentNames.addAll(wallet.agentsList.map((a) => a['name'].toString()).toSet().toList());
 
     return Scaffold(
       appBar: const CustomHeader(title: 'التقارير الشاملة'),
@@ -733,171 +452,88 @@ class _ReportsScreenState extends State<ReportsScreen> {
         userName: wallet.currentUserName,
         phoneNumber: auth.activeUserPhone ?? '',
         role: auth.currentUserRole == 'super_admin' ? 'مالك النظام' : 'موظف مخصص',
-        balanceOrPoints:
-            'أرباح النظام: ${settings.adminMainBalance.toStringAsFixed(0)} ريال',
+        balanceOrPoints: 'أرباح النظام: ${settings.adminMainBalance.toStringAsFixed(0)} ريال',
       ),
       body: RefreshIndicator(
         onRefresh: () async {
           setState(() {});
           await Future.delayed(const Duration(milliseconds: 300));
-          if (mounted) {
-            context.read<UiProvider>().playSound('success');
-            _showSnack('تم تحديث الصفحة بنجاح ✅');
-          }
+          if (mounted) { context.read<UiProvider>().playSound('success'); _showSnack('تم تحديث الصفحة بنجاح ✅'); }
         },
         child: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) {
             return [
               SliverToBoxAdapter(
-                child: Column(
-                  children: [
+                child: Column(children: [
+                  // أزرار التصدير والجدولة
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 12 : 16, vertical: 8),
+                    child: Row(children: [
+                      if (_can('تصدير تقارير')) _buildExportBtn(Icons.table_view, 'Excel', colors.primary, () => _exportToExcel(filteredData)),
+                      if (_can('تصدير تقارير')) const SizedBox(width: 8),
+                      if (_can('تصدير تقارير')) _buildExportBtn(Icons.picture_as_pdf, 'PDF', colors.error, () => _exportToPDF(filteredData, currentTotalAmount)),
+                      if (_can('تصدير تقارير')) const SizedBox(width: 8),
+                      if (_can('جدولة التقارير')) _buildExportBtn(Icons.schedule, 'جدولة', Colors.orange.shade800, _showScheduleDialog),
+                    ]),
+                  ),
+                  // رسالة الجدولة
+                  if (_hasSchedule)
                     Container(
-                      padding: EdgeInsets.symmetric(
-                          horizontal: isSmallScreen ? 12 : 16, vertical: 8),
-                      child: Row(
-                        children: [
-                          if (_can('تصدير تقارير'))
-                            _buildExportBtn(
-                                Icons.table_view,
-                                'Excel',
-                                colors.primary,
-                                () => _exportToExcel(filteredData)),
-                          if (_can('تصدير تقارير')) const SizedBox(width: 8),
-                          if (_can('تصدير تقارير'))
-                            _buildExportBtn(
-                                Icons.picture_as_pdf,
-                                'PDF',
-                                colors.error,
-                                () => _exportToPDF(
-                                    filteredData, currentTotalAmount)),
-                          if (_can('تصدير تقارير')) const SizedBox(width: 8),
-                          if (_can('جدولة التقارير'))
-                            _buildExportBtn(
-                                Icons.schedule,
-                                'جدولة',
-                                Colors.orange.shade800,
-                                _showScheduleDialog),
-                        ],
-                      ),
+                      margin: EdgeInsets.symmetric(horizontal: isSmallScreen ? 12 : 16),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+                      child: Row(children: [
+                        const Icon(Icons.check_circle, color: Colors.green, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text('جدولة: $_scheduleFrequency | $_scheduleEmail | ${_scheduleHour}:${_scheduleMinute.toString().padLeft(2, '0')} $_scheduleAmPm', style: const TextStyle(fontSize: 12, color: Colors.green))),
+                        IconButton(icon: const Icon(Icons.delete, color: Colors.red, size: 18), onPressed: () async {
+                          if (_scheduleDocId != null) { await _db.collection('scheduled_reports').doc(_scheduleDocId).delete(); setState(() { _hasSchedule = false; _scheduleDocId = null; }); _showSnack('تم حذف الجدولة'); }
+                        }),
+                      ]),
                     ),
-                    if (_hasSchedule)
-                      Container(
-                        margin:
-                            EdgeInsets.symmetric(horizontal: isSmallScreen ? 12 : 16),
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.check_circle,
-                                color: Colors.green, size: 18),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'جدولة: $_scheduleFrequency | $_scheduleEmail | ${_scheduleHour}:${_scheduleMinute.toString().padLeft(2, '0')} $_scheduleAmPm',
-                                style: const TextStyle(
-                                    fontSize: 12, color: Colors.green),
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete,
-                                  color: Colors.red, size: 18),
-                              onPressed: () async {
-                                if (_scheduleDocId != null) {
-                                  await _db
-                                      .collection('scheduled_reports')
-                                      .doc(_scheduleDocId)
-                                      .delete();
-                                  setState(() {
-                                    _hasSchedule = false;
-                                    _scheduleDocId = null;
-                                  });
-                                  _showSnack('تم حذف الجدولة');
-                                }
-                              },
-                            ),
-                          ],
-                        ),
+                  // الفلاتر
+                  Padding(
+                    padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+                    child: Column(children: [
+                      DropdownButtonFormField<String>(
+                        value: _selectedReportType,
+                        decoration: const InputDecoration(labelText: 'نوع التقرير'),
+                        items: ['الكل (شامل)', 'إيداعات وشحن', 'تسويات وخصومات'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                        onChanged: (val) => setState(() => _selectedReportType = val!),
                       ),
-                    Padding(
-                      padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
-                      child: Column(
-                        children: [
-                          DropdownButtonFormField<String>(
-                            value: _selectedAgent,
-                            decoration: const InputDecoration(
-                                labelText: 'الوكيل'),
-                            items: agentNames
-                                .map((e) => DropdownMenuItem(
-                                    value: e, child: Text(e)))
-                                .toList(),
-                            onChanged: (val) => setState(
-                                () => _selectedAgent = val!),
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: () async {
-                                    final picked =
-                                        await showDatePicker(
-                                      context: context,
-                                      initialDate: _startDate ??
-                                          DateTime.now(),
-                                      firstDate: DateTime(2020),
-                                      lastDate: DateTime.now(),
-                                    );
-                                    if (picked != null)
-                                      setState(() =>
-                                          _startDate = picked);
-                                  },
-                                  icon: Icon(Icons.date_range,
-                                      color: colors.primary),
-                                  label: Text(_startDate == null
-                                      ? 'بداية الفترة'
-                                      : _formatDate(_startDate!),
-                                      style: TextStyle(color: colors.primary)),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: () async {
-                                    final picked =
-                                        await showDatePicker(
-                                      context: context,
-                                      initialDate: _endDate ?? DateTime.now(),
-                                      firstDate: _startDate ?? DateTime(2020),
-                                      lastDate: DateTime.now(),
-                                    );
-                                    if (picked != null)
-                                      setState(
-                                          () => _endDate = picked);
-                                  },
-                                  icon: Icon(Icons.date_range,
-                                      color: colors.secondary),
-                                  label: Text(_endDate == null
-                                      ? 'نهاية الفترة'
-                                      : _formatDate(_endDate!),
-                                      style: TextStyle(color: colors.secondary)),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                      const SizedBox(height: 10),
+                      DropdownButtonFormField<String>(
+                        value: _selectedAgent,
+                        decoration: const InputDecoration(labelText: 'الوكيل'),
+                        items: agentNames.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                        onChanged: (val) => setState(() => _selectedAgent = val!),
                       ),
-                    ),
-                  ],
-                ),
+                      const SizedBox(height: 10),
+                      Row(children: [
+                        Expanded(child: ElevatedButton.icon(
+                          onPressed: () async {
+                            final picked = await showDatePicker(context: context, initialDate: _startDate ?? DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime.now());
+                            if (picked != null) setState(() => _startDate = picked);
+                          },
+                          icon: Icon(Icons.date_range, color: colors.primary), label: Text(_startDate == null ? 'بداية الفترة' : _formatDate(_startDate!), style: TextStyle(color: colors.primary)),
+                        )),
+                        const SizedBox(width: 8),
+                        Expanded(child: ElevatedButton.icon(
+                          onPressed: () async {
+                            final picked = await showDatePicker(context: context, initialDate: _endDate ?? DateTime.now(), firstDate: _startDate ?? DateTime(2020), lastDate: DateTime.now());
+                            if (picked != null) setState(() => _endDate = picked);
+                          },
+                          icon: Icon(Icons.date_range, color: colors.secondary), label: Text(_endDate == null ? 'نهاية الفترة' : _formatDate(_endDate!), style: TextStyle(color: colors.secondary)),
+                        )),
+                      ]),
+                    ]),
+                  ),
+                ]),
               ),
             ];
           },
           body: filteredData.isEmpty
-              ? const Center(
-                  child: Text('لا توجد بيانات مطابقة للفلاتر'))
+              ? const Center(child: Text('لا توجد بيانات مطابقة للفلاتر'))
               : _showChart
                   ? _buildChartView(filteredData)
                   : _buildTableView(filteredData, settings, colors, isSmallScreen),
@@ -906,113 +542,48 @@ class _ReportsScreenState extends State<ReportsScreen> {
       bottomNavigationBar: Container(
         padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
         color: colors.primary,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            Text(
-                'إجمالي كروت: ${settings.totalSystemCards}',
-                style: TextStyle(color: colors.onPrimary, fontSize: isSmallScreen ? 12 : 14)),
-            Text(
-                'مجموع المبالغ: ${currentTotalAmount.toStringAsFixed(0)} ريال',
-                style: TextStyle(color: Colors.greenAccent, fontSize: isSmallScreen ? 12 : 14)),
-          ],
-        ),
+        child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+          Text('إجمالي كروت: ${settings.totalSystemCards}', style: TextStyle(color: colors.onPrimary, fontSize: isSmallScreen ? 12 : 14)),
+          Text('مجموع المبالغ: ${currentTotalAmount.toStringAsFixed(0)} ريال', style: TextStyle(color: Colors.greenAccent, fontSize: isSmallScreen ? 12 : 14)),
+        ]),
       ),
     );
   }
 
-  Widget _buildTableView(
-      List<Map<String, dynamic>> data, SettingsProvider settings, ColorScheme colors, bool isSmallScreen) {
+  Widget _buildTableView(List<Map<String, dynamic>> data, SettingsProvider settings, ColorScheme colors, bool isSmallScreen) {
     return ListView.builder(
       padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 12 : 16, vertical: 8),
       itemCount: data.length,
       itemBuilder: (context, index) {
         final row = data[index];
         String dateStr = '';
-        if (row['timestamp'] != null) {
-          dateStr = DateFormat('yyyy-MM-dd HH:mm')
-              .format((row['timestamp'] as Timestamp).toDate());
-        }
-
-        bool isPositive = row['type'] == 'deposit' ||
-            row['type'] == 'income' ||
-            row['title'].toString().contains('توريد');
+        if (row['timestamp'] != null) dateStr = DateFormat('yyyy-MM-dd HH:mm').format((row['timestamp'] as Timestamp).toDate());
+        bool isPositive = row['type'] == 'deposit' || row['type'] == 'credit_refund' || row['title'].toString().contains('توريد');
         Color amountColor = isPositive ? Colors.green : colors.error;
 
         return Card(
-          elevation: 2,
-          margin: const EdgeInsets.only(bottom: 8),
-          color: colors.surface,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10)),
+          elevation: 2, margin: const EdgeInsets.only(bottom: 8), color: colors.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           child: InkWell(
             onTap: () => _showTransactionReceipt(row, settings),
             borderRadius: BorderRadius.circular(10),
             child: Padding(
               padding: EdgeInsets.all(isSmallScreen ? 10 : 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment:
-                        MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                            row['title'] ?? row['type'] ?? 'عملية',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: isSmallScreen ? 13 : 14,
-                                color: colors.onSurface)),
-                      ),
-                      Text(
-                          '$dateStr',
-                          style: TextStyle(
-                              fontSize: isSmallScreen ? 10 : 11,
-                              color: colors.onSurfaceVariant)),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    mainAxisAlignment:
-                        MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                          row['agentName'] ?? 'مجهول',
-                          style: TextStyle(
-                              fontSize: isSmallScreen ? 11 : 12,
-                              color: colors.onSurfaceVariant)),
-                      Text(
-                          '${isPositive ? '+' : ''}${row['amount']} ريال',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: amountColor,
-                              fontSize: isSmallScreen ? 13 : 14)),
-                    ],
-                  ),
-                  if (row['reference'] != null)
-                    Text('المرجع: ${row['reference']}',
-                        style: TextStyle(
-                            fontSize: isSmallScreen ? 10 : 11,
-                            color: colors.primary)),
-                  if (row['networkName'] != null &&
-                      row['networkName'] != 'غير محدد')
-                    Text('الشبكة: ${row['networkName']}',
-                        style: TextStyle(
-                            fontSize: isSmallScreen ? 10 : 11,
-                            color: colors.onSurfaceVariant)),
-                  if (row['categoryName'] != null)
-                    Text('الفئة: ${row['categoryName']}',
-                        style: TextStyle(
-                            fontSize: isSmallScreen ? 10 : 11,
-                            color: colors.onSurfaceVariant)),
-                  if (row['quantity'] != null)
-                    Text('العدد: ${row['quantity']}',
-                        style: TextStyle(
-                            fontSize: isSmallScreen ? 10 : 11,
-                            color: colors.onSurfaceVariant)),
-                ],
-              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  Expanded(child: Text(row['title'] ?? row['type'] ?? 'عملية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 13 : 14, color: colors.onSurface))),
+                  Text('$dateStr', style: TextStyle(fontSize: isSmallScreen ? 10 : 11, color: colors.onSurfaceVariant)),
+                ]),
+                const SizedBox(height: 6),
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  Text(row['agentName'] ?? 'مجهول', style: TextStyle(fontSize: isSmallScreen ? 11 : 12, color: colors.onSurfaceVariant)),
+                  Text('${isPositive ? '+' : ''}${row['amount']} ريال', style: TextStyle(fontWeight: FontWeight.bold, color: amountColor, fontSize: isSmallScreen ? 13 : 14)),
+                ]),
+                if (row['reference'] != null) Text('المرجع: ${row['reference']}', style: TextStyle(fontSize: isSmallScreen ? 10 : 11, color: colors.primary)),
+                if (row['networkName'] != null && row['networkName'] != 'غير محدد') Text('الشبكة: ${row['networkName']}', style: TextStyle(fontSize: isSmallScreen ? 10 : 11, color: colors.onSurfaceVariant)),
+                if (row['categoryName'] != null) Text('الفئة: ${row['categoryName']}', style: TextStyle(fontSize: isSmallScreen ? 10 : 11, color: colors.onSurfaceVariant)),
+                if (row['quantity'] != null) Text('العدد: ${row['quantity']}', style: TextStyle(fontSize: isSmallScreen ? 10 : 11, color: colors.onSurfaceVariant)),
+              ]),
             ),
           ),
         );
@@ -1022,128 +593,52 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _buildChartView(List<Map<String, dynamic>> data) {
     Map<String, double> agentTotals = {};
-    for (var tx in data) {
-      String name = tx['agentName'] ?? 'مجهول';
-      double amount = (tx['amount'] ?? 0.0).toDouble();
-      agentTotals[name] =
-          (agentTotals[name] ?? 0.0) + amount;
-    }
-
-    var sortedAgents = agentTotals.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+    for (var tx in data) { String name = tx['agentName'] ?? 'مجهول'; double amount = (tx['amount'] ?? 0.0).toDouble(); agentTotals[name] = (agentTotals[name] ?? 0.0) + amount; }
+    var sortedAgents = agentTotals.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
     var topAgents = sortedAgents.take(4).toList();
-
-    double maxAmount =
-        topAgents.isNotEmpty ? topAgents.first.value : 1.0;
+    double maxAmount = topAgents.isNotEmpty ? topAgents.first.value : 1.0;
     if (maxAmount == 0) maxAmount = 1.0;
-
-    List<Color> barColors = [
-      Colors.blue,
-      Colors.orange,
-      Colors.green,
-      Colors.purple
-    ];
+    List<Color> barColors = [Colors.blue, Colors.orange, Colors.green, Colors.purple];
 
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Card(
-        elevation: 3,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15)),
+        elevation: 3, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         child: Padding(
           padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text('أعلى الوكلاء في هذه الفترة (مبالغ)',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.purple)),
-              const SizedBox(height: 30),
-              Expanded(
-                child: Row(
-                  mainAxisAlignment:
-                      MainAxisAlignment.spaceEvenly,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: topAgents
-                      .asMap()
-                      .entries
-                      .map((entry) {
-                    int index = entry.key;
-                    var agentData = entry.value;
-                    double barHeight =
-                        (agentData.value / maxAmount) * 150.0;
-                    if (barHeight < 10) barHeight = 10;
-
-                    return _buildBar(
-                        agentData.key,
-                        barHeight,
-                        barColors[index % barColors.length],
-                        agentData.value);
-                  }).toList(),
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                  '💡 الرسم البياني يتغير آلياً حسب الفلاتر أعلاه.',
-                  style: TextStyle(
-                      color: Colors.grey, fontSize: 12)),
-            ],
-          ),
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            const Text('أعلى الوكلاء في هذه الفترة (مبالغ)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.purple)),
+            const SizedBox(height: 30),
+            Expanded(child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, crossAxisAlignment: CrossAxisAlignment.end, children: topAgents.asMap().entries.map((entry) {
+              int index = entry.key; var agentData = entry.value;
+              double barHeight = (agentData.value / maxAmount) * 150.0;
+              if (barHeight < 10) barHeight = 10;
+              return _buildBar(agentData.key, barHeight, barColors[index % barColors.length], agentData.value);
+            }).toList())),
+            const SizedBox(height: 20),
+            const Text('💡 الرسم البياني يتغير آلياً حسب الفلاتر أعلاه.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+          ]),
         ),
       ),
     );
   }
 
-  Widget _buildBar(
-      String label, double height, Color color, double amount) {
-    String shortLabel =
-        label.length > 8 ? '${label.substring(0, 8)}..' : label;
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Text(amount.toStringAsFixed(0),
-            style: TextStyle(
-                fontSize: 10,
-                color: color,
-                fontWeight: FontWeight.bold)),
-        const SizedBox(height: 4),
-        Container(
-          width: 40,
-          height: height,
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.8),
-            borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(5)),
-            boxShadow: const [
-              BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 4,
-                  offset: Offset(2, 0))
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(shortLabel,
-            style: const TextStyle(
-                fontSize: 11, fontWeight: FontWeight.bold)),
-      ],
-    );
+  Widget _buildBar(String label, double height, Color color, double amount) {
+    String shortLabel = label.length > 8 ? '${label.substring(0, 8)}..' : label;
+    return Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+      Text(amount.toStringAsFixed(0), style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 4),
+      Container(width: 40, height: height, decoration: BoxDecoration(color: color.withOpacity(0.8), borderRadius: const BorderRadius.vertical(top: Radius.circular(5)), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(2, 0))])),
+      const SizedBox(height: 8),
+      Text(shortLabel, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+    ]);
   }
 
-  Widget _buildExportBtn(IconData icon, String label, Color color,
-      VoidCallback onTap) {
+  Widget _buildExportBtn(IconData icon, String label, Color color, VoidCallback onTap) {
     return ElevatedButton.icon(
-      onPressed: onTap,
-      icon: Icon(icon, size: 16, color: Colors.white),
-      label: Text(label,
-          style: const TextStyle(
-              color: Colors.white, fontSize: 12)),
-      style: ElevatedButton.styleFrom(
-          backgroundColor: color,
-          padding: const EdgeInsets.symmetric(
-              horizontal: 10, vertical: 0),
-          elevation: 1),
+      onPressed: onTap, icon: Icon(icon, size: 16, color: Colors.white),
+      label: Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
+      style: ElevatedButton.styleFrom(backgroundColor: color, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0), elevation: 1),
     );
   }
 }
