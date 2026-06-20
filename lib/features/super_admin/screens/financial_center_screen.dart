@@ -1,3 +1,5 @@
+// lib/features/super_admin/screens/financial_center_screen.dart
+
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -41,7 +43,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) {
         context.read<UiProvider>().playSound('click');
@@ -55,6 +57,11 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
     super.dispose();
   }
 
+  bool _can(String permission) {
+    final auth = context.read<AuthProvider>();
+    return auth.currentUserRole == 'super_admin' || auth.hasPermission(permission);
+  }
+
   void _showSnack(String m, {bool isErr = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -64,6 +71,16 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
         behavior: SnackBarBehavior.floating,
       ),
     );
+  }
+
+  String _generateReference(String prefix) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final random = DateTime.now().millisecondsSinceEpoch.toString();
+    String code = '';
+    for (int i = 0; i < 4; i++) {
+      code += chars[(random.codeUnitAt(i % random.length) + i) % chars.length];
+    }
+    return '$prefix-$code';
   }
 
   Future<void> _pickStartDate() async {
@@ -122,6 +139,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
   }
 
   void _acceptRequest(Map<String, dynamic> req, WalletProvider wallet) async {
+    if (!_can('قبول طلب شحن')) return;
     context.read<UiProvider>().playSound('warning');
     final docId = req['docId'];
     String agentPhone = req['userPhone'] ?? req['agentPhone'];
@@ -174,6 +192,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
   }
 
   void _showRejectDialog(Map<String, dynamic> req, WalletProvider wallet) {
+    if (!_can('رفض طلب شحن')) return;
     context.read<UiProvider>().playSound('click');
     final reasonController = TextEditingController();
     final docId = req['docId'];
@@ -188,13 +207,13 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
-              backgroundColor: Theme.of(context).cardColor,
+              backgroundColor: Theme.of(context).colorScheme.surface,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               title: const Text('رفض طلب الشحن ❌', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('يرجى كتابة سبب الرفض (سيصل للوكيل كإشعار):', style: TextStyle(color: context.watch<ThemeProvider>().adaptiveTextColor)),
+                  Text('يرجى كتابة سبب الرفض (سيصل للوكيل كإشعار):', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
                   const SizedBox(height: 10),
                   TextField(
                     controller: reasonController,
@@ -263,7 +282,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
               width: 320,
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [Theme.of(context).cardColor, color.withOpacity(0.08)], begin: Alignment.topCenter, end: Alignment.bottomCenter),
+                gradient: LinearGradient(colors: [Theme.of(context).colorScheme.surface, color.withOpacity(0.08)], begin: Alignment.topCenter, end: Alignment.bottomCenter),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: color.withOpacity(0.3), width: 2),
               ),
@@ -351,6 +370,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
   }
 
   void _showManualSettlementDialog(Map<String, dynamic> agent, WalletProvider wallet) {
+    if (!_can('تسوية رصيد')) return;
     context.read<UiProvider>().playSound('click');
     int settlementType = 1;
     final amountController = TextEditingController();
@@ -366,9 +386,9 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
           return Directionality(
             textDirection: TextDirection.rtl,
             child: AlertDialog(
-              backgroundColor: Theme.of(context).cardColor,
+              backgroundColor: Theme.of(context).colorScheme.surface,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: Text('تسوية يدوية لمحفظة: ${agent['name']}', style: const TextStyle(fontWeight: FontWeight.bold)),
+              title: Text('تسوية يدوية لمحفظة: ${agent['name']}', style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -440,6 +460,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
   }
 
   void _showDangerLimitDialog(Map<String, dynamic> agent, WalletProvider wallet) {
+    if (!_can('تعديل حد الخطر')) return;
     context.read<UiProvider>().playSound('click');
     final limitController = TextEditingController(text: (agent['dangerLimit'] ?? 0).toString());
     showDialog(
@@ -447,7 +468,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          backgroundColor: Theme.of(context).cardColor,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Text('ضبط حد الخطر 🎛️', style: TextStyle(fontWeight: FontWeight.bold)),
           content: Column(
@@ -492,9 +513,9 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          backgroundColor: Theme.of(context).cardColor,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Text('تفاصيل الوكيل: ${agent['name']}', style: const TextStyle(fontWeight: FontWeight.bold)),
+          title: Text('تفاصيل الوكيل: ${agent['name']}', style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
           content: SizedBox(
             width: double.maxFinite,
             child: SingleChildScrollView(
@@ -505,9 +526,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                     return const Center(child: Text('لا توجد بيانات'));
                   }
                   final data = userSnap.data!.data() as Map<String, dynamic>;
-                  final networkName = data['networkName'] ?? 'غير محدد';
-                  final networks = (data['networkIds'] as List<dynamic>?) ?? [];
-                  final posAgents = (data['pos_agents'] as List<dynamic>?) ?? [];
                   final status = data['status'] ?? 'غير محدد';
                   final subStatus = data['subStatus'] ?? 'غير محدد';
                   final balance = (data['balance'] ?? 0.0).toDouble();
@@ -524,16 +542,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                       _buildDetailRow('حالة الاشتراك', subStatus),
                       _buildDetailRow('الرصيد الحالي', '${balance.toStringAsFixed(2)} ريال'),
                       _buildDetailRow('تاريخ انتهاء الاشتراك', subExpiry.toString()),
-                      const Divider(),
-                      Text('الشبكات (Server):', style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
-                      if (networks.isEmpty) const Text('لا توجد شبكات مسجلة.', style: TextStyle(color: Colors.grey))
-                      else ...networks.map((n) => ListTile(dense: true, leading: const Icon(Icons.wifi, size: 18), title: Text(n.toString()))),
-                      const Divider(),
-                      Text('نقاط البيع (POS):', style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
-                      if (posAgents.isEmpty) const Text('لا توجد نقاط بيع.', style: TextStyle(color: Colors.grey))
-                      else ...posAgents.map((p) => ListTile(dense: true, leading: const Icon(Icons.storefront, size: 18), title: Text(p.toString()))),
-                      const SizedBox(height: 10),
-                      Text('اسم الشبكة الأساسي: $networkName', style: const TextStyle(color: Colors.grey)),
                     ],
                   );
                 },
@@ -566,18 +574,16 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
     final auth = context.watch<AuthProvider>();
     final settings = context.watch<SettingsProvider>();
     final wallet = context.watch<WalletProvider>();
-    final themeProvider = context.watch<ThemeProvider>();
-    final adminBalance = settings.adminMainBalance;
-    final cardColor = Theme.of(context).cardColor;
-    final textColor = themeProvider.adaptiveTextColor;
+    final colors = Theme.of(context).colorScheme;
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
 
     return Scaffold(
       appBar: const CustomHeader(title: 'المركز المالي'),
       drawer: CustomDrawer(
         userName: wallet.currentUserName,
         phoneNumber: auth.activeUserPhone ?? '',
-        role: 'مالك النظام (Super Admin)',
-        balanceOrPoints: 'أرباح تشغيلية (SaaS): ${intl.NumberFormat('#,###').format(adminBalance)} ريال',
+        role: auth.currentUserRole == 'super_admin' ? 'مالك النظام' : 'موظف مخصص',
+        balanceOrPoints: 'أرباح تشغيلية (SaaS): ${intl.NumberFormat('#,###').format(settings.adminMainBalance)} ريال',
       ),
       body: Directionality(
         textDirection: TextDirection.rtl,
@@ -585,14 +591,17 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
           onRefresh: () async {
             setState(() {});
             await Future.delayed(const Duration(milliseconds: 300));
-            context.read<UiProvider>().playSound('success');
+            if (mounted) {
+              context.read<UiProvider>().playSound('success');
+              _showSnack('تم تحديث الصفحة بنجاح ✅');
+            }
           },
           child: NestedScrollView(
             headerSliverBuilder: (context, innerBoxIsScrolled) {
               return [
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.all(16.0),
+                    padding: EdgeInsets.all(isSmallScreen ? 12.0 : 16.0),
                     child: TextField(
                       onChanged: (value) {
                         if (value.length == 1) context.read<UiProvider>().playSound('click');
@@ -600,10 +609,10 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                       },
                       decoration: InputDecoration(
                         hintText: 'بحث شامل بالاسم، أو رقم الهاتف، أو المرجع...',
-                        prefixIcon: const Icon(Icons.search, color: Colors.blueAccent),
+                        prefixIcon: Icon(Icons.search, color: colors.primary, size: isSmallScreen ? 20 : 24),
                         filled: true,
-                        fillColor: cardColor,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                        fillColor: colors.surface,
+                        contentPadding: EdgeInsets.symmetric(vertical: isSmallScreen ? 8 : 12),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
                       ),
                     ),
@@ -611,9 +620,9 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                 ),
                 SliverToBoxAdapter(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 12 : 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: themeProvider.primaryColor.withOpacity(0.1),
+                      color: colors.primaryContainer.withOpacity(0.1),
                       borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
                     ),
                     child: Column(
@@ -623,18 +632,18 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                             Expanded(
                               child: ElevatedButton.icon(
                                 onPressed: _pickStartDate,
-                                icon: const Icon(Icons.date_range, color: Colors.blueAccent),
-                                label: Text(_startDate == null ? 'بداية الفترة' : _formatDate(_startDate!), style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 13)),
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                                icon: Icon(Icons.date_range, color: colors.primary, size: isSmallScreen ? 16 : 18),
+                                label: Text(_startDate == null ? 'بداية الفترة' : _formatDate(_startDate!), style: TextStyle(color: colors.primary, fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 12 : 13)),
+                                style: ElevatedButton.styleFrom(backgroundColor: colors.surface, padding: EdgeInsets.symmetric(vertical: isSmallScreen ? 10 : 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                               ),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: ElevatedButton.icon(
                                 onPressed: _pickEndDate,
-                                icon: const Icon(Icons.date_range, color: Colors.orangeAccent),
-                                label: Text(_endDate == null ? 'نهاية الفترة' : _formatDate(_endDate!), style: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold, fontSize: 13)),
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                                icon: Icon(Icons.date_range, color: colors.secondary, size: isSmallScreen ? 16 : 18),
+                                label: Text(_endDate == null ? 'نهاية الفترة' : _formatDate(_endDate!), style: TextStyle(color: colors.secondary, fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 12 : 13)),
+                                style: ElevatedButton.styleFrom(backgroundColor: colors.surface, padding: EdgeInsets.symmetric(vertical: isSmallScreen ? 10 : 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                               ),
                             ),
                           ],
@@ -645,8 +654,8 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text('الفلترة: ${_startDate != null ? _formatDate(_startDate!) : "أول سنة"} - ${_endDate != null ? _formatDate(_endDate!) : "اليوم"}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                                IconButton(icon: const Icon(Icons.clear_all, color: Colors.white70), tooltip: 'إعادة تعيين', onPressed: _resetDates),
+                                Text('الفلترة: ${_startDate != null ? _formatDate(_startDate!) : "أول سنة"} - ${_endDate != null ? _formatDate(_endDate!) : "اليوم"}', style: TextStyle(color: colors.onSurface, fontSize: 12)),
+                                IconButton(icon: Icon(Icons.clear_all, color: colors.onSurface), tooltip: 'إعادة تعيين', onPressed: _resetDates),
                               ],
                             ),
                           ),
@@ -658,17 +667,17 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                   delegate: _SliverTabBarDelegate(
                     TabBar(
                       controller: _tabController,
-                      labelColor: Colors.blueAccent,
-                      unselectedLabelColor: Colors.grey,
-                      indicatorColor: Colors.blueAccent,
+                      labelColor: colors.primary,
+                      unselectedLabelColor: colors.onSurfaceVariant,
+                      indicatorColor: colors.primary,
                       indicatorWeight: 3,
-                      labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 12 : 13),
                       tabs: [
                         Tab(
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Icon(Icons.download, size: 18),
+                              Icon(Icons.download, size: isSmallScreen ? 16 : 18),
                               const SizedBox(width: 4),
                               const Text('طلبات الشحن'),
                               if (wallet.pendingRechargeRequests.isNotEmpty) ...[
@@ -678,8 +687,16 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                             ],
                           ),
                         ),
-                        const Tab(icon: Icon(Icons.account_balance_wallet, size: 18), text: 'أرصدة المحافظ'),
-                        const Tab(icon: Icon(Icons.receipt_long, size: 18), text: 'السجل الشامل'),
+                        Tab(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.account_balance_wallet, size: isSmallScreen ? 16 : 18),
+                              const SizedBox(width: 4),
+                              const Text('أرصدة المحافظ'),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -690,9 +707,8 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
             body: TabBarView(
               controller: _tabController,
               children: [
-                _buildRechargeRequestsTab(wallet, cardColor, textColor),
-                _buildWalletsTab(wallet, cardColor, textColor),
-                _buildLedgerTab(wallet, settings, cardColor, textColor),
+                _buildRechargeRequestsTab(wallet, settings, colors, isSmallScreen),
+                _buildWalletsTab(wallet, settings, colors, isSmallScreen),
               ],
             ),
           ),
@@ -703,7 +719,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
 
   String _formatDate(DateTime date) => '${date.year}/${date.month}/${date.day}';
 
-  Widget _buildRechargeRequestsTab(WalletProvider wallet, Color cardColor, Color textColor) {
+  Widget _buildRechargeRequestsTab(WalletProvider wallet, SettingsProvider settings, ColorScheme colors, bool isSmallScreen) {
     final requests = wallet.pendingRechargeRequests.where((req) {
       final query = _searchQuery.toLowerCase();
       final matchesQuery = (req['userName']?.toString().toLowerCase().contains(query) ?? false) ||
@@ -716,24 +732,29 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
       return _isWithinDateRange(req['timestamp']);
     }).toList();
 
-    if (requests.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.check_circle_outline, size: 80, color: Colors.green.withOpacity(0.2)),
-            const SizedBox(height: 10),
-            const Text('لا توجد طلبات شحن معلقة حالياً، عمل رائع!', style: TextStyle(color: Colors.grey)),
-          ],
-        ),
-      );
-    }
-
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
       physics: const AlwaysScrollableScrollPhysics(),
-      itemCount: requests.length,
+      itemCount: requests.isEmpty ? 1 : requests.length + 1, // +1 للطلبات الحديثة
       itemBuilder: (context, index) {
+        if (requests.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.check_circle_outline, size: 80, color: Colors.green.withOpacity(0.2)),
+                const SizedBox(height: 10),
+                const Text('لا توجد طلبات شحن معلقة حالياً، عمل رائع!', style: TextStyle(color: Colors.grey)),
+              ],
+            ),
+          );
+        }
+
+        if (index == requests.length) {
+          // 🆕 قسم الطلبات الحديثة
+          return _buildRecentRequests(wallet, settings, colors, isSmallScreen);
+        }
+
         final req = requests[index];
         final docId = req['docId'];
         final isProcessing = _processingRequests.contains(docId);
@@ -745,12 +766,12 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
         String refNumber = req['reference'] ?? req['ref'] ?? 'لا يوجد';
 
         return Card(
-          color: cardColor,
+          color: colors.surface,
           elevation: 3,
           margin: const EdgeInsets.only(bottom: 16),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           child: Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: EdgeInsets.all(isSmallScreen ? 12.0 : 16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -759,13 +780,13 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                   children: [
                     Row(
                       children: [
-                        CircleAvatar(backgroundColor: Colors.blue.withOpacity(0.1), child: const Icon(Icons.person, color: Colors.blue)),
+                        CircleAvatar(backgroundColor: colors.primary.withOpacity(0.1), child: Icon(Icons.person, color: colors.primary)),
                         const SizedBox(width: 10),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(agentName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.blue)),
-                            Text(agentPhone, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                            Text(agentName, style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 13 : 14, color: colors.primary)),
+                            Text(agentPhone, style: TextStyle(fontSize: isSmallScreen ? 11 : 12, color: colors.onSurfaceVariant)),
                           ],
                         ),
                       ],
@@ -777,7 +798,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                         const SizedBox(height: 5),
                         Text(
                           req['timestamp'] != null ? intl.DateFormat('hh:mm a').format((req['timestamp'] as Timestamp).toDate()) : 'الآن',
-                          style: const TextStyle(color: Colors.grey, fontSize: 11),
+                          style: TextStyle(color: colors.onSurfaceVariant, fontSize: isSmallScreen ? 10 : 11),
                         ),
                       ],
                     ),
@@ -793,7 +814,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                           Clipboard.setData(ClipboardData(text: refNumber));
                           _showSnack('تم نسخ رقم المرجع');
                         },
-                        child: Text(refNumber, style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold, fontSize: 14, decoration: TextDecoration.underline)),
+                        child: Text(refNumber, style: TextStyle(color: colors.primary, fontWeight: FontWeight.bold, fontSize: 14, decoration: TextDecoration.underline)),
                       ),
                     ),
                   ],
@@ -824,11 +845,11 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                     ),
                   ),
                 ] else ...[
-                  _buildInfoRow('المبلغ المطلوب:', '${intl.NumberFormat('#,###').format(quotaAmount)} ريال', isBold: true, color: Colors.green, textColor: textColor),
+                  _buildInfoRow('المبلغ المطلوب:', '${intl.NumberFormat('#,###').format(quotaAmount)} ريال', isBold: true, color: Colors.green, textColor: colors.onSurface),
                 ],
                 const SizedBox(height: 10),
-                _buildInfoRow('البنك المحول إليه:', req['bankName'] ?? 'غير محدد', textColor: textColor),
-                _buildInfoRow('مصدر التحويل:', req['transferSource'] ?? 'غير محدد', textColor: textColor),
+                _buildInfoRow('البنك المحول إليه:', req['bankName'] ?? 'غير محدد', textColor: colors.onSurface),
+                _buildInfoRow('مصدر التحويل:', req['transferSource'] ?? 'غير محدد', textColor: colors.onSurface),
                 const SizedBox(height: 15),
                 if (req['receiptBase64'] != null && (req['receiptBase64'] as String).isNotEmpty)
                   OutlinedButton.icon(
@@ -862,25 +883,27 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    Expanded(
-                      flex: 2,
-                      child: ElevatedButton.icon(
-                        onPressed: isProcessing ? null : () => _acceptRequest(req, wallet),
-                        icon: isProcessing ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.check_circle, color: Colors.white, size: 18),
-                        label: Text(isProcessing ? 'جاري...' : 'تأكيد وإيداع الحصة', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                    if (_can('قبول طلب شحن'))
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton.icon(
+                          onPressed: isProcessing ? null : () => _acceptRequest(req, wallet),
+                          icon: isProcessing ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.check_circle, color: Colors.white, size: 18),
+                          label: Text(isProcessing ? 'جاري...' : 'تأكيد وإيداع الحصة', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      flex: 1,
-                      child: ElevatedButton.icon(
-                        onPressed: isProcessing ? null : () => _showRejectDialog(req, wallet),
-                        icon: const Icon(Icons.cancel, color: Colors.white, size: 16),
-                        label: const Text('رفض', style: TextStyle(color: Colors.white, fontSize: 13)),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                    if (_can('قبول طلب شحن') && _can('رفض طلب شحن')) const SizedBox(width: 10),
+                    if (_can('رفض طلب شحن'))
+                      Expanded(
+                        flex: 1,
+                        child: ElevatedButton.icon(
+                          onPressed: isProcessing ? null : () => _showRejectDialog(req, wallet),
+                          icon: const Icon(Icons.cancel, color: Colors.white, size: 16),
+                          label: const Text('رفض', style: TextStyle(color: Colors.white, fontSize: 13)),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ],
@@ -891,34 +914,80 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
     );
   }
 
-  Widget _buildWalletsTab(WalletProvider wallet, Color cardColor, Color textColor) {
+  Widget _buildRecentRequests(WalletProvider wallet, SettingsProvider settings, ColorScheme colors, bool isSmallScreen) {
+    final allRequests = wallet.pendingRechargeRequests;
+    if (allRequests.isEmpty) return const SizedBox.shrink();
+
+    // أحدث 10 طلبات
+    final recent = allRequests.take(10).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Text('الطلبات الحديثة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 14 : 16, color: colors.onSurface)),
+        ),
+        ...recent.map((req) {
+          final status = req['status'] ?? 'قيد الانتظار';
+          final bool isApproved = status == 'approved';
+          final bool isRejected = status == 'rejected';
+          final Color statusColor = isApproved ? Colors.green : (isRejected ? Colors.red : Colors.orange);
+          final IconData statusIcon = isApproved ? Icons.check_circle : (isRejected ? Icons.cancel : Icons.pending);
+          final String statusText = isApproved ? 'مقبول' : (isRejected ? 'مرفوض' : 'معلق');
+
+          return Card(
+            color: colors.surface,
+            margin: const EdgeInsets.only(bottom: 8),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            child: ListTile(
+              leading: Icon(statusIcon, color: statusColor),
+              title: Text(req['userName'] ?? req['agentName'] ?? 'مجهول', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface)),
+              subtitle: Text('${req['amount']} ريال', style: TextStyle(color: colors.onSurfaceVariant)),
+              trailing: Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold)),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildWalletsTab(WalletProvider wallet, SettingsProvider settings, ColorScheme colors, bool isSmallScreen) {
     final wallets = wallet.agentsList.where((agent) {
       final query = _searchQuery.toLowerCase();
       return (agent['name']?.toString().toLowerCase().contains(query) ?? false) || (agent['phone']?.toString().contains(query) ?? false);
     }).toList();
 
-    if (wallets.isEmpty) return const Center(child: Text('لا يوجد وكلاء مطابقين للبحث.'));
-
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
       physics: const AlwaysScrollableScrollPhysics(),
-      itemCount: wallets.length,
+      itemCount: wallets.isEmpty ? 1 : wallets.length + 1, // +1 للحركات الأخيرة
       itemBuilder: (context, index) {
+        if (wallets.isEmpty) {
+          return const Center(child: Text('لا يوجد وكلاء مطابقين للبحث.'));
+        }
+
+        if (index == wallets.length) {
+          // 🆕 قسم الحركات الأخيرة
+          return _buildRecentMovements(wallet, settings, colors, isSmallScreen);
+        }
+
         final agent = wallets[index];
         final balance = double.parse(agent['balance'].toString());
         final dangerLimit = double.parse((agent['dangerLimit'] ?? 0).toString());
         final isDanger = balance <= dangerLimit;
 
         return Card(
-          color: cardColor,
+          color: colors.surface,
           elevation: 2,
           margin: const EdgeInsets.only(bottom: 12),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
-            side: BorderSide(color: isDanger ? Colors.red.withOpacity(0.5) : Colors.transparent, width: 2),
+            side: BorderSide(color: isDanger ? colors.error.withOpacity(0.5) : Colors.transparent, width: 2),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(15.0),
+            padding: EdgeInsets.all(isSmallScreen ? 12.0 : 15.0),
             child: Column(
               children: [
                 Row(
@@ -926,13 +995,13 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                   children: [
                     Row(
                       children: [
-                        CircleAvatar(backgroundColor: isDanger ? Colors.red.withOpacity(0.1) : Colors.blue.withOpacity(0.1), child: Icon(Icons.storefront, color: isDanger ? Colors.red : Colors.blue)),
+                        CircleAvatar(backgroundColor: isDanger ? colors.error.withOpacity(0.1) : colors.primary.withOpacity(0.1), child: Icon(Icons.storefront, color: isDanger ? colors.error : colors.primary)),
                         const SizedBox(width: 10),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('${agent['name']}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textColor)),
-                            Text('${agent['phone']}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                            Text('${agent['name']}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 13 : 14, color: colors.onSurface)),
+                            Text('${agent['phone']}', style: TextStyle(fontSize: isSmallScreen ? 11 : 12, color: colors.onSurfaceVariant)),
                           ],
                         ),
                       ],
@@ -943,9 +1012,9 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                         const Text('حصة المبيعات', style: TextStyle(fontSize: 10, color: Colors.grey)),
                         Row(
                           children: [
-                            if (isDanger) const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 16),
+                            if (isDanger) Icon(Icons.warning_amber_rounded, color: colors.error, size: 16),
                             const SizedBox(width: 4),
-                            Text('${intl.NumberFormat('#,###').format(balance)} ريال', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: isDanger ? Colors.red : Colors.green)),
+                            Text('${intl.NumberFormat('#,###').format(balance)} ريال', style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 14 : 15, color: isDanger ? colors.error : Colors.green)),
                           ],
                         ),
                       ],
@@ -956,9 +1025,11 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildIconButton(Icons.settings, 'تسوية', Colors.blue, () => _showManualSettlementDialog(agent, wallet), textColor),
-                    _buildIconButton(Icons.tune, 'حد الخطر', Colors.orange, () => _showDangerLimitDialog(agent, wallet), textColor),
-                    _buildIconButton(Icons.info_outline, 'تفاصيل الوكيل', Colors.teal, () => _showAgentDetails(agent), textColor),
+                    if (_can('تسوية رصيد'))
+                      _buildIconButton(Icons.settings, 'تسوية', colors.primary, () => _showManualSettlementDialog(agent, wallet), colors.onSurface),
+                    if (_can('تعديل حد الخطر'))
+                      _buildIconButton(Icons.tune, 'حد الخطر', Colors.orange, () => _showDangerLimitDialog(agent, wallet), colors.onSurface),
+                    _buildIconButton(Icons.info_outline, 'تفاصيل الوكيل', Colors.teal, () => _showAgentDetails(agent), colors.onSurface),
                   ],
                 ),
               ],
@@ -969,75 +1040,46 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
     );
   }
 
-  Widget _buildLedgerTab(WalletProvider wallet, SettingsProvider settings, Color cardColor, Color textColor) {
-    final ledger = wallet.transactionsLedger.where((log) {
-      final query = _searchQuery.toLowerCase();
-      final matchesQuery = (log['agentName']?.toString().toLowerCase().contains(query) ?? false) ||
-          (log['agentPhone']?.toString().contains(query) ?? false) ||
-          (log['type']?.toString().contains(query) ?? false) ||
-          (log['title']?.toString().contains(query) ?? false);
-      if (!matchesQuery) return false;
-      return _isWithinDateRange(log['timestamp']);
-    }).toList();
+  Widget _buildRecentMovements(WalletProvider wallet, SettingsProvider settings, ColorScheme colors, bool isSmallScreen) {
+    final allTransactions = wallet.transactionsLedger;
+    if (allTransactions.isEmpty) return const SizedBox.shrink();
 
-    if (ledger.isEmpty) return const Center(child: Text('السجل المالي فارغ أو لا توجد نتائج للبحث.'));
+    // آخر 10 حركات خلال 24 ساعة
+    final now = DateTime.now();
+    final recent = allTransactions.where((tx) {
+      if (tx['timestamp'] == null) return false;
+      final txDate = (tx['timestamp'] as Timestamp).toDate();
+      return now.difference(txDate).inHours < 24;
+    }).take(10).toList();
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      physics: const AlwaysScrollableScrollPhysics(),
-      itemCount: ledger.length,
-      itemBuilder: (context, index) {
-        final log = ledger[index];
-        final amount = double.parse(log['amount'].toString());
-        final isPositive = log['type'] == 'deposit' || log['type'] == 'income';
-        final color = isPositive ? Colors.green : Colors.red;
+    if (recent.isEmpty) return const SizedBox.shrink();
 
-        return Card(
-          color: cardColor,
-          margin: const EdgeInsets.only(bottom: 10),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.grey.withOpacity(0.1))),
-          child: InkWell(
-            onTap: () => _showTransactionReceipt(log, settings),
-            borderRadius: BorderRadius.circular(15),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle), child: Icon(isPositive ? Icons.arrow_downward : Icons.arrow_upward, color: color, size: 20)),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(log['title'] ?? log['type'] ?? 'حركة مالية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: textColor), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: 4),
-                        Text('${log['agentName'] ?? 'مجهول'} (${log['agentPhone'] ?? ''})', style: const TextStyle(fontSize: 11, color: Colors.blueGrey)),
-                        if (log['reason'] != null) Text('السبب: ${log['reason']}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                        if (log['reference'] != null)
-                          GestureDetector(
-                            onTap: () {
-                              Clipboard.setData(ClipboardData(text: log['reference']));
-                              _showSnack('تم نسخ المرجع');
-                            },
-                            child: Text('المرجع: ${log['reference']}', style: const TextStyle(fontSize: 12, color: Colors.blueGrey, decoration: TextDecoration.underline)),
-                          ),
-                      ],
-                    ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text('${isPositive ? '+' : ''}${intl.NumberFormat('#,###').format(amount)}', style: TextStyle(fontWeight: FontWeight.bold, color: color, fontSize: 14), textDirection: TextDirection.ltr),
-                      const SizedBox(height: 4),
-                      Text(log['timestamp'] != null ? intl.DateFormat('yyyy-MM-dd hh:mm a').format((log['timestamp'] as Timestamp).toDate()) : 'الآن', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                    ],
-                  ),
-                ],
-              ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Text('الحركات الأخيرة (24 ساعة)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: isSmallScreen ? 14 : 16, color: colors.onSurface)),
+        ),
+        ...recent.map((tx) {
+          final double amount = (tx['amount'] ?? 0.0).toDouble();
+          final bool isPositive = amount > 0;
+          final Color txColor = isPositive ? Colors.green : colors.error;
+
+          return Card(
+            color: colors.surface,
+            margin: const EdgeInsets.only(bottom: 8),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            child: ListTile(
+              leading: Icon(isPositive ? Icons.arrow_downward : Icons.arrow_upward, color: txColor),
+              title: Text(tx['title'] ?? tx['type'] ?? 'حركة', style: TextStyle(fontWeight: FontWeight.bold, color: colors.onSurface)),
+              subtitle: Text('${tx['agentName'] ?? ''} - ${tx['amount']} ريال', style: TextStyle(color: colors.onSurfaceVariant)),
+              trailing: Text(tx['timestamp'] != null ? intl.DateFormat('hh:mm a').format((tx['timestamp'] as Timestamp).toDate()) : '', style: TextStyle(color: colors.onSurfaceVariant)),
             ),
-          ),
-        );
-      },
+          );
+        }),
+      ],
     );
   }
 
@@ -1060,7 +1102,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon, color: Colors.blueAccent),
+        prefixIcon: Icon(icon, color: Theme.of(context).colorScheme.primary),
         filled: true,
         fillColor: Colors.grey.withOpacity(0.05),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
@@ -1095,7 +1137,7 @@ class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Container(color: Theme.of(context).scaffoldBackgroundColor, child: _tabBar);
+    return Container(color: Theme.of(context).colorScheme.surface, child: _tabBar);
   }
 
   @override
