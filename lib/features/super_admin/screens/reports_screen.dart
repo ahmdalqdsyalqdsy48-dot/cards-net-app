@@ -1,5 +1,4 @@
 // lib/features/super_admin/screens/reports_screen.dart
-// تم التحديث: نظام صلاحيات، ألوان متجاوبة، دور ديناميكي، رسالة نجاح، تصميم متجاوب
 
 import 'dart:convert';
 import 'dart:typed_data';
@@ -38,7 +37,6 @@ class ReportsScreen extends StatefulWidget {
 class _ReportsScreenState extends State<ReportsScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  String _selectedReportType = 'الكل (شامل)';
   String _selectedAgent = 'الكل';
   DateTime? _startDate;
   DateTime? _endDate;
@@ -59,7 +57,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     _loadSchedule();
   }
 
-  // ========== صلاحيات ==========
   bool _can(String permission) {
     final auth = context.read<AuthProvider>();
     return auth.currentUserRole == 'super_admin' || auth.hasPermission(permission);
@@ -69,9 +66,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(m,
-            textDirection: TextDirection.rtl,
-            style: const TextStyle(fontWeight: FontWeight.bold)),
+        content: Text(m, textDirection: TextDirection.rtl, style: const TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: isErr ? Colors.red.shade800 : Colors.green.shade800,
         behavior: SnackBarBehavior.floating,
       ),
@@ -112,27 +107,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
         if (tx['timestamp'] == null) return true;
         DateTime txDate = (tx['timestamp'] as Timestamp).toDate();
         if (_startDate != null && txDate.isBefore(_startDate!)) return false;
-        if (_endDate != null &&
-            txDate.isAfter(_endDate!.add(const Duration(days: 1))))
-          return false;
+        if (_endDate != null && txDate.isAfter(_endDate!.add(const Duration(days: 1)))) return false;
         return true;
       }).toList();
     }
 
     if (_selectedAgent != 'الكل') {
       data = data
-          .where((tx) => tx['agentName'] == _selectedAgent)
+          .where((tx) =>
+              tx['agentName'] == _selectedAgent ||
+              tx['fromName'] == _selectedAgent ||
+              tx['toName'] == _selectedAgent)
           .toList();
-    }
-
-    if (_selectedReportType == 'إيداعات وشحن') {
-      data = data.where((tx) =>
-          tx['type'] == 'deposit' ||
-          tx['title'].toString().contains('توريد')).toList();
-    } else if (_selectedReportType == 'تسويات وخصومات') {
-      data = data.where((tx) =>
-          tx['type'].toString().contains('تسوية') ||
-          tx['type'] == 'expense').toList();
     }
 
     return data;
@@ -390,8 +376,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         font: arabicFontBold, fontSize: 24))),
             pw.Text(
                 'تاريخ التصدير: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}'),
-            pw.Text(
-                'الوكيل المحدد: $_selectedAgent | نوع التقرير: $_selectedReportType'),
+            pw.Text('الوكيل المحدد: $_selectedAgent'),
             pw.SizedBox(height: 20),
             pw.TableHelper.fromTextArray(
               context: context,
@@ -504,8 +489,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
     final double amount =
         double.tryParse(log['amount'].toString()) ?? 0.0;
-    final bool isPositive =
-        log['type'] == 'deposit' || log['type'] == 'income';
+    final String type = log['type'] ?? '';
+    final bool isPositive = type == 'deposit' || type == 'income';
     final Color color = isPositive ? Colors.green : Colors.red;
     final String dateStr = log['timestamp'] != null
         ? DateFormat('yyyy-MM-dd hh:mm a')
@@ -523,7 +508,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           content: RepaintBoundary(
             key: receiptKey,
             child: Container(
-              width: 320,
+              width: 340,
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -555,10 +540,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ),
                   const SizedBox(height: 10),
                   Text('نظام ${settings.appName}',
-                      style: TextStyle(
+                      style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
-                          color: Theme.of(context).colorScheme.onSurface)),
+                          color: Colors.blueGrey)),
                   Text('إشعار عملية مالية',
                       style: TextStyle(
                           color: color,
@@ -568,10 +553,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       padding: EdgeInsets.symmetric(vertical: 10),
                       child: Divider(thickness: 1.5)),
                   Text(log['title'] ?? log['type'] ?? 'عملية مسجلة',
-                      style: TextStyle(
+                      style: const TextStyle(
                           fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.onSurface),
+                          fontWeight: FontWeight.bold),
                       textAlign: TextAlign.center),
                   const SizedBox(height: 15),
                   _buildReceiptRow('المرجع',
@@ -583,12 +567,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       '${NumberFormat('#,###').format(amount)} ريال',
                       valueColor: color,
                       isBold: true),
-                  _buildReceiptRow('الطرف الآخر',
-                      log['agentName'] ?? 'مجهول'),
+                  if (log['fromName'] != null)
+                    _buildReceiptRow('من', log['fromName']),
+                  if (log['toName'] != null)
+                    _buildReceiptRow('إلى', log['toName']),
+                  if (log['agentName'] != null)
+                    _buildReceiptRow('الطرف الآخر',
+                        log['agentName']),
                   if (log['networkName'] != null &&
                       log['networkName'] != 'غير محدد')
                     _buildReceiptRow(
                         'الشبكة', log['networkName']),
+                  if (log['categoryName'] != null)
+                    _buildReceiptRow(
+                        'الفئة', log['categoryName']),
+                  if (log['quantity'] != null)
+                    _buildReceiptRow(
+                        'العدد', '${log['quantity']}'),
                   if (log['paymentMethod'] != null)
                     _buildReceiptRow(
                         'طريقة الدفع', log['paymentMethod']),
@@ -603,9 +598,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   const Padding(
                       padding: EdgeInsets.symmetric(vertical: 10),
                       child: Divider(thickness: 1.5)),
-                  Text('المركز المالي لمالك النظام',
+                  const Text('المركز المالي لمالك النظام',
                       style: TextStyle(
-                          fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                          fontSize: 10, color: Colors.grey)),
                 ],
               ),
             ),
@@ -614,12 +609,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(c),
-                child: Text('إغلاق',
+                child: const Text('إغلاق',
                     style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        color: Colors.grey,
                         fontWeight: FontWeight.bold))),
             IconButton(
-              icon: Icon(Icons.copy, color: Theme.of(context).colorScheme.primary),
+              icon: const Icon(Icons.copy, color: Colors.blue),
               tooltip: 'نسخ كنص',
               onPressed: () {
                 context.read<UiProvider>().playSound('click');
@@ -688,15 +683,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _buildReceiptRow(String label, String value,
       {Color? valueColor, bool isBold = false}) {
-    final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label,
-              style: TextStyle(
-                  fontSize: 11, color: colors.onSurfaceVariant)),
+              style: const TextStyle(
+                  fontSize: 11, color: Colors.grey)),
           Expanded(
             child: Text(
               value,
@@ -705,7 +699,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   fontSize: isBold ? 14 : 12,
                   fontWeight:
                       isBold ? FontWeight.bold : FontWeight.w600,
-                  color: valueColor ?? colors.onSurface),
+                  color: valueColor),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -766,33 +760,30 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             _buildExportBtn(
                                 Icons.table_view,
                                 'Excel',
-                                Colors.green.shade700,
+                                colors.primary,
                                 () => _exportToExcel(filteredData)),
-                          if (_can('تصدير تقارير')) ...[
-                            const SizedBox(width: 8),
+                          if (_can('تصدير تقارير')) const SizedBox(width: 8),
+                          if (_can('تصدير تقارير'))
                             _buildExportBtn(
                                 Icons.picture_as_pdf,
                                 'PDF',
-                                Colors.red.shade700,
+                                colors.error,
                                 () => _exportToPDF(
-                                    filteredData,
-                                    currentTotalAmount)),
-                          ],
-                          if (_can('جدولة التقارير')) ...[
-                            const SizedBox(width: 8),
+                                    filteredData, currentTotalAmount)),
+                          if (_can('تصدير تقارير')) const SizedBox(width: 8),
+                          if (_can('جدولة التقارير'))
                             _buildExportBtn(
                                 Icons.schedule,
                                 'جدولة',
                                 Colors.orange.shade800,
                                 _showScheduleDialog),
-                          ],
                         ],
                       ),
                     ),
                     if (_hasSchedule)
                       Container(
-                        margin: EdgeInsets.symmetric(
-                            horizontal: isSmallScreen ? 12 : 16),
+                        margin:
+                            EdgeInsets.symmetric(horizontal: isSmallScreen ? 12 : 16),
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
                           color: Colors.green.withOpacity(0.1),
@@ -807,8 +798,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               child: Text(
                                 'جدولة: $_scheduleFrequency | $_scheduleEmail | ${_scheduleHour}:${_scheduleMinute.toString().padLeft(2, '0')} $_scheduleAmPm',
                                 style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.green),
+                                    fontSize: 12, color: Colors.green),
                               ),
                             ),
                             IconButton(
@@ -817,8 +807,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               onPressed: () async {
                                 if (_scheduleDocId != null) {
                                   await _db
-                                      .collection(
-                                          'scheduled_reports')
+                                      .collection('scheduled_reports')
                                       .doc(_scheduleDocId)
                                       .delete();
                                   setState(() {
@@ -837,29 +826,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       child: Column(
                         children: [
                           DropdownButtonFormField<String>(
-                            value: _selectedReportType,
-                            decoration: InputDecoration(
-                                labelText: 'نوع التقرير',
-                                border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10))),
-                            items: [
-                              'الكل (شامل)',
-                              'إيداعات وشحن',
-                              'تسويات وخصومات'
-                            ]
-                                .map((e) => DropdownMenuItem(
-                                    value: e, child: Text(e)))
-                                .toList(),
-                            onChanged: (val) => setState(() =>
-                                _selectedReportType = val!),
-                          ),
-                          const SizedBox(height: 10),
-                          DropdownButtonFormField<String>(
                             value: _selectedAgent,
-                            decoration: InputDecoration(
-                                labelText: 'الوكيل',
-                                border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(10))),
+                            decoration: const InputDecoration(
+                                labelText: 'الوكيل'),
                             items: agentNames
                                 .map((e) => DropdownMenuItem(
                                     value: e, child: Text(e)))
@@ -885,17 +854,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                       setState(() =>
                                           _startDate = picked);
                                   },
-                                  icon: const Icon(
-                                      Icons.date_range,
-                                      color: Colors.blueAccent),
+                                  icon: Icon(Icons.date_range,
+                                      color: colors.primary),
                                   label: Text(_startDate == null
                                       ? 'بداية الفترة'
-                                      : _formatDate(
-                                          _startDate!),
-                                      style: const TextStyle(fontSize: 12)),
-                                  style: ElevatedButton.styleFrom(
-                                      backgroundColor: colors.surface,
-                                      foregroundColor: colors.onSurface),
+                                      : _formatDate(_startDate!),
+                                      style: TextStyle(color: colors.primary)),
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -905,26 +869,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                     final picked =
                                         await showDatePicker(
                                       context: context,
-                                      initialDate:
-                                          _endDate ?? DateTime.now(),
-                                      firstDate: _startDate ??
-                                          DateTime(2020),
+                                      initialDate: _endDate ?? DateTime.now(),
+                                      firstDate: _startDate ?? DateTime(2020),
                                       lastDate: DateTime.now(),
                                     );
                                     if (picked != null)
                                       setState(
                                           () => _endDate = picked);
                                   },
-                                  icon: const Icon(
-                                      Icons.date_range,
-                                      color: Colors.orangeAccent),
+                                  icon: Icon(Icons.date_range,
+                                      color: colors.secondary),
                                   label: Text(_endDate == null
                                       ? 'نهاية الفترة'
                                       : _formatDate(_endDate!),
-                                      style: const TextStyle(fontSize: 12)),
-                                  style: ElevatedButton.styleFrom(
-                                      backgroundColor: colors.surface,
-                                      foregroundColor: colors.onSurface),
+                                      style: TextStyle(color: colors.secondary)),
                                 ),
                               ),
                             ],
@@ -942,7 +900,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   child: Text('لا توجد بيانات مطابقة للفلاتر'))
               : _showChart
                   ? _buildChartView(filteredData)
-                  : _buildTableView(filteredData, settings),
+                  : _buildTableView(filteredData, settings, colors, isSmallScreen),
         ),
       ),
       bottomNavigationBar: Container(
@@ -953,10 +911,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
           children: [
             Text(
                 'إجمالي كروت: ${settings.totalSystemCards}',
-                style: TextStyle(color: colors.onPrimary)),
+                style: TextStyle(color: colors.onPrimary, fontSize: isSmallScreen ? 12 : 14)),
             Text(
                 'مجموع المبالغ: ${currentTotalAmount.toStringAsFixed(0)} ريال',
-                style: TextStyle(color: Colors.greenAccent)),
+                style: TextStyle(color: Colors.greenAccent, fontSize: isSmallScreen ? 12 : 14)),
           ],
         ),
       ),
@@ -964,10 +922,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Widget _buildTableView(
-      List<Map<String, dynamic>> data, SettingsProvider settings) {
-    final colors = Theme.of(context).colorScheme;
+      List<Map<String, dynamic>> data, SettingsProvider settings, ColorScheme colors, bool isSmallScreen) {
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 12 : 16, vertical: 8),
       itemCount: data.length,
       itemBuilder: (context, index) {
         final row = data[index];
@@ -980,19 +937,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
         bool isPositive = row['type'] == 'deposit' ||
             row['type'] == 'income' ||
             row['title'].toString().contains('توريد');
-        Color amountColor = isPositive ? Colors.green : Colors.red;
+        Color amountColor = isPositive ? Colors.green : colors.error;
 
         return Card(
           elevation: 2,
-          color: colors.surface,
           margin: const EdgeInsets.only(bottom: 8),
+          color: colors.surface,
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10)),
           child: InkWell(
             onTap: () => _showTransactionReceipt(row, settings),
             borderRadius: BorderRadius.circular(10),
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: EdgeInsets.all(isSmallScreen ? 10 : 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1002,18 +959,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                            row['title'] ??
-                                row['type'] ??
-                                'عملية',
+                            row['title'] ?? row['type'] ?? 'عملية',
                             style: TextStyle(
                                 fontWeight: FontWeight.bold,
-                                fontSize: 14,
+                                fontSize: isSmallScreen ? 13 : 14,
                                 color: colors.onSurface)),
                       ),
                       Text(
                           '$dateStr',
                           style: TextStyle(
-                              fontSize: 11, color: colors.onSurfaceVariant)),
+                              fontSize: isSmallScreen ? 10 : 11,
+                              color: colors.onSurfaceVariant)),
                     ],
                   ),
                   const SizedBox(height: 6),
@@ -1024,24 +980,37 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       Text(
                           row['agentName'] ?? 'مجهول',
                           style: TextStyle(
-                              fontSize: 12, color: colors.onSurfaceVariant)),
+                              fontSize: isSmallScreen ? 11 : 12,
+                              color: colors.onSurfaceVariant)),
                       Text(
                           '${isPositive ? '+' : ''}${row['amount']} ريال',
                           style: TextStyle(
                               fontWeight: FontWeight.bold,
                               color: amountColor,
-                              fontSize: 14)),
+                              fontSize: isSmallScreen ? 13 : 14)),
                     ],
                   ),
                   if (row['reference'] != null)
                     Text('المرجع: ${row['reference']}',
                         style: TextStyle(
-                            fontSize: 11, color: colors.primary)),
+                            fontSize: isSmallScreen ? 10 : 11,
+                            color: colors.primary)),
                   if (row['networkName'] != null &&
                       row['networkName'] != 'غير محدد')
                     Text('الشبكة: ${row['networkName']}',
                         style: TextStyle(
-                            fontSize: 11, color: colors.primary)),
+                            fontSize: isSmallScreen ? 10 : 11,
+                            color: colors.onSurfaceVariant)),
+                  if (row['categoryName'] != null)
+                    Text('الفئة: ${row['categoryName']}',
+                        style: TextStyle(
+                            fontSize: isSmallScreen ? 10 : 11,
+                            color: colors.onSurfaceVariant)),
+                  if (row['quantity'] != null)
+                    Text('العدد: ${row['quantity']}',
+                        style: TextStyle(
+                            fontSize: isSmallScreen ? 10 : 11,
+                            color: colors.onSurfaceVariant)),
                 ],
               ),
             ),
@@ -1052,7 +1021,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Widget _buildChartView(List<Map<String, dynamic>> data) {
-    final colors = Theme.of(context).colorScheme;
     Map<String, double> agentTotals = {};
     for (var tx in data) {
       String name = tx['agentName'] ?? 'مجهول';
@@ -1080,7 +1048,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
       padding: const EdgeInsets.all(16.0),
       child: Card(
         elevation: 3,
-        color: colors.surface,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15)),
         child: Padding(
@@ -1088,10 +1055,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('أعلى الوكلاء في هذه الفترة (مبالغ)',
+              const Text('أعلى الوكلاء في هذه الفترة (مبالغ)',
                   style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: colors.primary)),
+                      color: Colors.purple)),
               const SizedBox(height: 30),
               Expanded(
                 child: Row(
@@ -1117,9 +1084,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-              Text('💡 الرسم البياني يتغير آلياً حسب الفلاتر أعلاه.',
+              const Text(
+                  '💡 الرسم البياني يتغير آلياً حسب الفلاتر أعلاه.',
                   style: TextStyle(
-                      color: colors.onSurfaceVariant, fontSize: 12)),
+                      color: Colors.grey, fontSize: 12)),
             ],
           ),
         ),
