@@ -1,3 +1,6 @@
+// lib/features/super_admin/screens/reports_screen.dart
+// تم التحديث: نظام صلاحيات، ألوان متجاوبة، دور ديناميكي، رسالة نجاح، تصميم متجاوب
+
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -54,6 +57,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
   void initState() {
     super.initState();
     _loadSchedule();
+  }
+
+  // ========== صلاحيات ==========
+  bool _can(String permission) {
+    final auth = context.read<AuthProvider>();
+    return auth.currentUserRole == 'super_admin' || auth.hasPermission(permission);
   }
 
   void _showSnack(String m, {bool isErr = false}) {
@@ -138,6 +147,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   void _showScheduleDialog() {
+    if (!_can('جدولة التقارير')) return;
     context.read<UiProvider>().playSound('click');
     String freq = _scheduleFrequency;
     int day = _scheduleDay;
@@ -359,6 +369,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Future<void> _exportToPDF(
       List<Map<String, dynamic>> data, double totalAmount) async {
+    if (!_can('تصدير تقارير')) return;
     context.read<UiProvider>().playSound('click');
     _showSnack('جاري تجهيز ملف PDF... ⏳');
     try {
@@ -437,6 +448,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Future<void> _exportToExcel(List<Map<String, dynamic>> data) async {
+    if (!_can('تصدير تقارير')) return;
     context.read<UiProvider>().playSound('click');
     _showSnack('جاري إعداد ملف الإكسل... 📊');
     try {
@@ -516,7 +528,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Theme.of(context).cardColor,
+                    Theme.of(context).colorScheme.surface,
                     color.withOpacity(0.08)
                   ],
                   begin: Alignment.topCenter,
@@ -543,10 +555,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ),
                   const SizedBox(height: 10),
                   Text('نظام ${settings.appName}',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
-                          color: Colors.blueGrey)),
+                          color: Theme.of(context).colorScheme.onSurface)),
                   Text('إشعار عملية مالية',
                       style: TextStyle(
                           color: color,
@@ -556,9 +568,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       padding: EdgeInsets.symmetric(vertical: 10),
                       child: Divider(thickness: 1.5)),
                   Text(log['title'] ?? log['type'] ?? 'عملية مسجلة',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 14,
-                          fontWeight: FontWeight.bold),
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.onSurface),
                       textAlign: TextAlign.center),
                   const SizedBox(height: 15),
                   _buildReceiptRow('المرجع',
@@ -590,9 +603,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   const Padding(
                       padding: EdgeInsets.symmetric(vertical: 10),
                       child: Divider(thickness: 1.5)),
-                  const Text('المركز المالي لمالك النظام',
+                  Text('المركز المالي لمالك النظام',
                       style: TextStyle(
-                          fontSize: 10, color: Colors.grey)),
+                          fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 ],
               ),
             ),
@@ -601,12 +614,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(c),
-                child: const Text('إغلاق',
+                child: Text('إغلاق',
                     style: TextStyle(
-                        color: Colors.grey,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontWeight: FontWeight.bold))),
             IconButton(
-              icon: const Icon(Icons.copy, color: Colors.blue),
+              icon: Icon(Icons.copy, color: Theme.of(context).colorScheme.primary),
               tooltip: 'نسخ كنص',
               onPressed: () {
                 context.read<UiProvider>().playSound('click');
@@ -675,14 +688,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _buildReceiptRow(String label, String value,
       {Color? valueColor, bool isBold = false}) {
+    final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label,
-              style: const TextStyle(
-                  fontSize: 11, color: Colors.grey)),
+              style: TextStyle(
+                  fontSize: 11, color: colors.onSurfaceVariant)),
           Expanded(
             child: Text(
               value,
@@ -691,7 +705,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   fontSize: isBold ? 14 : 12,
                   fontWeight:
                       isBold ? FontWeight.bold : FontWeight.w600,
-                  color: valueColor),
+                  color: valueColor ?? colors.onSurface),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -707,7 +721,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final settings = context.watch<SettingsProvider>();
     final wallet = context.watch<WalletProvider>();
     final transactions = context.watch<TransactionsProvider>();
-    final themeProvider = context.watch<ThemeProvider>();
+    final colors = Theme.of(context).colorScheme;
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
 
     final filteredData = _getFilteredData(transactions);
     final currentTotalAmount = _calculateTotalAmount(filteredData);
@@ -723,7 +738,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       drawer: CustomDrawer(
         userName: wallet.currentUserName,
         phoneNumber: auth.activeUserPhone ?? '',
-        role: 'مالك النظام (Super Admin)',
+        role: auth.currentUserRole == 'super_admin' ? 'مالك النظام' : 'موظف مخصص',
         balanceOrPoints:
             'أرباح النظام: ${settings.adminMainBalance.toStringAsFixed(0)} ريال',
       ),
@@ -731,7 +746,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
         onRefresh: () async {
           setState(() {});
           await Future.delayed(const Duration(milliseconds: 300));
-          context.read<UiProvider>().playSound('success');
+          if (mounted) {
+            context.read<UiProvider>().playSound('success');
+            _showSnack('تم تحديث الصفحة بنجاح ✅');
+          }
         },
         child: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) {
@@ -740,36 +758,41 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 child: Column(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
+                      padding: EdgeInsets.symmetric(
+                          horizontal: isSmallScreen ? 12 : 16, vertical: 8),
                       child: Row(
                         children: [
-                          _buildExportBtn(
-                              Icons.table_view,
-                              'Excel',
-                              Colors.green.shade700,
-                              () => _exportToExcel(filteredData)),
-                          const SizedBox(width: 8),
-                          _buildExportBtn(
-                              Icons.picture_as_pdf,
-                              'PDF',
-                              Colors.red.shade700,
-                              () => _exportToPDF(
-                                  filteredData,
-                                  currentTotalAmount)),
-                          const SizedBox(width: 8),
-                          _buildExportBtn(
-                              Icons.schedule,
-                              'جدولة',
-                              Colors.orange.shade800,
-                              _showScheduleDialog),
+                          if (_can('تصدير تقارير'))
+                            _buildExportBtn(
+                                Icons.table_view,
+                                'Excel',
+                                Colors.green.shade700,
+                                () => _exportToExcel(filteredData)),
+                          if (_can('تصدير تقارير')) ...[
+                            const SizedBox(width: 8),
+                            _buildExportBtn(
+                                Icons.picture_as_pdf,
+                                'PDF',
+                                Colors.red.shade700,
+                                () => _exportToPDF(
+                                    filteredData,
+                                    currentTotalAmount)),
+                          ],
+                          if (_can('جدولة التقارير')) ...[
+                            const SizedBox(width: 8),
+                            _buildExportBtn(
+                                Icons.schedule,
+                                'جدولة',
+                                Colors.orange.shade800,
+                                _showScheduleDialog),
+                          ],
                         ],
                       ),
                     ),
                     if (_hasSchedule)
                       Container(
-                        margin:
-                            const EdgeInsets.symmetric(horizontal: 16),
+                        margin: EdgeInsets.symmetric(
+                            horizontal: isSmallScreen ? 12 : 16),
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
                           color: Colors.green.withOpacity(0.1),
@@ -810,13 +833,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         ),
                       ),
                     Padding(
-                      padding: const EdgeInsets.all(16),
+                      padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
                       child: Column(
                         children: [
                           DropdownButtonFormField<String>(
                             value: _selectedReportType,
-                            decoration: const InputDecoration(
-                                labelText: 'نوع التقرير'),
+                            decoration: InputDecoration(
+                                labelText: 'نوع التقرير',
+                                border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10))),
                             items: [
                               'الكل (شامل)',
                               'إيداعات وشحن',
@@ -831,8 +856,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           const SizedBox(height: 10),
                           DropdownButtonFormField<String>(
                             value: _selectedAgent,
-                            decoration: const InputDecoration(
-                                labelText: 'الوكيل'),
+                            decoration: InputDecoration(
+                                labelText: 'الوكيل',
+                                border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10))),
                             items: agentNames
                                 .map((e) => DropdownMenuItem(
                                     value: e, child: Text(e)))
@@ -864,7 +891,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                   label: Text(_startDate == null
                                       ? 'بداية الفترة'
                                       : _formatDate(
-                                          _startDate!)),
+                                          _startDate!),
+                                      style: const TextStyle(fontSize: 12)),
+                                  style: ElevatedButton.styleFrom(
+                                      backgroundColor: colors.surface,
+                                      foregroundColor: colors.onSurface),
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -889,7 +920,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                       color: Colors.orangeAccent),
                                   label: Text(_endDate == null
                                       ? 'نهاية الفترة'
-                                      : _formatDate(_endDate!)),
+                                      : _formatDate(_endDate!),
+                                      style: const TextStyle(fontSize: 12)),
+                                  style: ElevatedButton.styleFrom(
+                                      backgroundColor: colors.surface,
+                                      foregroundColor: colors.onSurface),
                                 ),
                               ),
                             ],
@@ -911,17 +946,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ),
       ),
       bottomNavigationBar: Container(
-        padding: const EdgeInsets.all(16),
-        color: Colors.blue.shade900,
+        padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+        color: colors.primary,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
             Text(
                 'إجمالي كروت: ${settings.totalSystemCards}',
-                style: const TextStyle(color: Colors.white)),
+                style: TextStyle(color: colors.onPrimary)),
             Text(
                 'مجموع المبالغ: ${currentTotalAmount.toStringAsFixed(0)} ريال',
-                style: const TextStyle(color: Colors.greenAccent)),
+                style: TextStyle(color: Colors.greenAccent)),
           ],
         ),
       ),
@@ -930,6 +965,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _buildTableView(
       List<Map<String, dynamic>> data, SettingsProvider settings) {
+    final colors = Theme.of(context).colorScheme;
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       itemCount: data.length,
@@ -948,6 +984,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
         return Card(
           elevation: 2,
+          color: colors.surface,
           margin: const EdgeInsets.only(bottom: 8),
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10)),
@@ -968,14 +1005,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             row['title'] ??
                                 row['type'] ??
                                 'عملية',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontWeight: FontWeight.bold,
-                                fontSize: 14)),
+                                fontSize: 14,
+                                color: colors.onSurface)),
                       ),
                       Text(
                           '$dateStr',
-                          style: const TextStyle(
-                              fontSize: 11, color: Colors.grey)),
+                          style: TextStyle(
+                              fontSize: 11, color: colors.onSurfaceVariant)),
                     ],
                   ),
                   const SizedBox(height: 6),
@@ -985,8 +1023,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     children: [
                       Text(
                           row['agentName'] ?? 'مجهول',
-                          style: const TextStyle(
-                              fontSize: 12, color: Colors.grey)),
+                          style: TextStyle(
+                              fontSize: 12, color: colors.onSurfaceVariant)),
                       Text(
                           '${isPositive ? '+' : ''}${row['amount']} ريال',
                           style: TextStyle(
@@ -997,13 +1035,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ),
                   if (row['reference'] != null)
                     Text('المرجع: ${row['reference']}',
-                        style: const TextStyle(
-                            fontSize: 11, color: Colors.blueGrey)),
+                        style: TextStyle(
+                            fontSize: 11, color: colors.primary)),
                   if (row['networkName'] != null &&
                       row['networkName'] != 'غير محدد')
                     Text('الشبكة: ${row['networkName']}',
-                        style: const TextStyle(
-                            fontSize: 11, color: Colors.blueGrey)),
+                        style: TextStyle(
+                            fontSize: 11, color: colors.primary)),
                 ],
               ),
             ),
@@ -1014,6 +1052,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Widget _buildChartView(List<Map<String, dynamic>> data) {
+    final colors = Theme.of(context).colorScheme;
     Map<String, double> agentTotals = {};
     for (var tx in data) {
       String name = tx['agentName'] ?? 'مجهول';
@@ -1041,6 +1080,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       padding: const EdgeInsets.all(16.0),
       child: Card(
         elevation: 3,
+        color: colors.surface,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15)),
         child: Padding(
@@ -1048,10 +1088,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text('أعلى الوكلاء في هذه الفترة (مبالغ)',
+              Text('أعلى الوكلاء في هذه الفترة (مبالغ)',
                   style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: Colors.purple)),
+                      color: colors.primary)),
               const SizedBox(height: 30),
               Expanded(
                 child: Row(
@@ -1077,10 +1117,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-              const Text(
-                  '💡 الرسم البياني يتغير آلياً حسب الفلاتر أعلاه.',
+              Text('💡 الرسم البياني يتغير آلياً حسب الفلاتر أعلاه.',
                   style: TextStyle(
-                      color: Colors.grey, fontSize: 12)),
+                      color: colors.onSurfaceVariant, fontSize: 12)),
             ],
           ),
         ),
