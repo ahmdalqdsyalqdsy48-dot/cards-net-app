@@ -39,7 +39,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this); // تبويبين فقط
+    _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) {
         context.read<UiProvider>().playSound('click');
@@ -70,7 +70,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
   String _generateRef(String prefix) {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     final rand = DateTime.now().millisecondsSinceEpoch.toString();
-    // نأخذ آخر 4 أرقام/حروف من الوقت + عشوائية بسيطة
     final part1 = chars[rand.hashCode % chars.length];
     final part2 = chars[(rand.hashCode >> 3) % chars.length];
     final part3 = chars[(rand.hashCode >> 6) % chars.length];
@@ -78,7 +77,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
     return '$prefix-$part1$part2$part3$part4';
   }
 
-  // إضافة حركة إلى TransactionsProvider بالنموذج الموحد
   void _addTransaction({
     required String type,
     required String fromName,
@@ -208,7 +206,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                   context.read<UiProvider>().playSound('click');
                   await wallet.adminAcceptSaaSRecharge(
                       docId, agentPhone, quotaAmount, feeAmount);
-                  // تسجيل الحركة
                   _addTransaction(
                     type: 'deposit',
                     fromName: 'المركز الرئيسي',
@@ -308,7 +305,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                             context.read<UiProvider>().playSound('click');
                             await wallet.rejectRechargeRequest(
                                 docId, reasonController.text);
-                            // يمكن تسجيل رفض كحركة غير مالية إن أردت (اختياري)
                             if (mounted) {
                               context.read<UiProvider>().playSound('success');
                               Navigator.pop(context);
@@ -445,7 +441,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                                 agentName: agent['name'],
                                 amount: amount,
                                 reason: reasonController.text);
-                            // تسجيل الحركة
                             _addTransaction(
                               type: amount > 0 ? 'deposit' : 'expense',
                               fromName: 'المركز الرئيسي',
@@ -861,14 +856,10 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
     final last24h = now.subtract(const Duration(hours: 24));
     return transactions.transactionsLedger
         .where((tx) {
-          // نقبل طلبات الشحن (إيداع) أو رفض يمكن إدراجها،
-          // لكن عملياً الحركات المسجلة هي deposit وربما نضيف لاحقاً نوع rejected.
-          // نكتفي بـ deposit و title يحتوي على "توريد" أو "موافقة طلب"
           if (tx['type'] != 'deposit') return false;
           if (tx['title'] == null) return false;
           if (!tx['title'].toString().contains('توريد') &&
               !tx['title'].toString().contains('موافقة طلب')) return false;
-          // فلترة الوقت
           if (tx['timestamp'] == null) return false;
           DateTime txDate = (tx['timestamp'] as Timestamp).toDate();
           return txDate.isAfter(last24h) && txDate.isBefore(now);
@@ -887,7 +878,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
     final last24h = now.subtract(const Duration(hours: 24));
     return transactions.transactionsLedger
         .where((tx) {
-          // التسويات تكون إما deposit أو expense مع عنوان يحتوي على "تسوية"
           if (tx['type'] != 'deposit' && tx['type'] != 'expense') return false;
           if (tx['title'] == null) return false;
           if (!tx['title'].toString().contains('تسوية')) return false;
@@ -1120,7 +1110,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
       return _isWithinDateRange(req['timestamp']);
     }).toList();
 
-    // الحركات الأخيرة للطلبات (المقبولة/المرفوضة)
     final recentRequests = _getRecentRequests();
 
     if (requests.isEmpty && recentRequests.isEmpty) {
@@ -1142,7 +1131,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
       padding: const EdgeInsets.all(16),
       physics: const AlwaysScrollableScrollPhysics(),
       children: [
-        // الطلبات المعلقة
         if (requests.isNotEmpty) ...[
           const Text('📥 طلبات معلقة',
               style: TextStyle(
@@ -1150,9 +1138,9 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                   fontSize: 16,
                   color: Colors.blue)),
           const SizedBox(height: 10),
-          ...requests.map((req) => _buildPendingRequestCard(req, wallet)),
+          ...requests.map(
+              (req) => _buildPendingRequestCard(req, wallet, textColor)),
         ],
-        // الحركات الأخيرة (آخر 24 ساعة)
         if (recentRequests.isNotEmpty) ...[
           const SizedBox(height: 20),
           const Text('🕒 حركات الشحن الأخيرة (آخر 24 ساعة)',
@@ -1168,8 +1156,9 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
     );
   }
 
+  // ---- بطاقة الطلب المعلق (تم إضافة textColor) ----
   Widget _buildPendingRequestCard(
-      Map<String, dynamic> req, WalletProvider wallet) {
+      Map<String, dynamic> req, WalletProvider wallet, Color textColor) {
     final docId = req['docId'];
     final isProcessing = _processingRequests.contains(docId);
     bool isSaaS = req['type'] == 'saas_quota';
@@ -1317,9 +1306,7 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
                   '${intl.NumberFormat('#,###').format(quotaAmount)} ريال',
                   isBold: true,
                   color: Colors.green,
-                  textColor: Theme.of(context)
-                      .extension<ThemeProvider>()!
-                      .adaptiveTextColor),
+                  textColor: textColor),
             ],
             const SizedBox(height: 10),
             _buildInfoRow('البنك المحول إليه:',
@@ -1672,7 +1659,6 @@ class _FinancialCenterScreenState extends State<FinancialCenterScreen>
   }
 }
 
-// ---- SliverTabBarDelegate (بدون تغيير) ----
 class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
   final TabBar _tabBar;
   _SliverTabBarDelegate(this._tabBar);
