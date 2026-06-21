@@ -15,6 +15,7 @@ import 'package:printing/printing.dart';
 import 'package:excel/excel.dart' hide Border;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:universal_html/html.dart' as html;
 
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/providers/settings_provider.dart';
@@ -35,15 +36,15 @@ class ReportsScreen extends StatefulWidget {
 class _ReportsScreenState extends State<ReportsScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  String _selectedReportType = 'الكل (شامل)';
+  // فلاتر رئيسية
+  String _selectedReportType = 'الكل';
   String _selectedAgent = 'الكل';
   DateTime? _startDate;
   DateTime? _endDate;
   bool _showChart = false;
-
-  // تمت إضافة متغير البحث لدمج ميزة السجل الشامل
   String _searchQuery = '';
 
+  // إعدادات الجدولة
   String _scheduleFrequency = 'شهرياً';
   int _scheduleDay = 1;
   int _scheduleHour = 8;
@@ -82,7 +83,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
         .where('phone', isEqualTo: phone)
         .limit(1)
         .get();
-
     if (snap.docs.isNotEmpty) {
       final data = snap.docs.first.data();
       setState(() {
@@ -98,6 +98,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
+  // ---- فلترة البيانات ----
   List<Map<String, dynamic>> _getFilteredData(TransactionsProvider transactions) {
     List<Map<String, dynamic>> data = List.from(transactions.transactionsLedger);
 
@@ -108,39 +109,48 @@ class _ReportsScreenState extends State<ReportsScreen> {
         DateTime txDate = (tx['timestamp'] as Timestamp).toDate();
         if (_startDate != null && txDate.isBefore(_startDate!)) return false;
         if (_endDate != null &&
-            txDate.isAfter(_endDate!.add(const Duration(days: 1))))
-          return false;
+            txDate.isAfter(_endDate!.add(const Duration(days: 1)))) return false;
         return true;
       }).toList();
     }
 
-    // فلترة الوكيل
+    // فلترة الوكيل (مقارنة مع fromName و toName)
     if (_selectedAgent != 'الكل') {
       data = data
-          .where((tx) => tx['agentName'] == _selectedAgent)
+          .where((tx) =>
+              tx['fromName'] == _selectedAgent ||
+              tx['toName'] == _selectedAgent)
           .toList();
     }
 
-    // فلترة نوع التقرير
-    if (_selectedReportType == 'إيداعات وشحن') {
-      data = data.where((tx) =>
-          tx['type'] == 'deposit' ||
-          tx['title'].toString().contains('توريد')).toList();
+    // فلترة نوع الحركة
+    if (_selectedReportType == 'بيع كرت') {
+      data = data.where((tx) => tx['type'] == 'sale').toList();
+    } else if (_selectedReportType == 'إيداعات وشحن') {
+      data = data.where((tx) => tx['type'] == 'deposit').toList();
     } else if (_selectedReportType == 'تسويات وخصومات') {
-      data = data.where((tx) =>
-          tx['type'].toString().contains('تسوية') ||
-          tx['type'] == 'expense').toList();
+      data = data
+          .where((tx) =>
+              tx['type'] == 'expense' ||
+              (tx['type'] == 'deposit' &&
+                  tx['title'].toString().contains('تسوية')))
+          .toList();
+    } else if (_selectedReportType == 'تحويلات') {
+      data = data.where((tx) => tx['type'] == 'transfer').toList();
     }
 
-    // ***** فلترة البحث الشامل (مدمجة من السجل الشامل) *****
+    // فلترة البحث النصي
     if (_searchQuery.isNotEmpty) {
       final query = _searchQuery.toLowerCase();
       data = data.where((tx) {
-        return (tx['agentName']?.toString().toLowerCase().contains(query) ?? false) ||
-               (tx['agentPhone']?.toString().contains(query) ?? false) ||
-               (tx['type']?.toString().contains(query) ?? false) ||
-               (tx['title']?.toString().contains(query) ?? false) ||
-               (tx['reference']?.toString().contains(query) ?? false);
+        return (tx['fromName']?.toString().toLowerCase().contains(query) ??
+                false) ||
+            (tx['toName']?.toString().toLowerCase().contains(query) ??
+                false) ||
+            (tx['reference']?.toString().contains(query) ?? false) ||
+            (tx['title']?.toString().contains(query) ?? false) ||
+            (tx['networkName']?.toString().toLowerCase().contains(query) ??
+                false);
       }).toList();
     }
 
@@ -155,6 +165,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return total;
   }
 
+  // ---- جدولة التقارير (نفس السابق مع تحسينات) ----
   void _showScheduleDialog() {
     context.read<UiProvider>().playSound('click');
     String freq = _scheduleFrequency;
@@ -183,7 +194,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('سيتم إرسال التقرير إلى بريدك تلقائياً:',
+                  const Text(
+                      'سيتم إرسال التقرير إلى بريدك تلقائياً (يتطلب إعداد خادم خارجي للعمل الفعلي):',
                       style: TextStyle(fontSize: 13, color: Colors.grey)),
                   const SizedBox(height: 15),
                   DropdownButtonFormField<String>(
@@ -209,8 +221,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     children: [
                       Expanded(
                         child: TextField(
-                          controller: TextEditingController(
-                              text: hour.toString()),
+                          controller:
+                              TextEditingController(text: hour.toString()),
                           keyboardType: TextInputType.number,
                           decoration: const InputDecoration(
                             labelText: 'الساعة (1-12)',
@@ -244,8 +256,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ),
                   const SizedBox(height: 10),
                   TextField(
-                    controller: TextEditingController(
-                        text: minute.toString()),
+                    controller:
+                        TextEditingController(text: minute.toString()),
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
                       labelText: 'الدقائق (0-59)',
@@ -264,7 +276,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     keyboardType: TextInputType.emailAddress,
                     decoration: InputDecoration(
                       labelText: 'البريد الإلكتروني',
-                      prefixIcon: const Icon(Icons.email, color: Colors.blue),
+                      prefixIcon:
+                          const Icon(Icons.email, color: Colors.blue),
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10)),
                     ),
@@ -329,7 +342,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     if (mounted) {
                       context.read<UiProvider>().playSound('success');
                       Navigator.pop(ctx);
-                      _showSnack('تم حفظ الجدولة بنجاح! ✅');
+                      _showSnack(
+                          'تم حفظ الجدولة بنجاح! (يتطلب التفعيل خادم خارجي) ✅');
                     }
                   } catch (e) {
                     _showSnack('خطأ: $e', isErr: true);
@@ -346,7 +360,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _buildDayOfWeekPicker(int current, Function(int) onChanged) {
     final days = [
-      'السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'
+      'السبت',
+      'الأحد',
+      'الإثنين',
+      'الثلاثاء',
+      'الأربعاء',
+      'الخميس',
+      'الجمعة'
     ];
     return DropdownButtonFormField<int>(
       value: current,
@@ -355,8 +375,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         border: OutlineInputBorder(),
       ),
       items: List.generate(
-          7,
-          (i) => DropdownMenuItem(value: i + 1, child: Text(days[i]))),
+          7, (i) => DropdownMenuItem(value: i + 1, child: Text(days[i]))),
       onChanged: (val) => onChanged(val!),
     );
   }
@@ -369,12 +388,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
         border: OutlineInputBorder(),
       ),
       items: List.generate(
-          28,
-          (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}'))),
+          28, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}'))),
       onChanged: (val) => onChanged(val!),
     );
   }
 
+  // ---- تصدير PDF ----
   Future<void> _exportToPDF(
       List<Map<String, dynamic>> data, double totalAmount) async {
     context.read<UiProvider>().playSound('click');
@@ -410,7 +429,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               rowDecoration:
                   const pw.BoxDecoration(color: PdfColors.grey100),
               cellAlignment: pw.Alignment.center,
-              headers: ['المبلغ', 'النوع', 'اسم الوكيل', 'التاريخ'],
+              headers: ['المبلغ', 'النوع', 'من', 'إلى', 'التاريخ'],
               data: data.map((row) {
                 String dateStr = row['timestamp'] != null
                     ? DateFormat('yyyy-MM-dd HH:mm')
@@ -419,7 +438,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 return [
                   '${row['amount']} ريال',
                   row['type'] ?? '',
-                  row['agentName'] ?? '',
+                  row['fromName'] ?? '',
+                  row['toName'] ?? '',
                   dateStr,
                 ];
               }).toList(),
@@ -454,6 +474,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
+  // ---- تصدير Excel (يدعم الويب) ----
   Future<void> _exportToExcel(List<Map<String, dynamic>> data) async {
     context.read<UiProvider>().playSound('click');
     _showSnack('جاري إعداد ملف الإكسل... 📊');
@@ -464,8 +485,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
       sheetObject.appendRow([
         TextCellValue('التاريخ'),
-        TextCellValue('اسم الوكيل'),
-        TextCellValue('نوع العملية'),
+        TextCellValue('من'),
+        TextCellValue('إلى'),
+        TextCellValue('النوع'),
+        TextCellValue('المرجع'),
         TextCellValue('المبلغ (ريال)')
       ]);
 
@@ -476,33 +499,43 @@ class _ReportsScreenState extends State<ReportsScreen> {
             : '';
         sheetObject.appendRow([
           TextCellValue(dateStr),
-          TextCellValue(row['agentName']?.toString() ?? ''),
+          TextCellValue(row['fromName']?.toString() ?? ''),
+          TextCellValue(row['toName']?.toString() ?? ''),
           TextCellValue(row['type']?.toString() ?? ''),
+          TextCellValue(row['reference']?.toString() ?? ''),
           DoubleCellValue((row['amount'] ?? 0.0).toDouble()),
         ]);
       }
 
       var fileBytes = excel.save();
 
-      if (!kIsWeb) {
+      if (kIsWeb) {
+        // تحميل الملف عبر المتصفح
+        final blob = html.Blob([fileBytes!], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        final anchor = html.AnchorElement(href: url)
+          ..setAttribute('download',
+              'CardsNet_Report_${DateTime.now().millisecondsSinceEpoch}.xlsx')
+          ..click();
+        html.Url.revokeObjectUrl(url);
+        _showSnack('تم تحميل ملف الإكسل بنجاح ✅');
+      } else {
         Directory directory = await getApplicationDocumentsDirectory();
         String filePath =
             '${directory.path}/CardsNet_Report_${DateTime.now().millisecondsSinceEpoch}.xlsx';
         File(filePath)
           ..createSync(recursive: true)
           ..writeAsBytesSync(fileBytes!);
-        context.read<UiProvider>().playSound('success');
         _showSnack('تم حفظ الملف بنجاح في المسار:\n$filePath');
-      } else {
-        _showSnack(
-            'بيانات الإكسل جاهزة! استخدم PDF للحفظ على الويب.');
       }
+      context.read<UiProvider>().playSound('success');
     } catch (e) {
       context.read<UiProvider>().playSound('error');
       _showSnack('حدث خطأ أثناء تصدير الإكسل: $e', isErr: true);
     }
   }
 
+  // ---- عرض إيصال تفصيلي موحد ----
   void _showTransactionReceipt(
       Map<String, dynamic> log, SettingsProvider settings) {
     context.read<UiProvider>().playSound('click');
@@ -511,7 +544,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final double amount =
         double.tryParse(log['amount'].toString()) ?? 0.0;
     final bool isPositive =
-        log['type'] == 'deposit' || log['type'] == 'income';
+        log['type'] == 'deposit' || log['type'] == 'sale' || log['type'] == 'income';
     final Color color = isPositive ? Colors.green : Colors.red;
     final String dateStr = log['timestamp'] != null
         ? DateFormat('yyyy-MM-dd hh:mm a')
@@ -565,7 +598,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
                           color: Colors.blueGrey)),
-                  Text('إشعار عملية مالية',
+                  Text(log['title'] ?? 'إشعار عملية مالية',
                       style: TextStyle(
                           color: color,
                           fontSize: 12,
@@ -573,30 +606,26 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   const Padding(
                       padding: EdgeInsets.symmetric(vertical: 10),
                       child: Divider(thickness: 1.5)),
-                  Text(log['title'] ?? log['type'] ?? 'عملية مسجلة',
-                      style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.center),
-                  const SizedBox(height: 15),
                   _buildReceiptRow('المرجع',
                       log['reference'] ?? 'لا يوجد',
                       isBold: true),
                   _buildReceiptRow('التاريخ', dateStr),
+                  _buildReceiptRow('النوع', log['type'] ?? ''),
+                  _buildReceiptRow('من', log['fromName'] ?? 'غير محدد'),
+                  _buildReceiptRow('إلى', log['toName'] ?? 'غير محدد'),
+                  if (log['networkName'] != null)
+                    _buildReceiptRow('الشبكة', log['networkName']),
+                  if (log['categoryName'] != null)
+                    _buildReceiptRow('الفئة', log['categoryName']),
+                  if (log['quantity'] != null && log['quantity'] > 0)
+                    _buildReceiptRow('العدد', log['quantity'].toString()),
                   _buildReceiptRow(
                       'المبلغ',
                       '${NumberFormat('#,###').format(amount)} ريال',
                       valueColor: color,
                       isBold: true),
-                  _buildReceiptRow('الطرف الآخر',
-                      log['agentName'] ?? 'مجهول'),
-                  if (log['networkName'] != null &&
-                      log['networkName'] != 'غير محدد')
-                    _buildReceiptRow(
-                        'الشبكة', log['networkName']),
                   if (log['paymentMethod'] != null)
-                    _buildReceiptRow(
-                        'طريقة الدفع', log['paymentMethod']),
+                    _buildReceiptRow('طريقة الدفع', log['paymentMethod']),
                   if (log['fee'] != null &&
                       double.tryParse(log['fee'].toString()) != 0)
                     _buildReceiptRow(
@@ -638,7 +667,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 text +=
                     "المبلغ: ${NumberFormat('#,###').format(amount)} ريال\n";
                 text +=
-                    "الطرف: ${log['agentName'] ?? 'مجهول'}\n";
+                    "الطرف: ${log['fromName'] ?? 'مجهول'} -> ${log['toName'] ?? ''}\n";
                 Clipboard.setData(ClipboardData(text: text));
                 _showSnack('تم نسخ النص بنجاح');
               },
@@ -719,6 +748,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
+  // ---- بناء الشاشة الرئيسية ----
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -730,11 +760,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final filteredData = _getFilteredData(transactions);
     final currentTotalAmount = _calculateTotalAmount(filteredData);
 
+    // قائمة أسماء الوكلاء (للتصفية) - نجمع من المحافظ والحركات
     List<String> agentNames = ['الكل'];
+    // من المحافظ
     agentNames.addAll(wallet.agentsList
         .map((a) => a['name'].toString())
         .toSet()
         .toList());
+    // من الحركات (from/to)
+    for (var tx in transactions.transactionsLedger) {
+      if (tx['fromName'] != null) agentNames.add(tx['fromName'].toString());
+      if (tx['toName'] != null) agentNames.add(tx['toName'].toString());
+    }
+    agentNames = agentNames.toSet().toList();
 
     return Scaffold(
       appBar: const CustomHeader(title: 'التقارير الشاملة'),
@@ -754,193 +792,214 @@ class _ReportsScreenState extends State<ReportsScreen> {
         child: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) {
             return [
-              // 1. شريط البحث الشامل (جديد)
               SliverToBoxAdapter(
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: TextField(
-                    onChanged: (value) {
-                      if (value.length == 1) {
-                        context.read<UiProvider>().playSound('click');
-                      }
-                      setState(() => _searchQuery = value);
-                    },
-                    decoration: InputDecoration(
-                      hintText: 'بحث شامل بالاسم، أو رقم الهاتف، أو المرجع...',
-                      prefixIcon: const Icon(Icons.search,
-                          color: Colors.blueAccent),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear, color: Colors.grey),
-                              onPressed: () {
-                                setState(() => _searchQuery = '');
-                              },
-                            )
-                          : null,
-                      filled: true,
-                      fillColor: Theme.of(context).cardColor,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(15),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              // 2. أزرار التصدير والجدولة
-              SliverToBoxAdapter(
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Row(
-                    children: [
-                      _buildExportBtn(
-                          Icons.table_view,
-                          'Excel',
-                          Colors.green.shade700,
-                          () => _exportToExcel(filteredData)),
-                      const SizedBox(width: 8),
-                      _buildExportBtn(
-                          Icons.picture_as_pdf,
-                          'PDF',
-                          Colors.red.shade700,
-                          () => _exportToPDF(
-                              filteredData, currentTotalAmount)),
-                      const SizedBox(width: 8),
-                      _buildExportBtn(
-                          Icons.schedule,
-                          'جدولة',
-                          Colors.orange.shade800,
-                          _showScheduleDialog),
-                    ],
-                  ),
-                ),
-              ),
-              // 3. مؤشر الجدولة النشطة
-              if (_hasSchedule)
-                SliverToBoxAdapter(
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 16),
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.check_circle,
-                            color: Colors.green, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'جدولة: $_scheduleFrequency | $_scheduleEmail | ${_scheduleHour}:${_scheduleMinute.toString().padLeft(2, '0')} $_scheduleAmPm',
-                            style: const TextStyle(
-                                fontSize: 12, color: Colors.green),
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete,
-                              color: Colors.red, size: 18),
-                          onPressed: () async {
-                            if (_scheduleDocId != null) {
-                              await _db
-                                  .collection('scheduled_reports')
-                                  .doc(_scheduleDocId)
-                                  .delete();
-                              setState(() {
-                                _hasSchedule = false;
-                                _scheduleDocId = null;
-                              });
-                              _showSnack('تم حذف الجدولة');
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              // 4. فلاتر نوع التقرير والوكيل والتاريخ
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      DropdownButtonFormField<String>(
-                        value: _selectedReportType,
-                        decoration:
-                            const InputDecoration(labelText: 'نوع التقرير'),
-                        items: [
-                          'الكل (شامل)',
-                          'إيداعات وشحن',
-                          'تسويات وخصومات'
-                        ]
-                            .map((e) => DropdownMenuItem(
-                                value: e, child: Text(e)))
-                            .toList(),
-                        onChanged: (val) =>
-                            setState(() => _selectedReportType = val!),
-                      ),
-                      const SizedBox(height: 10),
-                      DropdownButtonFormField<String>(
-                        value: _selectedAgent,
-                        decoration: const InputDecoration(labelText: 'الوكيل'),
-                        items: agentNames
-                            .map((e) => DropdownMenuItem(
-                                value: e, child: Text(e)))
-                            .toList(),
-                        onChanged: (val) =>
-                            setState(() => _selectedAgent = val!),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
+                child: Column(
+                  children: [
+                    // أزرار التصدير والجدولة
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      child: Row(
                         children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () async {
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate:
-                                      _startDate ?? DateTime.now(),
-                                  firstDate: DateTime(2020),
-                                  lastDate: DateTime.now(),
-                                );
-                                if (picked != null)
-                                  setState(() => _startDate = picked);
-                              },
-                              icon: const Icon(Icons.date_range,
-                                  color: Colors.blueAccent),
-                              label: Text(_startDate == null
-                                  ? 'بداية الفترة'
-                                  : _formatDate(_startDate!)),
-                            ),
-                          ),
+                          _buildExportBtn(
+                              Icons.table_view,
+                              'Excel',
+                              Colors.green.shade700,
+                              () => _exportToExcel(filteredData)),
                           const SizedBox(width: 8),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () async {
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate:
-                                      _endDate ?? DateTime.now(),
-                                  firstDate: _startDate ?? DateTime(2020),
-                                  lastDate: DateTime.now(),
-                                );
-                                if (picked != null)
-                                  setState(() => _endDate = picked);
-                              },
-                              icon: const Icon(Icons.date_range,
-                                  color: Colors.orangeAccent),
-                              label: Text(_endDate == null
-                                  ? 'نهاية الفترة'
-                                  : _formatDate(_endDate!)),
+                          _buildExportBtn(
+                              Icons.picture_as_pdf,
+                              'PDF',
+                              Colors.red.shade700,
+                              () => _exportToPDF(
+                                  filteredData,
+                                  currentTotalAmount)),
+                          const SizedBox(width: 8),
+                          _buildExportBtn(
+                              Icons.schedule,
+                              'جدولة',
+                              Colors.orange.shade800,
+                              _showScheduleDialog),
+                        ],
+                      ),
+                    ),
+                    // معلومات الجدولة الحالية
+                    if (_hasSchedule)
+                      Container(
+                        margin:
+                            const EdgeInsets.symmetric(horizontal: 16),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.check_circle,
+                                color: Colors.green, size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'جدولة: $_scheduleFrequency | $_scheduleEmail | ${_scheduleHour}:${_scheduleMinute.toString().padLeft(2, '0')} $_scheduleAmPm',
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.green),
+                              ),
                             ),
+                            IconButton(
+                              icon: const Icon(Icons.delete,
+                                  color: Colors.red, size: 18),
+                              onPressed: () async {
+                                if (_scheduleDocId != null) {
+                                  await _db
+                                      .collection(
+                                          'scheduled_reports')
+                                      .doc(_scheduleDocId)
+                                      .delete();
+                                  setState(() {
+                                    _hasSchedule = false;
+                                    _scheduleDocId = null;
+                                  });
+                                  _showSnack('تم حذف الجدولة');
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    // شريط البحث
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: TextField(
+                        onChanged: (value) {
+                          setState(() => _searchQuery = value);
+                        },
+                        decoration: InputDecoration(
+                          hintText: 'بحث باسم الوكيل، المرجع، الشبكة...',
+                          prefixIcon: const Icon(Icons.search,
+                              color: Colors.blueAccent),
+                          filled: true,
+                          fillColor: Theme.of(context).cardColor,
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 0),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide.none),
+                        ),
+                      ),
+                    ),
+                    // فلاتر منسدلة
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        children: [
+                          DropdownButtonFormField<String>(
+                            value: _selectedReportType,
+                            decoration: const InputDecoration(
+                                labelText: 'نوع الحركة'),
+                            items: [
+                              'الكل',
+                              'بيع كرت',
+                              'إيداعات وشحن',
+                              'تسويات وخصومات',
+                              'تحويلات'
+                            ]
+                                .map((e) => DropdownMenuItem(
+                                    value: e, child: Text(e)))
+                                .toList(),
+                            onChanged: (val) => setState(() =>
+                                _selectedReportType = val!),
+                          ),
+                          const SizedBox(height: 10),
+                          DropdownButtonFormField<String>(
+                            value: _selectedAgent,
+                            decoration: const InputDecoration(
+                                labelText: 'الوكيل / الطرف'),
+                            items: agentNames
+                                .map((e) => DropdownMenuItem(
+                                    value: e, child: Text(e)))
+                                .toList(),
+                            onChanged: (val) => setState(
+                                () => _selectedAgent = val!),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: () async {
+                                    final picked =
+                                        await showDatePicker(
+                                      context: context,
+                                      initialDate: _startDate ??
+                                          DateTime.now(),
+                                      firstDate: DateTime(2020),
+                                      lastDate: DateTime.now(),
+                                    );
+                                    if (picked != null)
+                                      setState(() =>
+                                          _startDate = picked);
+                                  },
+                                  icon: const Icon(
+                                      Icons.date_range,
+                                      color: Colors.blueAccent),
+                                  label: Text(_startDate == null
+                                      ? 'بداية الفترة'
+                                      : _formatDate(
+                                          _startDate!)),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: () async {
+                                    final picked =
+                                        await showDatePicker(
+                                      context: context,
+                                      initialDate:
+                                          _endDate ?? DateTime.now(),
+                                      firstDate: _startDate ??
+                                          DateTime(2020),
+                                      lastDate: DateTime.now(),
+                                    );
+                                    if (picked != null)
+                                      setState(
+                                          () => _endDate = picked);
+                                  },
+                                  icon: const Icon(
+                                      Icons.date_range,
+                                      color: Colors.orangeAccent),
+                                  label: Text(_endDate == null
+                                      ? 'نهاية الفترة'
+                                      : _formatDate(_endDate!)),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          // زر تبديل عرض الرسم البياني
+                          Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('عرض رسم بياني',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold)),
+                              Switch(
+                                value: _showChart,
+                                onChanged: (val) {
+                                  setState(() => _showChart = val);
+                                  context
+                                      .read<UiProvider>()
+                                      .playSound('click');
+                                },
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ];
@@ -959,8 +1018,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            Text('إجمالي كروت: ${settings.totalSystemCards}',
-                style: const TextStyle(color: Colors.white)),
             Text(
                 'مجموع المبالغ: ${currentTotalAmount.toStringAsFixed(0)} ريال',
                 style: const TextStyle(color: Colors.greenAccent)),
@@ -970,6 +1027,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
+  // ---- عرض الجدول ----
   Widget _buildTableView(
       List<Map<String, dynamic>> data, SettingsProvider settings) {
     return ListView.builder(
@@ -984,8 +1042,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
         }
 
         bool isPositive = row['type'] == 'deposit' ||
-            row['type'] == 'income' ||
-            row['title'].toString().contains('توريد');
+            row['type'] == 'sale' ||
+            row['type'] == 'income';
         Color amountColor = isPositive ? Colors.green : Colors.red;
 
         return Card(
@@ -1002,26 +1060,36 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment:
+                        MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
                         child: Text(
-                            row['title'] ?? row['type'] ?? 'عملية',
+                            row['title'] ??
+                                row['type'] ??
+                                'عملية',
                             style: const TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 14)),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14)),
                       ),
-                      Text('$dateStr',
+                      Text(
+                          '$dateStr',
                           style: const TextStyle(
                               fontSize: 11, color: Colors.grey)),
                     ],
                   ),
                   const SizedBox(height: 6),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment:
+                        MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(row['agentName'] ?? 'مجهول',
+                      Expanded(
+                        child: Text(
+                          '${row['fromName'] ?? ''} → ${row['toName'] ?? ''}',
                           style: const TextStyle(
-                              fontSize: 12, color: Colors.grey)),
+                              fontSize: 12, color: Colors.grey),
+                        ),
+                      ),
                       Text(
                           '${isPositive ? '+' : ''}${row['amount']} ريال',
                           style: TextStyle(
@@ -1048,19 +1116,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
+  // ---- عرض الرسم البياني ----
   Widget _buildChartView(List<Map<String, dynamic>> data) {
     Map<String, double> agentTotals = {};
     for (var tx in data) {
-      String name = tx['agentName'] ?? 'مجهول';
+      String name = tx['toName'] ?? tx['fromName'] ?? 'مجهول';
       double amount = (tx['amount'] ?? 0.0).toDouble();
-      agentTotals[name] = (agentTotals[name] ?? 0.0) + amount;
+      agentTotals[name] =
+          (agentTotals[name] ?? 0.0) + amount;
     }
 
     var sortedAgents = agentTotals.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     var topAgents = sortedAgents.take(4).toList();
 
-    double maxAmount = topAgents.isNotEmpty ? topAgents.first.value : 1.0;
+    double maxAmount =
+        topAgents.isNotEmpty ? topAgents.first.value : 1.0;
     if (maxAmount == 0) maxAmount = 1.0;
 
     List<Color> barColors = [
@@ -1081,30 +1152,39 @@ class _ReportsScreenState extends State<ReportsScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text('أعلى الوكلاء في هذه الفترة (مبالغ)',
+              const Text('أعلى الأطراف في هذه الفترة (مبالغ)',
                   style: TextStyle(
-                      fontWeight: FontWeight.bold, color: Colors.purple)),
+                      fontWeight: FontWeight.bold,
+                      color: Colors.purple)),
               const SizedBox(height: 30),
               Expanded(
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  mainAxisAlignment:
+                      MainAxisAlignment.spaceEvenly,
                   crossAxisAlignment: CrossAxisAlignment.end,
-                  children: topAgents.asMap().entries.map((entry) {
+                  children: topAgents
+                      .asMap()
+                      .entries
+                      .map((entry) {
                     int index = entry.key;
                     var agentData = entry.value;
                     double barHeight =
                         (agentData.value / maxAmount) * 150.0;
                     if (barHeight < 10) barHeight = 10;
 
-                    return _buildBar(agentData.key, barHeight,
-                        barColors[index % barColors.length], agentData.value);
+                    return _buildBar(
+                        agentData.key,
+                        barHeight,
+                        barColors[index % barColors.length],
+                        agentData.value);
                   }).toList(),
                 ),
               ),
               const SizedBox(height: 20),
               const Text(
                   '💡 الرسم البياني يتغير آلياً حسب الفلاتر أعلاه.',
-                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  style: TextStyle(
+                      color: Colors.grey, fontSize: 12)),
             ],
           ),
         ),
@@ -1121,18 +1201,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
       children: [
         Text(amount.toStringAsFixed(0),
             style: TextStyle(
-                fontSize: 10, color: color, fontWeight: FontWeight.bold)),
+                fontSize: 10,
+                color: color,
+                fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
         Container(
           width: 40,
           height: height,
           decoration: BoxDecoration(
             color: color.withOpacity(0.8),
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(5)),
+            borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(5)),
             boxShadow: const [
               BoxShadow(
-                  color: Colors.black12, blurRadius: 4, offset: Offset(2, 0))
+                  color: Colors.black12,
+                  blurRadius: 4,
+                  offset: Offset(2, 0))
             ],
           ),
         ),
@@ -1144,16 +1228,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _buildExportBtn(
-      IconData icon, String label, Color color, VoidCallback onTap) {
+  Widget _buildExportBtn(IconData icon, String label, Color color,
+      VoidCallback onTap) {
     return ElevatedButton.icon(
       onPressed: onTap,
       icon: Icon(icon, size: 16, color: Colors.white),
       label: Text(label,
-          style: const TextStyle(color: Colors.white, fontSize: 12)),
+          style: const TextStyle(
+              color: Colors.white, fontSize: 12)),
       style: ElevatedButton.styleFrom(
           backgroundColor: color,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+          padding: const EdgeInsets.symmetric(
+              horizontal: 10, vertical: 0),
           elevation: 1),
     );
   }
