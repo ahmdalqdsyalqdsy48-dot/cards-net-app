@@ -92,6 +92,22 @@ class TransactionsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---------- الدالة الجديدة لإضافة حركة ----------
+  Future<void> addTransaction(Map<String, dynamic> transaction) async {
+    // نضمن أن timestamp هو FieldValue.serverTimestamp() إن لم يُحدد
+    final data = Map<String, dynamic>.from(transaction);
+    data['timestamp'] = FieldValue.serverTimestamp(); // سيحل محله الوقت الحقيقي عند الحفظ
+
+    try {
+      await _db.collection('transactions').add(data);
+      // لا داعي لإضافتها محلياً لأن الـ stream سيقوم بتحديث القائمة تلقائياً
+      // لكن يمكننا إصدار notifyListeners بعد الإضافة إن أردنا (اختياري)
+    } catch (e) {
+      debugPrint('خطأ في إضافة الحركة: $e');
+      rethrow;
+    }
+  }
+
   double get filteredSales {
     return _salesList.where((sale) {
       final dateStr = sale['date'] ?? DateTime.now().toIso8601String();
@@ -138,7 +154,4 @@ class TransactionsProvider extends ChangeNotifier {
       .where((ticket) =>
           ticket['status'] == 'مفتوحة' && ticket['priority'] == 'عالية')
       .length;
-
-  // يمكن تضمين subscriptionStats هنا أو في agent_admin_provider، لكنها تعتمد على agentsList التي في WalletProvider
-  // لذلك سنبقيها في WalletProvider أو AgentAdminProvider، ونكتفي هنا بالمبيعات والتذاكر.
 }
