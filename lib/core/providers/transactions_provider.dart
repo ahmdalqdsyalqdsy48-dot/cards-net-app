@@ -92,16 +92,14 @@ class TransactionsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---------- الدالة الجديدة لإضافة حركة ----------
+  // ✅ الدالة المطلوبة (تأكد من وجودها)
   Future<void> addTransaction(Map<String, dynamic> transaction) async {
-    // نضمن أن timestamp هو FieldValue.serverTimestamp() إن لم يُحدد
     final data = Map<String, dynamic>.from(transaction);
-    data['timestamp'] = FieldValue.serverTimestamp(); // سيحل محله الوقت الحقيقي عند الحفظ
+    data['timestamp'] = FieldValue.serverTimestamp();
 
     try {
       await _db.collection('transactions').add(data);
-      // لا داعي لإضافتها محلياً لأن الـ stream سيقوم بتحديث القائمة تلقائياً
-      // لكن يمكننا إصدار notifyListeners بعد الإضافة إن أردنا (اختياري)
+      // لا نحتاج notifyListeners() هنا لأن الـ stream سيفعلها تلقائياً عند وصول الوثيقة الجديدة
     } catch (e) {
       debugPrint('خطأ في إضافة الحركة: $e');
       rethrow;
