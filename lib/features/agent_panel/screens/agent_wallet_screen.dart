@@ -143,14 +143,12 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
     }
   }
 
-  // ========== 1. طلب حصة (شحن رصيد من الإدارة) ==========
+  // ========== 🆕 1. طلب حصة (شحن رصيد من الإدارة) – محدث بالكامل ==========
   void _showRequestBalanceDialog({Map<String, dynamic>? existingRequest}) {
     _play('click');
     final wallet = context.read<WalletProvider>();
     final auth = context.read<AuthProvider>();
-    final settings = context.read<SettingsProvider>();
 
-    // جلب نسبة ربح الوكيل من بياناته
     final currentUserData = wallet.usersList.firstWhere(
         (u) => u['phone'] == auth.activeUserPhone,
         orElse: () => {});
@@ -160,20 +158,23 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
 
     final activeBanks = wallet.bankAccounts.where((bank) => bank['status'] == 'نشط').toList();
 
-    String? selectedBankName = existingRequest != null
-        ? existingRequest['bankName']
-        : (activeBanks.isNotEmpty ? activeBanks.first['bankName'] : null);
-    Map<String, dynamic>? selectedBankDetails = activeBanks.firstWhere(
-        (b) => b['bankName'] == selectedBankName,
-        orElse: () => <String, dynamic>{});
+    // حالات المتغيرات
+    String paymentMethod = existingRequest?['paymentMethod'] ?? 'offline'; // offline, bank_transfer, cash
+    String currency = existingRequest?['currency'] ?? 'SAR';
+    double exchangeRate = double.tryParse(existingRequest?['exchangeRate']?.toString() ?? '1.0') ?? 1.0;
+    
+    String? selectedBankId = existingRequest?['destinationBankAccountId'];
+    Map<String, dynamic>? selectedBankDetails;
+    if (selectedBankId != null) {
+      selectedBankDetails = activeBanks.firstWhere(
+        (b) => b['docId'] == selectedBankId,
+        orElse: () => <String, dynamic>{},
+      );
+    }
 
-    final quotaController = TextEditingController(text: existingRequest != null ? existingRequest['amount'].toString() : '');
-    final sourceController = TextEditingController(text: existingRequest != null ? existingRequest['transferSource'] : '');
-    final refController = TextEditingController(text: existingRequest != null ? existingRequest['reference'] : '');
-
-    String transferType = existingRequest != null
-        ? (existingRequest['transferSource'].toString().contains('تطبيق') ? 'تطبيق بنكي' : 'محل صرافة')
-        : 'تطبيق بنكي';
+    final quotaController = TextEditingController(text: existingRequest?['amount']?.toString() ?? '');
+    final sourceController = TextEditingController(text: existingRequest?['transferSource'] ?? '');
+    final refController = TextEditingController(text: existingRequest?['reference'] ?? '');
     String? base64Image = existingRequest?['receiptBase64'];
 
     double currentQuota = double.tryParse(quotaController.text) ?? 0;
@@ -195,8 +196,10 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
             ]),
             content: SingleChildScrollView(
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('قم بتحديد مبلغ الحصة، وسيحسب النظام الرسوم المطلوبة.', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                const Text('حدد المبلغ وطريقة الدفع والعملة.', style: TextStyle(fontSize: 11, color: Colors.grey)),
                 const SizedBox(height: 15),
+                
+                // المبلغ
                 TextField(
                   controller: quotaController,
                   keyboardType: TextInputType.number,
@@ -215,74 +218,192 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
                     margin: const EdgeInsets.only(top: 15, bottom: 10),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.orange.shade50, Colors.white]), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.orange.shade200)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('📌 تنبيه:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
-                        const SizedBox(height: 5),
-                        Text('نسبة الربح المخصصة لك: $feePercentage%', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        Text('المبلغ المطلوب تحويله للنظام هو: ${intl.NumberFormat('#,###').format(calculatedFee)} ريال فقط', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                        const Text('سيتم إضافة كامل مبلغ الحصة إلى محفظتك بعد التأكيد.', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                      ],
-                    ),
-                  ),
-                if (activeBanks.isNotEmpty) ...[
-                  DropdownButtonFormField<String>(
-                    value: selectedBankName,
-                    decoration: InputDecoration(labelText: 'اختر حساب النظام للإيداع', filled: true, fillColor: Colors.grey.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
-                    items: activeBanks.map((bank) => DropdownMenuItem(value: bank['bankName'].toString(), child: Text(bank['bankName'].toString()))).toList(),
-                    onChanged: (val) { _play('click'); setStateDialog(() { selectedBankName = val; selectedBankDetails = activeBanks.firstWhere((b) => b['bankName'] == val); }); },
-                  ),
-                  if (selectedBankDetails != null && selectedBankDetails!.isNotEmpty)
-                    Container(
-                      margin: const EdgeInsets.only(top: 10),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: Colors.teal.withOpacity(0.05), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.teal.withOpacity(0.3))),
-                      child: Column(children: [
-                        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                          Expanded(child: Text('المستفيد: ${selectedBankDetails!['beneficiary']}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
-                          InkWell(onTap: () { Clipboard.setData(ClipboardData(text: selectedBankDetails!['beneficiary'])); _showSnack('تم نسخ اسم المستفيد'); }, child: const Icon(Icons.copy, size: 16, color: Colors.teal)),
-                        ]),
-                        const Divider(height: 10),
-                        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                          Expanded(child: Text('رقم الحساب: ${selectedBankDetails!['accountNumber']}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.teal), textDirection: TextDirection.ltr)),
-                          InkWell(onTap: () { Clipboard.setData(ClipboardData(text: selectedBankDetails!['accountNumber'])); _showSnack('تم نسخ رقم الحساب'); }, child: const Icon(Icons.copy, size: 16, color: Colors.teal)),
-                        ]),
-                      ]),
-                    ),
-                ] else
-                  const Text('لا توجد حسابات بنكية نشطة.', style: TextStyle(color: Colors.red)),
-                const SizedBox(height: 15),
-                Row(children: [
-                  Expanded(child: RadioListTile<String>(title: const Text('تطبيق بنكي', style: TextStyle(fontSize: 11)), value: 'تطبيق بنكي', groupValue: transferType, contentPadding: EdgeInsets.zero, onChanged: (val) { _play('click'); setStateDialog(() => transferType = val!); })),
-                  Expanded(child: RadioListTile<String>(title: const Text('محل صرافة', style: TextStyle(fontSize: 11)), value: 'محل صرافة', groupValue: transferType, contentPadding: EdgeInsets.zero, onChanged: (val) { _play('click'); setStateDialog(() => transferType = val!); })),
-                ]),
-                TextField(controller: sourceController, decoration: InputDecoration(labelText: transferType == 'تطبيق بنكي' ? 'اسم التطبيق (مثال: الكريمي)' : 'اسم الصراف (مثال: الياباني)', filled: true, fillColor: Colors.grey.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none))),
-                const SizedBox(height: 10),
-                TextField(controller: refController, decoration: InputDecoration(labelText: transferType == 'تطبيق بنكي' ? 'رقم المرجع' : 'رقم الحوالة', filled: true, fillColor: Colors.grey.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none))),
-                const SizedBox(height: 15),
-                InkWell(
-                  onTap: () async {
-                    _play('click');
-                    final picker = ImagePicker();
-                    final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 40, maxWidth: 600);
-                    if (pickedFile != null) {
-                      final bytes = await pickedFile.readAsBytes();
-                      setStateDialog(() => base64Image = base64Encode(bytes));
-                      _play('success');
-                      _showSnack('تم إرفاق السند بنجاح ✅');
-                    }
-                  },
-                  child: Container(
-                    width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 15),
-                    decoration: BoxDecoration(color: base64Image == null ? Colors.grey.withOpacity(0.1) : Colors.green.withOpacity(0.1), border: Border.all(color: base64Image == null ? Colors.grey : Colors.green), borderRadius: BorderRadius.circular(12)),
-                    child: Column(children: [
-                      Icon(base64Image == null ? Icons.add_a_photo : Icons.check_circle, color: base64Image == null ? Colors.grey : Colors.green, size: 30),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('📌 تنبيه:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
                       const SizedBox(height: 5),
-                      Text(base64Image == null ? 'انقر لإرفاق السند' : 'تم الإرفاق (انقر للتغيير)', style: TextStyle(color: base64Image == null ? Colors.grey : Colors.green, fontWeight: FontWeight.bold)),
+                      Text('نسبة الربح المخصصة لك: $feePercentage%', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Text('المبلغ المطلوب تحويله للنظام هو: ${intl.NumberFormat('#,###').format(calculatedFee)} ريال فقط', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                      const Text('سيتم إضافة كامل مبلغ الحصة إلى محفظتك بعد التأكيد.', style: TextStyle(fontSize: 11, color: Colors.grey)),
                     ]),
                   ),
+                  
+                const SizedBox(height: 10),
+                
+                // 🆕 اختيار طريقة الدفع
+                const Text('اختر طريقة الدفع:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text('تحويل بنكي (آلي)'),
+                      selected: paymentMethod == 'bank_transfer',
+                      selectedColor: Colors.blue.shade100,
+                      onSelected: (v) => setStateDialog(() => paymentMethod = 'bank_transfer'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text('محل صرافة'),
+                      selected: paymentMethod == 'offline',
+                      selectedColor: Colors.orange.shade100,
+                      onSelected: (v) => setStateDialog(() => paymentMethod = 'offline'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text('دفع نقدي'),
+                      selected: paymentMethod == 'cash',
+                      selectedColor: Colors.green.shade100,
+                      onSelected: (v) => setStateDialog(() => paymentMethod = 'cash'),
+                    ),
+                  ),
+                ]),
+
+                const SizedBox(height: 15),
+                
+                // 🆕 اختيار العملة
+                DropdownButtonFormField<String>(
+                  value: currency,
+                  decoration: InputDecoration(
+                    labelText: 'العملة',
+                    filled: true,
+                    fillColor: Colors.grey.withOpacity(0.05),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'SAR', child: Text('ريال سعودي (SAR)')),
+                    DropdownMenuItem(value: 'YER_OLD', child: Text('ريال يمني (قديم)')),
+                    DropdownMenuItem(value: 'YER_NEW', child: Text('ريال يمني (جديد)')),
+                    DropdownMenuItem(value: 'USD', child: Text('دولار أمريكي (USD)')),
+                  ],
+                  onChanged: (val) {
+                    _play('click');
+                    setStateDialog(() {
+                      currency = val!;
+                      exchangeRate = 1.0; // سيُحسب لاحقاً في WalletProvider
+                    });
+                  },
                 ),
+                
+                // 🆕 عرض سعر الصرف التقريبي
+                if (currency != 'SAR')
+                  FutureBuilder<double>(
+                    future: wallet.getExchangeRate(currency, 'SAR'),
+                    builder: (context, snap) {
+                      final rate = snap.data ?? exchangeRate;
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Text(
+                          'سعر الصرف التقريبي: 1 $currency ≈ ${rate.toStringAsFixed(2)} SAR',
+                          style: const TextStyle(color: Colors.blueGrey, fontSize: 12),
+                        ),
+                      );
+                    },
+                  ),
+                
+                const SizedBox(height: 10),
+
+                // المحتوى يعتمد على طريقة الدفع
+                if (paymentMethod == 'bank_transfer') ...[
+                  // اختيار حساب المالك البنكي
+                  if (activeBanks.isNotEmpty) ...[
+                    DropdownButtonFormField<String>(
+                      value: selectedBankId ?? (activeBanks.isNotEmpty ? activeBanks.first['docId'] : null),
+                      decoration: InputDecoration(labelText: 'اختر حساب النظام للإيداع', filled: true, fillColor: Colors.grey.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
+                      items: activeBanks.map((bank) => DropdownMenuItem(
+                        value: bank['docId'].toString(),
+                        child: Text('${bank['bankName']} (${bank['accountNumber']})'),
+                      )).toList(),
+                      onChanged: (val) {
+                        _play('click');
+                        setStateDialog(() {
+                          selectedBankId = val;
+                          selectedBankDetails = activeBanks.firstWhere((b) => b['docId'] == val, orElse: () => <String, dynamic>{});
+                        });
+                      },
+                    ),
+                    if (selectedBankDetails != null && selectedBankDetails!.isNotEmpty)
+                      Container(
+                        margin: const EdgeInsets.only(top: 10),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: Colors.teal.withOpacity(0.05), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.teal.withOpacity(0.3))),
+                        child: Column(children: [
+                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                            Expanded(child: Text('المستفيد: ${selectedBankDetails!['beneficiary']}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
+                            InkWell(onTap: () { Clipboard.setData(ClipboardData(text: selectedBankDetails!['beneficiary'])); _showSnack('تم نسخ اسم المستفيد'); }, child: const Icon(Icons.copy, size: 16, color: Colors.teal)),
+                          ]),
+                          const Divider(height: 10),
+                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                            Expanded(child: Text('رقم الحساب: ${selectedBankDetails!['accountNumber']}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.teal), textDirection: TextDirection.ltr)),
+                            InkWell(onTap: () { Clipboard.setData(ClipboardData(text: selectedBankDetails!['accountNumber'])); _showSnack('تم نسخ رقم الحساب'); }, child: const Icon(Icons.copy, size: 16, color: Colors.teal)),
+                          ]),
+                        ]),
+                      ),
+                    TextButton.icon(
+                      onPressed: () {
+                        // فتح تطبيق البنك (محاكاة)
+                        _play('click');
+                        _showSnack('سيتم توجيهك لتطبيق البنك لإتمام الدفع...');
+                      },
+                      icon: const Icon(Icons.open_in_browser, size: 16),
+                      label: const Text('الدفع عبر التطبيق البنكي'),
+                    ),
+                  ] else
+                    const Text('لا توجد حسابات بنكية نشطة للمركز.', style: TextStyle(color: Colors.red)),
+                ] else if (paymentMethod == 'offline') ...[
+                  // حقول الصرافة
+                  TextField(
+                    controller: sourceController,
+                    decoration: InputDecoration(
+                      labelText: 'اسم الصراف (مثال: الياباني)',
+                      filled: true,
+                      fillColor: Colors.grey.withOpacity(0.05),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: refController,
+                    decoration: InputDecoration(
+                      labelText: 'رقم الحوالة',
+                      filled: true,
+                      fillColor: Colors.grey.withOpacity(0.05),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  // رفع السند
+                  InkWell(
+                    onTap: () async {
+                      _play('click');
+                      final picker = ImagePicker();
+                      final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 40, maxWidth: 600);
+                      if (pickedFile != null) {
+                        final bytes = await pickedFile.readAsBytes();
+                        setStateDialog(() => base64Image = base64Encode(bytes));
+                        _play('success');
+                        _showSnack('تم إرفاق السند بنجاح ✅');
+                      }
+                    },
+                    child: Container(
+                      width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 15),
+                      decoration: BoxDecoration(color: base64Image == null ? Colors.grey.withOpacity(0.1) : Colors.green.withOpacity(0.1), border: Border.all(color: base64Image == null ? Colors.grey : Colors.green), borderRadius: BorderRadius.circular(12)),
+                      child: Column(children: [
+                        Icon(base64Image == null ? Icons.add_a_photo : Icons.check_circle, color: base64Image == null ? Colors.grey : Colors.green, size: 30),
+                        const SizedBox(height: 5),
+                        Text(base64Image == null ? 'انقر لإرفاق السند' : 'تم الإرفاق (انقر للتغيير)', style: TextStyle(color: base64Image == null ? Colors.grey : Colors.green, fontWeight: FontWeight.bold)),
+                      ]),
+                    ),
+                  ),
+                ] else if (paymentMethod == 'cash') ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: Colors.green.withOpacity(0.05), borderRadius: BorderRadius.circular(10)),
+                    child: const Text('سيتم تسليم المبلغ نقداً للمركز الرئيسي أو من ينوب عنه، وسيتم تأكيد الحصة بعد الاستلام.'),
+                  ),
+                ],
                 const SizedBox(height: 20),
               ]),
             ),
@@ -290,22 +411,42 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
               TextButton(onPressed: () { _play('click'); Navigator.pop(ctx); }, child: const Text('إلغاء')),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                onPressed: activeBanks.isEmpty ? null : () async {
+                onPressed: () async {
+                  // التحقق من صحة البيانات
                   if (currentQuota <= 0) { _play('error'); _showSnack('يرجى إدخال مبلغ حصة صالح!', isErr: true); return; }
-                  if (sourceController.text.isEmpty || refController.text.isEmpty) { _play('error'); _showSnack('يرجى إكمال بيانات التحويل!', isErr: true); return; }
-                  if (base64Image == null) { _play('error'); _showSnack('يجب إرفاق السند!', isErr: true); return; }
+                  if (paymentMethod == 'offline') {
+                    if (sourceController.text.isEmpty || refController.text.isEmpty) {
+                      _play('error'); _showSnack('يرجى كتابة اسم الصراف ورقم الحوالة!', isErr: true); return;
+                    }
+                    if (base64Image == null) {
+                      _play('error'); _showSnack('يجب إرفاق السند!', isErr: true); return;
+                    }
+                  } else if (paymentMethod == 'bank_transfer') {
+                    if (selectedBankId == null) {
+                      _play('error'); _showSnack('اختر حساب النظام البنكي!', isErr: true); return;
+                    }
+                  }
+
                   Navigator.pop(ctx);
                   _play('success');
                   _showSnack('جاري إرسال الطلب للمركز الرئيسي... ⏳');
+                  
                   try {
                     if (existingRequest != null) await wallet.cancelQuotaRequest(existingRequest['docId']);
+                    
                     await wallet.submitSaaSRechargeRequest(
                       quotaAmount: currentQuota,
                       feeAmount: calculatedFee,
-                      adminBankName: selectedBankName!,
-                      transferSource: sourceController.text.trim(),
+                      adminBankName: selectedBankDetails?['bankName'] ?? '',
+                      transferSource: paymentMethod == 'offline' ? sourceController.text.trim() : (paymentMethod == 'bank_transfer' ? 'تحويل بنكي' : 'دفع نقدي'),
                       reference: refController.text.trim(),
-                      base64Image: base64Image!,
+                      base64Image: base64Image ?? '',
+                      paymentMethod: paymentMethod,
+                      currency: currency,
+                      destinationBankAccountId: selectedBankId ?? '',
+                      offlineProviderName: paymentMethod == 'offline' ? sourceController.text.trim() : '',
+                      offlineReference: paymentMethod == 'offline' ? refController.text.trim() : '',
+                      offlineReceiptBase64: paymentMethod == 'offline' ? (base64Image ?? '') : '',
                     );
                     if (mounted) { _play('success'); _showSnack('تم إرسال الطلب بنجاح وهو قيد المراجعة ✅'); }
                   } catch (e) { _play('error'); if (mounted) _showSnack('حدث خطأ: $e', isErr: true); }
@@ -319,7 +460,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
     );
   }
 
-  // ========== 2. تحويل للغير (PIN + بصمة) ==========
+  // ========== 2. تحويل للغير (PIN + بصمة) – بدون تغيير ==========
   void _showAdvancedTransferDialog() {
     _play('click');
     final wallet = context.read<WalletProvider>();
