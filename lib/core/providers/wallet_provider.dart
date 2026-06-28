@@ -70,9 +70,10 @@ class WalletProvider extends ChangeNotifier {
       }
     });
 
+    // 🆕 تحديث: الاستماع للحالات المعلقة اليدوية والبنكية
     _rechargeSub = _db
         .collection('recharge_requests')
-        .where('status', isEqualTo: 'قيد الانتظار')
+        .where('status', whereIn: ['قيد الانتظار', 'awaiting_payment'])
         .snapshots()
         .listen((snapshot) {
       _rechargeRequests = snapshot.docs
@@ -626,6 +627,19 @@ class WalletProvider extends ChangeNotifier {
     }, authenticate: true);
   }
 
+  // ========== 🆕 دالة مساعدة: جلب سعر الصرف من الإعدادات ==========
+  Future<double> getExchangeRate(String fromCurrency, String toCurrency) async {
+    if (fromCurrency == toCurrency) return 1.0;
+    try {
+      final rates = _settings?.exchangeRates ?? {};
+      final key = '${fromCurrency}_$toCurrency';
+      return rates[key] ?? 1.0;
+    } catch (e) {
+      return 1.0;
+    }
+  }
+
+  // ========== 🆕 تحديث: طلب حصة (للوكلاء) - يدعم الدفع البنكي والصرافة ==========
   Future<void> submitSaaSRechargeRequest({
     required double quotaAmount,
     required double feeAmount,
@@ -633,26 +647,65 @@ class WalletProvider extends ChangeNotifier {
     required String transferSource,
     required String reference,
     required String base64Image,
+    // 🆕 وسائط جديدة
+    String paymentMethod = 'offline', // 'offline', 'bank_transfer', 'cash'
+    String currency = 'SAR',
+    double? exchangeRate,
+    String? sourceBankAccountId,
+    String? destinationBankAccountId,
+    String? offlineProviderName,
+    String? offlineReference,
+    String? offlineReceiptBase64,
   }) async {
     final api = ApiService(authToken: _auth?.authToken);
+    
+    // حساب سعر الصرف تلقائياً إن لم يُقدم
+    double finalExchangeRate = exchangeRate ?? 1.0;
+    if (currency != 'SAR') {
+      finalExchangeRate = await getExchangeRate(currency, 'SAR');
+    }
+
     await api.post('/api/recharge-request', {
       'amount': quotaAmount,
       'bankName': adminBankName,
-      'transferSource': transferSource,
+      'transferSource': paymentMethod == 'offline' ? (transferSource) : (paymentMethod == 'bank_transfer' ? 'تحويل بنكي' : 'دفع نقدي'),
       'reference': reference,
       'receiptBase64': base64Image,
+      'paymentMethod': paymentMethod,
+      'currency': currency,
+      'exchangeRate': finalExchangeRate,
+      'sourceBankAccountId': sourceBankAccountId ?? '',
+      'destinationBankAccountId': destinationBankAccountId ?? '',
+      'offlineProviderName': offlineProviderName ?? '',
+      'offlineReference': offlineReference ?? '',
+      'offlineReceiptBase64': offlineReceiptBase64 ?? '',
     }, authenticate: true);
   }
 
+  // ========== 🆕 تحديث: طلب شحن من مستخدم لوكيل - يدعم طرق الدفع الجديدة ==========
   Future<void> requestRechargeFromAgent({
     required String agentPhone,
     required double amount,
-    required String paymentMethod,
+    required String paymentMethod, // 'bank_transfer', 'offline', 'cash'
     required String reference,
     String? base64Image,
     String? fullName,
+    // 🆕 وسائط جديدة
+    String currency = 'SAR',
+    double? exchangeRate,
+    String? sourceBankAccountId,
+    String? destinationBankAccountId,
+    String? offlineProviderName,
+    String? offlineReference,
   }) async {
     if (_auth?.activeUserPhone == null) throw 'يرجى تسجيل الدخول.';
+    
+    // حساب سعر الصرف
+    double finalExchangeRate = exchangeRate ?? 1.0;
+    if (currency != 'SAR') {
+      finalExchangeRate = await getExchangeRate(currency, 'SAR');
+    }
+
     final docData = <String, dynamic>{
       'userPhone': _auth!.activeUserPhone,
       'userName': currentUserName,
@@ -661,7 +714,13 @@ class WalletProvider extends ChangeNotifier {
       'paymentMethod': paymentMethod,
       'reference': reference,
       'receiptBase64': base64Image ?? '',
-      'status': 'قيد الانتظار',
+      'currency': currency,
+      'exchangeRate': finalExchangeRate,
+      'sourceBankAccountId': sourceBankAccountId ?? '',
+      'destinationBankAccountId': destinationBankAccountId ?? '',
+      'offlineProviderName': offlineProviderName ?? '',
+      'offlineReference': offlineReference ?? '',
+      'status': paymentMethod == 'bank_transfer' ? 'awaiting_payment' : 'قيد الانتظار',
       'type': 'user_to_agent',
       'timestamp': FieldValue.serverTimestamp(),
     };
@@ -1149,7 +1208,7 @@ class WalletProvider extends ChangeNotifier {
     return _db
         .collection('user_recharges')
         .where('userPhone', isEqualTo: _auth!.activeUserPhone)
-        .where('status', isEqualTo: 'قيد الانتظار')
+        .where('status', whereIn: ['قيد الانتظار', 'awaiting_payment'])
         .snapshots()
         .map((snap) => snap.docs.map((doc) {
               final data = doc.data();
@@ -1164,7 +1223,7 @@ class WalletProvider extends ChangeNotifier {
         .collection('recharge_requests')
         .where('userPhone', isEqualTo: _auth!.activeUserPhone)
         .where('type', isEqualTo: 'saas_quota')
-        .where('status', isEqualTo: 'قيد الانتظار')
+        .where('status', whereIn: ['قيد الانتظار', 'awaiting_payment'])
         .snapshots()
         .map((snap) => snap.docs.map((doc) {
               final data = doc.data();
@@ -1178,7 +1237,7 @@ class WalletProvider extends ChangeNotifier {
     return _db
         .collection('user_recharges')
         .where('targetPhone', isEqualTo: _auth!.activeUserPhone)
-        .where('status', isEqualTo: 'قيد الانتظار')
+        .where('status', whereIn: ['قيد الانتظار', 'awaiting_payment'])
         .snapshots()
         .map((snap) => snap.docs.map((doc) {
               final data = doc.data();
@@ -1363,13 +1422,22 @@ class WalletProvider extends ChangeNotifier {
     return accounts;
   }
 
+  // ========== 🆕 تحديث: قبول شحن مشرف (يدوي) مع العملة وطريقة الدفع ==========
   Future<void> adminAcceptSaaSRecharge(String requestId, String agentPhone,
       double quotaAmount, double feeAmount) async {
     final batch = _db.batch();
 
+    // جلب بيانات الطلب لاستخراج العملة وطريقة الدفع
+    final reqDoc = await _db.collection('recharge_requests').doc(requestId).get();
+    final reqData = reqDoc.data() ?? {};
+    final currency = reqData['currency'] ?? 'SAR';
+    final exchangeRate = reqData['exchangeRate'] ?? 1.0;
+    final paymentMethod = reqData['paymentMethod'] ?? 'offline';
+
     batch.update(_db.collection('recharge_requests').doc(requestId), {
       'status': 'approved',
       'processedAt': FieldValue.serverTimestamp(),
+      'approvalMethod': 'manual',
     });
 
     batch.update(_db.collection('users').doc(agentPhone), {
@@ -1388,7 +1456,9 @@ class WalletProvider extends ChangeNotifier {
       'title': 'توريد حصة مبيعات (موافقة طلب)',
       'amount': quotaAmount,
       'fee': feeAmount,
-      'paymentMethod': 'نظام SaaS',
+      'currency': currency,
+      'exchangeRate': exchangeRate,
+      'paymentMethod': paymentMethod,
       'reference': 'REQ-$requestId',
       'timestamp': FieldValue.serverTimestamp()
     });
@@ -1555,7 +1625,7 @@ class WalletProvider extends ChangeNotifier {
     return bestTier;
   }
 
-    // ========== 🆕 نظام نقاط الولاء (نسبة مئوية) ==========
+  // ========== 🆕 نظام نقاط الولاء (نسبة مئوية) ==========
 
   /// إضافة نقاط ولاء للمستخدم بعد الشراء من وكيل معين
   Future<void> addLoyaltyPoints({
