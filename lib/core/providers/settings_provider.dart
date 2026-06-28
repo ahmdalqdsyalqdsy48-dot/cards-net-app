@@ -206,16 +206,16 @@ class SettingsProvider extends ChangeNotifier {
     });
   }
 
-  // ========== 🆕 مزامنة أسعار الصرف من Firestore ==========
+  // ========== 🆕 مزامنة أسعار الصرف من Firestore (إصلاح النوع) ==========
   void _initExchangeRatesSync() {
     _db.collection('system').doc('exchange_rates').snapshots().listen((snap) {
       if (snap.exists) {
         final data = snap.data()!;
-        final Map<String, dynamic> ratesRaw = {};
+        final Map<String, double> ratesConverted = {};
         data.forEach((key, value) {
-          ratesRaw[key] = (value as num).toDouble();
+          ratesConverted[key] = (value as num).toDouble();
         });
-        _exchangeRates = ratesRaw;
+        _exchangeRates = ratesConverted;
         notifyListeners();
       }
     });
