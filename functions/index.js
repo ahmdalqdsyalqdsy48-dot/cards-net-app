@@ -119,7 +119,84 @@ async function authenticate(req, res, next) {
   next();
 }
 
-// ==================== API ====================
+// ==================== الدوال المساعدة للعملات ====================
+async function getExchangeRate(fromCurrency, toCurrency) {
+  if (fromCurrency === toCurrency) return 1.0;
+  try {
+    const ratesDoc = await getDoc(doc(db, 'system', 'exchange_rates'));
+    if (!ratesDoc.exists()) return 1.0; // لا يوجد سعر محدد، افترض 1:1
+    const rates = ratesDoc.data();
+    const key = `${fromCurrency}_${toCurrency}`;
+    return rates[key] || 1.0;
+  } catch (e) {
+    console.error('خطأ في جلب سعر الصرف:', e);
+    return 1.0;
+  }
+}
+
+// ==================== نقطة نهاية Webhook البنك ====================
+app.post('/api/bank-webhook', async (req, res) => {
+  // يفترض أن البنك يرسل توقيعاً أو مفتاحاً للتحقق، هنا سنبسط: نطلب requestId داخل body
+  const { requestId, transactionId, status } = req.body;
+  if (!requestId) return res.status(400).json({ error: 'معرف الطلب مطلوب' });
+
+  try {
+    await serverLogin();
+    const reqRef = doc(db, 'recharge_requests', requestId);
+    const reqDoc = await getDoc(reqRef);
+    if (!reqDoc.exists()) return res.status(404).json({ error: 'الطلب غير موجود' });
+
+    const reqData = reqDoc.data();
+    if (reqData.paymentMethod !== 'bank_transfer' || reqData.status !== 'awaiting_payment') {
+      return res.status(400).json({ error: 'الطلب ليس في انتظار دفع بنكي' });
+    }
+
+    if (status === 'success') {
+      // تنفيذ العملية تلقائياً
+      const amount = reqData.amount;
+      const agentPhone = reqData.userPhone;
+      const feeAmount = reqData.fee || 0;
+      const currency = reqData.currency || 'SAR';
+      const exchangeRate = reqData.exchangeRate || 1.0;
+      const baseAmount = amount * exchangeRate; // المبلغ بالعملة الأساسية للنظام
+
+      await runTransaction(db, async (transaction) => {
+        transaction.update(reqRef, {
+          status: 'approved',
+          bankTransactionId: transactionId,
+          processedAt: serverTimestamp(),
+          approvalMethod: 'auto'
+        });
+        transaction.update(doc(db, 'users', agentPhone), { balance: increment(baseAmount) });
+
+        transaction.set(doc(collection(db, 'transactions')), {
+          fromPhone: '774578241',
+          toPhone: agentPhone,
+          agentPhone: agentPhone,
+          type: 'deposit',
+          title: 'توريد حصة مبيعات (تلقائي عبر بنك)',
+          amount: baseAmount,
+          fee: feeAmount,
+          currency: currency,
+          exchangeRate: exchangeRate,
+          paymentMethod: 'bank_transfer',
+          reference: `BNK-${transactionId || requestId}`,
+          timestamp: serverTimestamp()
+        });
+      });
+      return res.json({ success: true, message: 'تم تأكيد الدفع وإيداع الحصة تلقائياً' });
+    } else {
+      // فشل الدفع أو رفض
+      await updateDoc(reqRef, { status: 'payment_failed', bankTransactionId: transactionId });
+      return res.json({ success: true, message: 'تم تسجيل فشل الدفع' });
+    }
+  } catch (e) {
+    console.error('خطأ في webhook البنك:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ==================== API الأساسية ====================
 app.get('/', (req, res) => res.send('NetCards Server Running'));
 
 // تسجيل الدخول
@@ -256,24 +333,66 @@ app.post('/api/transfer', authenticate, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// طلب شحن حصة
+// طلب شحن حصة (مُحسَّن ليدعم الدفع البنكي واليدوي)
 app.post('/api/recharge-request', authenticate, async (req, res) => {
-  const { amount, bankName, transferSource, reference, receiptBase64 } = req.body;
+  const {
+    amount,
+    bankName,
+    transferSource,
+    reference,
+    receiptBase64,
+    paymentMethod = 'offline', // offline, bank_transfer, cash
+    currency = 'SAR',
+    exchangeRate,
+    sourceBankAccountId,
+    destinationBankAccountId,
+    offlineProviderName,
+    offlineReference,
+    offlineReceiptBase64
+  } = req.body;
   const userPhone = req.user.phone;
   try {
     await serverLogin();
-    await addDoc(collection(db, 'recharge_requests'), {
-      userPhone, userName: req.user.phone,
-      networkName: '', targetPhone: '774578241',
-      amount, fee: 0, bankName, transferSource, reference, receiptBase64,
-      status: 'قيد الانتظار', type: 'saas_quota',
+
+    // حساب سعر الصرف إن لم يُقدم
+    let finalExchangeRate = exchangeRate || 1.0;
+    if (currency !== 'SAR') {
+      finalExchangeRate = await getExchangeRate(currency, 'SAR');
+    }
+
+    const baseData = {
+      userPhone,
+      userName: req.user.phone,
+      networkName: '',
+      targetPhone: '774578241',
+      amount,
+      fee: 0,
+      bankName: bankName || '',
+      transferSource: paymentMethod === 'offline' ? (transferSource || offlineProviderName) : (paymentMethod === 'bank_transfer' ? 'تحويل بنكي' : 'دفع نقدي'),
+      reference: reference || offlineReference || '',
+      receiptBase64: receiptBase64 || offlineReceiptBase64 || '',
+      currency,
+      exchangeRate: finalExchangeRate,
+      paymentMethod,
+      sourceBankAccountId: sourceBankAccountId || '',
+      destinationBankAccountId: destinationBankAccountId || '',
+      type: 'saas_quota',
       timestamp: serverTimestamp()
-    });
-    res.json({ success: true, message: 'تم إرسال الطلب' });
+    };
+
+    if (paymentMethod === 'bank_transfer') {
+      baseData.status = 'awaiting_payment';
+      await addDoc(collection(db, 'recharge_requests'), baseData);
+      return res.json({ success: true, message: 'في انتظار تأكيد الدفع البنكي...' });
+    } else {
+      baseData.status = 'قيد الانتظار';
+      await addDoc(collection(db, 'recharge_requests'), baseData);
+      return res.json({ success: true, message: 'تم إرسال الطلب، في انتظار المراجعة اليدوية.' });
+    }
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// قبول طلب شحن
+// قبول طلب شحن (يدوي - مع تحديثات)
 app.post('/api/accept-recharge', authenticate, async (req, res) => {
   if (req.user.role !== 'super_admin') return res.status(403).json({ error: 'غير مصرح' });
   const { requestId, agentPhone, quotaAmount } = req.body;
@@ -283,9 +402,25 @@ app.post('/api/accept-recharge', authenticate, async (req, res) => {
       const reqRef = doc(db, 'recharge_requests', requestId);
       const reqDoc = await transaction.get(reqRef);
       if (!reqDoc.exists()) throw new Error('الطلب غير موجود');
-      if (reqDoc.data().status !== 'قيد الانتظار') throw new Error('الطلب تمت معالجته');
-      transaction.update(reqRef, { status: 'مقبول' });
+      const reqData = reqDoc.data();
+      if (reqData.status !== 'قيد الانتظار' && reqData.status !== 'awaiting_payment') throw new Error('الطلب تمت معالجته');
+      
+      transaction.update(reqRef, { status: 'مقبول', processedAt: serverTimestamp(), approvalMethod: 'manual' });
       transaction.update(doc(db, 'users', agentPhone), { balance: increment(quotaAmount) });
+
+      // تسجيل العملة وسعر الصرف
+      transaction.set(doc(collection(db, 'transactions')), {
+        fromPhone: '774578241',
+        toPhone: agentPhone,
+        agentPhone: agentPhone,
+        type: 'deposit',
+        title: 'توريد حصة مبيعات (يدوي)',
+        amount: quotaAmount,
+        currency: reqData.currency || 'SAR',
+        exchangeRate: reqData.exchangeRate || 1,
+        paymentMethod: reqData.paymentMethod || 'offline',
+        timestamp: serverTimestamp()
+      });
     });
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -441,12 +576,11 @@ async function checkAndSendScheduledReports() {
   await initTransporter();
   if (!transporter) return;
 
-  // ✅ استخدام توقيت الرياض بدلاً من UTC
   const now = new Date();
   const riyadhTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Riyadh' }));
   const currentHour = riyadhTime.getHours();
   const currentMinute = riyadhTime.getMinutes();
-  const currentDayOfWeek = riyadhTime.getDay(); // 0=أحد, 1=إثنين ... 6=سبت (JavaScript)
+  const currentDayOfWeek = riyadhTime.getDay();
   const currentDayOfMonth = riyadhTime.getDate();
 
   const schedulesSnap = await getDocs(collection(db, 'scheduled_reports'));
@@ -454,11 +588,9 @@ async function checkAndSendScheduledReports() {
     const schedule = docSnap.data();
     const { frequency, day, hour: hour12, amPm, email, phone, minute = 0 } = schedule;
 
-    // تحويل الساعة 12 إلى نظام 24
     let scheduleHour = (hour12 % 12);
     if (amPm === 'مساءاً') scheduleHour += 12;
 
-    // ✅ التحقق من الساعة والدقيقة المحددة
     if (currentHour !== scheduleHour) continue;
     if (currentMinute !== minute) continue;
 
@@ -466,8 +598,6 @@ async function checkAndSendScheduledReports() {
     if (frequency === 'يومياً') {
       shouldSend = true;
     } else if (frequency === 'أسبوعياً') {
-      // day: 1=السبت, 2=الأحد... 7=الجمعة
-      // JavaScript getDay: 0=الأحد، 1=الإثنين، ... 6=السبت
       const jsDayMap = { 1: 6, 2: 0, 3: 1, 4: 2, 5: 3, 6: 4, 7: 5 };
       const targetDay = jsDayMap[day] ?? 0;
       if (currentDayOfWeek === targetDay) shouldSend = true;
@@ -477,10 +607,9 @@ async function checkAndSendScheduledReports() {
 
     if (!shouldSend) continue;
 
-    // تجنب تكرار الإرسال خلال نفس الدقيقة (حسب آخر إرسال)
     const lastSent = schedule.lastSentAt ? schedule.lastSentAt.toDate() : null;
     if (lastSent && lastSent.toDateString() === now.toDateString() && lastSent.getHours() === currentHour && lastSent.getMinutes() === currentMinute) {
-      continue; // تم الإرسال بالفعل في هذه الدقيقة
+      continue;
     }
 
     try {
@@ -492,7 +621,6 @@ async function checkAndSendScheduledReports() {
         text: report.text,
         html: report.html,
       });
-      // تحديث آخر إرسال
       await updateDoc(docSnap.ref, { lastSentAt: serverTimestamp() });
       console.log(`✅ تم إرسال التقرير إلى ${email} في ${currentHour}:${currentMinute}`);
     } catch (err) {
@@ -501,7 +629,6 @@ async function checkAndSendScheduledReports() {
   }
 }
 
-// تشغيل فحص الجدولة كل دقيقة
 cron.schedule('* * * * *', async () => {
   await checkAndSendScheduledReports();
 });
