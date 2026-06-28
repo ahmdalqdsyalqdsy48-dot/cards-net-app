@@ -74,7 +74,7 @@ class SettingsProvider extends ChangeNotifier {
   bool _soundEnabled = true;
   SharedPreferences? _prefs;
 
-  // ========== 🆕 الخصائص الجديدة للإعدادات الموسعة ==========
+  // ========== الخصائص الجديدة للإعدادات الموسعة ==========
   double _transferFeeRate = 0.0;
   double _dailyTransferLimit = 5000.0;
   double _monthlyTransferLimit = 50000.0;
@@ -95,16 +95,21 @@ class SettingsProvider extends ChangeNotifier {
   bool _animationsEnabled = true;
   bool _forceDarkMode = false;
 
+  // ========== 🆕 أسعار الصرف للعملات ==========
+  Map<String, double> _exchangeRates = {};
+
   // ---------- المُنشئ الأساسي ----------
   SettingsProvider() {
     _initSettingsSync();
     _initPrefs();
+    _initExchangeRatesSync();
   }
 
   SettingsProvider.withSoundPref(bool soundEnabled) {
     _soundEnabled = soundEnabled;
     _initSettingsSync();
     _initPrefs(skipSound: true);
+    _initExchangeRatesSync();
   }
 
   Future<void> _initPrefs({bool skipSound = false}) async {
@@ -112,7 +117,6 @@ class SettingsProvider extends ChangeNotifier {
     if (!skipSound) {
       _soundEnabled = _prefs?.getBool('sound_enabled') ?? true;
     }
-    // تحميل الإعدادات المحلية الجديدة
     _pullToRefreshEnabled = _prefs?.getBool('pull_to_refresh') ?? true;
     _animationsEnabled = _prefs?.getBool('animations_enabled') ?? true;
     _forceDarkMode = _prefs?.getBool('force_dark_mode') ?? false;
@@ -180,7 +184,6 @@ class SettingsProvider extends ChangeNotifier {
         _newsScrollSpeed = (data['newsScrollSpeed'] ?? 40.0).toDouble();
         _smsBalance = data['smsBalance'] ?? 0;
 
-        // 🆕 تحميل الإعدادات الجديدة من Firestore
         _transferFeeRate = (data['transferFeeRate'] ?? 0.0).toDouble();
         _dailyTransferLimit = (data['dailyTransferLimit'] ?? 5000.0).toDouble();
         _monthlyTransferLimit = (data['monthlyTransferLimit'] ?? 50000.0).toDouble();
@@ -201,6 +204,34 @@ class SettingsProvider extends ChangeNotifier {
         notifyListeners();
       }
     });
+  }
+
+  // ========== 🆕 مزامنة أسعار الصرف من Firestore ==========
+  void _initExchangeRatesSync() {
+    _db.collection('system').doc('exchange_rates').snapshots().listen((snap) {
+      if (snap.exists) {
+        final data = snap.data()!;
+        final Map<String, dynamic> ratesRaw = {};
+        data.forEach((key, value) {
+          ratesRaw[key] = (value as num).toDouble();
+        });
+        _exchangeRates = ratesRaw;
+        notifyListeners();
+      }
+    });
+  }
+
+  Map<String, double> get exchangeRates => _exchangeRates;
+
+  Future<void> updateExchangeRate(String fromCurrency, String toCurrency, double rate) async {
+    final key = '${fromCurrency}_$toCurrency';
+    await _db.collection('system').doc('exchange_rates').update({
+      key: rate,
+    });
+  }
+
+  Future<void> setExchangeRates(Map<String, double> rates) async {
+    await _db.collection('system').doc('exchange_rates').set(rates);
   }
 
   // ========== Getters الأساسية ==========
@@ -251,7 +282,6 @@ class SettingsProvider extends ChangeNotifier {
 
   bool get isSoundEnabled => _soundEnabled;
 
-  // ========== 🆕 Getters للخصائص الجديدة ==========
   double get transferFeeRate => _transferFeeRate;
   double get dailyTransferLimit => _dailyTransferLimit;
   double get monthlyTransferLimit => _monthlyTransferLimit;
@@ -478,7 +508,7 @@ class SettingsProvider extends ChangeNotifier {
     await _db.collection('system').doc('main_info').update({'newsScrollSpeed': newSpeed});
   }
 
-  // ========== 🆕 دوال التحكم في الخصائص الجديدة ==========
+  // ========== دوال التحكم في الخصائص الجديدة ==========
   Future<void> setSoundEnabled(bool value) async {
     _soundEnabled = value;
     if (_prefs != null) await _prefs!.setBool('sound_enabled', value);
