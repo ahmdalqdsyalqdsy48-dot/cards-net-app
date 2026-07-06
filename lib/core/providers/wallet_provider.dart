@@ -1,1036 +1,1665 @@
-import 'dart:convert';
-import 'dart:typed_data';
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:intl/intl.dart' as intl;
-import 'package:local_auth/local_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:intl/intl.dart' hide TextDirection;
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../../core/providers/auth_provider.dart';
-import '../../../core/providers/settings_provider.dart';
-import '../../../core/providers/wallet_provider.dart';
-import '../../../core/providers/ui_provider.dart';
-import '../../../core/providers/theme_provider.dart';
-import '../../../core/widgets/custom_header.dart';
-import '../widgets/custom_agent_drawer.dart';
-import 'agent_bank_accounts_screen.dart';
-import 'advanced_statement_screen.dart';
+import '../constants.dart';
+import '../services/api_service.dart';
+import 'auth_provider.dart';
+import 'settings_provider.dart';
+import 'transactions_provider.dart';
 
-class AgentWalletScreen extends StatefulWidget {
-  const AgentWalletScreen({super.key});
-
-  @override
-  State<AgentWalletScreen> createState() => _AgentWalletScreenState();
-}
-
-class _AgentWalletScreenState extends State<AgentWalletScreen>
-    with SingleTickerProviderStateMixin {
+class WalletProvider extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  late TabController _tabController;
-  bool _isBalanceHidden = true; // مخفي افتراضيًا
-  final LocalAuthentication _localAuth = LocalAuthentication();
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final AuthProvider? _auth;
+  final SettingsProvider? _settings;
+  final TransactionsProvider? _transactions;
+
+  WalletProvider(this._auth, {
+    SettingsProvider? settings,
+    TransactionsProvider? transactions,
+  })  : _settings = settings,
+        _transactions = transactions {
+    _auth?.addListener(_onAuthChanged);
+    if (_auth?.activeUserPhone != null) {
+      _startListeners();
+    }
+  }
 
   @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+  void dispose() {
+    _cancelListeners();
+    _auth?.removeListener(_onAuthChanged);
+    super.dispose();
   }
 
-  // ---------- دوال الإشعارات المحسّنة ----------
-  void _showSuccessSnack(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, textDirection: TextDirection.rtl),
-        backgroundColor: Colors.green.shade800,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
+  // ---------- بيانات مخزنة محلياً ----------
+  List<Map<String, dynamic>> _usersDatabase = [];
+  List<Map<String, dynamic>> _rechargeRequests = [];
+  List<Map<String, dynamic>> _myAgentBankAccounts = [];
+  List<Map<String, dynamic>> _bankAccounts = [];
 
-  void _showErrorSnack(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, textDirection: TextDirection.rtl),
-        backgroundColor: Colors.red.shade800,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 4),
-      ),
-    );
-  }
+  StreamSubscription? _usersSub;
+  StreamSubscription? _rechargeSub;
+  StreamSubscription? _bankAccountsSub;
+  StreamSubscription? _agentBankSub;
 
-  void _showInDialogError(String message) {
-    // تستخدم داخل setStateDialog لاظهار خطأ دون إغلاق الحوار
-    _showErrorSnack(message);
-  }
-
-  void _play(String type) => context.read<UiProvider>().playSound(type);
-
-  // ========== تحديث شامل للقسم ==========
-  Future<void> _refreshAll() async {
-    _play('click');
-    // إعادة بناء الواجهة بطلب تحديث من WalletProvider
-    context.read<WalletProvider>().notifyListeners();
-    await Future.delayed(const Duration(milliseconds: 400));
-    _play('success');
-    _showSuccessSnack('تم تحديث المحفظة بنجاح');
-  }
-
-  // ========== تحويل الأرقام إلى كلمات عربية (دون تغيير) ==========
-  String _convertNumberToArabicWords(double number) {
-    if (number == 0) return 'صفر';
-    int num = number.toInt();
-    if (num >= 1000000) {
-      int millions = num ~/ 1000000;
-      int remainder = num % 1000000;
-      String millionsText = millions == 1 ? 'مليون' : '$millions ملايين';
-      if (remainder == 0) return millionsText;
-      return '$millionsText و ${_convertLessThanOneMillion(remainder)}';
-    }
-    return _convertLessThanOneMillion(num);
-  }
-
-  String _convertLessThanOneMillion(int num) {
-    if (num == 0) return '';
-    if (num < 1000) return _convertHundreds(num);
-    int thousands = num ~/ 1000;
-    int remainder = num % 1000;
-    String thousandsText = _convertThousands(thousands);
-    if (remainder == 0) return thousandsText;
-    return '$thousandsText و ${_convertHundreds(remainder)}';
-  }
-
-  String _convertThousands(int num) {
-    if (num == 1) return 'ألف';
-    if (num == 2) return 'ألفان';
-    if (num <= 10) return '${_convertOnes(num)} آلاف';
-    return '${_convertHundreds(num)} ألف';
-  }
-
-  String _convertHundreds(int num) {
-    if (num == 0) return '';
-    if (num < 100) return _convertTens(num);
-    int hundreds = num ~/ 100;
-    int remainder = num % 100;
-    String hundredsText = _convertHundredsPrefix(hundreds);
-    if (remainder == 0) return hundredsText;
-    return '$hundredsText و ${_convertTens(remainder)}';
-  }
-
-  String _convertHundredsPrefix(int num) {
-    switch (num) {
-      case 1: return 'مائة';
-      case 2: return 'مائتان';
-      default: return '${_convertOnes(num)} مائة';
+  void _onAuthChanged() {
+    if (_auth?.activeUserPhone != null) {
+      _startListeners();
+    } else {
+      _cancelListeners();
+      _myAgentBankAccounts = [];
+      notifyListeners();
     }
   }
 
-  String _convertTens(int num) {
-    if (num < 10) return _convertOnes(num);
-    if (num == 10) return 'عشرة';
-    if (num == 11) return 'أحد عشر';
-    if (num == 12) return 'اثنا عشر';
-    if (num < 20) return '${_convertOnes(num % 10)} عشر';
-    int tens = num ~/ 10;
-    int ones = num % 10;
-    String tensText = _convertTensPrefix(tens);
-    if (ones == 0) return tensText;
-    return '${_convertOnes(ones)} و $tensText';
-  }
+  void _startListeners() {
+    _cancelListeners();
 
-  String _convertTensPrefix(int tens) {
-    switch (tens) {
-      case 2: return 'عشرون';
-      case 3: return 'ثلاثون';
-      case 4: return 'أربعون';
-      case 5: return 'خمسون';
-      case 6: return 'ستون';
-      case 7: return 'سبعون';
-      case 8: return 'ثمانون';
-      case 9: return 'تسعون';
-      default: return '';
+    _usersSub = _db.collection('users').snapshots().listen((snapshot) {
+      if (snapshot.docs.isNotEmpty) {
+        _usersDatabase = snapshot.docs.map((doc) => doc.data()).toList();
+        _runAutoRadar(_usersDatabase);
+        notifyListeners();
+      }
+    });
+
+    // 🆕 تحديث: الاستماع للحالات المعلقة اليدوية والبنكية
+    _rechargeSub = _db
+        .collection('recharge_requests')
+        .where('status', whereIn: ['قيد الانتظار', 'awaiting_payment'])
+        .snapshots()
+        .listen((snapshot) {
+      _rechargeRequests = snapshot.docs
+          .map((doc) => {'docId': doc.id, ...doc.data()})
+          .toList();
+      notifyListeners();
+    });
+
+    _bankAccountsSub = _db
+        .collection('bank_accounts')
+        .orderBy('order')
+        .snapshots()
+        .listen((snapshot) {
+      _bankAccounts = snapshot.docs
+          .map((doc) => {'docId': doc.id, ...doc.data()})
+          .toList();
+      notifyListeners();
+    });
+
+    if (_auth?.currentUserRole == 'agent' ||
+        _auth?.currentUserRole == 'super_admin') {
+      _agentBankSub = _db
+          .collection('agent_bank_accounts')
+          .where('agentPhone', isEqualTo: _auth!.activeUserPhone)
+          .orderBy('order')
+          .snapshots()
+          .listen((snapshot) {
+        _myAgentBankAccounts = snapshot.docs
+            .map((doc) => {'docId': doc.id, ...doc.data()})
+            .toList();
+        notifyListeners();
+      });
     }
   }
 
-  String _convertOnes(int num) {
-    switch (num) {
-      case 1: return 'واحد';
-      case 2: return 'اثنان';
-      case 3: return 'ثلاثة';
-      case 4: return 'أربعة';
-      case 5: return 'خمسة';
-      case 6: return 'ستة';
-      case 7: return 'سبعة';
-      case 8: return 'ثمانية';
-      case 9: return 'تسعة';
-      default: return '';
+  void _cancelListeners() {
+    _usersSub?.cancel();
+    _rechargeSub?.cancel();
+    _bankAccountsSub?.cancel();
+    _agentBankSub?.cancel();
+    _usersSub = null;
+    _rechargeSub = null;
+    _bankAccountsSub = null;
+    _agentBankSub = null;
+  }
+
+  void _runAutoRadar(List<Map<String, dynamic>> users) {
+    final now = DateTime.now();
+    WriteBatch batch = _db.batch();
+    bool needsUpdate = false;
+
+    for (var user in users) {
+      if (user['role'] == 'agent' &&
+          user['subExpiry'] != null &&
+          user['subStatus'] == 'نشط') {
+        try {
+          DateTime expiryDate = DateTime.parse(user['subExpiry']);
+          if (now.isAfter(expiryDate)) {
+            DocumentReference ref = _db.collection('users').doc(user['phone']);
+            batch.update(ref, {'subStatus': 'إنذار'});
+            needsUpdate = true;
+          }
+        } catch (e) {}
+      }
     }
+    if (needsUpdate) batch.commit();
   }
 
-  // ========== عرض صورة السند (تعمل الآن) ==========
-  void _showReceiptDialog(String base64Image) {
-    if (base64Image.isEmpty) return;
-    _play('click');
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Stack(
-          alignment: Alignment.topRight,
-          children: [
-            InteractiveViewer(
-              child: Image.memory(base64Decode(base64Image), fit: BoxFit.contain),
-            ),
-            IconButton(
-              icon: const Icon(Icons.close, color: Colors.white, size: 30),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ],
-        ),
-      ),
-    );
+  // ---------- Getters الأساسية ----------
+  List<Map<String, dynamic>> get usersDatabase => _usersDatabase;
+  List<Map<String, dynamic>> get agentsList =>
+      _usersDatabase.where((user) => user['role'] == 'agent').toList();
+  List<Map<String, dynamic>> get usersList =>
+      _usersDatabase
+          .where((user) => user['role'] == 'user' || user['role'] == 'pos')
+          .toList();
+  List<Map<String, dynamic>> get pendingRechargeRequests => _rechargeRequests;
+  List<Map<String, dynamic>> get bankAccounts => _bankAccounts;
+  List<Map<String, dynamic>> get myAgentBankAccounts => _myAgentBankAccounts;
+
+  // ---------- وسائط إلى TransactionsProvider ----------
+  List<Map<String, dynamic>> get transactionsLedger =>
+      _transactions?.transactionsLedger ?? [];
+  List<Map<String, dynamic>> get salesList =>
+      _transactions?.salesList ?? [];
+  List<Map<String, dynamic>> get supportTickets =>
+      _transactions?.supportTickets ?? [];
+
+  DateTimeRange? get dashboardDateRange =>
+      _transactions?.dashboardDateRange;
+  void setDashboardDateRange(DateTimeRange? range) {
+    _transactions?.setDashboardDateRange(range);
+    notifyListeners();
   }
 
-  // ========== 1. طلب حصة (شحن رصيد من الإدارة) – محدث بالكامل ==========
-  void _showRequestBalanceDialog({Map<String, dynamic>? existingRequest}) {
-    _play('click');
-    final wallet = context.read<WalletProvider>();
-    final auth = context.read<AuthProvider>();
+  double get filteredSales =>
+      _transactions?.filteredSales ?? 0.0;
+  double get filteredProfit =>
+      _transactions?.filteredProfit ?? 0.0;
+  int get openTicketsCount =>
+      _transactions?.openTicketsCount ?? 0;
+  int get criticalTicketsCount =>
+      _transactions?.criticalTicketsCount ?? 0;
 
-    final currentUserData = wallet.usersList.firstWhere(
-        (u) => u['phone'] == auth.activeUserPhone,
+  // ---------- وسائط إلى AuthProvider (الملف الشخصي) ----------
+  String? get activeUserPhone => _auth?.activeUserPhone;
+  String get currentUserPhone => _auth?.activeUserPhone ?? '';
+  String get currentUserRole => _auth?.currentUserRole ?? 'guest';
+  bool hasPermission(String permissionName) =>
+      _auth?.hasPermission(permissionName) ?? false;
+
+  Future<bool> changeUserName(String newName) async =>
+      await _auth?.changeUserName(newName) ?? false;
+  Future<bool> changeUserPin(String oldPin, String newPin) async =>
+      await _auth?.changeUserPin(oldPin, newPin) ?? false;
+  Future<String> changeUserPinWithOld(String oldPin, String newPin, String confirmPin) async {
+    if (_auth == null) return 'خطأ في المصادقة';
+    return await _auth!.changeUserPinWithOld(oldPin, newPin, confirmPin);
+  }
+  bool changeUserPassword(String oldPassword, String newPassword) =>
+      _auth?.changeUserPassword(oldPassword, newPassword) ?? false;
+  void toggleBiometric(bool isEnabled) =>
+      _auth?.toggleBiometric(isEnabled);
+  Future<void> updatePrivacySettings({required bool showPhone}) async =>
+      await _auth?.updatePrivacySettings(showPhone: showPhone);
+  Future<void> updatePrivacySetting(String key, bool value) async =>
+      await _auth?.updatePrivacySetting(key, value);
+  Future<void> updateUserDailyLimit(double limit) async =>
+      await _auth?.updateUserDailyLimit(limit);
+  Future<void> updateUserMonthlyLimit(double limit) async =>
+      await _auth?.updateUserMonthlyLimit(limit);
+  Future<bool> deleteUserAccount(String password) async =>
+      await _auth?.deleteUserAccount(password) ?? false;
+  Future<void> saveUserPreferredColor(Color color) async =>
+      await _auth?.saveUserPreferredColor(color);
+  Future<Color?> getUserPreferredColor() async =>
+      await _auth?.getUserPreferredColor();
+  Future<void> updateLastSeen() async =>
+      await _auth?.updateLastSeen();
+  Future<void> togglePinEnabled(bool value) async =>
+      await _auth?.togglePinEnabled(value);
+
+  // ---------- Getters من الجلسة والملف الشخصي ----------
+  String get currentUserName {
+    if (_auth?.activeUserPhone == null) return '';
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {'name': ''});
+    return user['name'] ?? '';
+  }
+
+  String get currentUserPin => _auth?.currentUserPin ?? '';
+  String get currentUserNetwork {
+    if (_auth?.activeUserPhone == null) return 'غير محدد';
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {'networkName': 'غير محدد'});
+    return user['networkName'] ?? 'غير محدد';
+  }
+
+  List<String> get currentUserNetworkIds {
+    if (_auth?.activeUserPhone == null) return [];
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {'networkIds': <String>[]});
+    return List<String>.from(user['networkIds'] ?? []);
+  }
+
+  String? get currentUserAccountNumber {
+    if (_auth?.activeUserPhone == null) return null;
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
         orElse: () => {});
-    String rawMargin = currentUserData['profitMargin']?.toString() ?? '0';
-    rawMargin = rawMargin.replaceAll(RegExp(r'[^0-9.]'), '');
-    double feePercentage = double.tryParse(rawMargin) ?? 0.0;
-
-    final activeBanks = wallet.bankAccounts.where((bank) => bank['status'] == 'نشط').toList();
-    final myBanks = wallet.myAgentBankAccounts.where((b) => b['status'] == 'نشط').toList();
-
-    // حالات المتغيرات
-    String paymentMethod = existingRequest?['paymentMethod'] ?? 'offline';
-    String currency = existingRequest?['currency'] ?? 'SAR';
-    double exchangeRate = double.tryParse(existingRequest?['exchangeRate']?.toString() ?? '1.0') ?? 1.0;
-    
-    String? selectedOwnerBankId = existingRequest?['destinationBankAccountId'];
-    Map<String, dynamic>? selectedOwnerBankDetails;
-    if (selectedOwnerBankId != null) {
-      selectedOwnerBankDetails = activeBanks.firstWhere(
-        (b) => b['docId'] == selectedOwnerBankId,
-        orElse: () => <String, dynamic>{},
-      );
-    }
-
-    String? selectedMyBankId = existingRequest?['sourceBankAccountId'];
-    Map<String, dynamic>? selectedMyBankDetails;
-    if (selectedMyBankId != null && myBanks.isNotEmpty) {
-      selectedMyBankDetails = myBanks.firstWhere(
-        (b) => b['docId'] == selectedMyBankId,
-        orElse: () => <String, dynamic>{},
-      );
-    }
-
-    final quotaController = TextEditingController(text: existingRequest?['amount']?.toString() ?? '');
-    final sourceController = TextEditingController(text: existingRequest?['transferSource'] ?? '');
-    final refController = TextEditingController(text: existingRequest?['reference'] ?? '');
-    String? base64Image = existingRequest?['receiptBase64'];
-
-    double currentQuota = double.tryParse(quotaController.text) ?? 0;
-    double calculatedFee = currentQuota * (feePercentage / 100);
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setStateDialog) => Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            backgroundColor: Theme.of(context).cardColor,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: Row(children: [
-              Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.account_balance_wallet, color: Colors.green)),
-              const SizedBox(width: 10),
-              Text(existingRequest != null ? 'تعديل طلب الحصة' : 'طلب حصة مبيعات', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            ]),
-            content: SingleChildScrollView(
-              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('حدد المبلغ وطريقة الدفع والعملة.', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                const SizedBox(height: 15),
-                
-                // حساب الوكيل البنكي (مصدر الدفع) إن وجد
-                if (myBanks.isNotEmpty) ...[
-                  DropdownButtonFormField<String>(
-                    value: selectedMyBankId ?? (myBanks.isNotEmpty ? myBanks.first['docId'] : null),
-                    decoration: InputDecoration(
-                      labelText: 'حسابك البنكي (مصدر الدفع)',
-                      filled: true,
-                      fillColor: Colors.grey.withOpacity(0.05),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                    ),
-                    items: myBanks.map((bank) => DropdownMenuItem(
-                      value: bank['docId'].toString(),
-                      child: Text('${bank['bankName']} (${bank['accountNumber']})'),
-                    )).toList(),
-                    onChanged: (val) {
-                      _play('click');
-                      setStateDialog(() {
-                        selectedMyBankId = val;
-                        selectedMyBankDetails = myBanks.firstWhere((b) => b['docId'] == val, orElse: () => <String, dynamic>{});
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                ],
-                
-                // المبلغ
-                TextField(
-                  controller: quotaController,
-                  keyboardType: TextInputType.number,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  onChanged: (val) => setStateDialog(() { currentQuota = double.tryParse(val) ?? 0; calculatedFee = currentQuota * (feePercentage / 100); }),
-                  decoration: InputDecoration(labelText: 'مبلغ الحصة (الرصيد المراد إضافته)', filled: true, fillColor: Colors.blue.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
-                ),
-                if (currentQuota > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 5, right: 10),
-                    child: Text('${intl.NumberFormat('#,###').format(currentQuota)} ريال ${_convertNumberToArabicWords(currentQuota).isNotEmpty ? "(${_convertNumberToArabicWords(currentQuota)} ريال لا غير)" : ""}',
-                        style: TextStyle(fontSize: 12, color: Colors.blue.shade700, fontWeight: FontWeight.bold)),
-                  ),
-                if (calculatedFee > 0)
-                  Container(
-                    margin: const EdgeInsets.only(top: 15, bottom: 10),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.orange.shade50, Colors.white]), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.orange.shade200)),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Text('📌 تنبيه:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
-                      const SizedBox(height: 5),
-                      Text('نسبة الربح المخصصة لك: $feePercentage%', style: const TextStyle(fontWeight: FontWeight.bold)),
-                      Text('المبلغ المطلوب تحويله للنظام هو: ${intl.NumberFormat('#,###').format(calculatedFee)} ريال فقط', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                      const Text('سيتم إضافة كامل مبلغ الحصة إلى محفظتك بعد التأكيد.', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                    ]),
-                  ),
-                  
-                const SizedBox(height: 10),
-                
-                // 🆕 اختيار طريقة الدفع
-                const Text('اختر طريقة الدفع:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                const SizedBox(height: 8),
-                Row(children: [
-                  Expanded(
-                    child: ChoiceChip(
-                      label: const Text('تحويل بنكي'),
-                      selected: paymentMethod == 'bank_transfer',
-                      selectedColor: Colors.blue.shade100,
-                      onSelected: (v) => setStateDialog(() => paymentMethod = 'bank_transfer'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ChoiceChip(
-                      label: const Text('محل صرافة'),
-                      selected: paymentMethod == 'offline',
-                      selectedColor: Colors.orange.shade100,
-                      onSelected: (v) => setStateDialog(() => paymentMethod = 'offline'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ChoiceChip(
-                      label: const Text('دفع نقدي'),
-                      selected: paymentMethod == 'cash',
-                      selectedColor: Colors.green.shade100,
-                      onSelected: (v) => setStateDialog(() => paymentMethod = 'cash'),
-                    ),
-                  ),
-                ]),
-
-                const SizedBox(height: 15),
-                
-                // اختيار العملة
-                DropdownButtonFormField<String>(
-                  value: currency,
-                  decoration: InputDecoration(
-                    labelText: 'العملة',
-                    filled: true,
-                    fillColor: Colors.grey.withOpacity(0.05),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 'SAR', child: Text('ريال سعودي (SAR)')),
-                    DropdownMenuItem(value: 'YER_OLD', child: Text('ريال يمني (قديم)')),
-                    DropdownMenuItem(value: 'YER_NEW', child: Text('ريال يمني (جديد)')),
-                    DropdownMenuItem(value: 'USD', child: Text('دولار أمريكي (USD)')),
-                  ],
-                  onChanged: (val) {
-                    _play('click');
-                    setStateDialog(() {
-                      currency = val!;
-                      exchangeRate = 1.0;
-                    });
-                  },
-                ),
-                
-                if (currency != 'SAR')
-                  FutureBuilder<double>(
-                    future: wallet.getExchangeRate(currency, 'SAR'),
-                    builder: (context, snap) {
-                      final rate = snap.data ?? exchangeRate;
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 8.0),
-                        child: Text(
-                          'سعر الصرف التقريبي: 1 $currency ≈ ${rate.toStringAsFixed(4)} SAR',
-                          style: const TextStyle(color: Colors.blueGrey, fontSize: 12),
-                        ),
-                      );
-                    },
-                  ),
-                
-                const SizedBox(height: 10),
-
-                // المحتوى يعتمد على طريقة الدفع
-                if (paymentMethod == 'bank_transfer') ...[
-                  if (activeBanks.isNotEmpty) ...[
-                    DropdownButtonFormField<String>(
-                      value: selectedOwnerBankId ?? (activeBanks.isNotEmpty ? activeBanks.first['docId'] : null),
-                      decoration: InputDecoration(labelText: 'اختر حساب النظام للإيداع', filled: true, fillColor: Colors.grey.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
-                      items: activeBanks.map((bank) => DropdownMenuItem(
-                        value: bank['docId'].toString(),
-                        child: Text('${bank['bankName']} (${bank['accountNumber']})'),
-                      )).toList(),
-                      onChanged: (val) {
-                        _play('click');
-                        setStateDialog(() {
-                          selectedOwnerBankId = val;
-                          selectedOwnerBankDetails = activeBanks.firstWhere((b) => b['docId'] == val, orElse: () => <String, dynamic>{});
-                        });
-                      },
-                    ),
-                    if (selectedOwnerBankDetails != null && selectedOwnerBankDetails!.isNotEmpty)
-                      Container(
-                        margin: const EdgeInsets.only(top: 10),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(color: Colors.teal.withOpacity(0.05), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.teal.withOpacity(0.3))),
-                        child: Column(children: [
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                            Expanded(child: Text('المستفيد: ${selectedOwnerBankDetails!['beneficiary']}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
-                            InkWell(onTap: () { Clipboard.setData(ClipboardData(text: selectedOwnerBankDetails!['beneficiary'])); _showSuccessSnack('تم نسخ اسم المستفيد'); }, child: const Icon(Icons.copy, size: 16, color: Colors.teal)),
-                          ]),
-                          const Divider(height: 10),
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                            Expanded(child: Text('رقم الحساب: ${selectedOwnerBankDetails!['accountNumber']}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.teal), textDirection: TextDirection.ltr)),
-                            InkWell(onTap: () { Clipboard.setData(ClipboardData(text: selectedOwnerBankDetails!['accountNumber'])); _showSuccessSnack('تم نسخ رقم الحساب'); }, child: const Icon(Icons.copy, size: 16, color: Colors.teal)),
-                          ]),
-                        ]),
-                      ),
-                    TextButton.icon(
-                      onPressed: () {
-                        _play('click');
-                        _showInDialogError('سيتم توجيهك لتطبيق البنك لإتمام الدفع قريباً');
-                      },
-                      icon: const Icon(Icons.open_in_browser, size: 16),
-                      label: const Text('الدفع عبر التطبيق البنكي'),
-                    ),
-                  ] else
-                    const Text('لا توجد حسابات بنكية نشطة للمركز.', style: TextStyle(color: Colors.red)),
-                ] else if (paymentMethod == 'offline') ...[
-                  TextField(
-                    controller: sourceController,
-                    decoration: InputDecoration(
-                      labelText: 'اسم الصراف (مثال: الياباني)',
-                      filled: true,
-                      fillColor: Colors.grey.withOpacity(0.05),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: refController,
-                    decoration: InputDecoration(
-                      labelText: 'رقم الحوالة',
-                      filled: true,
-                      fillColor: Colors.grey.withOpacity(0.05),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                  InkWell(
-                    onTap: () async {
-                      _play('click');
-                      final picker = ImagePicker();
-                      final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 40, maxWidth: 600);
-                      if (pickedFile != null) {
-                        final bytes = await pickedFile.readAsBytes();
-                        setStateDialog(() => base64Image = base64Encode(bytes));
-                        _play('success');
-                        _showSuccessSnack('تم إرفاق السند بنجاح ✅');
-                      }
-                    },
-                    child: Container(
-                      width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 15),
-                      decoration: BoxDecoration(color: base64Image == null ? Colors.grey.withOpacity(0.1) : Colors.green.withOpacity(0.1), border: Border.all(color: base64Image == null ? Colors.grey : Colors.green), borderRadius: BorderRadius.circular(12)),
-                      child: Column(children: [
-                        Icon(base64Image == null ? Icons.add_a_photo : Icons.check_circle, color: base64Image == null ? Colors.grey : Colors.green, size: 30),
-                        const SizedBox(height: 5),
-                        Text(base64Image == null ? 'انقر لإرفاق السند' : 'تم الإرفاق (انقر للتغيير)', style: TextStyle(color: base64Image == null ? Colors.grey : Colors.green, fontWeight: FontWeight.bold)),
-                      ]),
-                    ),
-                  ),
-                ] else if (paymentMethod == 'cash') ...[
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: Colors.green.withOpacity(0.05), borderRadius: BorderRadius.circular(10)),
-                    child: const Text('سيتم تسليم المبلغ نقداً للمركز الرئيسي أو من ينوب عنه، وسيتم تأكيد الحصة بعد الاستلام.'),
-                  ),
-                ],
-                const SizedBox(height: 20),
-              ]),
-            ),
-            actions: [
-              TextButton(onPressed: () { _play('click'); Navigator.pop(ctx); }, child: const Text('إلغاء')),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                onPressed: () async {
-                  // التحقق من صحة البيانات (مع بقاء النافذة مفتوحة عند الخطأ)
-                  if (currentQuota <= 0) {
-                    _play('error');
-                    _showInDialogError('يرجى إدخال مبلغ حصة صالح!');
-                    return;
-                  }
-                  if (paymentMethod == 'offline') {
-                    if (sourceController.text.isEmpty || refController.text.isEmpty) {
-                      _play('error');
-                      _showInDialogError('يرجى كتابة اسم الصراف ورقم الحوالة!');
-                      return;
-                    }
-                    if (base64Image == null) {
-                      _play('error');
-                      _showInDialogError('يجب إرفاق السند!');
-                      return;
-                    }
-                  } else if (paymentMethod == 'bank_transfer') {
-                    if (selectedOwnerBankId == null) {
-                      _play('error');
-                      _showInDialogError('اختر حساب النظام البنكي!');
-                      return;
-                    }
-                  }
-
-                  Navigator.pop(ctx);
-                  _play('click');
-                  _showSuccessSnack('جاري إرسال الطلب للمركز الرئيسي... ⏳');
-                  
-                  try {
-                    if (existingRequest != null) await wallet.cancelQuotaRequest(existingRequest['docId']);
-                    
-                    await wallet.submitSaaSRechargeRequest(
-                      quotaAmount: currentQuota,
-                      feeAmount: calculatedFee,
-                      adminBankName: selectedOwnerBankDetails?['bankName'] ?? '',
-                      transferSource: paymentMethod == 'offline' ? sourceController.text.trim() : (paymentMethod == 'bank_transfer' ? 'تحويل بنكي' : 'دفع نقدي'),
-                      reference: refController.text.trim(),
-                      base64Image: base64Image ?? '',
-                      paymentMethod: paymentMethod,
-                      currency: currency,
-                      destinationBankAccountId: selectedOwnerBankId ?? '',
-                      sourceBankAccountId: selectedMyBankId ?? '',
-                      offlineProviderName: paymentMethod == 'offline' ? sourceController.text.trim() : '',
-                      offlineReference: paymentMethod == 'offline' ? refController.text.trim() : '',
-                      offlineReceiptBase64: paymentMethod == 'offline' ? (base64Image ?? '') : '',
-                    );
-                    if (mounted) { _play('success'); _showSuccessSnack('تم إرسال الطلب بنجاح وهو قيد المراجعة ✅'); }
-                  } catch (e) { _play('error'); if (mounted) _showErrorSnack('حدث خطأ: $e'); }
-                },
-                child: Text(existingRequest != null ? 'حفظ التعديلات' : 'تأكيد وإرسال', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    return user['accountNumber']?.toString();
   }
 
-  // ========== 2. تحويل للغير (PIN + بصمة) – مُحسّن ==========
-  void _showAdvancedTransferDialog() {
-    _play('click');
-    final wallet = context.read<WalletProvider>();
-    final auth = context.read<AuthProvider>();
-
-    final phoneController = TextEditingController();
-    final amountController = TextEditingController();
-    final taxController = TextEditingController();
-    final noteController = TextEditingController();
-    final pinController = TextEditingController();
-
-    bool isSearching = false;
-    Map<String, dynamic>? targetData;
-    String selectedPaymentMethod = 'نقدي';
-    Timer? _searchDebounce;
-    double currentAmount = 0, currentTax = 0, taxValue = 0, totalCost = 0;
-    bool obscurePin = true;
-    bool useBiometrics = false;
-
-    final currentUserData = wallet.usersList.firstWhere((u) => u['phone'] == auth.activeUserPhone, orElse: () => {});
-    bool isPinEnabled = currentUserData['pinEnabled'] ?? false;
-    bool isBiometricEnabled = currentUserData['isBiometricEnabled'] ?? false;
-    final double agentBalance = wallet.currentUserBalance;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return WillPopScope(
-          onWillPop: () async { _searchDebounce?.cancel(); return true; },
-          child: StatefulBuilder(
-            builder: (context, setStateDialog) {
-              void calculateLive() {
-                currentAmount = double.tryParse(amountController.text) ?? 0;
-                currentTax = double.tryParse(taxController.text) ?? 0;
-                taxValue = currentAmount * (currentTax / 100);
-                totalCost = currentAmount + taxValue;
-              }
-              return Directionality(
-                textDirection: TextDirection.rtl,
-                child: AlertDialog(
-                  backgroundColor: Theme.of(context).cardColor,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  title: const Row(children: [Icon(Icons.send_to_mobile, color: Colors.orange), SizedBox(width: 10), Text('تحويل رصيد للغير', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))]),
-                  content: SingleChildScrollView(
-                    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      // رصيد المرسل
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        margin: const EdgeInsets.only(bottom: 10),
-                        decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-                        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                          const Text('رصيدك الحالي:', style: TextStyle(fontWeight: FontWeight.bold)),
-                          Text('${intl.NumberFormat('#,###').format(agentBalance)} ريال', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-                        ]),
-                      ),
-                      const Text('رقم المستلم:', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 5),
-                      TextField(
-                        controller: phoneController,
-                        keyboardType: TextInputType.phone,
-                        onChanged: (val) {
-                          if (_searchDebounce?.isActive ?? false) _searchDebounce!.cancel();
-                          _searchDebounce = Timer(const Duration(milliseconds: 600), () async {
-                            String targetPhone = val.trim();
-                            if (targetPhone.isEmpty || targetPhone == auth.activeUserPhone) return;
-                            setStateDialog(() { isSearching = true; targetData = null; });
-                            try {
-                              var data = await wallet.searchUserForTransfer(targetPhone);
-                              if (!context.mounted) return;
-                              if (data != null) { _play('success'); setStateDialog(() { targetData = data; isSearching = false; }); }
-                              else { setStateDialog(() { isSearching = false; }); }
-                            } catch (e) { setStateDialog(() { isSearching = false; }); }
-                          });
-                        },
-                        decoration: InputDecoration(hintText: 'أدخل الرقم ليتم البحث تلقائياً...', filled: true, fillColor: Colors.grey.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none), suffixIcon: isSearching ? const Padding(padding: EdgeInsets.all(12.0), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orange))) : const Icon(Icons.search, color: Colors.grey)),
-                      ),
-                      if (targetData != null) ...[
-                        const SizedBox(height: 10),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          margin: const EdgeInsets.only(bottom: 10),
-                          decoration: BoxDecoration(color: Colors.orange.withOpacity(0.05), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.orange.withOpacity(0.3))),
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            _infoRow('الاسم', targetData?['name'] ?? 'مجهول'),
-                            _infoRow('الدور', targetData?['role'] == 'agent' ? 'وكيل' : 'مستخدم عادي'),
-                            if (targetData?['role'] == 'agent') _infoRow('الشبكة', targetData?['networkName'] ?? 'غير محدد'),
-                            if (targetData?['showBalance'] != false) _infoRow('الرصيد', '${targetData?['balance']} ريال'),
-                          ]),
-                        ),
-                      ],
-                      Row(children: [
-                        Expanded(flex: 2, child: TextField(controller: amountController, keyboardType: TextInputType.number, onChanged: (v) => setStateDialog(() => calculateLive()), decoration: InputDecoration(labelText: 'المبلغ', filled: true, fillColor: Colors.grey.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)))),
-                        const SizedBox(width: 10),
-                        Expanded(flex: 1, child: TextField(controller: taxController, keyboardType: TextInputType.number, onChanged: (v) => setStateDialog(() => calculateLive()), decoration: InputDecoration(labelText: 'ضريبة %', filled: true, fillColor: Colors.grey.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)))),
-                      ]),
-                      const SizedBox(height: 10),
-                      DropdownButtonFormField<String>(
-                        value: selectedPaymentMethod,
-                        decoration: InputDecoration(labelText: 'طريقة الدفع', filled: true, fillColor: Colors.grey.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)),
-                        items: ['نقدي', 'تحويل بنكي', 'آجل'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                        onChanged: (v) => setStateDialog(() { selectedPaymentMethod = v!; calculateLive(); }),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(controller: noteController, decoration: InputDecoration(labelText: 'ملاحظة (اختياري)', filled: true, fillColor: Colors.grey.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none))),
-                      if (currentAmount > 0)
-                        Container(
-                          margin: const EdgeInsets.only(top: 15), padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-                          child: Column(children: [
-                            _infoRow('المبلغ', intl.NumberFormat('#,###').format(currentAmount)),
-                            _infoRow('الضريبة', intl.NumberFormat('#,###').format(taxValue)),
-                            const Divider(),
-                            _infoRow('الإجمالي', '${intl.NumberFormat('#,###').format(totalCost)} ريال'),
-                            _infoRow('المتبقي بعد التحويل', '${intl.NumberFormat('#,###').format(agentBalance - totalCost)} ريال'),
-                          ]),
-                        ),
-                      const SizedBox(height: 15),
-                      if (isPinEnabled && !useBiometrics) ...[
-                        TextField(
-                          controller: pinController,
-                          obscureText: obscurePin,
-                          keyboardType: TextInputType.number,
-                          maxLength: 6,
-                          decoration: InputDecoration(
-                            labelText: 'رمز PIN',
-                            prefixIcon: const Icon(Icons.lock_outline),
-                            suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [
-                              IconButton(icon: Icon(obscurePin ? Icons.visibility_off : Icons.visibility), onPressed: () => setStateDialog(() => obscurePin = !obscurePin)),
-                              if (isBiometricEnabled)
-                                IconButton(icon: const Icon(Icons.fingerprint, color: Colors.green), onPressed: () => setStateDialog(() => useBiometrics = true)),
-                            ]),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                        ),
-                      ],
-                      if (useBiometrics && isBiometricEnabled)
-                        ElevatedButton.icon(
-                          onPressed: () async {
-                            try {
-                              bool authenticated = await _localAuth.authenticate(localizedReason: 'تأكيد بصمة الإصبع للتحويل', options: const AuthenticationOptions(biometricOnly: true, stickyAuth: true));
-                              if (authenticated) {
-                                if (agentBalance < totalCost) {
-                                  _showInDialogError('رصيدك غير كافٍ لإتمام التحويل');
-                                  return;
-                                }
-                                Navigator.pop(context);
-                                _executeTransfer(phoneController.text.trim(), targetData, currentAmount, currentTax, noteController.text, selectedPaymentMethod, 'biometric');
-                              }
-                            } catch (e) { _showInDialogError('فشل التحقق البيومتري'); }
-                          },
-                          icon: const Icon(Icons.fingerprint, color: Colors.white),
-                          label: const Text('تأكيد بالبصمة', style: TextStyle(color: Colors.white)),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                        ),
-                    ]),
-                  ),
-                  actions: [
-                    TextButton(onPressed: () { _searchDebounce?.cancel(); _play('click'); Navigator.pop(context); }, child: const Text('إلغاء')),
-                    if (isPinEnabled && !useBiometrics)
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                        onPressed: () {
-                          if (targetData == null || currentAmount <= 0) {
-                            _showInDialogError('يرجى اختيار مستلم وإدخال مبلغ صحيح');
-                            return;
-                          }
-                          if (agentBalance < totalCost) {
-                            _showInDialogError('رصيدك غير كافٍ لإتمام التحويل');
-                            return;
-                          }
-                          Navigator.pop(context);
-                          _executeTransfer(phoneController.text.trim(), targetData, currentAmount, currentTax, noteController.text, selectedPaymentMethod, pinController.text);
-                        },
-                        icon: const Icon(Icons.send, color: Colors.white, size: 18),
-                        label: const Text('تنفيذ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      ),
-                  ],
-                ),
-              );
-            },
-          ),
-        );
-      },
-    );
+  bool get currentUserPrivacyShowPhone {
+    if (_auth?.activeUserPhone == null) return true;
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {'privacy_showPhone': true});
+    return user['privacy_showPhone'] ?? true;
   }
 
-  void _executeTransfer(String targetPhone, Map<String, dynamic>? targetData, double amount, double tax, String note, String method, String pinOrBio) async {
-    final wallet = context.read<WalletProvider>();
-    _play('warning');
-    bool? confirm = await showDialog<bool>(context: context, builder: (ctx) => Directionality(textDirection: TextDirection.rtl, child: AlertDialog(title: const Text('تأكيد ⚠️'), content: Text('تأكيد تحويل $amount إلى ${targetData?['name']}؟'), actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('تراجع')), ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تأكيد'))])));
-    if (confirm != true) return;
+  bool get privacyHideBalance {
+    if (_auth?.activeUserPhone == null) return false;
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {});
+    return user['privacy_hideBalance'] ?? false;
+  }
+
+  bool get privacyShowFullName {
+    if (_auth?.activeUserPhone == null) return true;
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {});
+    return user['privacy_showFullName'] ?? true;
+  }
+
+  bool get isBiometricCurrentlyEnabled {
+    if (_auth?.activeUserPhone == null) return false;
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {'isBiometricEnabled': false});
+    return user['isBiometricEnabled'] ?? false;
+  }
+
+  bool get isPinEnabled {
+    if (_auth?.activeUserPhone == null) return false;
+    final user = _usersDatabase.firstWhere(
+      (u) => u['phone'] == _auth!.activeUserPhone,
+      orElse: () => {'pinEnabled': false},
+    );
+    return user['pinEnabled'] == true;
+  }
+
+  double get currentUserBalance {
+    if (_auth?.activeUserPhone == null) return 0.0;
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {'balance': 0.0});
+    if (user['role'] == 'user' || user['role'] == 'pos') {
+      Map<String, dynamic> wallets = user['wallets'] ?? {};
+      return wallets.values.fold(0.0, (sum, val) => sum + (val as num).toDouble());
+    }
+    return (user['balance'] ?? 0.0).toDouble();
+  }
+
+  double get availableBalance => currentUserBalance - heldBalance;
+
+  double get heldBalance {
+    if (_auth?.activeUserPhone == null) return 0.0;
+    final user = _usersDatabase.firstWhere(
+      (u) => u['phone'] == _auth!.activeUserPhone,
+      orElse: () => {'heldBalance': 0.0},
+    );
+    return (user['heldBalance'] ?? 0.0).toDouble();
+  }
+
+  double getWalletBalance(String agentPhone) {
+    if (_auth?.activeUserPhone == null) return 0.0;
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {'wallets': {}});
+    Map<String, dynamic> wallets = user['wallets'] ?? {};
+    return (wallets[agentPhone] ?? 0.0).toDouble();
+  }
+
+  List<Map<String, dynamic>> get userPurchasedCards {
+    if (_auth?.activeUserPhone == null) return [];
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {'purchasedCards': []});
+    var rawList = user['purchasedCards'] ?? [];
+    List<Map<String, dynamic>> structuredList = [];
+    for (var item in rawList) {
+      if (item is Map) {
+        structuredList.add(Map<String, dynamic>.from(item));
+      } else if (item is String) {
+        structuredList.add({
+          'title': item,
+          'pin': 'بيانات قديمة',
+          'price': 0.0,
+          'date': ''
+        });
+      }
+    }
+    return structuredList;
+  }
+
+  String? get currentUserEmail {
+    if (_auth?.activeUserPhone == null) return null;
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {});
+    return user['email'];
+  }
+
+  List<String> get currentUserHiddenSections {
+    if (_auth?.activeUserPhone == null) return [];
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {'role': 'user', 'hiddenSections': <String>[]});
+    List<String> personalHidden = List<String>.from(user['hiddenSections'] ?? []);
+    List<String> universalHidden = user['role'] == 'agent'
+        ? (_settings?.agentUniversalHiddenSections ?? [])
+        : (_settings?.userUniversalHiddenSections ?? []);
+    return {...personalHidden, ...universalHidden}.toList();
+  }
+
+  // ---------- البريد الإلكتروني ----------
+  Future<void> updateUserEmail(String email) async {
+    if (_auth?.activeUserPhone == null) return;
+    await _db.collection('users').doc(_auth!.activeUserPhone).update({'email': email});
+    final index = _usersDatabase.indexWhere((u) => u['phone'] == _auth!.activeUserPhone);
+    if (index != -1) {
+      _usersDatabase[index]['email'] = email;
+      notifyListeners();
+    }
+  }
+
+  Future<String?> loadUserEmail() async {
+    if (_auth?.activeUserPhone == null) return null;
+    final doc = await _db.collection('users').doc(_auth!.activeUserPhone).get();
+    if (doc.exists && doc.data() != null) {
+      final email = doc.data()!['email'];
+      final index = _usersDatabase.indexWhere((u) => u['phone'] == _auth!.activeUserPhone);
+      if (index != -1) {
+        _usersDatabase[index]['email'] = email;
+        notifyListeners();
+      }
+      return email;
+    }
+    return null;
+  }
+
+  // ---------- أرقام الحسابات ----------
+  bool _isSpecialAccountNumber(String numberStr) {
+    final num = int.tryParse(numberStr);
+    if (num == null || num < 10000) return true;
+    if (numberStr.length >= 5 && numberStr.split('').toSet().length == 1) return true;
+    final ascending = '0123456789';
+    if (ascending.contains(numberStr)) return true;
+    final descending = '9876543210';
+    if (descending.contains(numberStr)) return true;
+    return false;
+  }
+
+  Future<String> generateNextAccountNumber() async {
+    final usersSnapshot = await _db
+        .collection('users')
+        .where('accountNumber', isNotEqualTo: null)
+        .get();
+
+    List<int> existingNumbers = [];
+    for (var doc in usersSnapshot.docs) {
+      final data = doc.data();
+      final acc = data['accountNumber'];
+      if (acc != null) {
+        final num = int.tryParse(acc.toString());
+        if (num != null) existingNumbers.add(num);
+      }
+    }
+
+    int candidate = 10000;
+    if (existingNumbers.isNotEmpty) {
+      candidate = existingNumbers.reduce((a, b) => a > b ? a : b) + 1;
+      if (candidate > 19999 && candidate < 100000) {
+        candidate = 100000;
+      } else if (candidate > 199999 && candidate < 1000000) {
+        candidate = 1000000;
+      } else if (candidate > 1999999 && candidate < 10000000) {
+        candidate = 10000000;
+      }
+    }
+
+    while (_isSpecialAccountNumber(candidate.toString())) {
+      candidate++;
+      if (candidate > 19999 && candidate < 100000) {
+        candidate = 100000;
+      } else if (candidate > 199999 && candidate < 1000000) {
+        candidate = 1000000;
+      } else if (candidate > 1999999 && candidate < 10000000) {
+        candidate = 10000000;
+      }
+    }
+
+    return candidate.toString();
+  }
+
+  Future<void> ensureUserAccountNumber() async {
+    if (_auth?.activeUserPhone == null) return;
     try {
-      await wallet.advancedSecureTransferBalance(targetPhone: targetPhone, targetName: targetData?['name'] ?? 'مجهول', amount: amount, taxPercentage: tax, note: note, paymentMethod: method, password: pinOrBio);
-      if (mounted) { _play('success'); _showSuccessSnack('تم التحويل بنجاح! 🎉'); }
-    } catch (e) { if (mounted) { _play('error'); _showErrorSnack(e.toString()); } }
+      final doc = await _db.collection('users').doc(_auth!.activeUserPhone).get();
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>;
+        if (data['accountNumber'] == null) {
+          final newAcc = await generateNextAccountNumber();
+          await _db.collection('users').doc(_auth!.activeUserPhone).update({
+            'accountNumber': newAcc,
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('خطأ في ضمان رقم الحساب: $e');
+    }
   }
 
-  Widget _infoRow(String label, String value) => Padding(padding: const EdgeInsets.symmetric(vertical: 2), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)), Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))]));
+  // ---------- البحث عن المستخدمين ----------
+  Future<Map<String, dynamic>?> searchUserByAccountOrName(String query) async {
+    if (query.trim().isEmpty) return null;
+    final isNumeric = RegExp(r'^\d+$').hasMatch(query.trim());
 
-  // ========== تبويب طلبات الشحن (POS + مستخدمين) ==========
-  void _showRejectReasonDialog(String reqId, String requesterPhone, double amount, WalletProvider wallet) {
-    final reasonController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => Directionality(textDirection: TextDirection.rtl, child: AlertDialog(
-        title: const Text('سبب الرفض'),
-        content: TextField(controller: reasonController, decoration: const InputDecoration(hintText: 'اكتب سبب الرفض ليصل للمستخدم')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
-          ElevatedButton(onPressed: () async {
-            if (reasonController.text.isEmpty) return;
-            Navigator.pop(ctx);
-            await wallet.rejectRechargeRequest(reqId, reasonController.text);
-            _showSuccessSnack('تم رفض الطلب');
-          }, child: const Text('رفض')),
-        ],
-      )),
-    );
+    try {
+      if (isNumeric) {
+        final snap = await _db
+            .collection('users')
+            .where('accountNumber', isEqualTo: query.trim())
+            .limit(1)
+            .get();
+        if (snap.docs.isNotEmpty) {
+          final data = snap.docs.first.data() as Map<String, dynamic>;
+          if (data['isBanned'] == true) return null;
+          return _buildSearchResult(data, snap.docs.first.id);
+        }
+      } else {
+        for (var user in _usersDatabase) {
+          final name = user['name']?.toString() ?? '';
+          if (name.contains(query.trim())) {
+            if (user['isBanned'] == true) continue;
+            return _buildSearchResult(user, user['phone'] ?? '');
+          }
+        }
+        final snap = await _db
+            .collection('users')
+            .where('name', isGreaterThanOrEqualTo: query.trim())
+            .where('name', isLessThan: '${query.trim()}z')
+            .limit(1)
+            .get();
+        if (snap.docs.isNotEmpty) {
+          final data = snap.docs.first.data() as Map<String, dynamic>;
+          return _buildSearchResult(data, snap.docs.first.id);
+        }
+      }
+      return null;
+    } catch (e) {
+      throw 'خطأ في البحث: $e';
+    }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final wallet = context.watch<WalletProvider>();
-    final auth = context.watch<AuthProvider>();
-    final settings = context.watch<SettingsProvider>();
-    final themeProvider = context.watch<ThemeProvider>();
-    final isDark = themeProvider.isDarkMode;
-    final colors = Theme.of(context).colorScheme;
-
-    return Scaffold(
-      key: _scaffoldKey,
-      appBar: CustomHeader(title: 'محفظة وكيل - ${settings.appName}'),
-      drawer: CustomAgentDrawer(agentName: wallet.currentUserName, phoneNumber: auth.activeUserPhone ?? '', role: 'وكيل معتمد', currentBalance: wallet.currentUserBalance),
-      body: Directionality(
-        textDirection: TextDirection.rtl,
-        child: RefreshIndicator(
-          onRefresh: _refreshAll,
-          child: NestedScrollView(
-            headerSliverBuilder: (context, innerBoxIsScrolled) {
-              return [
-                SliverToBoxAdapter(
-                  child: Container(
-                    width: double.infinity,
-                    color: colors.primaryContainer,
-                    padding: const EdgeInsets.only(top: 20, left: 20, right: 20, bottom: 15),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('حصة المبيعات المتاحة', style: TextStyle(color: colors.onPrimaryContainer.withOpacity(0.7), fontSize: 12)),
-                      Row(children: [
-                        Text(_isBalanceHidden ? '******' : intl.NumberFormat('#,###.##').format(wallet.currentUserBalance), style: TextStyle(color: colors.onPrimaryContainer, fontSize: 32, fontWeight: FontWeight.bold)),
-                        const SizedBox(width: 5),
-                        Text('ريال', style: TextStyle(color: colors.onPrimaryContainer.withOpacity(0.7), fontSize: 14)),
-                        IconButton(icon: Icon(_isBalanceHidden ? Icons.visibility_off : Icons.visibility, color: colors.onPrimaryContainer.withOpacity(0.7), size: 20), onPressed: () { _play('click'); setState(() => _isBalanceHidden = !_isBalanceHidden); }),
-                      ]),
-                    ]),
-                  ),
-                ),
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _SliverAppBarDelegate(
-                    TabBar(
-                      controller: _tabController,
-                      labelColor: colors.primary,
-                      unselectedLabelColor: colors.onSurfaceVariant,
-                      indicatorColor: colors.primary,
-                      indicatorWeight: 4,
-                      labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                      tabs: const [Tab(text: 'الرئيسية والطلبات'), Tab(text: 'طلبات الشحن')],
-                    ),
-                    color: colors.surface,
-                  ),
-                ),
-              ];
-            },
-            body: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildMainDashboardTab(wallet, auth, colors),
-                _buildRechargeRequestsTab(wallet, colors),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+  Map<String, dynamic> _buildSearchResult(Map<String, dynamic> data, String phone) {
+    final bool showPhone = data['privacy_showPhone'] ?? true;
+    final bool hideBalance = data['privacy_hideBalance'] ?? false;
+    final bool showFullName = data['privacy_showFullName'] ?? true;
+    return {
+      'accountNumber': data['accountNumber'] ?? 'غير متوفر',
+      'name': showFullName ? (data['name'] ?? 'مجهول') : 'مخفي',
+      'role': data['role'] ?? 'user',
+      'phone': showPhone ? phone : 'مخفي',
+      'balance': hideBalance ? 0.0 : _getUserBalance(data, phone),
+    };
   }
 
-  Widget _buildMainDashboardTab(WalletProvider wallet, AuthProvider auth, ColorScheme colors) {
-    return SingleChildScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      child: Column(children: [
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 20), margin: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: colors.surface, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]),
-          child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-            _buildQuickBtn(Icons.add_card, 'طلب حصة', Colors.green, () => _showRequestBalanceDialog()),
-            _buildQuickBtn(Icons.send, 'تحويل للغير', Colors.orange, _showAdvancedTransferDialog),
-            _buildQuickBtn(Icons.receipt_long, 'الكشف المالي', Colors.blue, () {
-              _play('click');
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const AdvancedStatementScreen()));
-            }),
-            _buildQuickBtn(Icons.account_balance, 'حساباتي', Colors.deepPurple, () { _play('click'); Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentBankAccountsScreen())); }),
-          ]),
-        ),
-        // طلبات الحصة المعلقة
-        StreamBuilder<List<Map<String, dynamic>>>(
-          stream: wallet.getMyPendingQuotaRequests(),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData || snapshot.data!.isEmpty) return const SizedBox();
-            final requests = snapshot.data!;
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('طلباتي المعلقة مع المركز الرئيسي:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-                const SizedBox(height: 10),
-                ...requests.map((req) => _buildPendingQuotaCard(req, wallet, colors)),
-              ]),
-            );
-          },
-        ),
-      ]),
-    );
+  double _getUserBalance(Map<String, dynamic> data, String phone) {
+    if (data['role'] == 'user' || data['role'] == 'pos') {
+      Map<String, dynamic> wallets = data['wallets'] ?? {};
+      return wallets.values.fold(0.0, (sum, val) => sum + (val as num).toDouble());
+    }
+    return (data['balance'] ?? 0.0).toDouble();
   }
 
-  Widget _buildPendingQuotaCard(Map<String, dynamic> req, WalletProvider wallet, ColorScheme colors) {
-    final amount = (req['amount'] ?? 0.0).toDouble();
-    final fee = (req['fee'] ?? 0.0).toDouble();
-    final currency = req['currency'] ?? 'SAR';
-    final exchangeRate = (req['exchangeRate'] ?? 1.0).toDouble();
-    final paymentMethod = req['paymentMethod'] ?? 'offline';
-    final status = req['status'] ?? 'قيد الانتظار';
-    final ts = (req['timestamp'] as Timestamp?)?.toDate();
-    final dateStr = ts != null ? intl.DateFormat('yyyy/MM/dd hh:mm a').format(ts) : '';
-    final provider = req['offlineProviderName'] ?? req['transferSource'] ?? '';
-    final ref = req['reference'] ?? '';
-    final receiptBase64 = req['receiptBase64'] ?? '';
+  Future<Map<String, dynamic>?> searchUserForTransfer(String targetPhone) async {
+    if (_auth?.activeUserPhone == null) throw 'يرجى تسجيل الدخول.';
+    if (targetPhone == _auth!.activeUserPhone) throw 'لا يمكنك تحويل الرصيد لنفسك!';
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      color: colors.surface,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text('$amount ريال', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue)),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: status == 'awaiting_payment' ? Colors.blue.shade50 : Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(status == 'awaiting_payment' ? 'انتظار الدفع' : 'قيد المراجعة',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: status == 'awaiting_payment' ? Colors.blue : Colors.orange)),
-            ),
-          ]),
-          const SizedBox(height: 8),
-          if (dateStr.isNotEmpty) Text('التاريخ: $dateStr', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-          Text('طريقة الدفع: ${paymentMethod == 'bank_transfer' ? 'تحويل بنكي' : paymentMethod == 'offline' ? 'محل صرافة' : 'دفع نقدي'}', style: const TextStyle(fontSize: 11)),
-          if (currency != 'SAR') Text('العملة: $currency | سعر الصرف: $exchangeRate', style: const TextStyle(fontSize: 11)),
-          if (provider.isNotEmpty) Text('المصدر: $provider', style: const TextStyle(fontSize: 11)),
-          if (ref.isNotEmpty) Text('المرجع: $ref', style: const TextStyle(fontSize: 11)),
-          if (fee > 0) Text('الرسوم: $fee ريال', style: const TextStyle(fontSize: 11, color: Colors.red)),
-          if (receiptBase64.isNotEmpty)
-            TextButton.icon(
-              onPressed: () => _showReceiptDialog(receiptBase64),
-              icon: const Icon(Icons.image, size: 16),
-              label: const Text('عرض السند'),
-            ),
-          const SizedBox(height: 8),
-          Row(children: [
-            Expanded(child: OutlinedButton.icon(onPressed: () async { _play('warning'); await wallet.cancelQuotaRequest(req['docId']); _showSuccessSnack('تم إلغاء الطلب'); }, icon: const Icon(Icons.cancel, size: 16), label: const Text('إلغاء'), style: OutlinedButton.styleFrom(foregroundColor: Colors.red))),
-            const SizedBox(width: 10),
-            Expanded(child: ElevatedButton.icon(onPressed: () => _showRequestBalanceDialog(existingRequest: req), icon: const Icon(Icons.edit, size: 16), label: const Text('تعديل'), style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white))),
-          ]),
-        ]),
-      ),
-    );
+    try {
+      final doc = await _db.collection('users').doc(targetPhone).get();
+      if (!doc.exists) return null;
+
+      final data = doc.data() as Map<String, dynamic>;
+
+      var lastTxn = await _db
+          .collection('transactions')
+          .where('toPhone', isEqualTo: targetPhone)
+          .where('fromPhone', isEqualTo: _auth!.activeUserPhone)
+          .orderBy('timestamp', descending: true)
+          .limit(1)
+          .get();
+
+      String lastRecharge = 'لا يوجد سجل سابق';
+      if (lastTxn.docs.isNotEmpty) {
+        var tData = lastTxn.docs.first.data() as Map<String, dynamic>;
+        if (tData['timestamp'] != null) {
+          lastRecharge = DateFormat('yyyy-MM-dd hh:mm a')
+              .format((tData['timestamp'] as Timestamp).toDate());
+        }
+      }
+
+      double displayBalance = 0.0;
+      if (data['role'] == 'user' || data['role'] == 'pos') {
+        Map<String, dynamic> wallets = data['wallets'] ?? {};
+        displayBalance = (wallets[_auth!.activeUserPhone] ?? 0.0).toDouble();
+      } else {
+        displayBalance = (data['balance'] ?? 0.0).toDouble();
+      }
+
+      return {
+        'name': data['name'] ?? 'مجهول',
+        'role': data['role'] ?? 'user',
+        'networkName': data['networkName'] ?? 'غير محدد',
+        'balance': displayBalance,
+        'lastRecharge': lastRecharge,
+      };
+    } catch (e) {
+      throw 'حدث خطأ أثناء البحث عن الرقم.';
+    }
   }
 
-  Widget _buildRechargeRequestsTab(WalletProvider wallet, ColorScheme colors) {
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: wallet.getPendingPosRechargeRequests(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-        if (!snapshot.hasData || snapshot.data!.isEmpty) return const Center(child: Text('لا توجد طلبات شحن حالياً.', style: TextStyle(color: Colors.grey)));
-        final requests = snapshot.data!;
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: requests.length,
-          itemBuilder: (context, i) {
-            var req = requests[i];
-            final String userName = req['userName'] ?? 'مستخدم';
-            final String accountNumber = req['accountNumber'] ?? 'غير متوفر';
-            final double amount = (req['amount'] ?? 0.0).toDouble();
-            final String paymentMethod = req['paymentMethod'] ?? 'حوالة بنكية';
-            final String currency = req['currency'] ?? 'SAR';
-            final double exchangeRate = (req['exchangeRate'] ?? 1.0).toDouble();
-            final String reference = req['reference'] ?? '';
-            final String? receiptBase64 = req['receiptBase64'];
-            final Timestamp? ts = req['timestamp'] as Timestamp?;
-            final String dateStr = ts != null ? intl.DateFormat('yyyy/MM/dd hh:mm a').format(ts.toDate()) : '';
-            final String status = req['status'] ?? 'قيد الانتظار';
-
-            return Card(
-              margin: const EdgeInsets.only(bottom: 10),
-              color: colors.surface,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    Expanded(child: Text(userName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14))),
-                    Text('$amount ريال', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.green)),
-                  ]),
-                  const SizedBox(height: 4),
-                  Text('رقم الحساب: $accountNumber', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                  Text('طريقة الدفع: $paymentMethod', style: const TextStyle(fontSize: 11)),
-                  if (currency != 'SAR') Text('العملة: $currency | سعر الصرف: $exchangeRate', style: const TextStyle(fontSize: 11)),
-                  if (reference.isNotEmpty) Text('المرجع: $reference', style: const TextStyle(fontSize: 11)),
-                  if (dateStr.isNotEmpty) Text('التاريخ: $dateStr', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                  Row(children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: status == 'awaiting_payment' ? Colors.blue.shade50 : Colors.orange.shade50,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(status == 'awaiting_payment' ? 'انتظار الدفع' : 'معلق',
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: status == 'awaiting_payment' ? Colors.blue : Colors.orange)),
-                    ),
-                  ]),
-                  if (receiptBase64 != null && receiptBase64.isNotEmpty)
-                    TextButton.icon(
-                      onPressed: () => _showReceiptDialog(receiptBase64),
-                      icon: const Icon(Icons.image, size: 16),
-                      label: const Text('عرض السند'),
-                    ),
-                  const SizedBox(height: 8),
-                  Row(children: [
-                    Expanded(child: OutlinedButton(onPressed: () => _showRejectReasonDialog(req['docId'], req['userPhone'], amount, wallet), style: OutlinedButton.styleFrom(foregroundColor: Colors.red), child: const Text('رفض'))),
-                    const SizedBox(width: 10),
-                    Expanded(child: ElevatedButton(onPressed: () async {
-                      bool? confirm = await showDialog<bool>(context: context, builder: (ctx) => Directionality(textDirection: TextDirection.rtl, child: AlertDialog(title: const Text('تأكيد الموافقة'), content: Text('سيتم إضافة $amount ريال لـ $userName.'), actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('تراجع')), ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('موافقة'))])));
-                      if (confirm == true) {
-                        await wallet.agentAcceptUserRecharge(req['docId'], req['userPhone'], amount);
-                        _showSuccessSnack('تمت الموافقة وإضافة الرصيد');
-                      }
-                    }, style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white), child: const Text('موافقة ✅'))),
-                  ]),
-                ]),
-              ),
-            );
-          },
-        );
-      },
-    );
+  // ---------- دوال المحافظ والتحويلات ----------
+  Future<void> transferToUser({
+    required String targetPhone,
+    required double amount,
+  }) async {
+    if (availableBalance < amount) throw 'الرصيد المتاح غير كافٍ.';
+    final api = ApiService(authToken: _auth?.authToken);
+    await api.post('/api/transfer', {
+      'targetPhone': targetPhone,
+      'amount': amount,
+    }, authenticate: true);
   }
 
-  Widget _buildQuickBtn(IconData icon, String label, Color color, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap, borderRadius: BorderRadius.circular(15),
-      child: Column(children: [
-        Container(padding: const EdgeInsets.all(15), decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle), child: Icon(icon, color: color, size: 28)),
-        const SizedBox(height: 8),
-        Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-      ]),
-    );
+  Future<void> secureTransferBalance({
+    required String targetPhone,
+    required String targetName,
+    required double amount,
+    required String password,
+  }) async {
+    await advancedSecureTransferBalance(
+        targetPhone: targetPhone,
+        targetName: targetName,
+        amount: amount,
+        taxPercentage: 0.0,
+        note: '',
+        paymentMethod: 'نقد',
+        password: password);
   }
-}
 
-class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
-  final TabBar _tabBar;
-  final Color color;
-  _SliverAppBarDelegate(this._tabBar, {required this.color});
-  @override double get minExtent => _tabBar.preferredSize.height;
-  @override double get maxExtent => _tabBar.preferredSize.height;
-  @override Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) => Container(color: color, child: _tabBar);
-  @override bool shouldRebuild(_SliverAppBarDelegate oldDelegate) => false;
+  Future<void> advancedSecureTransferBalance({
+    required String targetPhone,
+    required String targetName,
+    required double amount,
+    required double taxPercentage,
+    required String note,
+    required String paymentMethod,
+    required String password,
+  }) async {
+    if (_auth?.activeUserPhone == null) throw 'يرجى تسجيل الدخول.';
+
+    final myData = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {});
+    if (myData['password'] != password) {
+      throw 'كلمة المرور غير صحيحة ❌';
+    }
+
+    final api = ApiService(authToken: _auth?.authToken);
+    await api.post('/api/transfer', {
+      'targetPhone': targetPhone,
+      'amount': amount,
+    }, authenticate: true);
+  }
+
+  // ========== 🆕 دالة مساعدة: جلب سعر الصرف من الإعدادات ==========
+  Future<double> getExchangeRate(String fromCurrency, String toCurrency) async {
+    if (fromCurrency == toCurrency) return 1.0;
+    try {
+      final rates = _settings?.exchangeRates ?? {};
+      final key = '${fromCurrency}_$toCurrency';
+      return rates[key] ?? 1.0;
+    } catch (e) {
+      return 1.0;
+    }
+  }
+
+  // ========== 🆕 تحديث: طلب حصة (للوكلاء) - يدعم الدفع البنكي والصرافة ==========
+  Future<void> submitSaaSRechargeRequest({
+    required double quotaAmount,
+    required double feeAmount,
+    required String adminBankName,
+    required String transferSource,
+    required String reference,
+    required String base64Image,
+    // 🆕 وسائط جديدة
+    String paymentMethod = 'offline', // 'offline', 'bank_transfer', 'cash'
+    String currency = 'SAR',
+    double? exchangeRate,
+    String? sourceBankAccountId,
+    String? destinationBankAccountId,
+    String? offlineProviderName,
+    String? offlineReference,
+    String? offlineReceiptBase64,
+  }) async {
+    final api = ApiService(authToken: _auth?.authToken);
+    
+    // حساب سعر الصرف تلقائياً إن لم يُقدم
+    double finalExchangeRate = exchangeRate ?? 1.0;
+    if (currency != 'SAR') {
+      finalExchangeRate = await getExchangeRate(currency, 'SAR');
+    }
+
+    await api.post('/api/recharge-request', {
+      'amount': quotaAmount,
+      'bankName': adminBankName,
+      'transferSource': paymentMethod == 'offline' ? (transferSource) : (paymentMethod == 'bank_transfer' ? 'تحويل بنكي' : 'دفع نقدي'),
+      'reference': reference,
+      'receiptBase64': base64Image,
+      'paymentMethod': paymentMethod,
+      'currency': currency,
+      'exchangeRate': finalExchangeRate,
+      'sourceBankAccountId': sourceBankAccountId ?? '',
+      'destinationBankAccountId': destinationBankAccountId ?? '',
+      'offlineProviderName': offlineProviderName ?? '',
+      'offlineReference': offlineReference ?? '',
+      'offlineReceiptBase64': offlineReceiptBase64 ?? '',
+    }, authenticate: true);
+  }
+
+  // ========== 🆕 تحديث: طلب شحن من مستخدم لوكيل - يدعم طرق الدفع الجديدة ==========
+  Future<void> requestRechargeFromAgent({
+    required String agentPhone,
+    required double amount,
+    required String paymentMethod, // 'bank_transfer', 'offline', 'cash'
+    required String reference,
+    String? base64Image,
+    String? fullName,
+    // 🆕 وسائط جديدة
+    String currency = 'SAR',
+    double? exchangeRate,
+    String? sourceBankAccountId,
+    String? destinationBankAccountId,
+    String? offlineProviderName,
+    String? offlineReference,
+  }) async {
+    if (_auth?.activeUserPhone == null) throw 'يرجى تسجيل الدخول.';
+    
+    // حساب سعر الصرف
+    double finalExchangeRate = exchangeRate ?? 1.0;
+    if (currency != 'SAR') {
+      finalExchangeRate = await getExchangeRate(currency, 'SAR');
+    }
+
+    final docData = <String, dynamic>{
+      'userPhone': _auth!.activeUserPhone,
+      'userName': currentUserName,
+      'targetPhone': agentPhone,
+      'amount': amount,
+      'paymentMethod': paymentMethod,
+      'reference': reference,
+      'receiptBase64': base64Image ?? '',
+      'currency': currency,
+      'exchangeRate': finalExchangeRate,
+      'sourceBankAccountId': sourceBankAccountId ?? '',
+      'destinationBankAccountId': destinationBankAccountId ?? '',
+      'offlineProviderName': offlineProviderName ?? '',
+      'offlineReference': offlineReference ?? '',
+      'status': paymentMethod == 'bank_transfer' ? 'awaiting_payment' : 'قيد الانتظار',
+      'type': 'user_to_agent',
+      'timestamp': FieldValue.serverTimestamp(),
+    };
+    if (fullName != null && fullName.isNotEmpty) {
+      docData['fullName'] = fullName;
+    }
+    await _db.collection('user_recharges').add(docData);
+    sendNotification(
+        targetPhones: [agentPhone],
+        title: 'طلب شحن جديد 💰',
+        body: '${currentUserName} يطلب شحن مبلغ $amount ريال.');
+  }
+
+  Future<void> agentAcceptUserRecharge(
+      String requestId, String requesterPhone, double amount) async {
+    if (_auth?.activeUserPhone == null) return;
+
+    final myDoc = await _db
+        .collection('users')
+        .doc(_auth!.activeUserPhone)
+        .get();
+    final myData = myDoc.data() ?? {};
+    if ((myData['balance'] ?? 0.0) < amount) {
+      throw 'رصيدك لا يكفي! قم بتغذية رصيدك أولاً.';
+    }
+
+    final requesterDoc =
+        await _db.collection('users').doc(requesterPhone).get();
+    final requesterData = requesterDoc.data() ?? {};
+
+    WriteBatch batch = _db.batch();
+
+    batch.update(
+        _db.collection('user_recharges').doc(requestId), {'status': 'مقبول'});
+    batch.update(myDoc.reference, {'balance': FieldValue.increment(-amount)});
+
+    batch.update(requesterDoc.reference,
+        {'wallets.${_auth!.activeUserPhone}': FieldValue.increment(amount)});
+
+    batch.set(_db.collection('transactions').doc(), {
+      'fromPhone': _auth!.activeUserPhone,
+      'toPhone': requesterPhone,
+      'agentPhone': _auth!.activeUserPhone,
+      'agentName': currentUserName,
+      'targetName': requesterData['name'] ?? 'مستخدم',
+      'networkName': requesterData['networkName'] ?? 'غير محدد',
+      'amount': amount,
+      'type': 'transfer',
+      'paymentMethod': 'آجل (من حصة الوكيل)',
+      'title': 'موافقة على طلب شحن من ${requesterData['name'] ?? 'مستخدم'}',
+      'reference': 'RCH-$requestId',
+      'timestamp': FieldValue.serverTimestamp()
+    });
+
+    DocumentReference notifRef = _db.collection('notifications').doc();
+    batch.set(notifRef, {
+      'targetPhones': [requesterPhone],
+      'title': 'تم شحن محفظتك 🎉',
+      'body':
+          'تمت الموافقة وإضافة $amount ريال لمحفظتك من $currentUserName.',
+      'timestamp': FieldValue.serverTimestamp(),
+      'isRead': false,
+      'readBy': [],
+    });
+
+    await batch.commit();
+  }
+
+  // ---------- شراء كرت (فردي وجماعي) ----------
+  Future<String> executeRealPurchase(
+    double price, String cardTitle, String agentPhone, String categoryId) async {
+    if (_auth?.activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً.';
+    if (availableBalance < price) throw 'الرصيد المتاح غير كافٍ.';
+    final api = ApiService(authToken: _auth?.authToken);
+    final result = await api.post('/api/purchase', {
+      'agentPhone': agentPhone,
+      'categoryId': categoryId,
+      'cardTitle': cardTitle,
+      'price': price,
+    }, authenticate: true);
+    return result['pin'] as String;
+  }
+
+  Future<List<String>> executeBulkPurchase({
+    required double totalPrice,
+    required double unitPrice,
+    required int quantity,
+    required double discountAmount,
+    required double couponDiscount,
+    required String cardTitle,
+    required String agentPhone,
+    required String categoryId,
+    String? appliedCouponId,
+  }) async {
+    if (_auth?.activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً لإتمام الشراء.';
+    if (availableBalance < totalPrice) throw 'الرصيد المتاح غير كافٍ.';
+
+    final userRef = _db.collection('users').doc(_auth!.activeUserPhone);
+
+    final availableCardsQuery = await _db
+        .collection('cards')
+        .where('agentPhone', isEqualTo: agentPhone)
+        .where('categoryId', isEqualTo: categoryId)
+        .where('status', isEqualTo: 'متاح')
+        .limit(quantity)
+        .get();
+
+    if (availableCardsQuery.docs.length < quantity) {
+      throw 'عذراً، لا توجد كروت كافية. المتاح: ${availableCardsQuery.docs.length}';
+    }
+
+    final List<String> pins = [];
+    final List<DocumentReference> cardRefs = [];
+
+    for (var doc in availableCardsQuery.docs) {
+      final cardData = doc.data() as Map<String, dynamic>;
+      pins.add(cardData['pin'] ?? 'غير معروف');
+      cardRefs.add(doc.reference);
+    }
+
+    await _db.runTransaction((transaction) async {
+      final userSnapshot = await transaction.get(userRef);
+      if (!userSnapshot.exists) throw 'حساب المستخدم غير موجود.';
+
+      final userData = userSnapshot.data() as Map<String, dynamic>;
+      Map<String, dynamic> wallets = userData['wallets'] ?? {};
+      double currentWalletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
+
+      double creditLimit = 0.0;
+      if (userData['role'] == 'pos') {
+        Map<String, dynamic> relations = userData['agent_relations'] ?? {};
+        Map<String, dynamic> myRel = relations[agentPhone] ?? {};
+        creditLimit = (myRel['creditLimit'] ?? 0.0).toDouble();
+      }
+
+      if ((currentWalletBalance + creditLimit) < totalPrice) {
+        throw 'الرصيد أو الحد الائتماني غير كافٍ.';
+      }
+
+      transaction.update(userRef, {
+        'wallets.$agentPhone': FieldValue.increment(-totalPrice),
+      });
+
+      for (var ref in cardRefs) {
+        transaction.update(ref, {
+          'status': 'مباع',
+          'buyerPhone': _auth!.activeUserPhone,
+          'soldAt': FieldValue.serverTimestamp(),
+          'soldPrice': unitPrice,
+          'discountAmount': discountAmount + couponDiscount,
+        });
+      }
+
+      for (var pin in pins) {
+        final purchaseInvoice = {
+          'title': cardTitle,
+          'pin': pin,
+          'price': unitPrice,
+          'agentPhone': agentPhone,
+          'date': DateTime.now().toIso8601String(),
+        };
+        transaction.update(userRef, {
+          'purchasedCards': FieldValue.arrayUnion([purchaseInvoice])
+        });
+      }
+
+      transaction.update(_db.collection('system').doc('main_info'), {
+        'totalSystemCards': FieldValue.increment(-quantity)
+      });
+
+      DocumentReference txnRef = _db.collection('transactions').doc();
+      transaction.set(txnRef, {
+        'fromPhone': _auth!.activeUserPhone,
+        'toPhone': agentPhone,
+        'agentPhone': agentPhone,
+        'agentName': currentUserName,
+        'targetName': userData['name'] ?? 'زبون',
+        'networkName': userData['networkName'] ?? 'غير محدد',
+        'amount': totalPrice,
+        'fee': 0.0,
+        'paymentMethod': 'خصم من المحفظة',
+        'type': 'sale',
+        'title': 'بيع $quantity كرت: $cardTitle',
+        'reference': 'BULK-${DateTime.now().millisecondsSinceEpoch}',
+        'discount': discountAmount + couponDiscount,
+        'timestamp': FieldValue.serverTimestamp()
+      });
+
+      if (appliedCouponId != null) {
+        transaction.update(_db.collection('coupons').doc(appliedCouponId), {
+          'currentUsage': FieldValue.increment(1),
+        });
+      }
+    });
+
+    // 🆕 إضافة نقاط الولاء بعد إتمام الشراء
+    try {
+      await addLoyaltyPoints(
+        agentPhone: agentPhone,
+        purchaseAmount: totalPrice,
+      );
+    } catch (e) {
+      debugPrint('فشل إضافة نقاط الولاء: $e');
+    }
+
+    return pins;
+  }
+
+  // ---------- الحسابات البنكية للوكيل ----------
+  Future<void> addAgentBankAccount(String networkName, String agentName,
+      String bankName, String accNumber, String note, [List<String>? networkIds]) async {
+    if (_auth?.activeUserPhone == null) return;
+    try {
+      int newOrder = _myAgentBankAccounts.length;
+      final docRef = await _db.collection('agent_bank_accounts').add({
+        'agentPhone': _auth!.activeUserPhone,
+        'networkName': networkName,
+        'agentName': agentName,
+        'bankName': bankName,
+        'accountNumber': accNumber,
+        'note': note.isNotEmpty ? note : 'لا توجد ملاحظات',
+        'status': 'نشط',
+        'order': newOrder,
+        'createdAt': FieldValue.serverTimestamp(),
+        'networkIds': networkIds ?? [],
+      });
+
+      _myAgentBankAccounts.add({
+        'docId': docRef.id,
+        'agentPhone': _auth!.activeUserPhone,
+        'networkName': networkName,
+        'agentName': agentName,
+        'bankName': bankName,
+        'accountNumber': accNumber,
+        'note': note.isNotEmpty ? note : 'لا توجد ملاحظات',
+        'status': 'نشط',
+        'order': newOrder,
+        'createdAt': Timestamp.now(),
+        'networkIds': networkIds ?? [],
+      });
+      notifyListeners();
+    } catch (e) {
+      throw 'خطأ في إضافة الحساب: $e';
+    }
+  }
+
+  Future<void> updateAgentBankAccount(String docId, String networkName,
+      String agentName, String bankName, String accNumber, String note, [List<String>? networkIds]) async {
+    final updateData = <String, dynamic>{
+      'networkName': networkName,
+      'agentName': agentName,
+      'bankName': bankName,
+      'accountNumber': accNumber,
+      'note': note,
+    };
+    if (networkIds != null) {
+      updateData['networkIds'] = networkIds;
+    }
+    await _db.collection('agent_bank_accounts').doc(docId).update(updateData);
+
+    final index = _myAgentBankAccounts.indexWhere((a) => a['docId'] == docId);
+    if (index != -1) {
+      _myAgentBankAccounts[index].addAll(updateData);
+      notifyListeners();
+    }
+  }
+
+  Future<void> toggleAgentBankAccountStatus(
+      String docId, String currentStatus) async {
+    String newStatus = currentStatus == 'نشط' ? 'موقوف' : 'نشط';
+    await _db
+        .collection('agent_bank_accounts')
+        .doc(docId)
+        .update({'status': newStatus});
+
+    final index = _myAgentBankAccounts.indexWhere((a) => a['docId'] == docId);
+    if (index != -1) {
+      _myAgentBankAccounts[index]['status'] = newStatus;
+      notifyListeners();
+    }
+  }
+
+  Future<void> deleteAgentBankAccount(String docId) async {
+    await _db.collection('agent_bank_accounts').doc(docId).delete();
+    _myAgentBankAccounts.removeWhere((a) => a['docId'] == docId);
+    notifyListeners();
+  }
+
+  Future<void> reorderAgentBankAccounts(int oldIndex, int newIndex) async {
+    if (oldIndex < newIndex) newIndex -= 1;
+    final item = _myAgentBankAccounts.removeAt(oldIndex);
+    _myAgentBankAccounts.insert(newIndex, item);
+    notifyListeners();
+    WriteBatch batch = _db.batch();
+    for (int i = 0; i < _myAgentBankAccounts.length; i++) {
+      batch.update(
+          _db.collection('agent_bank_accounts').doc(_myAgentBankAccounts[i]['docId']),
+          {'order': i});
+    }
+    await batch.commit();
+  }
+
+  // ---------- نقاط البيع (تمويل فقط) ----------
+  Future<void> fundSubAgent(String posPhone, double amount) async {
+    if (_auth?.activeUserPhone == null) return;
+
+    final agentDoc = await _db.collection('users').doc(_auth!.activeUserPhone).get();
+    final agentData = agentDoc.data() ?? {};
+    if ((agentData['balance'] ?? 0.0) < amount) {
+      throw 'رصيد الحصة غير كافٍ لإتمام التحويل.';
+    }
+
+    final posDoc = await _db.collection('users').doc(posPhone).get();
+    final posData = posDoc.data() ?? {};
+
+    WriteBatch batch = _db.batch();
+
+    batch.update(agentDoc.reference, {'balance': FieldValue.increment(-amount)});
+    batch.update(_db.collection('users').doc(posPhone),
+        {'wallets.${_auth!.activeUserPhone}': FieldValue.increment(amount)});
+
+    batch.set(_db.collection('transactions').doc(), {
+      'fromPhone': _auth!.activeUserPhone,
+      'toPhone': posPhone,
+      'agentPhone': _auth!.activeUserPhone,
+      'agentName': currentUserName,
+      'targetName': posData['name'] ?? 'نقطة بيع',
+      'networkName': posData['networkName'] ?? 'غير محدد',
+      'amount': amount,
+      'fee': 0.0,
+      'type': 'transfer',
+      'paymentMethod': 'آجل (من حصة الوكيل)',
+      'title': 'تغذية محفظة نقطة البيع: ${posData['name'] ?? ''}',
+      'reference': 'FND-${DateTime.now().millisecondsSinceEpoch}',
+      'timestamp': FieldValue.serverTimestamp()
+    });
+
+    batch.set(_db.collection('notifications').doc(), {
+      'targetPhones': [posPhone],
+      'title': 'تغذية رصيد 💰',
+      'body': 'تم تحويل $amount ريال لمحفظتك من الوكيل $currentUserName.',
+      'timestamp': FieldValue.serverTimestamp(),
+      'isRead': false,
+      'readBy': [],
+    });
+
+    await batch.commit();
+  }
+
+  Future<void> manualSettlement({
+    required String agentPhone,
+    required String agentName,
+    required double amount,
+    required String reason,
+  }) async {
+    try {
+      WriteBatch batch = _db.batch();
+      DocumentReference agentRef = _db.collection('users').doc(agentPhone);
+      batch.update(agentRef, {'balance': FieldValue.increment(amount)});
+
+      final agentDoc = await _db.collection('users').doc(agentPhone).get();
+      final agentData = agentDoc.data() ?? {};
+
+      DocumentReference transactionRef = _db.collection('transactions').doc();
+      batch.set(transactionRef, {
+        'fromPhone': '774578241',
+        'toPhone': agentPhone,
+        'agentPhone': agentPhone,
+        'agentName': agentName,
+        'targetName': 'المركز الرئيسي',
+        'networkName': agentData['networkName'] ?? 'غير محدد',
+        'type': amount > 0 ? 'deposit' : 'expense',
+        'title': amount > 0
+            ? 'تسوية يدوية للحصة (إضافة)'
+            : 'تسوية يدوية للحصة (خصم)',
+        'amount': amount.abs(),
+        'fee': 0.0,
+        'paymentMethod': 'تسوية إدارية',
+        'reason': reason,
+        'reference': 'SET-${DateTime.now().millisecondsSinceEpoch}',
+        'timestamp': FieldValue.serverTimestamp()
+      });
+
+      DocumentReference notifRef = _db.collection('notifications').doc();
+      batch.set(notifRef, {
+        'targetPhones': [agentPhone],
+        'title': 'تسوية يدوية لحصتك ⚙️',
+        'body':
+            'تم ${amount > 0 ? "إضافة" : "خصم"} مبلغ ${amount.abs()} ريال.\nالسبب: $reason',
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'readBy': [],
+      });
+
+      await batch.commit();
+    } catch (e) {
+      throw 'فشل التسوية اليدوية: $e';
+    }
+  }
+
+  // ---------- طلبات الشحن والإيداع ----------
+  Future<String> uploadReceiptImage(File file) async {
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final ref = FirebaseStorage.instance
+        .ref()
+        .child('receipts')
+        .child(currentUserId)
+        .child(fileName);
+    final uploadTask = ref.putFile(file);
+    final snapshot = await uploadTask.whenComplete(() => null);
+    return await snapshot.ref.getDownloadURL();
+  }
+
+  String get currentUserId => _auth?.activeUserPhone ?? '';
+
+  Future<void> submitDepositRequest({
+    required String bankAccountId,
+    required double amount,
+    required String reference,
+    required String receiptImageUrl,
+  }) async {
+    String? agentId;
+    String? bankName;
+    String? accountNumber;
+
+    final agentsSnap = await _db
+        .collection('users')
+        .where('role', isEqualTo: 'agent')
+        .where('networkIds', arrayContainsAny: currentUserNetworkIds)
+        .get();
+
+    for (var agentDoc in agentsSnap.docs) {
+      final accDoc = await _db.collection('agent_bank_accounts').doc(bankAccountId).get();
+      if (accDoc.exists) {
+        agentId = agentDoc.id;
+        bankName = accDoc.data()?['bankName'] ?? '';
+        accountNumber = accDoc.data()?['accountNumber'] ?? '';
+        break;
+      }
+    }
+
+    if (agentId == null) throw Exception('الحساب غير موجود');
+
+    await _db.collection('depositRequests').add({
+      'userId': currentUserId,
+      'userName': currentUserName,
+      'agentId': agentId,
+      'bankAccountId': bankAccountId,
+      'bankName': bankName,
+      'accountNumber': accountNumber,
+      'amount': amount,
+      'reference': reference,
+      'receiptImageUrl': receiptImageUrl,
+      'status': 'pending',
+      'rejectionReason': '',
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> cancelDepositRequest(String docId) async {
+    await _db.collection('depositRequests').doc(docId).update({
+      'status': 'cancelled',
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Stream<List<Map<String, dynamic>>> getPendingDepositRequestsStream() {
+    return _db
+        .collection('depositRequests')
+        .where('userId', isEqualTo: currentUserId)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) {
+              final data = doc.data();
+              return {
+                'docId': doc.id,
+                ...data,
+              };
+            }).toList());
+  }
+
+  Stream<List<Map<String, dynamic>>> getMyPendingUserRecharges() {
+    if (_auth?.activeUserPhone == null) return Stream.value([]);
+    return _db
+        .collection('user_recharges')
+        .where('userPhone', isEqualTo: _auth!.activeUserPhone)
+        .where('status', whereIn: ['قيد الانتظار', 'awaiting_payment'])
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) {
+              final data = doc.data();
+              data['docId'] = doc.id;
+              return data;
+            }).toList());
+  }
+
+  Stream<List<Map<String, dynamic>>> getMyPendingQuotaRequests() {
+    if (_auth?.activeUserPhone == null) return Stream.value([]);
+    return _db
+        .collection('recharge_requests')
+        .where('userPhone', isEqualTo: _auth!.activeUserPhone)
+        .where('type', isEqualTo: 'saas_quota')
+        .where('status', whereIn: ['قيد الانتظار', 'awaiting_payment'])
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) {
+              final data = doc.data();
+              data['docId'] = doc.id;
+              return data;
+            }).toList());
+  }
+
+  Stream<List<Map<String, dynamic>>> getPendingPosRechargeRequests() {
+    if (_auth?.activeUserPhone == null) return Stream.value([]);
+    return _db
+        .collection('user_recharges')
+        .where('targetPhone', isEqualTo: _auth!.activeUserPhone)
+        .where('status', whereIn: ['قيد الانتظار', 'awaiting_payment'])
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) {
+              final data = doc.data();
+              data['docId'] = doc.id;
+              return data;
+            }).toList());
+  }
+
+  Future<void> cancelQuotaRequest(String docId) async {
+    await _db.collection('recharge_requests').doc(docId).delete();
+  }
+
+  // ---------- اشتراكات الوكلاء ----------
+  Map<String, dynamic> get subscriptionStats {
+    int active = 0, expiringSoon = 0, frozen = 0;
+    double realExpectedRevenue = 0.0;
+    for (var agent in agentsList) {
+      String status = agent['subStatus'] ?? 'نشط';
+      if (status == 'نشط' || status == 'فترة مجانية') {
+        active++;
+        realExpectedRevenue += (agent['subPrice'] ?? 0.0).toDouble();
+      } else if (status == 'إنذار') {
+        expiringSoon++;
+      } else if (status == 'مجمد' || status == 'موقوف مؤقتاً') {
+        frozen++;
+      }
+    }
+    return {
+      'active': active,
+      'expiringSoon': expiringSoon,
+      'frozen': frozen,
+      'expectedRevenue': realExpectedRevenue
+    };
+  }
+
+  // ---------- دوال مساعدة (شبكات الوكلاء) ----------
+  Future<List<Map<String, dynamic>>> getAgentNetworkNames() async {
+    if (_auth?.activeUserPhone == null) return [];
+    try {
+      final snap = await _db
+          .collection('networks')
+          .where('agentPhone', isEqualTo: _auth!.activeUserPhone)
+          .where('isActive', isEqualTo: true)
+          .get();
+      return snap.docs.map((doc) => {
+        'networkId': doc.id,
+        'networkName': doc['name'] ?? 'بدون اسم',
+      }).toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getRealAgentsForRecharge() async {
+    try {
+      final agentsSnap = await _db
+          .collection('users')
+          .where('role', isEqualTo: 'agent')
+          .where('status', isEqualTo: 'نشط')
+          .get();
+
+      List<Map<String, dynamic>> realAgents = [];
+
+      for (var doc in agentsSnap.docs) {
+        final agent = doc.data();
+        final phone = doc.id;
+
+        final networksSnap = await _db
+            .collection('networks')
+            .where('agentPhone', isEqualTo: phone)
+            .where('isActive', isEqualTo: true)
+            .limit(1)
+            .get();
+
+        if (networksSnap.docs.isEmpty) continue;
+
+        final banksSnap = await _db
+            .collection('agent_bank_accounts')
+            .where('agentPhone', isEqualTo: phone)
+            .where('status', isEqualTo: 'نشط')
+            .limit(1)
+            .get();
+
+        if (banksSnap.docs.isEmpty) continue;
+
+        realAgents.add({
+          'phone': phone,
+          'name': agent['name'] ?? '',
+          'networkName': agent['networkName'] ?? '',
+        });
+      }
+
+      return realAgents;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getActiveNetworksForRecharge() async {
+    try {
+      final agentsSnap = await _db
+          .collection('users')
+          .where('role', isEqualTo: 'agent')
+          .where('status', isEqualTo: 'نشط')
+          .get();
+
+      List<Map<String, dynamic>> activeNetworks = [];
+
+      for (var agentDoc in agentsSnap.docs) {
+        final agentPhone = agentDoc.id;
+        final agentData = agentDoc.data();
+
+        final banksSnap = await _db
+            .collection('agent_bank_accounts')
+            .where('agentPhone', isEqualTo: agentPhone)
+            .where('status', isEqualTo: 'نشط')
+            .limit(1)
+            .get();
+
+        if (banksSnap.docs.isEmpty) continue;
+
+        final networksSnap = await _db
+            .collection('networks')
+            .where('agentPhone', isEqualTo: agentPhone)
+            .where('isActive', isEqualTo: true)
+            .get();
+
+        for (var netDoc in networksSnap.docs) {
+          final netData = netDoc.data();
+          activeNetworks.add({
+            'networkId': netDoc.id,
+            'networkName': netData['name'] ?? 'بدون اسم',
+            'agentPhone': agentPhone,
+            'agentName': agentData['name'] ?? agentPhone,
+          });
+        }
+      }
+
+      return activeNetworks;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getAgentBankAccountsForUser(String agentPhone) async {
+    final snap = await _db
+        .collection('agent_bank_accounts')
+        .where('agentPhone', isEqualTo: agentPhone)
+        .where('status', isEqualTo: 'نشط')
+        .orderBy('order')
+        .get();
+    return snap.docs.map((doc) => {'docId': doc.id, ...doc.data()}).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> getActiveBankAccountsForUserNetworks() async {
+    final agentsSnap = await _db
+        .collection('users')
+        .where('role', isEqualTo: 'agent')
+        .get();
+
+    List<Map<String, dynamic>> accounts = [];
+
+    for (var agentDoc in agentsSnap.docs) {
+      final agentId = agentDoc.id;
+      final bankAccSnap = await _db
+          .collection('agent_bank_accounts')
+          .where('agentPhone', isEqualTo: agentId)
+          .where('status', isEqualTo: 'نشط')
+          .get();
+
+      for (var accDoc in bankAccSnap.docs) {
+        final data = accDoc.data();
+        accounts.add({
+          'docId': accDoc.id,
+          'agentId': agentId,
+          'agentPhone': agentId,
+          ...data,
+        });
+      }
+    }
+
+    return accounts;
+  }
+
+  // ========== 🆕 تحديث: قبول شحن مشرف (يدوي) مع العملة وطريقة الدفع ==========
+  Future<void> adminAcceptSaaSRecharge(String requestId, String agentPhone,
+      double quotaAmount, double feeAmount) async {
+    final batch = _db.batch();
+
+    // جلب بيانات الطلب لاستخراج العملة وطريقة الدفع
+    final reqDoc = await _db.collection('recharge_requests').doc(requestId).get();
+    final reqData = reqDoc.data() ?? {};
+    final currency = reqData['currency'] ?? 'SAR';
+    final exchangeRate = reqData['exchangeRate'] ?? 1.0;
+    final paymentMethod = reqData['paymentMethod'] ?? 'offline';
+
+    batch.update(_db.collection('recharge_requests').doc(requestId), {
+      'status': 'approved',
+      'processedAt': FieldValue.serverTimestamp(),
+      'approvalMethod': 'manual',
+    });
+
+    batch.update(_db.collection('users').doc(agentPhone), {
+      'balance': FieldValue.increment(quotaAmount),
+    });
+
+    final txnRef = _db.collection('transactions').doc();
+    batch.set(txnRef, {
+      'fromPhone': '774578241',
+      'toPhone': agentPhone,
+      'agentPhone': agentPhone,
+      'agentName': '',
+      'targetName': 'وكيل',
+      'networkName': 'النظام',
+      'type': 'deposit',
+      'title': 'توريد حصة مبيعات (موافقة طلب)',
+      'amount': quotaAmount,
+      'fee': feeAmount,
+      'currency': currency,
+      'exchangeRate': exchangeRate,
+      'paymentMethod': paymentMethod,
+      'reference': 'REQ-$requestId',
+      'timestamp': FieldValue.serverTimestamp()
+    });
+
+    final notifRef = _db.collection('notifications').doc();
+    batch.set(notifRef, {
+      'targetPhones': [agentPhone],
+      'title': 'تم شحن رصيدك! 🎉',
+      'body': 'تمت الموافقة على طلبك وإضافة $quotaAmount ريال إلى محفظتك.',
+      'timestamp': FieldValue.serverTimestamp(),
+      'isRead': false,
+      'readBy': [],
+    });
+
+    await batch.commit();
+  }
+
+  Future<void> rejectRechargeRequest(String requestId, String reason) async {
+    final reqDoc = await _db.collection('recharge_requests').doc(requestId).get();
+    if (reqDoc.exists) {
+      final reqData = reqDoc.data() as Map<String, dynamic>;
+      String agentPhone = reqData['userPhone'] ?? reqData['agentPhone'];
+
+      final batch = _db.batch();
+      batch.update(reqDoc.reference, {
+        'status': 'rejected',
+        'rejectReason': reason,
+        'processedAt': FieldValue.serverTimestamp(),
+      });
+
+      final notifRef = _db.collection('notifications').doc();
+      batch.set(notifRef, {
+        'targetPhones': [agentPhone],
+        'title': 'عذراً، تم رفض طلب الشحن ❌',
+        'body': 'تم رفض طلب الشحن. السبب: $reason',
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'readBy': [],
+      });
+
+      await batch.commit();
+    }
+  }
+
+  // ---------- دوال مساعدة (إشعارات، تدقيق) ----------
+  void sendNotification({
+    required List<String> targetPhones,
+    required String title,
+    required String body,
+  }) async {
+    await _db.collection('notifications').add({
+      'targetPhones': targetPhones,
+      'title': title,
+      'body': body,
+      'timestamp': FieldValue.serverTimestamp(),
+      'isRead': false,
+      'readBy': [],
+    });
+  }
+
+  Future<void> _logAction({
+    required String action,
+    required String details,
+    required String severity,
+    String? targetPhone,
+  }) async {
+    if (_auth?.activeUserPhone == null) return;
+    try {
+      final userDoc = await _db.collection('users').doc(_auth!.activeUserPhone).get();
+      final userData = userDoc.data() ?? {};
+      final now = DateTime.now();
+      final formattedDate =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+
+      await _db.collection('audit_logs').add({
+        'name': userData['name'] ?? 'غير معروف',
+        'phone': _auth!.activeUserPhone,
+        'role': userData['role'] ?? 'Unknown',
+        'action': action,
+        'details': details,
+        'datetime': formattedDate,
+        'timestamp': FieldValue.serverTimestamp(),
+        'ip': 'Cloud System',
+        'severity': severity,
+        'targetPhone': targetPhone,
+      });
+    } catch (e) {
+      debugPrint('خطأ في تسجيل الحدث: $e');
+    }
+  }
+
+  Future<void> updateUserPin(String pin) async {
+    if (_auth?.activeUserPhone == null) return;
+    await _db.collection('users').doc(_auth!.activeUserPhone).update({'pin': pin});
+    final index = _usersDatabase.indexWhere((u) => u['phone'] == _auth!.activeUserPhone);
+    if (index != -1) {
+      _usersDatabase[index]['pin'] = pin;
+      notifyListeners();
+    }
+  }
+
+  Future<void> setHoldAmount(double amount) async {
+    if (_auth?.activeUserPhone == null) return;
+    await _db.collection('users').doc(_auth!.activeUserPhone).update({
+      'heldBalance': amount,
+    });
+  }
+
+  Future<void> updateDangerLimit(String phone, double newLimit) async {
+    await _db.collection('users').doc(phone).update({'dangerLimit': newLimit});
+  }
+
+  // ========== مستويات المستخدم (منقولة من system_provider القديم) ==========
+  Future<Map<String, dynamic>?> getUserTierForAgent(String agentPhone) async {
+    if (_auth?.activeUserPhone == null) return null;
+
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {});
+    Map<String, dynamic> wallets = user['wallets'] ?? {};
+    double walletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
+
+    final tierQuery = await _db
+        .collection('discount_tiers')
+        .where('agentPhone', isEqualTo: agentPhone)
+        .where('isActive', isEqualTo: true)
+        .get();
+
+    if (tierQuery.docs.isEmpty) return null;
+
+    List<Map<String, dynamic>> tiers = tierQuery.docs
+        .map((doc) => doc.data() as Map<String, dynamic>)
+        .toList();
+
+    tiers.sort((a, b) => (b['condition'] as int).compareTo(a['condition'] as int));
+
+    for (var tier in tiers) {
+      if (walletBalance >= (tier['condition'] as num).toDouble()) {
+        return tier;
+      }
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> getUserHighestTier() async {
+    if (_auth?.activeUserPhone == null) return null;
+
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {});
+    Map<String, dynamic> wallets = user['wallets'] ?? {};
+    if (wallets.isEmpty) return null;
+
+    Map<String, dynamic>? bestTier;
+    double bestCondition = 0;
+
+    for (var agentPhone in wallets.keys) {
+      final tier = await getUserTierForAgent(agentPhone);
+      if (tier != null && (tier['condition'] as num).toDouble() > bestCondition) {
+        bestCondition = (tier['condition'] as num).toDouble();
+        bestTier = tier;
+      }
+    }
+    return bestTier;
+  }
+
+  // ========== 🆕 نظام نقاط الولاء (نسبة مئوية) ==========
+
+  /// إضافة نقاط ولاء للمستخدم بعد الشراء من وكيل معين
+  Future<void> addLoyaltyPoints({
+    required String agentPhone,
+    required double purchaseAmount,
+  }) async {
+    if (_auth?.activeUserPhone == null) return;
+
+    // جلب إعدادات الولاء الخاصة بالوكيل
+    final agentDoc = await _db.collection('users').doc(agentPhone).get();
+    final agentData = agentDoc.data() ?? {};
+    final bool loyaltyEnabled = agentData['loyaltyEnabled'] ?? false;
+    
+    // 🆕 قراءة النسبة المئوية (مثلاً 10 تعني 10%)
+    final double loyaltyPercentage = (agentData['loyaltyPercentage'] ?? 0.0).toDouble();
+
+    if (!loyaltyEnabled || loyaltyPercentage <= 0) return;
+
+    // 🆕 حساب النقاط: مبلغ الشراء × النسبة المئوية ÷ 100
+    final int pointsToAdd = (purchaseAmount * loyaltyPercentage / 100).ceil();
+
+    // تحديث نقاط المستخدم الخاصة بهذا الوكيل
+    await _db.collection('users').doc(_auth!.activeUserPhone).update({
+      'loyaltyPoints.$agentPhone': FieldValue.increment(pointsToAdd),
+      'totalLoyaltyPoints': FieldValue.increment(pointsToAdd),
+    });
+  }
+
+  /// جلب نقاط الولاء الحالية للمستخدم (مقسمة حسب الوكيل)
+  Future<Map<String, int>> getLoyaltyPoints() async {
+    if (_auth?.activeUserPhone == null) return {};
+    final doc = await _db.collection('users').doc(_auth!.activeUserPhone).get();
+    final data = doc.data() ?? {};
+    final Map<String, dynamic> pointsMap = data['loyaltyPoints'] ?? {};
+    return pointsMap.map((key, value) => MapEntry(key, (value ?? 0) as int));
+  }
 }
