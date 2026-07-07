@@ -38,6 +38,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
     _tabController = TabController(length: 2, vsync: this);
   }
 
+  // ---------- الإشعارات ----------
   void _showSuccess(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).clearSnackBars();
@@ -58,9 +59,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
     ));
   }
 
-  void _showDialogError(String msg) {
-    _showError(msg);
-  }
+  void _showDialogError(String msg) => _showError(msg);
 
   void _play(String type) {
     try {
@@ -68,6 +67,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
     } catch (_) {}
   }
 
+  // ========== تحديث شامل ==========
   Future<void> _refreshAll() async {
     _play('click');
     context.read<WalletProvider>().notifyListeners();
@@ -76,6 +76,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
     _showSuccess('تم تحديث المحفظة بنجاح');
   }
 
+  // ========== عرض السند ==========
   void _showReceiptDialog(String base64Image) {
     if (base64Image.isEmpty) return;
     _play('click');
@@ -219,7 +220,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
 
     // محاكاة حقل الرمز السري للكريمي
     final creamieController = TextEditingController();
-    bool showCreamieField = false;
+    bool showCreamieField = (existingRequest?['paymentMethod'] == 'bank_transfer');
 
     double currentQuota = double.tryParse(quotaController.text) ?? 0;
     double calculatedFee = currentQuota * (feePercentage / 100);
@@ -242,7 +243,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
                 const Text('حدد المبلغ وطريقة الدفع والعملة.', style: TextStyle(fontSize: 11, color: Colors.grey)),
                 const SizedBox(height: 15),
-                
+
                 if (myBanks.isNotEmpty) ...[
                   DropdownButtonFormField<String>(
                     value: selectedMyBankId ?? myBanks.first['docId'],
@@ -252,7 +253,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
                   ),
                   const SizedBox(height: 10),
                 ],
-                
+
                 TextField(
                   controller: quotaController,
                   keyboardType: TextInputType.number,
@@ -276,7 +277,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
                       Text('المطلوب تحويله: ${intl.NumberFormat('#,###').format(calculatedFee)} ريال', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                     ]),
                   ),
-                
+
                 const SizedBox(height: 10),
                 const Text('اختر طريقة الدفع:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 const SizedBox(height: 8),
@@ -354,7 +355,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
                   Navigator.pop(ctx);
                   _play('click');
                   _showSuccess('جاري إرسال الطلب... ⏳');
-                  
+
                   try {
                     if (existingRequest != null) await wallet.cancelQuotaRequest(existingRequest['docId']);
                     await wallet.submitSaaSRechargeRequest(
