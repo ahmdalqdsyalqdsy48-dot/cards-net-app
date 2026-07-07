@@ -764,7 +764,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
           if (currency != 'SAR') _iconRow(Icons.currency_exchange, 'العملة: $currency | سعر الصرف: $exchangeRate'),
           if (provider.isNotEmpty) _iconRow(Icons.store, 'المصدر: $provider'),
           if (ref.isNotEmpty) _iconRow(Icons.receipt, 'المرجع: $ref'),
-          if (fee > 0) _iconRow(Icons.money_off, 'الرسوم: $fee ريال', color: Colors.red),
+          if (fee > 0) _iconRow(Icons.money_off, 'الرسوم: $fee ريال', valueColor: Colors.red),
           if (receiptBase64.isNotEmpty)
             TextButton.icon(onPressed: () => _showReceiptDialog(receiptBase64), icon: const Icon(Icons.image, size: 16), label: const Text('عرض السند')),
           const SizedBox(height: 8),
