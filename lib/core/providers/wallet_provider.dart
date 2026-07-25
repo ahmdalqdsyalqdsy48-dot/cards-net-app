@@ -70,10 +70,9 @@ class WalletProvider extends ChangeNotifier {
       }
     });
 
-    // 🆕 تحديث: الاستماع للحالات المعلقة اليدوية والبنكية
     _rechargeSub = _db
         .collection('recharge_requests')
-        .where('status', whereIn: ['قيد الانتظار', 'awaiting_payment'])
+        .where('status', isEqualTo: 'قيد الانتظار')
         .snapshots()
         .listen((snapshot) {
       _rechargeRequests = snapshot.docs
@@ -291,6 +290,19 @@ class WalletProvider extends ChangeNotifier {
     return user['pinEnabled'] == true;
   }
 
+  // 🆕 تم التعديل: جلب كل المحافظ الخاصة بالمستخدم كـ Map (وكيل -> رصيد)
+  Map<String, dynamic> get currentUserWallets {
+    if (_auth?.activeUserPhone == null) return {};
+    final user = _usersDatabase.firstWhere(
+        (u) => u['phone'] == _auth!.activeUserPhone,
+        orElse: () => {});
+    if (user['role'] == 'user' || user['role'] == 'pos') {
+      return user['wallets'] ?? {};
+    }
+    return {};
+  }
+
+  // المجموع الكلي (لأغراض إحصائية فقط، لا نستخدمه للشراء)
   double get currentUserBalance {
     if (_auth?.activeUserPhone == null) return 0.0;
     final user = _usersDatabase.firstWhere(
@@ -314,6 +326,7 @@ class WalletProvider extends ChangeNotifier {
     return (user['heldBalance'] ?? 0.0).toDouble();
   }
 
+  // 🆕 هذا الـ Getter هو الأساس للمحافظ المعزولة (رصيدي عند وكيل معين)
   double getWalletBalance(String agentPhone) {
     if (_auth?.activeUserPhone == null) return 0.0;
     final user = _usersDatabase.firstWhere(
@@ -526,6 +539,7 @@ class WalletProvider extends ChangeNotifier {
     return (data['balance'] ?? 0.0).toDouble();
   }
 
+  // 🆕 تم التعديل: إرجاع بيانات المستلم الأساسية فقط (لا حاجة لمعرفة رصيده)
   Future<Map<String, dynamic>?> searchUserForTransfer(String targetPhone) async {
     if (_auth?.activeUserPhone == null) throw 'يرجى تسجيل الدخول.';
     if (targetPhone == _auth!.activeUserPhone) throw 'لا يمكنك تحويل الرصيد لنفسك!';
@@ -536,37 +550,11 @@ class WalletProvider extends ChangeNotifier {
 
       final data = doc.data() as Map<String, dynamic>;
 
-      var lastTxn = await _db
-          .collection('transactions')
-          .where('toPhone', isEqualTo: targetPhone)
-          .where('fromPhone', isEqualTo: _auth!.activeUserPhone)
-          .orderBy('timestamp', descending: true)
-          .limit(1)
-          .get();
-
-      String lastRecharge = 'لا يوجد سجل سابق';
-      if (lastTxn.docs.isNotEmpty) {
-        var tData = lastTxn.docs.first.data() as Map<String, dynamic>;
-        if (tData['timestamp'] != null) {
-          lastRecharge = DateFormat('yyyy-MM-dd hh:mm a')
-              .format((tData['timestamp'] as Timestamp).toDate());
-        }
-      }
-
-      double displayBalance = 0.0;
-      if (data['role'] == 'user' || data['role'] == 'pos') {
-        Map<String, dynamic> wallets = data['wallets'] ?? {};
-        displayBalance = (wallets[_auth!.activeUserPhone] ?? 0.0).toDouble();
-      } else {
-        displayBalance = (data['balance'] ?? 0.0).toDouble();
-      }
-
       return {
         'name': data['name'] ?? 'مجهول',
         'role': data['role'] ?? 'user',
         'networkName': data['networkName'] ?? 'غير محدد',
-        'balance': displayBalance,
-        'lastRecharge': lastRecharge,
+        'phone': targetPhone,
       };
     } catch (e) {
       throw 'حدث خطأ أثناء البحث عن الرقم.';
@@ -574,45 +562,17 @@ class WalletProvider extends ChangeNotifier {
   }
 
   // ---------- دوال المحافظ والتحويلات ----------
-  Future<void> transferToUser({
-    required String targetPhone,
-    required double amount,
-  }) async {
-    if (availableBalance < amount) throw 'الرصيد المتاح غير كافٍ.';
-    final api = ApiService(authToken: _auth?.authToken);
-    await api.post('/api/transfer', {
-      'targetPhone': targetPhone,
-      'amount': amount,
-    }, authenticate: true);
-  }
 
-  Future<void> secureTransferBalance({
+  // 🆕 دالة جديدة بالكامل للتحويل من محفظة (وكيل) محدد إلى محفظة نفس الوكيل لدى مستخدم آخر
+  Future<void> transferFromSpecificWallet({
+    required String agentPhone,
     required String targetPhone,
-    required String targetName,
     required double amount,
-    required String password,
-  }) async {
-    await advancedSecureTransferBalance(
-        targetPhone: targetPhone,
-        targetName: targetName,
-        amount: amount,
-        taxPercentage: 0.0,
-        note: '',
-        paymentMethod: 'نقد',
-        password: password);
-  }
-
-  Future<void> advancedSecureTransferBalance({
-    required String targetPhone,
-    required String targetName,
-    required double amount,
-    required double taxPercentage,
-    required String note,
-    required String paymentMethod,
     required String password,
   }) async {
     if (_auth?.activeUserPhone == null) throw 'يرجى تسجيل الدخول.';
 
+    // 1. التحقق من الرقم السري
     final myData = _usersDatabase.firstWhere(
         (u) => u['phone'] == _auth!.activeUserPhone,
         orElse: () => {});
@@ -620,26 +580,72 @@ class WalletProvider extends ChangeNotifier {
       throw 'كلمة المرور غير صحيحة ❌';
     }
 
-    final api = ApiService(authToken: _auth?.authToken);
-    await api.post('/api/transfer', {
-      'targetPhone': targetPhone,
-      'amount': amount,
-    }, authenticate: true);
-  }
+    // 2. التحقق من الرصيد في هذه المحفظة بالذات
+    final double myCurrentWalletBalance = getWalletBalance(agentPhone);
+    if (myCurrentWalletBalance < amount) {
+      throw 'رصيدك في هذه المحفظة غير كافٍ ❌';
+    }
 
-  // ========== 🆕 دالة مساعدة: جلب سعر الصرف من الإعدادات ==========
-  Future<double> getExchangeRate(String fromCurrency, String toCurrency) async {
-    if (fromCurrency == toCurrency) return 1.0;
+    final senderRef = _db.collection('users').doc(_auth!.activeUserPhone);
+    final receiverRef = _db.collection('users').doc(targetPhone);
+
     try {
-      final rates = _settings?.exchangeRates ?? {};
-      final key = '${fromCurrency}_$toCurrency';
-      return rates[key] ?? 1.0;
+      await _db.runTransaction((transaction) async {
+        // قراءة بيانات المستقبل
+        final receiverSnap = await transaction.get(receiverRef);
+        if (!receiverSnap.exists) throw 'المستلم غير موجود.';
+        final receiverData = receiverSnap.data() as Map<String, dynamic>;
+
+        // قراءة بيانات المرسل مجدداً داخل الـ Transaction لضمان الدقة
+        final senderSnap = await transaction.get(senderRef);
+        final senderFreshData = senderSnap.data() as Map<String, dynamic>;
+        Map<String, dynamic> senderWallets = senderFreshData['wallets'] ?? {};
+        double senderBalance = (senderWallets[agentPhone] ?? 0.0).toDouble();
+
+        if (senderBalance < amount) throw 'رصيدك في هذه المحفظة غير كافٍ.';
+
+        // خصم وإضافة
+        transaction.update(senderRef, {
+          'wallets.$agentPhone': FieldValue.increment(-amount),
+        });
+
+        transaction.update(receiverRef, {
+          'wallets.$agentPhone': FieldValue.increment(amount),
+        });
+
+        // تسجيل العملية
+        DocumentReference txnRef = _db.collection('transactions').doc();
+        transaction.set(txnRef, {
+          'fromPhone': _auth!.activeUserPhone,
+          'toPhone': targetPhone,
+          'agentPhone': agentPhone,
+          'agentName': 'نظام المحافظ المعزولة',
+          'targetName': receiverData['name'] ?? 'مستخدم',
+          'amount': amount,
+          'type': 'transfer',
+          'paymentMethod': 'تحويل بين المستخدمين',
+          'title': 'تحويل رصيد (محفظة محددة)',
+          'reference': 'TRF-${DateTime.now().millisecondsSinceEpoch}',
+          'timestamp': FieldValue.serverTimestamp()
+        });
+
+        // إشعار للمستلم
+        DocumentReference notifRef = _db.collection('notifications').doc();
+        transaction.set(notifRef, {
+          'targetPhones': [targetPhone],
+          'title': 'حوالة واردة 💸',
+          'body': 'استلمت $amount ريال من ${senderFreshData['name']} (في محفظتك المخصصة).',
+          'timestamp': FieldValue.serverTimestamp(),
+          'isRead': false,
+          'readBy': [],
+        });
+      });
     } catch (e) {
-      return 1.0;
+      throw 'فشل التحويل: $e';
     }
   }
 
-  // ========== 🆕 تحديث: طلب حصة (للوكلاء) - يدعم الدفع البنكي والصرافة ==========
+
   Future<void> submitSaaSRechargeRequest({
     required double quotaAmount,
     required double feeAmount,
@@ -647,80 +653,35 @@ class WalletProvider extends ChangeNotifier {
     required String transferSource,
     required String reference,
     required String base64Image,
-    // 🆕 وسائط جديدة
-    String paymentMethod = 'offline', // 'offline', 'bank_transfer', 'cash'
-    String currency = 'SAR',
-    double? exchangeRate,
-    String? sourceBankAccountId,
-    String? destinationBankAccountId,
-    String? offlineProviderName,
-    String? offlineReference,
-    String? offlineReceiptBase64,
   }) async {
     final api = ApiService(authToken: _auth?.authToken);
-    
-    // حساب سعر الصرف تلقائياً إن لم يُقدم
-    double finalExchangeRate = exchangeRate ?? 1.0;
-    if (currency != 'SAR') {
-      finalExchangeRate = await getExchangeRate(currency, 'SAR');
-    }
-
     await api.post('/api/recharge-request', {
       'amount': quotaAmount,
       'bankName': adminBankName,
-      'transferSource': paymentMethod == 'offline' ? (transferSource) : (paymentMethod == 'bank_transfer' ? 'تحويل بنكي' : 'دفع نقدي'),
+      'transferSource': transferSource,
       'reference': reference,
       'receiptBase64': base64Image,
-      'paymentMethod': paymentMethod,
-      'currency': currency,
-      'exchangeRate': finalExchangeRate,
-      'sourceBankAccountId': sourceBankAccountId ?? '',
-      'destinationBankAccountId': destinationBankAccountId ?? '',
-      'offlineProviderName': offlineProviderName ?? '',
-      'offlineReference': offlineReference ?? '',
-      'offlineReceiptBase64': offlineReceiptBase64 ?? '',
     }, authenticate: true);
   }
 
-  // ========== 🆕 تحديث: طلب شحن من مستخدم لوكيل - يدعم طرق الدفع الجديدة ==========
   Future<void> requestRechargeFromAgent({
     required String agentPhone,
     required double amount,
-    required String paymentMethod, // 'bank_transfer', 'offline', 'cash'
+    required String paymentMethod,
     required String reference,
     String? base64Image,
     String? fullName,
-    // 🆕 وسائط جديدة
-    String currency = 'SAR',
-    double? exchangeRate,
-    String? sourceBankAccountId,
-    String? destinationBankAccountId,
-    String? offlineProviderName,
-    String? offlineReference,
   }) async {
     if (_auth?.activeUserPhone == null) throw 'يرجى تسجيل الدخول.';
-    
-    // حساب سعر الصرف
-    double finalExchangeRate = exchangeRate ?? 1.0;
-    if (currency != 'SAR') {
-      finalExchangeRate = await getExchangeRate(currency, 'SAR');
-    }
-
     final docData = <String, dynamic>{
       'userPhone': _auth!.activeUserPhone,
       'userName': currentUserName,
-      'targetPhone': agentPhone,
+      'targetPhone': agentPhone, // الشحن سيوجه لهذا الوكيل
       'amount': amount,
       'paymentMethod': paymentMethod,
       'reference': reference,
       'receiptBase64': base64Image ?? '',
-      'currency': currency,
-      'exchangeRate': finalExchangeRate,
-      'sourceBankAccountId': sourceBankAccountId ?? '',
-      'destinationBankAccountId': destinationBankAccountId ?? '',
-      'offlineProviderName': offlineProviderName ?? '',
-      'offlineReference': offlineReference ?? '',
-      'status': paymentMethod == 'bank_transfer' ? 'awaiting_payment' : 'قيد الانتظار',
+      'status': 'قيد الانتظار',
       'type': 'user_to_agent',
       'timestamp': FieldValue.serverTimestamp(),
     };
@@ -757,6 +718,7 @@ class WalletProvider extends ChangeNotifier {
         _db.collection('user_recharges').doc(requestId), {'status': 'مقبول'});
     batch.update(myDoc.reference, {'balance': FieldValue.increment(-amount)});
 
+    // الرصيد يذهب لمحفظة المستخدم المخصصة لهذا الوكيل بالتحديد
     batch.update(requesterDoc.reference,
         {'wallets.${_auth!.activeUserPhone}': FieldValue.increment(amount)});
 
@@ -793,10 +755,12 @@ class WalletProvider extends ChangeNotifier {
   Future<String> executeRealPurchase(
     double price, String cardTitle, String agentPhone, String categoryId) async {
     if (_auth?.activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً.';
-    if (availableBalance < price) throw 'الرصيد المتاح غير كافٍ.';
+    // التحقق يتم من محفظة الوكيل المحددة
+    if (getWalletBalance(agentPhone) < price) throw 'الرصيد المتاح في هذه المحفظة غير كافٍ.';
+    
     final api = ApiService(authToken: _auth?.authToken);
     final result = await api.post('/api/purchase', {
-      'agentPhone': agentPhone,
+      'agentPhone': agentPhone, // الخصم سيتم من هذه المحفظة في الباك اند
       'categoryId': categoryId,
       'cardTitle': cardTitle,
       'price': price,
@@ -816,8 +780,7 @@ class WalletProvider extends ChangeNotifier {
     String? appliedCouponId,
   }) async {
     if (_auth?.activeUserPhone == null) throw 'يرجى تسجيل الدخول أولاً لإتمام الشراء.';
-    if (availableBalance < totalPrice) throw 'الرصيد المتاح غير كافٍ.';
-
+    
     final userRef = _db.collection('users').doc(_auth!.activeUserPhone);
 
     final availableCardsQuery = await _db
@@ -847,6 +810,8 @@ class WalletProvider extends ChangeNotifier {
 
       final userData = userSnapshot.data() as Map<String, dynamic>;
       Map<String, dynamic> wallets = userData['wallets'] ?? {};
+      
+      // الخصم حصراً من محفظة الوكيل
       double currentWalletBalance = (wallets[agentPhone] ?? 0.0).toDouble();
 
       double creditLimit = 0.0;
@@ -857,7 +822,7 @@ class WalletProvider extends ChangeNotifier {
       }
 
       if ((currentWalletBalance + creditLimit) < totalPrice) {
-        throw 'الرصيد أو الحد الائتماني غير كافٍ.';
+        throw 'الرصيد أو الحد الائتماني غير كافٍ في محفظة هذا الوكيل.';
       }
 
       transaction.update(userRef, {
@@ -916,7 +881,6 @@ class WalletProvider extends ChangeNotifier {
       }
     });
 
-    // 🆕 إضافة نقاط الولاء بعد إتمام الشراء
     try {
       await addLoyaltyPoints(
         agentPhone: agentPhone,
@@ -1208,7 +1172,7 @@ class WalletProvider extends ChangeNotifier {
     return _db
         .collection('user_recharges')
         .where('userPhone', isEqualTo: _auth!.activeUserPhone)
-        .where('status', whereIn: ['قيد الانتظار', 'awaiting_payment'])
+        .where('status', isEqualTo: 'قيد الانتظار')
         .snapshots()
         .map((snap) => snap.docs.map((doc) {
               final data = doc.data();
@@ -1223,7 +1187,7 @@ class WalletProvider extends ChangeNotifier {
         .collection('recharge_requests')
         .where('userPhone', isEqualTo: _auth!.activeUserPhone)
         .where('type', isEqualTo: 'saas_quota')
-        .where('status', whereIn: ['قيد الانتظار', 'awaiting_payment'])
+        .where('status', isEqualTo: 'قيد الانتظار')
         .snapshots()
         .map((snap) => snap.docs.map((doc) {
               final data = doc.data();
@@ -1237,7 +1201,7 @@ class WalletProvider extends ChangeNotifier {
     return _db
         .collection('user_recharges')
         .where('targetPhone', isEqualTo: _auth!.activeUserPhone)
-        .where('status', whereIn: ['قيد الانتظار', 'awaiting_payment'])
+        .where('status', isEqualTo: 'قيد الانتظار')
         .snapshots()
         .map((snap) => snap.docs.map((doc) {
               final data = doc.data();
@@ -1422,22 +1386,13 @@ class WalletProvider extends ChangeNotifier {
     return accounts;
   }
 
-  // ========== 🆕 تحديث: قبول شحن مشرف (يدوي) مع العملة وطريقة الدفع ==========
   Future<void> adminAcceptSaaSRecharge(String requestId, String agentPhone,
       double quotaAmount, double feeAmount) async {
     final batch = _db.batch();
 
-    // جلب بيانات الطلب لاستخراج العملة وطريقة الدفع
-    final reqDoc = await _db.collection('recharge_requests').doc(requestId).get();
-    final reqData = reqDoc.data() ?? {};
-    final currency = reqData['currency'] ?? 'SAR';
-    final exchangeRate = reqData['exchangeRate'] ?? 1.0;
-    final paymentMethod = reqData['paymentMethod'] ?? 'offline';
-
     batch.update(_db.collection('recharge_requests').doc(requestId), {
       'status': 'approved',
       'processedAt': FieldValue.serverTimestamp(),
-      'approvalMethod': 'manual',
     });
 
     batch.update(_db.collection('users').doc(agentPhone), {
@@ -1456,9 +1411,7 @@ class WalletProvider extends ChangeNotifier {
       'title': 'توريد حصة مبيعات (موافقة طلب)',
       'amount': quotaAmount,
       'fee': feeAmount,
-      'currency': currency,
-      'exchangeRate': exchangeRate,
-      'paymentMethod': paymentMethod,
+      'paymentMethod': 'نظام SaaS',
       'reference': 'REQ-$requestId',
       'timestamp': FieldValue.serverTimestamp()
     });
@@ -1625,7 +1578,7 @@ class WalletProvider extends ChangeNotifier {
     return bestTier;
   }
 
-  // ========== 🆕 نظام نقاط الولاء (نسبة مئوية) ==========
+    // ========== 🆕 نظام نقاط الولاء (نسبة مئوية) ==========
 
   /// إضافة نقاط ولاء للمستخدم بعد الشراء من وكيل معين
   Future<void> addLoyaltyPoints({
