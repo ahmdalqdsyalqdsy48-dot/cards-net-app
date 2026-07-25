@@ -1,5 +1,5 @@
 // lib/features/user_panel/screens/user_wallet_screen.dart
-// تم التحديث: استبدال SystemProvider بـ AuthProvider و WalletProvider، إصلاح كامل
+// تم التحديث: دعم نظام "المحافظ المعزولة" (Isolated Wallets)
 
 import 'dart:convert';
 import 'dart:typed_data';
@@ -55,10 +55,14 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   String? _editingRequestId;
   List<Map<String, dynamic>> _pendingRequests = [];
 
-  // ========== PIN ==========
+  // ========== PIN & Password ==========
   bool _isPinSet = false;
   final _pinController = TextEditingController();
   bool _pinVisible = false;
+  
+  // 🆕 للتحويل المعزول
+  final _passwordController = TextEditingController();
+  bool _passwordVisible = false;
 
   // ========== تحويل ==========
   final _searchController = TextEditingController();
@@ -66,6 +70,9 @@ class _UserWalletScreenState extends State<UserWalletScreen>
   Map<String, dynamic>? _transferTarget;
   bool _isSearching = false;
   bool _isSubmittingTransfer = false;
+  
+  // 🆕 لتحديد المحفظة المراد التحويل منها
+  String? _selectedWalletForTransfer; 
 
   // ========== حجز رصيد ==========
   final _holdAmountController = TextEditingController();
@@ -99,6 +106,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     _searchController.dispose();
     _transferAmountController.dispose();
     _pinController.dispose();
+    _passwordController.dispose();
     _holdAmountController.dispose();
     super.dispose();
   }
@@ -173,6 +181,58 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                   Navigator.pop(ctx, _pinController.text);
                 },
                 child: const Text('تأكيد'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 🆕 ========== حوار كلمة المرور للتحويل المعزول ==========
+  Future<String?> _requestPasswordDialog() async {
+    _passwordController.clear();
+    _passwordVisible = false;
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            title: const Text('تأكيد التحويل المالي'),
+            content: TextField(
+              controller: _passwordController,
+              obscureText: !_passwordVisible,
+              decoration: InputDecoration(
+                labelText: 'أدخل كلمة المرور الخاصة بحسابك',
+                prefixIcon: const Icon(Icons.security),
+                suffixIcon: IconButton(
+                  icon: Icon(_passwordVisible ? Icons.visibility : Icons.visibility_off),
+                  onPressed: () {
+                    _play('click');
+                    setDialogState(() => _passwordVisible = !_passwordVisible);
+                  },
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  _play('click');
+                  Navigator.pop(ctx);
+                },
+                child: const Text('إلغاء'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  if (_passwordController.text.isEmpty) {
+                    _showSnack('يرجى إدخال كلمة المرور', error: true);
+                    return;
+                  }
+                  _play('click');
+                  Navigator.pop(ctx, _passwordController.text);
+                },
+                child: const Text('تأكيد التحويل'),
               ),
             ],
           ),
@@ -466,12 +526,21 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     if (_isSubmittingTransfer) return;
     final auth = context.read<AuthProvider>();
     final wallet = context.read<WalletProvider>();
+    
     if (_transferTarget == null) return;
+    
+    // 🆕 تحقق من اختيار المحفظة أولاً
+    if (_selectedWalletForTransfer == null) {
+      _showSnack('يرجى اختيار المحفظة التي تريد التحويل منها أولاً', error: true);
+      return;
+    }
+
     final amount = double.tryParse(_transferAmountController.text);
     if (amount == null || amount <= 0) {
       _showSnack('أدخل مبلغاً صحيحاً', error: true);
       return;
     }
+    
     final targetPhone = _transferTarget!['phone'];
     if (targetPhone == auth.activeUserPhone) {
       _showSnack('لا يمكنك تحويل الرصيد لنفسك', error: true);
@@ -481,28 +550,36 @@ class _UserWalletScreenState extends State<UserWalletScreen>
       _showSnack('لا يمكن التحويل لأن الرقم مخفي', error: true);
       return;
     }
-    if (amount > wallet.availableBalance) {
-      _showSnack('رصيدك المتاح لا يكفي (يوجد رصيد محجوز)', error: true);
+    
+    // 🆕 التحقق من رصيد المحفظة المحددة وليس الرصيد الكلي
+    final double specificWalletBalance = wallet.getWalletBalance(_selectedWalletForTransfer!);
+    if (amount > specificWalletBalance) {
+      _showSnack('رصيدك المتاح في هذه المحفظة لا يكفي', error: true);
       return;
     }
 
-    if (auth.isPinEnabled) {
-      final pin = await _requestPinDialog();
-      if (pin == null) return;
-      if (!auth.validatePin(pin)) {
-        _showSnack('رمز PIN غير صحيح', error: true);
-        return;
-      }
-    }
+    // 🆕 طلب كلمة المرور (لأننا نستخدم دالة مؤمنة بكلمة المرور)
+    final password = await _requestPasswordDialog();
+    if (password == null) return; // تم الإلغاء
 
     setState(() => _isSubmittingTransfer = true);
     _play('start');
     try {
-      await wallet.transferToUser(targetPhone: targetPhone, amount: amount);
+      // 🆕 استخدام الدالة الجديدة للتحويل المعزول
+      await wallet.transferFromSpecificWallet(
+        agentPhone: _selectedWalletForTransfer!,
+        targetPhone: targetPhone,
+        amount: amount,
+        password: password,
+      );
+      
       _play('success');
       _showSnack('تم التحويل بنجاح');
       _transferAmountController.clear();
-      setState(() => _transferTarget = null);
+      setState(() {
+        _transferTarget = null;
+        _selectedWalletForTransfer = null;
+      });
       _searchController.clear();
     } catch (e) {
       _play('error');
@@ -556,7 +633,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
               TextField(
                 controller: _holdAmountController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'المبلغ المراد حجزه'),
+                decoration: const InputDecoration(labelText: 'المبلغ المراد حجزه (من الكلي)'),
               ),
             ],
           ),
@@ -602,10 +679,14 @@ class _UserWalletScreenState extends State<UserWalletScreen>
     final auth = context.watch<AuthProvider>();
     final wallet = context.watch<WalletProvider>();
     final colors = Theme.of(context).colorScheme;
+    
     final availableBalance = wallet.availableBalance;
     final held = wallet.heldBalance;
     final accountNumber = wallet.currentUserAccountNumber ?? 'غير متوفر';
     final userName = auth.currentUserName;
+    
+    // 🆕 جلب تفاصيل المحافظ المتعددة
+    final Map<String, dynamic> myWalletsMap = wallet.currentUserWallets;
 
     return Scaffold(
       backgroundColor: colors.surfaceContainerLowest,
@@ -619,86 +700,185 @@ class _UserWalletScreenState extends State<UserWalletScreen>
         child: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) => [
             SliverToBoxAdapter(
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [colors.primary, colors.primaryContainer],
-                    begin: Alignment.topRight,
-                    end: Alignment.bottomLeft,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: const [
-                    BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4))
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Column(
+                children: [
+                  // 🆕 الكرت العلوي الإجمالي (تم تعديله ليوضح أنه "المجموع")
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    margin: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [colors.primary, colors.primaryContainer],
+                        begin: Alignment.topRight,
+                        end: Alignment.bottomLeft,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: const [
+                        BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4))
+                      ],
+                    ),
+                    child: Column(
                       children: [
-                        Text(userName,
-                            style: TextStyle(
-                                color: colors.onPrimaryContainer,
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold)),
                         Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            IconButton(
-                              icon: Icon(Icons.savings, color: colors.onPrimaryContainer),
-                              tooltip: 'حجز رصيد',
-                              onPressed: () {
-                                _play('click');
-                                _showHoldBalanceDialog();
-                              },
-                            ),
-                            IconButton(
-                              icon: Icon(Icons.settings, color: colors.onPrimaryContainer),
-                              onPressed: () {
-                                _play('click');
-                                Navigator.pushNamed(context, '/user_settings');
-                              },
+                            Text(userName,
+                                style: TextStyle(
+                                    color: colors.onPrimaryContainer,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold)),
+                            Row(
+                              children: [
+                                IconButton(
+                                  icon: Icon(Icons.savings, color: colors.onPrimaryContainer),
+                                  tooltip: 'حجز رصيد',
+                                  onPressed: () {
+                                    _play('click');
+                                    _showHoldBalanceDialog();
+                                  },
+                                ),
+                                IconButton(
+                                  icon: Icon(Icons.settings, color: colors.onPrimaryContainer),
+                                  onPressed: () {
+                                    _play('click');
+                                    Navigator.pushNamed(context, '/user_settings');
+                                  },
+                                ),
+                              ],
                             ),
                           ],
                         ),
+                        const SizedBox(height: 12),
+                        _buildInfoRow(Icons.credit_card, 'رقم الحساب', accountNumber,
+                            onTap: () {
+                              Clipboard.setData(ClipboardData(text: accountNumber));
+                              _showSnack('تم نسخ رقم الحساب');
+                            },
+                            color: colors.onPrimaryContainer),
+                        const SizedBox(height: 12),
+                        GestureDetector(
+                          onTap: () {
+                            _play('click');
+                            setState(() => _isBalanceVisible = !_isBalanceVisible);
+                          },
+                          child: _buildInfoRow(
+                            Icons.account_balance_wallet,
+                            'المجموع الكلي المتاح',
+                            _isBalanceVisible
+                                ? '${intl.NumberFormat('#,###.##').format(availableBalance)} ريال'
+                                : '**** ريال',
+                            trailing: Icon(
+                              _isBalanceVisible ? Icons.visibility_off : Icons.visibility,
+                              color: colors.onPrimaryContainer,
+                              size: 20,
+                            ),
+                            color: colors.onPrimaryContainer,
+                          ),
+                        ),
+                        if (held > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text('المحجوز: ${held.toStringAsFixed(0)} ريال',
+                                style: TextStyle(color: Colors.yellow.shade200, fontSize: 13)),
+                          ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    _buildInfoRow(Icons.credit_card, 'رقم الحساب', accountNumber,
-                        onTap: () {
-                          Clipboard.setData(ClipboardData(text: accountNumber));
-                          _showSnack('تم نسخ رقم الحساب');
-                        },
-                        color: colors.onPrimaryContainer),
-                    const SizedBox(height: 12),
-                    GestureDetector(
-                      onTap: () {
-                        _play('click');
-                        setState(() => _isBalanceVisible = !_isBalanceVisible);
-                      },
-                      child: _buildInfoRow(
-                        Icons.account_balance_wallet,
-                        'الرصيد المتاح',
-                        _isBalanceVisible
-                            ? '${intl.NumberFormat('#,###.##').format(availableBalance)} ريال'
-                            : '**** ريال',
-                        trailing: Icon(
-                          _isBalanceVisible ? Icons.visibility_off : Icons.visibility,
-                          color: colors.onPrimaryContainer,
-                          size: 20,
+                  ),
+                  
+                  // 🆕 شريط تمرير المحافظ الفردية المعزولة
+                  if (myWalletsMap.isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          'تفاصيل محافظك (${myWalletsMap.length})',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: colors.primary,
+                          ),
                         ),
-                        color: colors.onPrimaryContainer,
                       ),
                     ),
-                    if (held > 0)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text('المحجوز: ${held.toStringAsFixed(0)} ريال',
-                            style: TextStyle(color: Colors.yellow.shade200, fontSize: 13)),
+                    SizedBox(
+                      height: 100,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        itemCount: myWalletsMap.keys.length,
+                        itemBuilder: (context, index) {
+                          String agentPhone = myWalletsMap.keys.elementAt(index);
+                          double balance = (myWalletsMap[agentPhone] ?? 0.0).toDouble();
+                          String netName = _getAgentNetworkName(agentPhone);
+                          String displayName = netName.isNotEmpty ? netName : 'وكيل: $agentPhone';
+
+                          return Container(
+                            width: 180,
+                            margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: colors.surface,
+                              borderRadius: BorderRadius.circular(15),
+                              border: Border.all(color: colors.primaryContainer),
+                              boxShadow: const [
+                                BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))
+                              ],
+                            ),
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.wifi, size: 16, color: colors.primary),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        displayName,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                          color: colors.onSurface,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const Spacer(),
+                                Text(
+                                  'الرصيد',
+                                  style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+                                ),
+                                Text(
+                                  _isBalanceVisible 
+                                    ? '${intl.NumberFormat('#,###.##').format(balance)} ر.ي'
+                                    : '****',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    color: colors.primary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
+                    ),
+                    const SizedBox(height: 10),
+                  ] else ...[
+                     Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+                      child: Text(
+                        'لا تملك رصيداً في أي شبكة حالياً.',
+                        style: TextStyle(color: colors.onSurfaceVariant, fontSize: 13),
+                      ),
+                    ),
                   ],
-                ),
+                ],
               ),
             ),
             SliverPersistentHeader(
@@ -1183,16 +1363,75 @@ class _UserWalletScreenState extends State<UserWalletScreen>
 
   // ============= تبويب التحويل =============
   Widget _buildTransferTab(ColorScheme colors) {
+    final wallet = context.read<WalletProvider>();
+    final Map<String, dynamic> myWalletsMap = wallet.currentUserWallets;
+
     return RefreshIndicator(
       onRefresh: () async => setState(() {}),
-      child: Padding(
+      child: SingleChildScrollView( // 🆕 لضمان عدم حدوث خطأ Overflow
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('💸 تحويل لشخص آخر',
+            Text('💸 تحويل رصيد لصديق',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colors.onSurface)),
-            const SizedBox(height: 12),
+            
+            // 🆕 قائمة اختيار المحفظة
+            const SizedBox(height: 15),
+            Text('1. اختر المحفظة التي تريد سحب الرصيد منها:', 
+                 style: TextStyle(fontSize: 14, color: colors.onSurfaceVariant)),
+            const SizedBox(height: 8),
+            
+            if (myWalletsMap.isEmpty)
+               Container(
+                 padding: const EdgeInsets.all(12),
+                 decoration: BoxDecoration(color: colors.errorContainer, borderRadius: BorderRadius.circular(8)),
+                 child: Text('لا تملك رصيداً في أي شبكة حالياً لتتمكن من التحويل.', style: TextStyle(color: colors.onErrorContainer)),
+               )
+            else
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: colors.outlineVariant),
+                  color: colors.surface,
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    isExpanded: true,
+                    value: _selectedWalletForTransfer,
+                    hint: const Padding(
+                      padding: EdgeInsets.only(right: 12.0),
+                      child: Text('--- يرجى اختيار محفظة الشبكة ---'),
+                    ),
+                    icon: const Padding(
+                      padding: EdgeInsets.only(left: 12.0),
+                      child: Icon(Icons.arrow_drop_down),
+                    ),
+                    items: myWalletsMap.keys.map((agentPhone) {
+                      double bal = (myWalletsMap[agentPhone] ?? 0.0).toDouble();
+                      String netName = _getAgentNetworkName(agentPhone);
+                      String display = netName.isNotEmpty ? netName : 'وكيل ($agentPhone)';
+                      return DropdownMenuItem<String>(
+                        value: agentPhone,
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 12.0),
+                          child: Text('$display (متاح: $bal)'),
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (val) {
+                      _play('click');
+                      setState(() => _selectedWalletForTransfer = val);
+                    },
+                  ),
+                ),
+              ),
+
+            const SizedBox(height: 25),
+            Text('2. ابحث عن المستلم:', 
+                 style: TextStyle(fontSize: 14, color: colors.onSurfaceVariant)),
+            const SizedBox(height: 8),
+
             Row(
               children: [
                 Expanded(
@@ -1209,15 +1448,21 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                 const SizedBox(width: 10),
                 ElevatedButton(
                     onPressed: _isSearching ? null : _searchForTransfer,
-                    style: ElevatedButton.styleFrom(backgroundColor: colors.primary),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: colors.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                    ),
                     child: Text('بحث', style: TextStyle(color: colors.onPrimary))),
               ],
             ),
+            
             if (_isSearching)
               const Padding(
-                padding: EdgeInsets.all(10),
+                padding: EdgeInsets.all(20),
                 child: Center(child: CircularProgressIndicator()),
               ),
+              
             if (_transferTarget != null) ...[
               const SizedBox(height: 15),
               Container(
@@ -1232,17 +1477,17 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                   children: [
                     Text('الاسم: ${_transferTarget!['name']}',
                         style: const TextStyle(fontWeight: FontWeight.bold)),
-                    Text('رقم الحساب: ${_transferTarget!['accountNumber']}'),
-                    Text('الرصيد الظاهر: ${_transferTarget!['balance']} ريال'),
+                    const SizedBox(height: 4),
+                    Text('الشبكة المسجل بها: ${_transferTarget!['networkName']}'),
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 20),
               TextField(
                 controller: _transferAmountController,
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
-                  labelText: 'المبلغ (ريال)',
+                  labelText: 'المبلغ المراد تحويله (ريال)',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   prefixIcon: const Icon(Icons.money),
                 ),
@@ -1254,8 +1499,8 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                 child: ElevatedButton.icon(
                   onPressed: _isSubmittingTransfer ? null : _executeTransfer,
                   icon: Icon(Icons.send, color: colors.onPrimary),
-                  label: Text('تنفيذ التحويل',
-                      style: TextStyle(color: colors.onPrimary, fontWeight: FontWeight.bold)),
+                  label: Text('تأكيد وتنفيذ التحويل',
+                      style: TextStyle(color: colors.onPrimary, fontWeight: FontWeight.bold, fontSize: 16)),
                   style: ElevatedButton.styleFrom(
                       backgroundColor: colors.primary,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
@@ -1292,7 +1537,7 @@ class _UserWalletScreenState extends State<UserWalletScreen>
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
+                    boxShadow: const [
                       BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 4))
                     ],
                   ),
@@ -1375,11 +1620,11 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         title: const Text('مسح QR'),
         actions: [
           IconButton(
-            icon: Icon(Icons.flashlight_on),
+            icon: const Icon(Icons.flashlight_on),
             onPressed: () => controller.toggleTorch(),
           ),
           IconButton(
-            icon: Icon(Icons.flip_camera_ios),
+            icon: const Icon(Icons.flip_camera_ios),
             onPressed: () => controller.switchCamera(),
           ),
         ],
