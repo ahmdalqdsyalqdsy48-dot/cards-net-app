@@ -70,6 +70,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
   // ========== تحديث شامل ==========
   Future<void> _refreshAll() async {
     _play('click');
+    // ignore: invalid_use_of_visible_for_testing_member, invalid_use_of_protected_member
     context.read<WalletProvider>().notifyListeners();
     await Future.delayed(const Duration(milliseconds: 400));
     _play('success');
@@ -98,97 +99,6 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
         ),
       ),
     );
-  }
-
-  // ========== تحويل الأرقام إلى كلمات عربية ==========
-  String _convertNumberToArabicWords(double number) {
-    if (number == 0) return 'صفر';
-    int num = number.toInt();
-    if (num >= 1000000) {
-      int millions = num ~/ 1000000;
-      int remainder = num % 1000000;
-      String millionsText = millions == 1 ? 'مليون' : '$millions ملايين';
-      if (remainder == 0) return millionsText;
-      return '$millionsText و ${_convertLessThanOneMillion(remainder)}';
-    }
-    return _convertLessThanOneMillion(num);
-  }
-
-  String _convertLessThanOneMillion(int num) {
-    if (num == 0) return '';
-    if (num < 1000) return _convertHundreds(num);
-    int thousands = num ~/ 1000;
-    int remainder = num % 1000;
-    String thousandsText = _convertThousands(thousands);
-    if (remainder == 0) return thousandsText;
-    return '$thousandsText و ${_convertHundreds(remainder)}';
-  }
-
-  String _convertThousands(int num) {
-    if (num == 1) return 'ألف';
-    if (num == 2) return 'ألفان';
-    if (num <= 10) return '${_convertOnes(num)} آلاف';
-    return '${_convertHundreds(num)} ألف';
-  }
-
-  String _convertHundreds(int num) {
-    if (num == 0) return '';
-    if (num < 100) return _convertTens(num);
-    int hundreds = num ~/ 100;
-    int remainder = num % 100;
-    String hundredsText = _convertHundredsPrefix(hundreds);
-    if (remainder == 0) return hundredsText;
-    return '$hundredsText و ${_convertTens(remainder)}';
-  }
-
-  String _convertHundredsPrefix(int num) {
-    switch (num) {
-      case 1: return 'مائة';
-      case 2: return 'مائتان';
-      default: return '${_convertOnes(num)} مائة';
-    }
-  }
-
-  String _convertTens(int num) {
-    if (num < 10) return _convertOnes(num);
-    if (num == 10) return 'عشرة';
-    if (num == 11) return 'أحد عشر';
-    if (num == 12) return 'اثنا عشر';
-    if (num < 20) return '${_convertOnes(num % 10)} عشر';
-    int tens = num ~/ 10;
-    int ones = num % 10;
-    String tensText = _convertTensPrefix(tens);
-    if (ones == 0) return tensText;
-    return '${_convertOnes(ones)} و $tensText';
-  }
-
-  String _convertTensPrefix(int tens) {
-    switch (tens) {
-      case 2: return 'عشرون';
-      case 3: return 'ثلاثون';
-      case 4: return 'أربعون';
-      case 5: return 'خمسون';
-      case 6: return 'ستون';
-      case 7: return 'سبعون';
-      case 8: return 'ثمانون';
-      case 9: return 'تسعون';
-      default: return '';
-    }
-  }
-
-  String _convertOnes(int num) {
-    switch (num) {
-      case 1: return 'واحد';
-      case 2: return 'اثنان';
-      case 3: return 'ثلاثة';
-      case 4: return 'أربعة';
-      case 5: return 'خمسة';
-      case 6: return 'ستة';
-      case 7: return 'سبعة';
-      case 8: return 'ثمانية';
-      case 9: return 'تسعة';
-      default: return '';
-    }
   }
 
   // ========== 1. طلب حصة (محدّث مع محاكاة الكريمي) ==========
@@ -282,7 +192,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
                 const Text('اختر طريقة الدفع:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 const SizedBox(height: 8),
                 Row(children: [
-                  Expanded(child: ChoiceChip(label: const Text('تحويل بنكي (الكريمي)'), selected: paymentMethod == 'bank_transfer', selectedColor: Colors.blue.shade100, onSelected: (v) { setStateDialog(() { paymentMethod = 'bank_transfer'; showCreamieField = true; }); })),
+                  Expanded(child: ChoiceChip(label: const Text('تحويل (الكريمي)'), selected: paymentMethod == 'bank_transfer', selectedColor: Colors.blue.shade100, onSelected: (v) { setStateDialog(() { paymentMethod = 'bank_transfer'; showCreamieField = true; }); })),
                   const SizedBox(width: 8),
                   Expanded(child: ChoiceChip(label: const Text('محل صرافة'), selected: paymentMethod == 'offline', selectedColor: Colors.orange.shade100, onSelected: (v) => setStateDialog(() { paymentMethod = 'offline'; showCreamieField = false; }))),
                   const SizedBox(width: 8),
@@ -358,21 +268,17 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
 
                   try {
                     if (existingRequest != null) await wallet.cancelQuotaRequest(existingRequest['docId']);
+                    
+                    // 🚀 تم إصلاح هذه الدالة لكي تتطابق مع المتغيرات الموجودة فعلياً في wallet_provider.dart
                     await wallet.submitSaaSRechargeRequest(
                       quotaAmount: currentQuota,
                       feeAmount: calculatedFee,
-                      adminBankName: '',
+                      adminBankName: selectedOwnerBankId ?? '',
                       transferSource: paymentMethod == 'offline' ? sourceController.text.trim() : (paymentMethod == 'bank_transfer' ? 'تحويل بنكي' : 'دفع نقدي'),
                       reference: refController.text.trim(),
                       base64Image: base64Image ?? '',
-                      paymentMethod: paymentMethod,
-                      currency: currency,
-                      destinationBankAccountId: selectedOwnerBankId ?? '',
-                      sourceBankAccountId: selectedMyBankId ?? '',
-                      offlineProviderName: paymentMethod == 'offline' ? sourceController.text.trim() : '',
-                      offlineReference: paymentMethod == 'offline' ? refController.text.trim() : '',
-                      offlineReceiptBase64: paymentMethod == 'offline' ? (base64Image ?? '') : '',
                     );
+                    
                     if (mounted) { _play('success'); _showSuccess('تم إرسال الطلب بنجاح ✅'); }
                   } catch (e) { _play('error'); if (mounted) _showError('حدث خطأ: $e'); }
                 },
@@ -417,7 +323,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
     final auth = context.read<AuthProvider>();
     final double agentBalance = wallet.currentUserBalance;
 
-    final searchController = TextEditingController(); // للبحث برقم الحساب أو الاسم
+    final searchController = TextEditingController(); 
     final amountController = TextEditingController();
     final taxController = TextEditingController();
     final noteController = TextEditingController();
@@ -603,7 +509,15 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
     bool? confirm = await showDialog<bool>(context: context, builder: (ctx) => Directionality(textDirection: TextDirection.rtl, child: AlertDialog(title: const Text('تأكيد ⚠️'), content: Text('تأكيد تحويل $amount إلى ${targetData?['name']}؟'), actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('تراجع')), ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تأكيد'))])));
     if (confirm != true) return;
     try {
-      await wallet.advancedSecureTransferBalance(targetPhone: targetPhone, targetName: targetData?['name'] ?? 'مجهول', amount: amount, taxPercentage: tax, note: note, paymentMethod: method, password: pinOrBio);
+      await wallet.advancedSecureTransferBalance(
+        targetPhone: targetPhone, 
+        targetName: targetData?['name'] ?? 'مجهول', 
+        amount: amount, 
+        taxPercentage: tax, 
+        note: note, 
+        paymentMethod: method, 
+        password: pinOrBio
+      );
       if (mounted) { _play('success'); _showSuccess('تم التحويل بنجاح! 🎉'); }
     } catch (e) { if (mounted) { _play('error'); _showError(e.toString()); } }
   }
@@ -637,6 +551,7 @@ class _AgentWalletScreenState extends State<AgentWalletScreen>
     final wallet = context.watch<WalletProvider>();
     final auth = context.watch<AuthProvider>();
     final settings = context.watch<SettingsProvider>();
+    // ignore: unused_local_variable
     final themeProvider = context.watch<ThemeProvider>();
     final colors = Theme.of(context).colorScheme;
 
